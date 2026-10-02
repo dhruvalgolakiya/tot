@@ -1,12 +1,13 @@
 import { useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
-import { Clock, Ellipsis, MessageSquare, Pencil, Pin, PinOff, Trash } from "lucide-react";
+import { Clock, Ellipsis, Pencil, Pin, PinOff, Trash } from "lucide-react";
 import type { Conversation } from "@shared/types";
 import { conversationTitle } from "../lib/conversations";
 import { conversationPath } from "../lib/router";
 import { deleteConversation, navigateToConversation, renameConversation, togglePinned, useStore } from "../store";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { SlackMark } from "./ui/SlackMark";
 import { StatusDot } from "./ui/StatusDot";
 import { Tip } from "./ui/Tip";
 
@@ -80,7 +81,9 @@ export function ConversationItem({ conversation, active, streaming }: Conversati
         )}
         {conversation.origin?.kind === "slack" && (
           <Tip content={conversation.origin.label}>
-            <MessageSquare className="size-3.5 shrink-0 text-zinc-500" aria-label={conversation.origin.label} />
+            <span className="shrink-0 text-zinc-500" title={conversation.origin.label}>
+              <SlackMark className="size-3" />
+            </span>
           </Tip>
         )}
         <span className="min-w-0 flex-1 truncate">{title}</span>

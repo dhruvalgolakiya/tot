@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { MessageSquare, PanelLeft, SquarePen } from "lucide-react";
+import { PanelLeft, SquarePen } from "lucide-react";
 import {
   navigateToAgentHome,
   selectActiveAgent,
@@ -13,6 +13,7 @@ import { Mascot } from "./mascot";
 import { ModelPicker } from "./ModelPicker";
 import { IconButton } from "./ui/IconButton";
 import { Kbd } from "./ui/Kbd";
+import { SlackMark } from "./ui/SlackMark";
 import { Tip } from "./ui/Tip";
 
 /**
@@ -83,7 +84,7 @@ export function Header() {
               aria-label="Open in Slack"
               className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-100"
             >
-              <MessageSquare className="size-[18px]" />
+              <SlackMark className="size-4" />
             </a>
           </Tip>
         )}
