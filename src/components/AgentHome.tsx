@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import { openAgentSettings, selectActiveAgent, useStore } from "../store";
-import { defaultMascot, Mascot } from "./mascot";
+import { defaultMascot, MascotStage } from "./mascot";
 import { routinesApi } from "./routines/routinesApi";
 
-/** An agent's new-chat hero: a small mascot and a ChatGPT-style greeting above the composer. */
+/** An agent's new-chat hero: its mascot and a ChatGPT-style greeting above the composer. */
 export function AgentHome() {
   const agent = useStore(selectActiveAgent);
   const name = agent?.name ?? "TOT";
@@ -29,8 +29,8 @@ export function AgentHome() {
 
   return (
     <div className="flex flex-1 flex-col items-center justify-end px-4 pb-6">
-      <Mascot spec={agent?.mascot ?? defaultMascot} size={48} title={name} />
-      <h1 className="mt-4 text-center text-3xl font-semibold text-fg-strong">What can I help with?</h1>
+      <MascotStage spec={agent?.mascot ?? defaultMascot} size={120} title={name} />
+      <h1 className="mt-5 text-center font-display text-4xl font-semibold text-fg-strong">What can I help with?</h1>
       {agent && routineCount > 0 && (
         <button
           type="button"
