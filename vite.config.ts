@@ -21,6 +21,12 @@ if (lan && !accessToken) {
 const weakToken = accessToken && tokenProblem(accessToken);
 if (weakToken) throw new Error(weakToken);
 
+// With sign-in on, TOT may also be reached through an ngrok tunnel (`ngrok http 5173`)
+// or hosts listed in TOT_ALLOWED_HOSTS; Vite refuses unknown Host headers otherwise.
+const tunnelHosts = accessToken
+  ? [".ngrok-free.app", ".ngrok-free.dev", ".ngrok.app", ".ngrok.dev", ...(process.env.TOT_ALLOWED_HOSTS?.split(",").map((h) => h.trim()).filter(Boolean) ?? [])]
+  : [];
+
 /**
  * With an access token set, the dev server requires sign-in as well (the API checks
  * it too), so nothing Vite serves reaches a visitor who hasn't signed in.
@@ -60,8 +66,8 @@ export default defineConfig({
     // IPv4 only: many networks hand out public IPv6 addresses, and "all addresses"
     // would put TOT on the internet rather than just the LAN.
     host: lan ? "0.0.0.0" : undefined,
-    // Bonjour names (e.g. my-mac.local); IP addresses are always allowed.
-    allowedHosts: lan ? [".local"] : undefined,
+    // Bonjour names (e.g. my-mac.local) and tunnels; IP addresses are always allowed.
+    allowedHosts: [...(lan ? [".local"] : []), ...tunnelHosts],
     // The API compares Origin with the Host header to block cross-site requests,
     // so the proxy passes the browser's Host through unchanged.
     proxy: {

@@ -33,12 +33,15 @@ export function isThisMachine(address: string | undefined): boolean {
 
 /**
  * The address of the device a request came from. Behind the dev web server (a proxy on
- * loopback), that's the last X-Forwarded-For entry, which the proxy itself appended; a
- * value a browser sends is never trusted on its own.
+ * loopback), that's the last X-Forwarded-For entry, which the proxy itself appended. A
+ * tunnel (e.g. ngrok) also connects from loopback but adds the visitor's address first,
+ * so any entry that isn't this machine wins: forwarded values can make a request look
+ * remote, never local.
  */
 export function clientAddress(peer: string | undefined, forwardedFor: string | undefined): string | undefined {
   if (!peer || !isThisMachine(peer) || !forwardedFor) return peer;
-  return forwardedFor.split(",").at(-1)?.trim() || peer;
+  const hops = forwardedFor.split(",").map((hop) => hop.trim()).filter(Boolean);
+  return hops.find((hop) => !isThisMachine(hop)) ?? hops.at(-1) ?? peer;
 }
 
 /** http://<address>:<port> for each LAN IPv4 interface, plus the Bonjour name when there is one. */
