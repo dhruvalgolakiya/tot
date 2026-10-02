@@ -174,9 +174,11 @@ See [pstack explained](https://hustlecoding.github.io/pstack-explained/).
   - `runGates` with baseline caching, `checkScope` (scope, deps, size, skipped tests), the dev route, and the GateReport component.
   - *Accept:* on a temp repo with a failing test on base and a new failure on a branch, only the new failure blocks; adding a dependency is flagged needs-approval; `.skip` is caught.
   - *Shipped:* `server/trust/gates.ts` reruns a failing command on the base commit in a throwaway worktree (cached by commit) and blocks only on failure lines the base doesn't have; `server/trust/scope.ts` checks plan files, protected paths, dependencies (package.json by name), size and skipped/commented/deleted tests. `POST /api/trust/check` and the Checks lab at `/dev/trust` (with samples) render the GateReport.
-- [ ] **M3 · Independent review.**
+- [x] **M3 · Independent review.**
   - `reviewDiff` on the other provider, structured findings, the dev route, and the Review component.
   - *Accept:* on a fixture diff that calls a non-existent function and has an off-by-one, the review returns `changes-requested` with both as must-fix (asserted with a fake provider returning the structured JSON, plus one manual run with a real provider recorded in this doc).
+  - *Shipped:* `server/trust/review.ts` asks a fresh, tool-less model on the other provider (Settings → Workflows can fix one), with the plan, conventions, latest checks, a diff numbered by new-file line, and the calls in it that exist nowhere else in the repo (`git grep`). Output is validated with zod and re-asked once; big diffs are reviewed in parts. `POST /api/trust/review` (dev only) and the Review component in the Checks lab.
+  - *Manual run with a real provider (2026-10-03):* a fixture storefront branch with `i <= items.length` in `src/cart.js`, a call to a non-existent `applyDiscount` in `src/checkout.js` and an unplanned migration, marked as written by Claude. ChatGPT (`gpt-6-astra`) reviewed it in 24 s: `changes-requested`, both bugs must-fix at the right lines (`src/cart.js:3`, `src/checkout.js:5`), plus should-fixes for the unrelated migration and tests that never reach the totals code.
 - [ ] **M4 · Playbooks.**
   - Built-ins, the custom-playbook table, `matchPlaybook`, and Settings → Workflows.
   - *Accept:* "the checkout page crashes when the cart is empty" matches Bug fix, and "add CSV export" matches Feature; a duplicated playbook can be edited and saved.

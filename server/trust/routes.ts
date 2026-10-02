@@ -1,10 +1,11 @@
 import { Hono, type Context } from "hono";
-import type { GateName, RepoProfileInput, TrustCheckRequest } from "../../shared/types.ts";
+import type { GateName, RepoProfileInput, TrustCheckRequest, TrustReviewRequest } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { IS_PROD } from "../config.ts";
 import { agents } from "../data/agents.ts";
 import { COMMAND_GATES, runGates } from "./gates.ts";
 import { draftProfile, profileForFolder, repoProfiles, runProfileCommand } from "./profile.ts";
+import { reviewDiff } from "./review.ts";
 import { planFrom } from "./scope.ts";
 
 /** Trust gates & playbooks (module 03). Mounted under /api; errors reach the API's own handler. */
@@ -56,5 +57,21 @@ if (!IS_PROD) {
     const { brainId, profile } = await profileForFolder(agentId, cwd);
     const gates = input.gates ?? [...COMMAND_GATES.filter((gate) => profile.commands[gate]), "scope", "deps", "size"];
     return c.json(await runGates({ agentId, cwd, baseRef, profile, brainId, gates, plan: input.plan?.trim() ? planFrom(input.plan) : undefined }));
+  });
+
+  trustRoutes.post("/trust/review", async (c) => {
+    const input = await body<TrustReviewRequest>(c);
+    const { agentId, cwd, baseRef } = target(input);
+    if (input.implementedBy !== undefined && input.implementedBy !== "claude" && input.implementedBy !== "chatgpt") {
+      throw new HttpError(400, "implementedBy is claude or chatgpt.");
+    }
+    const { profile } = await profileForFolder(agentId, cwd);
+    try {
+      return c.json(await reviewDiff({ agentId, cwd, baseRef, profile, plan: input.plan, implementedBy: input.implementedBy }));
+    } catch (err) {
+      // No provider, or a reviewer that never gave a usable answer: say so plainly.
+      if (err instanceof HttpError) throw err;
+      throw new HttpError(400, err instanceof Error ? err.message : String(err));
+    }
   });
 }

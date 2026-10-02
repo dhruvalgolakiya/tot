@@ -327,6 +327,91 @@ check("dev route refuses option-like refs", (await request("POST", "/trust/check
 check("dev route: unknown base", (await request("POST", "/trust/check", { agentId: agent.id, cwd: repo, baseRef: "nope" })).status === 400);
 check("dev route: not a repo", (await request("POST", "/trust/check", { agentId: agent.id, cwd: "repos/nowhere", baseRef: "main" })).status === 400);
 
+// --- M3 · Independent review -----------------------------------------------------------------------------
+const { calledNames, chunkDiff, numberDiff } = await import("./trust/review.ts");
+const { workflows } = await import("./trust/settings.ts");
+const { reviewDiff } = await import("./trust/review.ts");
+
+check(
+  "diff lines get the new file's line numbers",
+  numberDiff("diff --git a/x b/x\n+++ b/x\n@@ -3,2 +10,3 @@\n keep\n-old\n+new\n keep").endsWith("   10  keep\n      -old\n   11 +new\n   12  keep"),
+);
+check("big diffs split between files", chunkDiff(`diff --git a/a b/a\n${"x".repeat(50)}\ndiff --git a/b b/b\n${"y".repeat(50)}\n`, 80).length === 2);
+const names = calledNames("+++ b/src/a.js\n+const fresh = () => 1;\n+if (ok) helper(x); fresh(); 'skip(this)';\n+  render(); // later(maybe)\n");
+check("calls in added lines, minus keywords, strings, comments and new definitions", [...names.keys()].sort().join(",") === "helper,render", [...names.keys()].join(","));
+
+// A fixture diff that calls a function that doesn't exist and has an off-by-one.
+const shop2 = "repos/review";
+await write(shop2, {
+  "src/cart.js": "export function total(items) {\n  let sum = 0;\n  for (let i = 0; i < items.length; i++) sum += items[i].price;\n  return sum;\n}\n",
+  "src/format.js": "export const cents = (n) => `$${(n / 100).toFixed(2)}`;\n",
+});
+await run(`${GIT} init -q && ${GIT} add -A && ${GIT} commit -qm base && git checkout -qb work`, shop2);
+await write(shop2, {
+  "src/cart.js":
+    "import { cents } from './format.js';\n\nexport function total(items) {\n  let sum = 0;\n  for (let i = 0; i <= items.length; i++) sum += items[i].price;\n  return applyDiscount(sum);\n}\n\nexport const label = (items) => cents(total(items));\n",
+});
+const prompts: string[] = [];
+const verdict = {
+  verdict: "changes-requested",
+  summary: "The loop reads past the end of the array, and applyDiscount doesn't exist.",
+  findings: [
+    { file: "b/src/cart.js", line: 5, severity: "must-fix", issue: "Off-by-one: `i <= items.length` reads items[items.length], which is undefined.", suggestion: "Use `i < items.length`." },
+    { file: "src/cart.js", line: 6, severity: "must-fix", issue: "applyDiscount is called but defined nowhere in the repo or its libraries." },
+    { file: "src/cart.js", line: 9, severity: "nit", issue: "label could use a clearer name." },
+  ],
+};
+let replies = ["Sure! Here's my review: {not json", `\`\`\`json\n${JSON.stringify(verdict)}\n\`\`\``];
+answer = (call) => {
+  prompts.push(call.prompt);
+  return replies.shift() ?? "{}";
+};
+calls.length = 0;
+const reviewProfile = { ...profile, conventions: ["Prices are integers in cents"] };
+const review = await reviewDiff({ agentId: agent.id, cwd: shop2, baseRef: "main", profile: reviewProfile, plan: "Apply discounts in src/cart.js", implementedBy: "claude" });
+check(
+  "fixture diff: changes requested, both bugs must-fix",
+  review.verdict === "changes-requested" &&
+    review.findings.filter((f) => f.severity === "must-fix").length === 2 &&
+    review.findings.some((f) => /off-by-one/i.test(f.issue) && f.line === 5) &&
+    review.findings.some((f) => /applyDiscount/.test(f.issue)),
+  JSON.stringify(review.findings),
+);
+check("findings: must-fix first, paths without a/ b/", review.findings[0].severity === "must-fix" && review.findings.at(-1)!.severity === "nit" && review.findings.every((f) => !f.file.startsWith("b/")));
+check("invalid output is asked again, once", calls.length === 2 && prompts[1].includes("didn't match that format"));
+check("reviewed on the other provider, with the strongest model", review.reviewer.provider === "chatgpt" && review.reviewer.model === "gpt-astra" && calls.every((call) => call.provider === "chatgpt"), JSON.stringify(review.reviewer));
+check(
+  "the reviewer sees the plan, conventions and numbered diff, and nothing of the work's chat",
+  prompts[0].includes("Apply discounts in src/cart.js") && prompts[0].includes("Prices are integers in cents") && /\s5 \+\s+for \(let i = 0; i <= items\.length/.test(prompts[0]),
+);
+check("calls found nowhere else in the repo are pointed out", /applyDiscount\(\) in src\/cart\.js/.test(prompts[0]) && !/- cents\(\)/.test(prompts[0]) && !/- total\(\)/.test(prompts[0]), prompts[0].slice(prompts[0].indexOf("## Calls"), prompts[0].indexOf("## The diff")));
+check("the reviewer gets no tools and no transcript", calls.every((call) => !("mcpServers" in call) && !call.prompt.includes("transcript")));
+
+replies = ["nope", "still nope"];
+const broken = await reviewDiff({ agentId: agent.id, cwd: shop2, baseRef: "main", profile, implementedBy: "claude" }).then(
+  () => "resolved",
+  (err: Error) => err.message,
+);
+check("twice invalid: a clear error", /wasn't valid twice/.test(broken), broken);
+
+workflows.patch({ reviewer: "claude" });
+replies = [JSON.stringify({ verdict: "approve", summary: "Looks right.", findings: [{ file: "src/cart.js", line: 5, severity: "must-fix", issue: "Off by one." }] })];
+const fixed = await reviewDiff({ agentId: agent.id, cwd: shop2, baseRef: "main", profile, implementedBy: "claude" });
+check("a fixed reviewer in Settings wins", fixed.reviewer.provider === "claude" && fixed.reviewer.model === "claude-opus-5-5");
+check("a must-fix finding always means changes requested", fixed.verdict === "changes-requested");
+workflows.patch({ reviewer: "other" });
+statuses[1] = { ...statuses[1], loggedIn: false };
+replies = [JSON.stringify({ verdict: "approve", summary: "Fine.", findings: [] })];
+const fallback = await reviewDiff({ agentId: agent.id, cwd: shop2, baseRef: "main", profile, implementedBy: "claude" });
+check("the other provider unavailable: the same one reviews", fallback.reviewer.provider === "claude" && fallback.verdict === "approve");
+statuses[1] = { ...statuses[1], loggedIn: true };
+
+replies = [JSON.stringify(verdict)];
+const viaRoute = await request<{ verdict: string }>("POST", "/trust/review", { agentId: agent.id, cwd: shop2, baseRef: "main", implementedBy: "chatgpt" });
+check("dev route reviews a folder", viaRoute.status === 200 && viaRoute.json.verdict === "changes-requested", JSON.stringify(viaRoute.json));
+await run("git checkout -q -- .", shop2);
+check("nothing to review is a 400", (await request("POST", "/trust/review", { agentId: agent.id, cwd: shop2, baseRef: "main" })).status === 400);
+
 // ---------------------------------------------------------------------------------------------------------
 trustModel.use(null);
 await computerManager.destroy(agent.id);

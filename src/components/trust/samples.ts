@@ -1,4 +1,4 @@
-import type { GateReport } from "@shared/types";
+import type { GateReport, Review } from "@shared/types";
 
 /** One of each state a gate can be in, for the Checks lab (/dev/trust). */
 export const SAMPLE_REPORT: GateReport = {
@@ -46,5 +46,30 @@ export const SAMPLE_REPORT: GateReport = {
       details: ["package.json: + decimal.js ^10.4.3", "package-lock.json changed"],
     },
     { gate: "size", status: "pass", note: "86 changed lines in 4 files." },
+  ],
+};
+
+export const SAMPLE_REVIEW: Review = {
+  verdict: "changes-requested",
+  summary:
+    "The empty-cart guard works, but the new total loop reads one item past the end of the cart and checkout calls applyDiscount, which doesn't exist anywhere in the repo. The migration isn't mentioned in the plan.",
+  reviewer: { provider: "chatgpt", model: "gpt-5.5" },
+  findings: [
+    {
+      file: "src/cart.js",
+      line: 3,
+      severity: "must-fix",
+      issue: "Off-by-one: `i <= items.length` reads items[items.length], which is undefined, so every non-empty cart throws.",
+      suggestion: "Loop while `i < items.length`.",
+    },
+    {
+      file: "src/checkout.js",
+      line: 5,
+      severity: "must-fix",
+      issue: "applyDiscount is called but isn't defined or imported anywhere.",
+      suggestion: "Drop the call, or add and import a discount helper with tests.",
+    },
+    { file: "db/migrations/002_carts_coupon.sql", line: 1, severity: "should-fix", issue: "A schema change the plan doesn't mention; nothing reads the coupon column yet." },
+    { file: "test/checkout.test.js", line: 9, severity: "nit", issue: "“rejects a missing cart” tests the same guard as the empty-cart test." },
   ],
 };
