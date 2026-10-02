@@ -7,7 +7,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { Hono } from "hono";
 import { computerManager } from "../computer/manager.ts";
 import { MCP_TOKEN } from "../config.ts";
-import { repoName } from "../agent/learn-repo.ts";
+import { planProgress, repoName } from "../agent/learn-repo.ts";
 import { buildSystemPrompt } from "../agent/prompts.ts";
 import { keepConversation, parseUpdates } from "../agent/wiki-keeper.ts";
 import { agents } from "../data/agents.ts";
@@ -237,6 +237,10 @@ check("titles compare across scripts", (() => {
   }
 })());
 check("repo names", repoName("https://github.com/acme/web.git") === "web" && repoName("git@github.com:acme/api") === "api" && repoName("~/repos/site/") === "site");
+{
+  const progress = planProgress("Commit: abc\n## Areas\n- [x] Core — src/core → Core\n- [ ] API — src/api\n  * [X] Jobs — src/jobs\n## Open questions\n- why [ ] here");
+  check("study plan progress", progress.done === 2 && progress.total === 3, JSON.stringify(progress));
+}
 
 agents.delete(other.id);
 

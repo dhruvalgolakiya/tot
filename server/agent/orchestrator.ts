@@ -57,6 +57,13 @@ export interface TurnOptions {
   keepTitle?: boolean;
   /** Heavy work whatever the text looks like (Auto then picks the strongest model); the reason is shown. */
   heavy?: string;
+  /**
+   * Start a new provider session without the chat's transcript, for multi-step jobs that keep
+   * their state elsewhere (e.g. the wiki), so each step begins with a clean context.
+   */
+  freshSession?: boolean;
+  /** Raise the per-turn step cap for long jobs. */
+  maxSteps?: number;
 }
 
 export async function sendMessage(
@@ -135,6 +142,8 @@ export async function sendMessage(
     auto: parseModelId(modelId) === "auto",
     complexity,
     thinkHarder: Boolean(request.thinkHarder),
+    freshSession: Boolean(options.freshSession),
+    maxSteps: options.maxSteps,
   }).catch((err) => {
     // executeTurn handles provider failures itself; this only catches setup bugs, so the
     // chat still ends cleanly instead of an unhandled rejection taking the server down.
@@ -163,6 +172,8 @@ interface TurnContext {
   /** Set when the caller marked the turn as heavy work; a fallback route keeps it. */
   complexity?: Complexity;
   thinkHarder: boolean;
+  freshSession: boolean;
+  maxSteps?: number;
 }
 
 async function executeTurn(ctx: TurnContext): Promise<void> {
@@ -199,9 +210,9 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
 
     /** Turn input for a route: resume the provider's session when this chat already has one. */
     const inputFor = (route: Route, fresh = false): TurnInput => {
-      const resumable = !fresh && conversation.provider === route.provider && conversation.providerSessionId;
+      const resumable = !fresh && !ctx.freshSession && conversation.provider === route.provider && conversation.providerSessionId;
       // A different provider can't resume the old session: carry the transcript over instead.
-      const needsTranscript = !resumable && conversation.provider !== null;
+      const needsTranscript = !resumable && !ctx.freshSession && conversation.provider !== null;
       return {
         conversationId: conversation.id,
         prompt: needsTranscript || fresh ? withTranscript() : text,
@@ -214,6 +225,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         workDir: paths.agentHome,
         signal,
         elicit,
+        maxSteps: ctx.maxSteps,
       };
     };
 
