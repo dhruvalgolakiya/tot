@@ -16,16 +16,22 @@ export function agentIdFromPath(pathname: string): string | null {
   }
 }
 
-export function wikiPath(agentId: string, pageId?: string | null): string {
+/** "/a/:agentId/wiki" (the agent's notebook), "/a/:agentId/wiki/:pageId", or "/a/:agentId/wiki/brain/:brainId". */
+export function wikiPath(agentId: string, pageId?: string | null, brainId?: string | null): string {
   const base = `/a/${encodeURIComponent(agentId)}/wiki`;
-  return pageId ? `${base}/${encodeURIComponent(pageId)}` : base;
+  if (pageId) return `${base}/${encodeURIComponent(pageId)}`;
+  return brainId ? `${base}/brain/${encodeURIComponent(brainId)}` : base;
 }
 
-export function wikiFromPath(pathname: string): { agentId: string; pageId: string | null } | null {
-  const match = /^\/a\/([^/]+)\/wiki(?:\/([^/]+))?\/?$/.exec(pathname);
+export function wikiFromPath(pathname: string): { agentId: string; pageId: string | null; brainId: string | null } | null {
+  const match = /^\/a\/([^/]+)\/wiki(?:\/brain\/([^/]+)|\/([^/]+))?\/?$/.exec(pathname);
   if (!match) return null;
   try {
-    return { agentId: decodeURIComponent(match[1]), pageId: match[2] ? decodeURIComponent(match[2]) : null };
+    return {
+      agentId: decodeURIComponent(match[1]),
+      brainId: match[2] ? decodeURIComponent(match[2]) : null,
+      pageId: match[3] ? decodeURIComponent(match[3]) : null,
+    };
   } catch {
     return null;
   }

@@ -1,4 +1,6 @@
 import type { Agent, Memory, Settings, WikiPage, WikiPageSummary } from "../../shared/types.ts";
+import type { AgentBrain } from "../data/brains.ts";
+import { cloneFolder, githubFullName } from "../data/brains.ts";
 
 function computerSection(mode: Settings["computer"]["mode"]): string {
   if (mode === "off") {
@@ -68,14 +70,17 @@ ${rules}
 - Never print, echo or save the GitHub token anywhere (including the wiki).`;
 }
 
-/** What a new chat starts with: memory about the user, the workspace wiki, and recent chats. */
+/** What a new chat starts with: memory about the user, the agent's brains, and recent chats. */
 export interface WorkspaceContext {
   userMemories: Memory[];
   wiki: {
+    /** Every brain the agent can use, its notebook first. */
+    brains: Pick<AgentBrain, "id" | "name" | "kind" | "description" | "source" | "keywords" | "access" | "pageCount">[];
+    /** The notebook's Overview. */
     overview: WikiPage;
-    /** Every other page, in tree order. */
+    /** The notebook's other pages, in tree order. */
     outline: (WikiPageSummary & { depth: number })[];
-    /** Full pages most related to the chat's first message. */
+    /** Full pages, from any of its brains, most related to the chat's first message. */
     relevant: WikiPage[];
   };
   recentChats: { id: string; title: string; updatedAt: number }[];
@@ -104,8 +109,23 @@ What you know about the user:
 ${bullets(workspace.userMemories.map((m) => `- ${m.content}`))}`;
 }
 
+function brainCard(brain: WorkspaceContext["wiki"]["brains"][number]): string {
+  if (brain.kind === "notebook") return `- notebook (${brain.id}) — your own, private · ${brain.pageCount} pages`;
+  const repo = brain.kind === "repo" && brain.source ? `repo ${githubFullName(brain.source) ?? brain.source}, cloned in ~/repos/${cloneFolder(brain.source)}` : brain.kind;
+  return [
+    `- ${brain.name} (${brain.id}) — ${repo}`,
+    brain.description,
+    `${brain.pageCount} pages`,
+    brain.access === "read" ? "read-only for you" : "shared",
+    brain.keywords.length ? `about: ${brain.keywords.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function wikiSection(name: string, workspace: WorkspaceContext): string {
-  const { overview, outline, relevant } = workspace.wiki;
+  const { brains, overview, outline, relevant } = workspace.wiki;
+  const labels = new Map(brains.map((brain) => [brain.id, brain.kind === "notebook" ? "notebook" : brain.name]));
   let used = 0;
   const index: string[] = [];
   for (const page of outline) {
@@ -122,22 +142,31 @@ function wikiSection(name: string, workspace: WorkspaceContext): string {
     if (budget <= 500) break;
     const body = truncate(page.content || "(empty)", Math.min(RELEVANT_PAGE_MAX, budget), "truncated — wiki_read for the rest");
     budget -= body.length;
-    related.push(`### ${page.title} (${page.id})\n${body}`);
+    const where = brains.length > 1 ? ` [${labels.get(page.brainId) ?? "brain"}]` : "";
+    related.push(`### ${page.title} (${page.id})${where}\n${body}`);
   }
+  const shared = brains.length > 1;
 
-  return `# Your workspace wiki
-This workspace has a wiki: ${name}'s long-term knowledge base for the work done here — what a new teammate, or your next chat, needs to know. It lasts across chats. Each new chat starts with the Overview, the page list, and the pages most related to its first message.
-- Before you start, check the pages below and wiki_read the ones related to the task; wiki_search finds anything else.
-- As you work, when you learn something durable — how a system or codebase works, decisions and why, conventions, how to run/test/deploy, gotchas and fixes, accounts, where things live on your computer, the status of ongoing work — put it in the wiki: update the page it belongs to (wiki_edit for small changes, wiki_write to create or rewrite), or add a page with a one-line summary, nested under a parent when it belongs to one. Prefer updating over adding; one topic per page; keep pages scannable.
-- Keep the Overview short and current: what this workspace is for, active projects and repos and where they live on your computer, current status and next steps.
+  return `# Your brains
+You have long-term knowledge that lasts across chats, kept in brains: wikis of pages. Your notebook is ${name}'s own — this workspace, the user's work here, and anything no other brain covers.${
+    shared
+      ? " Your other brains each cover one repo, client or topic and are shared with other agents: keep them accurate and about their subject."
+      : ""
+  }
+- Before you start, check which brains the task is about (the cards below) and read their Overview and the pages that matter. wiki_search searches every brain at once, or one with \`brain\`. When a request or command touches a brain's repo or name, TOT also shows you that brain's Overview.
+- As you work, when you learn something durable — how a system or codebase works, decisions and why, conventions, how to run/test/deploy, gotchas and fixes, accounts, where things live on your computer, the status of ongoing work — put it in the brain it's about${shared ? " (pass \`brain\` to wiki_write; your notebook is the default)" : ""}: update the page it belongs to (wiki_edit for small changes, wiki_write to create or rewrite), or add a page with a one-line summary, nested under a parent when it belongs to one. Prefer updating over adding; one topic per page; keep pages scannable.
+- Keep each Overview short and current. Your notebook's: what this workspace is for, active projects and repos and where they live on your computer, current status and next steps. A shared brain's: a start-here guide to its subject.
 - For code, cite file paths (\`src/billing/invoice.ts\`), note the commit a page describes, explain how the pieces connect (a \`\`\`mermaid diagram helps), and don't paste large code.
-- After a chat goes quiet, a background keeper also folds what was learned into the wiki, so you don't need to record every detail. Don't announce routine wiki updates.
-- Never put secrets, passwords or tokens in the wiki.
+- After a chat goes quiet, a background keeper also folds what was learned into your brains, so you don't need to record every detail. Don't announce routine wiki updates.
+- Never put secrets, passwords or tokens in a brain.
 
-## Overview (${overview.id})
+## Your brains
+${brains.map(brainCard).join("\n")}
+
+## Notebook Overview (${overview.id})
 ${overview.content ? truncate(overview.content, OVERVIEW_BUDGET, "truncated — wiki_read Overview for the rest") : "(empty — fill it in once you know what this workspace is for)"}
 
-## Pages
+## Notebook pages
 ${bullets(index)}${related.length ? `\n\n## Pages related to this request\n${related.join("\n\n")}` : ""}`;
 }
 

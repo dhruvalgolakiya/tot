@@ -1,6 +1,7 @@
-import type { MessageStatus } from "../../shared/types.ts";
+import type { Brain, MessageStatus } from "../../shared/types.ts";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
+import { brains, cloneFolder, githubFullName } from "../data/brains.ts";
 import { conversations } from "../data/conversations.ts";
 import { settings } from "../data/settings.ts";
 import { wiki } from "../data/wiki.ts";
@@ -9,16 +10,16 @@ import { runRegistry } from "./runs.ts";
 
 /**
  * "Learn a repo": a chat in which the agent clones a codebase onto its
- * computer, studies it, and writes it up in its workspace wiki (DeepWiki-style),
- * so later chats — e.g. one per ticket — start out knowing the code.
+ * computer, studies it, and writes it up (DeepWiki-style) as a brain of its
+ * own — shared, so every agent attached to it starts out knowing the code.
  *
  * Big repos don't fit in one turn, so the study runs in steps that TOT sends
  * one after another in the same chat, each with a fresh context:
  *   1. survey — clone, measure, split the code into areas, write a "Study plan" checklist page
  *   2. study  — repeated: take the next unchecked areas, read them properly, write a page each, tick them
- *   3. connect — architecture, data model, interfaces, config, run/test/deploy, playbooks, glossary, start-here page
+ *   3. connect — architecture, data model, interfaces, config, run/test/deploy, playbooks, glossary, the Overview
  *   4. verify — check claims against the code, fill gaps, wrap up
- * The wiki is the only state carried between steps; TOT reads the checklist to decide what's next.
+ * The brain is the only state carried between steps; TOT reads the checklist to decide what's next.
  * Learning the same repo again resumes an interrupted study, or re-studies only what changed.
  */
 
@@ -30,14 +31,11 @@ const MAX_STUDY_STEPS = 80;
 /** Give up after this many study steps in a row that ticked nothing, or failed. */
 const MAX_STALLS = 2;
 
-/** Repos being learned right now, by `${agentId}:${name}`, so two studies don't fight over one plan. */
+/** Brains being learned right now, so two studies don't fight over one plan. */
 const studying = new Set<string>();
 
 /** "https://github.com/acme/web.git" → "web"; "~/repos/api/" → "api". Safe as a folder name. */
-export function repoName(source: string): string {
-  const last = source.replace(/[/\\]+$/, "").split(/[/:\\]/).pop() ?? "";
-  return last.replace(/\.git$/i, "").replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[.-]+/, "") || "repo";
-}
+export const repoName = cloneFolder;
 
 export function validateRepoSource(source: unknown): string {
   const text = typeof source === "string" ? source.trim() : "";
@@ -56,31 +54,48 @@ export function planProgress(content: string): { done: number; total: number } {
   return { done: boxes.filter((box) => /\[[xX]\]/.test(box)).length, total: boxes.length };
 }
 
-/** The repo's start-here page (top level preferred) and its Study plan, if they exist. */
-function findPages(agentId: string, name: string) {
-  const root = wiki.withTitle(agentId, name, null)[0] ?? wiki.withTitle(agentId, name)[0] ?? null;
-  const plan = root ? (wiki.withTitle(agentId, PLAN_TITLE, root.id)[0] ?? null) : null;
-  return { root, plan };
-}
-
-function readPlan(agentId: string, name: string): { done: number; total: number; left: number } | null {
-  const { plan } = findPages(agentId, name);
+function readPlan(brainId: string): { done: number; total: number; left: number } | null {
+  const plan = wiki.withTitle(brainId, PLAN_TITLE, null)[0];
   if (!plan) return null;
   const progress = planProgress(plan.content);
   return progress.total ? { ...progress, left: progress.total - progress.done } : null;
 }
 
+/** The repo's brain: the one learned from this source before, or a new one; the agent can write to it either way. */
+function repoBrain(agentId: string, source: string): Brain {
+  const existing = brains.forSource(source);
+  if (existing) {
+    if (brains.access(agentId, existing.id) !== "write") brains.attach(existing.id, agentId, "write");
+    return brains.get(existing.id)!;
+  }
+  const base = githubFullName(source) ?? cloneFolder(source);
+  const taken = new Set(brains.list().map((brain) => brain.name.toLowerCase()));
+  let name = base;
+  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} (${n})`;
+  const { id } = brains.create({ name, kind: "repo", source, agentId });
+  wiki.overview(id);
+  return brains.get(id)!;
+}
+
 // ---------------------------------------------------------------------------
 // Instructions for each step. Each one stands alone: the step starts with a fresh context.
 
-function layout(source: string, name: string): string {
+interface Study {
+  source: string;
+  /** The brain's name, as the agent passes it to wiki_* tools. */
+  brain: string;
+  /** ~/repos/<folder> */
+  folder: string;
+}
+
+function layout({ source, brain, folder }: Study): string {
   return `Repository: ${source}
-Local copy: ~/repos/${name}
-Wiki layout — everything nested under the top-level page “${name}” (always pass parent when you wiki_write):
-- “${name}” — the start-here guide for any agent working on this repo
-  - “${PLAN_TITLE}” — the checklist that carries this study from step to step
-  - “Architecture” and the other cross-cutting pages
-  - one page per area of the code (under group pages when there are more than ~10 areas)`;
+Local copy: ~/repos/${folder}
+Brain: “${brain}” — this repo's own brain, shared with other agents. Pass brain: "${brain}" on every wiki_* call in this study. Its layout:
+- “Overview” — the brain's pinned start-here guide for any agent about to work on this repo (update it with wiki_write, title "Overview")
+- “${PLAN_TITLE}” — the checklist that carries this study from step to step
+- “Architecture” and the other cross-cutting pages
+- one page per area of the code (under group pages when there are more than ~10 areas)`;
 }
 
 const PLAN_FORMAT = `Commit: <short hash> <subject> (<date>)
@@ -93,14 +108,15 @@ const PLAN_FORMAT = `Commit: <short hash> <subject> (<date>)
 <things later steps should find out>`;
 
 const STEP_HEADER = (step: string) =>
-  `[${step} TOT runs the steps of this study one after another, each with a fresh context, so the wiki is the only thing carried between them — write down everything a later step needs. Take your time: accuracy and coverage matter more than speed. Keep command output short (head, tail, wc, sort | uniq -c) and never copy secrets into the wiki.`;
+  `[${step} TOT runs the steps of this study one after another, each with a fresh context, so the brain is the only thing carried between them — write down everything a later step needs. Take your time: accuracy and coverage matter more than speed. Keep command output short (head, tail, wc, sort | uniq -c) and never copy secrets into the brain.`;
 
-function surveyStep(source: string, name: string): string {
-  return `${STEP_HEADER("Learn a codebase into your wiki — step 1: survey the repo and plan the study.")}
+function surveyStep(study: Study): string {
+  const { brain, folder } = study;
+  return `${STEP_HEADER("Learn a codebase into its brain — step 1: survey the repo and plan the study.")}
 
-${layout(source, name)}
+${layout(study)}
 
-1. Get the code onto your computer: clone it into ~/repos/${name} (for very big repos, git clone --filter=blob:none); if it's already there, pull the latest; if the source is a folder already on your computer, use it in place. If cloning fails because it's private, stop and tell the user to connect GitHub in Settings → Connections (or, if it's connected, that this account can't see the repo). Note the commit: git log -1 --format='%h %s (%cs)'.
+1. Get the code onto your computer: clone it into ~/repos/${folder} (for very big repos, git clone --filter=blob:none); if it's already there, pull the latest; if the source is a folder already on your computer, use it in place. If cloning fails because it's private, stop and tell the user to connect GitHub in Settings → Connections (or, if it's connected, that this account can't see the repo). Note the commit: git log -1 --format='%h %s (%cs)'.
 2. Measure it before reading it:
    - tracked files and line counts per top-level and second-level directory, and languages by extension (git ls-files, wc -l)
    - manifests and workspaces (package.json and workspace files, go.mod, Cargo.toml, pyproject.toml, Gemfile, pom.xml/build.gradle, Makefile, Dockerfile, compose files) and CI config
@@ -108,47 +124,49 @@ ${layout(source, name)}
    - churn hot spots: git log --since=1.year --name-only --format= | sort | uniq -c | sort -rn | head -40
 3. Read the docs that explain intent: README files, docs/, architecture notes and ADRs, AGENTS.md, CLAUDE.md, .cursorrules, CONTRIBUTING.
 4. Split the code into areas: coherent units (a package, service, feature or layer), each small enough to study properly in one step — roughly up to 40 source files or ~8,000 lines; split bigger ones, merge tiny ones. A small repo may have 3–5 areas, a big monorepo 30 or more. Cover all real code; skip generated, vendored and fixture files. Order them core first.
-5. Write these pages now (not the area pages yet):
-   - “${name}” at the top level: a first draft — what it is, the stack, where it lives on your computer, the commit, and the planned page map. Summary: one line on what the repo is.
-   - “${PLAN_TITLE}” under “${name}”, summary “What has been studied of ${name} so far”, in exactly this format:
+5. Write these pages in the “${brain}” brain now (not the area pages yet):
+   - “Overview”: a first draft — what it is, the stack, where it lives on your computer, the commit, and the planned page map. Set its summary to one line on what the repo is (it becomes the brain's description).
+   - “${PLAN_TITLE}”, summary “What has been studied of this repo so far”, in exactly this format:
 ${PLAN_FORMAT}
-   - “Architecture” under “${name}”: a first sketch from what you've seen — the main parts and a \`\`\`mermaid diagram. Later steps refine it.
+   - “Architecture”: a first sketch from what you've seen — the main parts and a \`\`\`mermaid diagram. Later steps refine it.
 6. Reply in a few lines: how big the repo is, how many areas you planned, and that TOT will now study them one by one.]`;
 }
 
-function updateStep(source: string, name: string): string {
-  return `${STEP_HEADER("Learn a codebase into your wiki — step 1: this repo was studied before; bring the study plan up to date.")}
+function updateStep(study: Study): string {
+  const { brain, folder } = study;
+  return `${STEP_HEADER("Learn a codebase into its brain — step 1: this repo was studied before; bring the study plan up to date.")}
 
-${layout(source, name)}
+${layout(study)}
 
-1. wiki_read “${name}” and its “${PLAN_TITLE}”.
-2. Get the latest code (pull in ~/repos/${name}, or clone it again if it's missing; if the source is a folder on your computer, use it in place). Compare with the commit in the plan: git diff --stat <old>..HEAD | tail -80. If that commit is gone, treat every area as changed.
+1. wiki_read “Overview” and “${PLAN_TITLE}” (brain "${brain}").
+2. Get the latest code (pull in ~/repos/${folder}, or clone it again if it's missing; if the source is a folder on your computer, use it in place). Compare with the commit in the plan: git diff --stat <old>..HEAD | tail -80. If that commit is gone, treat every area as changed.
 3. Update “${PLAN_TITLE}” (keep its exact format):
    - set the Commit line to the new commit
    - keep areas an earlier, interrupted study didn't finish unchecked
    - uncheck (- [ ]) every area whose code changed in a way that matters, and drop its " → page" note
    - add areas for new code, split areas that grew too big, and remove areas whose code is gone (delete their pages)
-4. If nothing meaningful changed and every area is still ticked, update the commit on “${name}” and say so — the study is done.
+4. If nothing meaningful changed and every area is still ticked, update the commit on the Overview and say so — the study is done.
 5. Reply in a few lines: what changed and how many areas will be studied.]`;
 }
 
-function missingPlanStep(name: string): string {
-  return `[The “${PLAN_TITLE}” page under “${name}” is missing or has no checklist, and the rest of the study depends on it. Write it now with wiki_write (parent “${name}”) in exactly this format, then reply in one line:
+function missingPlanStep({ brain }: Study): string {
+  return `[The “${PLAN_TITLE}” page in the “${brain}” brain is missing or has no checklist, and the rest of the study depends on it. Write it now with wiki_write (brain "${brain}", top level) in exactly this format, then reply in one line:
 ${PLAN_FORMAT}]`;
 }
 
-function studyStep(source: string, name: string): string {
-  return `${STEP_HEADER("Learn a codebase into your wiki — next step: study the next areas in depth.")}
+function studyStep(study: Study): string {
+  const { brain } = study;
+  return `${STEP_HEADER("Learn a codebase into its brain — next step: study the next areas in depth.")}
 
-${layout(source, name)}
+${layout(study)}
 
-1. wiki_read “${PLAN_TITLE}”, “Architecture” and “${name}”, so you know the plan, the page names and what's known so far.
+1. wiki_read “${PLAN_TITLE}”, “Architecture” and “Overview” (brain "${brain}"), so you know the plan, the page names and what's known so far.
 2. Take the first unchecked area — or up to 3 if they're small — and study it properly, not by skimming:
    - list its files with line counts; read its entry points, public interfaces, core types and its biggest or most-changed files in full (computer_read_file, or sed -n ranges for huge files); skim the rest
    - find how it connects: search the repo (rg, or grep -rn) for its exports and imports to see who uses it and what it depends on
    - read its tests for the intended behavior and edge cases
    - follow one or two real flows through it end to end (a request, a job, a command)
-3. Write one page per area with wiki_write (parent “${name}”, or a group page under it when there are many areas), with a one-line summary and this layout — leave out a section only when it truly doesn't apply:
+3. Write one page per area with wiki_write (brain "${brain}"; top level, or under a group page when there are many areas), with a one-line summary and this layout — leave out a section only when it truly doesn't apply:
    # <Area>
    What it's for and where it sits in the system (one paragraph).
    ## Key files — \`path\` — role, for every important file
@@ -166,13 +184,14 @@ ${layout(source, name)}
 5. Reply in one or two lines: the areas you covered and how many are left.]`;
 }
 
-function connectStep(source: string, name: string): string {
-  return `${STEP_HEADER("Learn a codebase into your wiki — next step: every area has a page; now write the pages that tie them together.")}
+function connectStep(study: Study): string {
+  const { brain, folder } = study;
+  return `${STEP_HEADER("Learn a codebase into its brain — next step: every area has a page; now write the pages that tie them together.")}
 
-${layout(source, name)}
+${layout(study)}
 
-1. wiki_read “${PLAN_TITLE}”, “${name}”, “Architecture” and every area page under “${name}” (wiki_search with no query lists them all).
-2. Write or update each of these with parent “${name}”, grounded in the area pages — check the code wherever they're vague or disagree — and cite paths:
+1. wiki_read “${PLAN_TITLE}”, “Overview”, “Architecture” and every area page (wiki_search with brain "${brain}" and no query lists them all).
+2. Write or update each of these in the “${brain}” brain, grounded in the area pages — check the code wherever they're vague or disagree — and cite paths:
    - “Architecture”: the system as a whole — components and their responsibilities, a \`\`\`mermaid component diagram, and sequence diagrams for the 2–4 most important flows (a request, a background job, a deploy…), linking area pages by title.
    - “Data model”: entities, tables or schemas and how they relate (a mermaid erDiagram when it helps), where each is defined and migrated.
    - “Interfaces”: the public surface — HTTP/RPC routes, CLI commands, events and queues, SDK exports — each with where it's handled.
@@ -182,17 +201,18 @@ ${layout(source, name)}
    - “Playbooks”: step-by-step recipes for the changes people make most (add an endpoint, a table and migration, a screen, a job…), each pointing at a real example in the code.
    - “Glossary”: domain and project terms and what they mean in this code.
    Leave out a page only when it truly doesn't apply (say, a data model for a stateless CLI).
-3. Rewrite “${name}” as the start-here guide for any agent about to work on this repo: what it is and who uses it, the stack, where it lives (~/repos/${name}), the commit studied, a page map (every sub-page with one line), and a "Where to look" table — task or concept → page → key paths.
-4. Add or update one line about this repo on the Overview page: what it is, where it lives on your computer, and that “${name}” is its start-here page in the wiki.
+3. Rewrite “Overview” as the start-here guide for any agent about to work on this repo: what it is and who uses it, the stack, where it lives (~/repos/${folder}), the commit studied, a page map (every page with one line), and a "Where to look" table — task or concept → page → key paths. Keep its summary a one-line description of the repo.
+4. Add or update one line about this repo on the Overview of your notebook (brain "notebook"): what it is, where it lives on your computer, and that the “${brain}” brain covers it.
 5. Reply in one or two lines.]`;
 }
 
-function verifyStep(source: string, name: string): string {
-  return `${STEP_HEADER("Learn a codebase into your wiki — last step: check the pages against the code, so other agents can trust them.")}
+function verifyStep(study: Study): string {
+  const { brain } = study;
+  return `${STEP_HEADER("Learn a codebase into its brain — last step: check the pages against the code, so other agents can trust them.")}
 
-${layout(source, name)}
+${layout(study)}
 
-1. wiki_read “${name}” and “${PLAN_TITLE}”, then go through every page under “${name}”.
+1. wiki_read “Overview” and “${PLAN_TITLE}” (brain "${brain}"), then go through every page in the brain.
 2. Check at least 40 concrete claims across the pages — file paths, function and type names, commands, env var names, routes — against the code (ls, rg or grep, the manifests). Fix every wrong or stale one with wiki_edit; remove what you can't support.
 3. Fill the gaps: answer what's left under Open questions where you can, and compare git ls-files with the pages for important files or directories no page mentions — add them where they belong.
 4. Make sure every page has a one-line summary, links related pages by title, and ends with “_Studied at <commit>_”. Split any page longer than ~15,000 characters.
@@ -218,14 +238,24 @@ async function step(conversationId: string, text: string, preamble: string, heav
   return runEnd(runId);
 }
 
-/** Runs the steps after the survey until the plan is done, the user stops a step, or it stops making progress. */
-async function continueStudy(agentId: string, conversationId: string, source: string, name: string, updating: boolean, survey: string) {
-  if ((await runEnd(survey)) === "stopped") return;
+/** The brain's card takes the one-line description the survey put on its Overview. */
+function describeBrain(brainId: string): void {
+  const brain = brains.get(brainId);
+  const summary = wiki.overview(brainId).summary;
+  if (!brain || brain.description || !summary || /^Start here: what this brain covers/.test(summary)) return;
+  brains.update(brainId, { description: summary.slice(0, 300) });
+  appEvents.brainsChanged();
+}
 
-  let plan = readPlan(agentId, name);
+/** Runs the steps after the survey until the plan is done, the user stops a step, or it stops making progress. */
+async function continueStudy(brainId: string, conversationId: string, study: Study, updating: boolean, survey: string) {
+  if ((await runEnd(survey)) === "stopped") return;
+  describeBrain(brainId);
+
+  let plan = readPlan(brainId);
   if (!plan) {
-    if ((await step(conversationId, `Write the study plan for ${name}.`, missingPlanStep(name), "planning a codebase study")) === "stopped") return;
-    plan = readPlan(agentId, name);
+    if ((await step(conversationId, `Write the study plan for ${study.brain}.`, missingPlanStep(study), "planning a codebase study")) === "stopped") return;
+    plan = readPlan(brainId);
     if (!plan) return;
   }
   // A re-learn where nothing changed is already done.
@@ -236,50 +266,55 @@ async function continueStudy(agentId: string, conversationId: string, source: st
     const before = plan.done;
     const status = await step(
       conversationId,
-      `Study the next part of ${name} (${plan.done} of ${plan.total} areas done).`,
-      studyStep(source, name),
+      `Study the next part of ${study.brain} (${plan.done} of ${plan.total} areas done).`,
+      studyStep(study),
       "studying a codebase",
     );
     if (status === "stopped") return;
-    plan = readPlan(agentId, name) ?? plan;
+    plan = readPlan(brainId) ?? plan;
     stalls = plan.done > before ? 0 : stalls + 1;
   }
   if (plan.done === 0) return;
 
-  if ((await step(conversationId, `Tie the ${name} pages together.`, connectStep(source, name), "writing up a codebase")) === "stopped") return;
-  await step(conversationId, `Check the ${name} pages against the code and wrap up.`, verifyStep(source, name), "checking a codebase write-up");
+  if ((await step(conversationId, `Tie the ${study.brain} pages together.`, connectStep(study), "writing up a codebase")) === "stopped") return;
+  describeBrain(brainId);
+  await step(conversationId, `Check the ${study.brain} pages against the code and wrap up.`, verifyStep(study), "checking a codebase write-up");
 }
 
-export async function learnRepo(agentId: string, source: string): Promise<{ conversationId: string; runId: string }> {
+export async function learnRepo(agentId: string, source: string): Promise<{ conversationId: string; runId: string; brainId: string }> {
   const agent = agents.get(agentId);
   if (!agent) throw new HttpError(404, "Agent not found.");
   if (settings.get().computer.mode === "off") {
     throw new HttpError(400, `${agent.name} needs a computer to study code. Turn one on in Settings → Computer.`);
   }
   if (!settings.get().memory.enabled) throw new HttpError(400, "The wiki is off. Turn on Memory in Settings → General.");
-  const name = repoName(source);
-  const key = `${agent.id}:${name.toLowerCase()}`;
-  if (studying.has(key)) throw new HttpError(409, `${agent.name} is already learning ${name}. Follow along in its chat.`);
+  const existing = brains.forSource(source);
+  if (existing && studying.has(existing.id)) throw new HttpError(409, `${existing.name} is already being learned. Follow along in its chat.`);
 
-  const { root, plan } = findPages(agent.id, name);
-  const updating = Boolean(root && plan);
-  const conversation = conversations.create({ agentId: agent.id, modelId: agent.modelId, title: `Learn ${name}` });
+  const brain = repoBrain(agent.id, source);
+  appEvents.brainsChanged();
+  const study: Study = { source, brain: brain.name, folder: cloneFolder(source) };
+  const updating = readPlan(brain.id) !== null;
+  const conversation = conversations.create({ agentId: agent.id, modelId: agent.modelId, title: `Learn ${brain.name}` });
+  // The study writes into the repo's brain by default, and doesn't need to be told about it again.
+  brains.setFocus(conversation.id, brain.id);
+  brains.markHinted(conversation.id, [brain.id]);
   appEvents.agentChanged(agent.id);
   const { runId } = await sendMessage(
     conversation.id,
-    { text: updating ? `Update what you know about ${source} in the wiki.` : `Learn ${source} and write it up in the wiki.` },
+    { text: updating ? `Update what you know about ${source}.` : `Learn ${source} and write it up as a brain.` },
     {
-      preamble: updating ? updateStep(source, name) : surveyStep(source, name),
+      preamble: updating ? updateStep(study) : surveyStep(study),
       keepTitle: true,
       heavy: "studying a codebase",
       maxSteps: STEP_LIMIT,
     },
   );
 
-  studying.add(key);
-  continueStudy(agent.id, conversation.id, source, name, updating, runId)
+  studying.add(brain.id);
+  continueStudy(brain.id, conversation.id, study, updating, runId)
     // A step can't start when the user is chatting there or the model is unavailable; the chat shows where it stopped.
-    .catch((err) => console.warn(`[tot] learning ${name} stopped:`, err instanceof Error ? err.message : err))
-    .finally(() => studying.delete(key));
-  return { conversationId: conversation.id, runId };
+    .catch((err) => console.warn(`[tot] learning ${brain.name} stopped:`, err instanceof Error ? err.message : err))
+    .finally(() => studying.delete(brain.id));
+  return { conversationId: conversation.id, runId, brainId: brain.id };
 }

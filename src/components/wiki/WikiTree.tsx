@@ -18,6 +18,8 @@ type WikiTreeProps = {
   onQueryChange: (value: string) => void;
   searchHits: WikiSearchHit[] | null;
   searching: boolean;
+  /** Placeholder and label of the search box, e.g. "Search Notebook". */
+  searchLabel: string;
   onNewPage: () => void;
   onLearnRepo: () => void;
 };
@@ -31,6 +33,7 @@ export function WikiTree({
   onQueryChange,
   searchHits,
   searching,
+  searchLabel,
   onNewPage,
   onLearnRepo,
 }: WikiTreeProps) {
@@ -54,8 +57,8 @@ export function WikiTree({
           compact
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Search wiki"
-          aria-label="Search wiki"
+          placeholder={searchLabel}
+          aria-label={searchLabel}
         />
       </div>
 

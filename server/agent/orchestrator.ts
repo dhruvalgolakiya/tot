@@ -5,6 +5,7 @@ import { appEvents } from "../app-events.ts";
 import { apps } from "../apps.ts";
 import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.ts";
 import { agents } from "../data/agents.ts";
+import { brains } from "../data/brains.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
@@ -17,6 +18,7 @@ import { bus } from "../events.ts";
 import { github } from "../github.ts";
 import { prepareAttachments } from "./attachments.ts";
 import { makeElicitor } from "./approvals.ts";
+import { brainHints } from "./brain-hints.ts";
 import { limits } from "./limits.ts";
 import { MessageBuilder } from "./message-builder.ts";
 import { buildSystemPrompt, githubSection, githubStateLine, transcriptPreamble, type WorkspaceContext } from "./prompts.ts";
@@ -309,8 +311,10 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
     conversation.systemPrompt && !conversation.systemPrompt.includes(githubStateLine(access))
       ? `[GitHub changed since this chat started; this replaces your earlier GitHub instructions:\n${githubSection(access, settingsStore.get().computer.mode !== "off")}]`
       : "";
+  // Brains this message is about (its repo, URL, @name…) that the chat hasn't been shown yet.
+  const brainNote = ctx.text ? brainHints(conversation.agentId, conversation.id, ctx.text) : "";
   const text =
-    [githubNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
+    [githubNote, brainNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
   let systemPrompt = conversation.systemPrompt;
@@ -319,12 +323,19 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
     const agent = agents.get(conversation.agentId) ?? agents.first();
     let workspace: WorkspaceContext | null = null;
     if (settings.memory.enabled) {
+      const mine = brains.forAgent(agent.id);
+      const notebook = mine[0];
       workspace = {
         userMemories: memories.forPrompt(text),
         wiki: {
-          overview: wiki.overview(agent.id),
-          outline: wiki.outline(agent.id).filter((page) => !page.pinned),
-          relevant: wiki.relevant(agent.id, ctx.text, 3),
+          brains: mine,
+          overview: wiki.overview(notebook.id),
+          outline: wiki.outline(notebook.id).filter((page) => !page.pinned),
+          relevant: wiki.relevant(
+            mine.map((brain) => brain.id),
+            ctx.text,
+            3,
+          ),
         },
         recentChats: chatSearch.recent(agent.id, { exclude: conversation.id }),
       };

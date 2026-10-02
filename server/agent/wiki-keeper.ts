@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Message, MessagePart, WikiPage } from "../../shared/types.ts";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
+import { brains, type AgentBrain } from "../data/brains.ts";
 import { conversations } from "../data/conversations.ts";
 import { db, type Row } from "../db.ts";
 import { messageText, messages } from "../data/messages.ts";
@@ -14,8 +15,9 @@ import { runRegistry } from "./runs.ts";
 
 /**
  * The wiki keeper: once a chat has been quiet for a while, a light model reads
- * what's new in it and folds anything durable into the workspace wiki, so the
- * wiki stays current even when the agent didn't write things down itself.
+ * what's new in it and folds anything durable into the agent's brains (those it
+ * may write to), so they stay current even when the agent didn't write things
+ * down itself. New pages go to the chat's focus brain unless the model names another.
  * Each chat remembers how far it has been read (`wiki_synced_at`).
  */
 
@@ -28,6 +30,7 @@ const MAX_NEW_CHARS = 30_000;
 const EARLIER_CONTEXT_CHARS = 3000;
 const PAGES_IN_FULL = 5;
 const PAGES_BUDGET = 24_000;
+const INDEX_BUDGET = 8000;
 const MAX_UPDATES = 5;
 /** After a failure (no provider, limit, bad reply), wait this long before trying the chat again… */
 const RETRY_MS = 30 * 60_000;
@@ -42,21 +45,23 @@ interface Update {
   summary?: string;
   content: string;
   parent?: string | null;
+  /** For a new page: the brain it belongs in (name or id). */
+  brain?: string;
 }
 
-const SYSTEM = `You maintain the wiki of a workspace in TOT, an AI agent app. The wiki is the long-term knowledge base (a "company brain") that the workspace's agent and its user rely on in future chats. You're given the wiki's current state and a chat that just went quiet. Fold anything durable the chat established into the wiki, then reply with JSON only.`;
+const SYSTEM = `You maintain the brains of an agent in TOT, an AI agent app. Brains are long-term knowledge bases (wikis) that agents and their user rely on in future chats: the agent's private notebook, and shared brains that each cover one repo, client or topic. You're given their current state and a chat that just went quiet. Fold anything durable the chat established into the right brain, then reply with JSON only.`;
 
 const INSTRUCTIONS = `What to capture: durable knowledge future work needs — how systems and code work, decisions and their reasons, conventions, commands to run/test/deploy, gotchas and their fixes, services, accounts and people, where things live, and the status of ongoing work (what's done, what's next). Skip small talk, one-off answers, general knowledge, anything the wiki already says, and secrets (never copy passwords, tokens or keys).
 
 Rules:
 - Prefer updating a page shown in full above over creating a new one. You can only update pages whose full content is shown (by id). Return the complete new content of each page you update, keeping everything that's still true.
-- Create a page only for a substantial new topic: a short title, a one-line summary, and a parent id from the index when it belongs under a page.
-- Keep the Overview short: what the workspace is for, active projects and where they live, current status and next steps. Update its status when the chat changed it.
+- Create a page only for a substantial new topic: a short title, a one-line summary, the brain it belongs in (knowledge about a shared brain's subject goes there; everything else in the notebook), and a parent id from that brain's index when it belongs under a page.
+- Keep Overviews short. The notebook's: what the workspace is for, active projects and where they live, current status and next steps — update its status when the chat changed it. A shared brain's is its start-here guide.
 - Write it as documentation, not as a story about the chat ("the user said…"). Markdown, scannable, file paths in backticks.
 - Usually 0–2 updates; at most ${MAX_UPDATES}.
 
 Reply with JSON only, no prose:
-{"updates": [{"page": "<id of a page shown in full, or omit to create>", "title": "...", "summary": "...", "content": "...", "parent": "<parent page id, or null>"}]}
+{"updates": [{"page": "<id of a page shown in full, or omit to create>", "title": "...", "summary": "...", "content": "...", "brain": "<for a new page: brain name>", "parent": "<parent page id, or null>"}]}
 If nothing is worth keeping: {"updates": []}`;
 
 let timer: NodeJS.Timeout | null = null;
@@ -81,7 +86,7 @@ function clipMiddle(text: string, max: number): string {
 }
 
 /** Pages the agent touched in the chat, then the ones most related to it, within budget. */
-function pagesInFull(agentId: string, chat: Message[], text: string): WikiPage[] {
+function pagesInFull(scope: string[], chat: Message[], text: string): WikiPage[] {
   const touched: WikiPage[] = [];
   for (const message of chat) {
     for (const part of message.parts) {
@@ -89,7 +94,7 @@ function pagesInFull(agentId: string, chat: Message[], text: string): WikiPage[]
       const input = part.input as Record<string, unknown>;
       const ref = typeof input.page === "string" ? input.page : typeof input.title === "string" ? input.title : null;
       try {
-        const page = ref ? wiki.find(agentId, ref) : null;
+        const page = ref ? wiki.find(scope, ref) : null;
         if (page) touched.push(page);
       } catch {
         // An ambiguous title; the relevance search below still covers it.
@@ -97,7 +102,7 @@ function pagesInFull(agentId: string, chat: Message[], text: string): WikiPage[]
     }
   }
   const byId = new Map<string, WikiPage>();
-  for (const page of [...touched, ...wiki.relevant(agentId, text, PAGES_IN_FULL)]) {
+  for (const page of [...touched, ...wiki.relevant(scope, text, PAGES_IN_FULL)]) {
     if (!page.pinned) byId.set(page.id, page);
   }
   const picked: WikiPage[] = [];
@@ -111,30 +116,61 @@ function pagesInFull(agentId: string, chat: Message[], text: string): WikiPage[]
   return picked;
 }
 
-function pageBlock(page: WikiPage): string {
+const brainName = (brain: AgentBrain) => (brain.kind === "notebook" ? "notebook" : brain.name);
+
+function pageBlock(page: WikiPage, mine: AgentBrain[]): string {
   const parent = page.parentId ? wiki.get(page.parentId) : null;
-  return `<page id="${page.id}" title="${page.title}"${parent ? ` parent="${parent.title}"` : ""} summary="${page.summary}">\n${page.content || "(empty)"}\n</page>`;
+  const brain = mine.find((b) => b.id === page.brainId);
+  return `<page id="${page.id}" title="${page.title}"${brain && mine.length > 1 ? ` brain="${brainName(brain)}"` : ""}${parent ? ` parent="${parent.title}"` : ""} summary="${page.summary}">\n${page.content || "(empty)"}\n</page>`;
+}
+
+/** The brains the keeper may write to, notebook first, and the one new pages default to. */
+function keeperBrains(agentId: string, conversationId: string): { writable: AgentBrain[]; home: AgentBrain } {
+  const writable = brains.forAgent(agentId).filter((brain) => brain.access === "write");
+  const focus = brains.focus(conversationId);
+  return { writable, home: writable.find((brain) => brain.id === focus) ?? writable[0] };
 }
 
 /** Pages the keeper may update, with the version it was shown (to skip pages edited meanwhile). */
 export type Editable = Map<string, number>;
 
-export function buildKeeperPrompt(agentId: string, title: string, earlier: Message[], fresh: Message[]): { prompt: string; editable: Editable } {
-  const overview = wiki.overview(agentId);
+export function buildKeeperPrompt(
+  agentId: string,
+  conversationId: string,
+  title: string,
+  earlier: Message[],
+  fresh: Message[],
+): { prompt: string; editable: Editable } {
+  const { writable, home } = keeperBrains(agentId, conversationId);
+  const overviews = [...new Map([writable[0], home].map((brain) => [brain.id, wiki.overview(brain.id)])).values()];
   const freshText = clipMiddle(fresh.map(render).filter(Boolean).join("\n\n"), MAX_NEW_CHARS);
   const earlierText = earlier.map(render).filter(Boolean).join("\n\n").slice(-EARLIER_CONTEXT_CHARS);
-  const full = pagesInFull(agentId, fresh, fresh.map(messageText).join("\n"));
-  const index = wiki
-    .outline(agentId)
-    .map((p) => `${"  ".repeat(p.depth)}- ${p.title} (${p.id})${p.summary ? ` — ${p.summary}` : ""}`)
-    .join("\n");
+  const full = pagesInFull(
+    writable.map((brain) => brain.id),
+    fresh,
+    fresh.map(messageText).join("\n"),
+  );
+  // Page indexes of the notebook and the chat's focus brain; other brains by their card.
+  let used = 0;
+  const indexes = writable.map((brain) => {
+    const card = `${brainName(brain)}${brain.id === home.id ? " (default for new pages)" : ""}${brain.description ? ` — ${brain.description}` : ""}`;
+    const lines: string[] = [];
+    if (brain.id === writable[0].id || brain.id === home.id) {
+      for (const p of wiki.outline(brain.id)) {
+        const line = `${"  ".repeat(p.depth)}- ${p.title} (${p.id})${p.summary ? ` — ${p.summary}` : ""}`;
+        if ((used += line.length) > INDEX_BUDGET) break;
+        lines.push(line);
+      }
+    }
+    return `<brain name="${brainName(brain)}">\n${card}${lines.length ? `\n${lines.join("\n")}` : ""}\n</brain>`;
+  });
 
-  const prompt = `<wiki>
-<page_index>
-${index}
-</page_index>
-${[overview, ...full].map(pageBlock).join("\n")}
-</wiki>
+  const prompt = `<brains>
+${indexes.join("\n")}
+</brains>
+<pages>
+${[...overviews, ...full].map((page) => pageBlock(page, writable)).join("\n")}
+</pages>
 
 <chat title="${title}">
 ${earlierText ? `<earlier_context note="already folded into the wiki; for context only">\n${earlierText}\n</earlier_context>\n` : ""}<new_messages>
@@ -143,7 +179,7 @@ ${freshText}
 </chat>
 
 ${INSTRUCTIONS}`;
-  return { prompt, editable: new Map([overview, ...full].map((page) => [page.id, page.updatedAt])) };
+  return { prompt, editable: new Map([...overviews, ...full].map((page) => [page.id, page.updatedAt])) };
 }
 
 /** Pulls the updates out of the model's reply (tolerates code fences and stray prose). */
@@ -158,7 +194,14 @@ export function parseUpdates(raw: string): Update[] {
   for (const item of parsed.updates.slice(0, MAX_UPDATES)) {
     const v = (item ?? {}) as Record<string, unknown>;
     if (typeof v.title !== "string" || typeof v.content !== "string") continue;
-    updates.push({ title: v.title, content: v.content, page: optional(v.page), summary: optional(v.summary), parent: optional(v.parent) });
+    updates.push({
+      title: v.title,
+      content: v.content,
+      page: optional(v.page),
+      summary: optional(v.summary),
+      parent: optional(v.parent),
+      brain: optional(v.brain),
+    });
   }
   return updates;
 }
@@ -170,6 +213,7 @@ export function applyUpdates(
   updates: Update[],
   editable: Editable,
 ): { changed: WikiPage[]; created: boolean } {
+  const { writable, home } = keeperBrains(agentId, conversationId);
   const changed: WikiPage[] = [];
   let created = false;
   for (const update of updates) {
@@ -192,13 +236,15 @@ export function applyUpdates(
         );
       } else {
         if (!update.summary || !content) continue;
+        const named = update.brain ? brains.resolve(agentId, update.brain) : null;
+        const brainId = named && writable.some((brain) => brain.id === named.id) ? named.id : home.id;
         let parentId: string | null = null;
         try {
-          parentId = update.parent ? (wiki.find(agentId, update.parent)?.id ?? null) : null;
+          parentId = update.parent ? (wiki.find(brainId, update.parent)?.id ?? null) : null;
         } catch {
           // An ambiguous parent title: create it at the top level instead.
         }
-        changed.push(wiki.create(agentId, { title: update.title, summary: update.summary, content, parentId }, "keeper", conversationId));
+        changed.push(wiki.create(brainId, { title: update.title, summary: update.summary, content, parentId }, "keeper", conversationId));
         created = true;
       }
     } catch (err) {
@@ -251,7 +297,7 @@ export async function keepConversation(conversationId: string, complete: Complet
   }
 
   const earlier = all.filter((m) => m.createdAt <= syncedAt);
-  const { prompt, editable } = buildKeeperPrompt(conversation.agentId, conversation.title, earlier, fresh);
+  const { prompt, editable } = buildKeeperPrompt(conversation.agentId, conversationId, conversation.title, earlier, fresh);
   const updates = parseUpdates(await complete(prompt, SYSTEM));
   // The chat may have been deleted while the model was working.
   if (!conversations.get(conversationId)) return [];
@@ -272,8 +318,9 @@ export async function keepConversation(conversationId: string, complete: Complet
     });
     messages.save(lastAssistant);
   }
-  appEvents.publish({ type: "wiki", agentId: conversation.agentId, conversationId });
-  if (created) appEvents.agentChanged(conversation.agentId);
+  const changedBrains = [...new Set(changed.map((page) => page.brainId))];
+  for (const brainId of changedBrains) appEvents.brainChanged(brainId, { conversationId });
+  if (created) appEvents.brainsChanged();
   return changed;
 }
 

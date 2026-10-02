@@ -23,7 +23,7 @@ type LearnRepoDialogProps = {
 /** A git URL, an SSH remote, or a filesystem path — none of these should be treated as a repo-name search. */
 const URL_OR_PATH = /^(?:[a-z][a-z0-9+.-]*:\/\/|[\w.-]+@[\w.-]+:|[./~])/i;
 const HINT = (name: string) =>
-  `${name} clones it, studies every part in depth, and writes a wiki any agent can work from. Big repos can take a while — follow along in the chat. Learning it again later only re-studies what changed.`;
+  `${name} clones it, studies every part in depth, and writes it up as the repo's own brain, shareable with your other agents. Big repos can take a while — follow along in the chat. Learning it again later only re-studies what changed.`;
 /** "acme/web" — a GitHub repo by name, even one that isn't in the user's list. */
 const OWNER_REPO = /^[\w.-]+\/[\w.-]+$/;
 
