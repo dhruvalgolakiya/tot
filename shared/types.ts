@@ -107,6 +107,8 @@ export interface Agent {
   modelId: string;
   /** The agent's own computer (shared by all of its chats); null until first used. */
   computer: ComputerSummary | null;
+  /** The persona it works as (its own email, git author and GitHub account); null = as the user. */
+  personaId: string | null;
   /** What's in the workspace, for the sidebar. */
   counts: { chats: number; pages: number; routines: number };
   createdAt: number;
@@ -118,6 +120,8 @@ export interface AgentInput {
   mascot: MascotSpec;
   instructions?: string;
   modelId?: string;
+  /** null = works as the user. */
+  personaId?: string | null;
 }
 
 /**
@@ -179,10 +183,10 @@ export interface Conversation {
 }
 
 export interface ConversationOrigin {
-  kind: "slack";
-  /** e.g. "#eng" or "DM with Dhruval". */
+  kind: "slack" | "email";
+  /** e.g. "#eng", "DM with Dhruval" or "Email from Dhruval". */
   label: string;
-  /** Link to the Slack thread, when known. */
+  /** Link to the Slack thread, when known (null for email). */
   url: string | null;
 }
 
@@ -361,6 +365,11 @@ export type AppEvent =
   | { type: "slack"; status: SlackStatus }
   /** Apps (Executor) changed state or connected apps changed. */
   | { type: "apps"; status: AppsStatus }
+  /** A persona was created or changed (mailbox state, unread count, GitHub, agents). */
+  | { type: "persona"; persona: Persona }
+  | { type: "persona-deleted"; personaId: string }
+  /** New mail in a persona's mailbox (incoming or sent). */
+  | { type: "mail"; personaId: string; mail: MailSummary }
   /** A chat is waiting for the user's approval (pending) or no longer is, e.g. a background routine run. */
   | { type: "approval"; agentId: string; conversationId: string; runId: string; partId: string; message: string; pending: boolean };
 
@@ -675,6 +684,128 @@ export interface SlackPatch {
 }
 
 // ---------------------------------------------------------------------------
+// Personas: an identity agents work as, so their work shows up as "Tot", not as
+// the user. A persona has a name and a real mailbox (e.g. a Gmail account made
+// for the agent, connected with an app password over IMAP/SMTP), and optionally
+// its own GitHub account. An agent working as a persona can read, search and
+// send email from that mailbox (sending asks the user first), wait for sign-up
+// codes and magic links, commits as the persona on its computer, and uses the
+// persona's GitHub account when one is connected. Emails from allowed senders
+// become tasks: each email thread is a TOT chat and the answer is sent back as
+// a reply; mail from anyone else is only stored for the agent to read. Several
+// agents may share one persona.
+// ---------------------------------------------------------------------------
+
+export interface Persona {
+  id: string;
+  /** Sender name and git author, e.g. "Tot". */
+  name: string;
+  /** The mailbox's address, e.g. "tot.agent@gmail.com"; also the git author email. */
+  email: string;
+  mailbox: PersonaMailbox;
+  /** The persona's own GitHub account; null = agents working as it have no GitHub access of their own. */
+  github: PersonaGitHub | null;
+  /** Addresses (lowercase) whose emails become tasks. Mail from anyone else is only stored. */
+  allowedSenders: string[];
+  /** The agent that takes emailed tasks; null = the first agent working as this persona. */
+  defaultAgentId: string | null;
+  /** Agents working as this persona. */
+  agentIds: string[];
+  /** Unread emails in the inbox. */
+  unread: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PersonaMailbox {
+  state: "not-connected" | "connecting" | "connected" | "error";
+  error: string | null;
+  /** e.g. "Gmail", or the IMAP host for other providers. */
+  provider: string | null;
+  imap: MailServer | null;
+  smtp: MailServer | null;
+  /** When new mail was last checked. */
+  checkedAt: number | null;
+}
+
+export interface MailServer {
+  host: string;
+  port: number;
+}
+
+export interface PersonaGitHub {
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  /** Same rule as the app-wide connection: pushing branches and opening PRs only when on. */
+  allowWrites: boolean;
+  /** Why the token stopped working (revoked, expired), when it did. */
+  problem: string | null;
+}
+
+export interface PersonaInput {
+  name: string;
+  email: string;
+}
+
+export interface PersonaPatch {
+  name?: string;
+  email?: string;
+  allowedSenders?: string[];
+  defaultAgentId?: string | null;
+}
+
+export interface MailboxConnectRequest {
+  /** An app password (Gmail: myaccount.google.com/apppasswords). Stored privately; never sent back. */
+  password: string;
+  /** The login name, when it isn't the email address. */
+  username?: string;
+  /** Server settings; detected from the address (Gmail, Outlook, iCloud, Yahoo, Fastmail, Zoho) when omitted. */
+  imap?: MailServer;
+  smtp?: MailServer;
+}
+
+export interface MailAddress {
+  name: string | null;
+  address: string;
+}
+
+export interface MailSummary {
+  id: string;
+  personaId: string;
+  /** Emails in one conversation share this. */
+  threadId: string;
+  from: MailAddress;
+  to: MailAddress[];
+  subject: string;
+  /** The start of the text, about 200 characters. */
+  snippet: string;
+  date: number;
+  unread: boolean;
+  /** Sent from the persona's address. */
+  outgoing: boolean;
+  /** Sign-in or verification codes found in it, e.g. ["482913"]. */
+  codes: string[];
+  hasAttachments: boolean;
+}
+
+export interface MailMessage extends MailSummary {
+  cc: MailAddress[];
+  /** Plain text (HTML emails are converted). */
+  text: string;
+  /** Links in it, e.g. "Verify your email" magic links. */
+  links: { text: string; url: string }[];
+  attachments: { name: string; size: number; contentType: string }[];
+  /** The TOT chat this email started or continued, if any. */
+  conversationId: string | null;
+}
+
+export interface PersonaGitHubConnectRequest {
+  /** A token from the persona's GitHub account (classic with "repo", or fine-grained). Stored privately. */
+  token: string;
+}
+
+// ---------------------------------------------------------------------------
 // Plugins (MCP servers). TOT's own computer+memory server is built in and not listed.
 // ---------------------------------------------------------------------------
 
@@ -817,6 +948,19 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // PUT    /api/slack/tokens                    SlackTokens -> SlackStatus  (checks them with Slack and connects; 400 with the reason)
 // PATCH  /api/slack                           SlackPatch -> SlackStatus
 // DELETE /api/slack                           -> SlackStatus  (disconnects and forgets the tokens)
+//
+// GET    /api/personas                        -> Persona[]
+// POST   /api/personas                        PersonaInput -> Persona
+// PATCH  /api/personas/:id                    PersonaPatch -> Persona
+// DELETE /api/personas/:id                    -> { ok: true }  (agents working as it go back to the user; forgets passwords, tokens and stored mail)
+// PUT    /api/personas/:id/mailbox            MailboxConnectRequest -> Persona  (signs in over IMAP and SMTP; 400 with the reason)
+// DELETE /api/personas/:id/mailbox            -> Persona  (disconnects and forgets the password)
+// POST   /api/personas/:id/mailbox/refresh    -> Persona  (check for new mail now)
+// GET    /api/personas/:id/mail?q=&limit=     -> MailSummary[]  (newest first; q searches sender, subject and text)
+// GET    /api/personas/:id/mail/:mailId       -> MailMessage    (marks it read)
+// PUT    /api/personas/:id/github             PersonaGitHubConnectRequest -> Persona  (checks the token with GitHub; 400 with the reason)
+// PATCH  /api/personas/:id/github             { allowWrites: boolean } -> Persona
+// DELETE /api/personas/:id/github             -> Persona
 //
 // GET    /api/plugins                         -> Plugin[]
 // POST   /api/plugins                         PluginInput -> Plugin
