@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
-import { Brain as BrainGlyph, Check, ChevronsUpDown, NotebookPen, Plus, Settings2 } from "lucide-react";
+import { Brain as BrainGlyph, Check, ChevronsUpDown, NotebookPen, Plus, Settings2, ShieldCheck } from "lucide-react";
 import type { Agent, Brain } from "@shared/types";
 import { accessOf, brainName, brainsFor } from "../../lib/brains";
 import { GitHubMark } from "../ui/GitHubMark";
@@ -22,10 +22,12 @@ type BrainSwitcherProps = {
   onOpen: (brainId: string) => void;
   onNew: () => void;
   onSettings: () => void;
+  /** A repo brain's profile: the checks TOT runs on work there. */
+  onProfile: () => void;
 };
 
 /** The top of the wiki sidebar: which brain is open, and a menu to switch, add or set one up. */
-export function BrainSwitcher({ agent, agents, brains, current, onOpen, onNew, onSettings }: BrainSwitcherProps) {
+export function BrainSwitcher({ agent, agents, brains, current, onOpen, onNew, onSettings, onProfile }: BrainSwitcherProps) {
   if (!brains || !current) {
     return (
       <div className="px-2 pt-2" aria-busy="true" aria-label="Loading brains">
@@ -91,6 +93,11 @@ export function BrainSwitcher({ agent, agents, brains, current, onOpen, onNew, o
             <DropdownMenu.Item className="menu-item" onSelect={onSettings}>
               <Settings2 className="size-4 text-fg-muted" /> Brain settings…
             </DropdownMenu.Item>
+            {current.kind === "repo" && (
+              <DropdownMenu.Item className="menu-item" onSelect={onProfile}>
+                <ShieldCheck className="size-4 text-fg-muted" /> Repo profile…
+              </DropdownMenu.Item>
+            )}
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>

@@ -5,6 +5,7 @@ import { brains, cloneFolder, githubFullName } from "../data/brains.ts";
 import { conversations } from "../data/conversations.ts";
 import { settings } from "../data/settings.ts";
 import { wiki } from "../data/wiki.ts";
+import { draftAfterLearning } from "../trust/profile.ts";
 import { HttpError, sendMessage } from "./orchestrator.ts";
 import { runRegistry } from "./runs.ts";
 
@@ -248,7 +249,7 @@ function describeBrain(brainId: string): void {
 }
 
 /** Runs the steps after the survey until the plan is done, the user stops a step, or it stops making progress. */
-async function continueStudy(brainId: string, conversationId: string, study: Study, updating: boolean, survey: string) {
+async function continueStudy(brainId: string, agentId: string, conversationId: string, study: Study, updating: boolean, survey: string) {
   if ((await runEnd(survey)) === "stopped") return;
   describeBrain(brainId);
 
@@ -278,6 +279,10 @@ async function continueStudy(brainId: string, conversationId: string, study: Stu
 
   if ((await step(conversationId, `Tie the ${study.brain} pages together.`, connectStep(study), "writing up a codebase")) === "stopped") return;
   describeBrain(brainId);
+  // What "correct" means here (commands, protected paths…), from the code and the pages just written; the user confirms it.
+  draftAfterLearning(brainId, agentId).catch((err) =>
+    console.warn(`[tot] drafting ${study.brain}'s repo profile failed:`, err instanceof Error ? err.message : err),
+  );
   await step(conversationId, `Check the ${study.brain} pages against the code and wrap up.`, verifyStep(study), "checking a codebase write-up");
 }
 
@@ -312,7 +317,7 @@ export async function learnRepo(agentId: string, source: string): Promise<{ conv
   );
 
   studying.add(brain.id);
-  continueStudy(brain.id, conversation.id, study, updating, runId)
+  continueStudy(brain.id, agent.id, conversation.id, study, updating, runId)
     // A step can't start when the user is chatting there or the model is unavailable; the chat shows where it stopped.
     .catch((err) => console.warn(`[tot] learning ${brain.name} stopped:`, err instanceof Error ? err.message : err))
     .finally(() => studying.delete(brain.id));

@@ -166,9 +166,10 @@ See [pstack explained](https://hustlecoding.github.io/pstack-explained/).
 
 ## Milestones
 
-- [ ] **M1 · Repo profile.**
+- [x] **M1 · Repo profile.**
   - Table, routes, draft from code (and the Learn a repo hook), the editor UI with "Run now" per command, and the rendered brain page.
   - *Accept:* Learn a repo on a real-shaped fixture repo yields a correct draft profile (commands, protected paths); edits persist and show in the brain.
+  - *Shipped:* `server/trust/profile.ts` drafts commands from the repo's own manifests (npm/pnpm/yarn/bun, Python, Go, Rust, Ruby, Makefile) and protected paths from its file tree; a light model only adds conventions, definition of done and missing commands from Learn a repo's notes. Brain menu → "Repo profile…" edits it, with Run now per command; it renders as the brain's "Repo profile" page.
 - [ ] **M2 · Gates.**
   - `runGates` with baseline caching, `checkScope` (scope, deps, size, skipped tests), the dev route, and the GateReport component.
   - *Accept:* on a temp repo with a failing test on base and a new failure on a branch, only the new failure blocks; adding a dependency is flagged needs-approval; `.skip` is caught.

@@ -1026,6 +1026,20 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //
 // GET    /api/settings                        -> Settings
 // PATCH  /api/settings                        SettingsPatch -> Settings
+//
+// GET    /api/brains/:id/profile              -> RepoProfile | null  (null until one is saved; 400 for a brain that isn't a repo)
+// PUT    /api/brains/:id/profile              RepoProfileInput -> RepoProfile  (also rewrites the brain's "Repo profile" page)
+// POST   /api/brains/:id/profile/draft        { agentId? } -> RepoProfile  (not saved; drafted from the repo on that agent's computer)
+// POST   /api/brains/:id/profile/run          { agentId?, command } -> CommandRun  ("Run now": one command in the repo's folder)
+// GET    /api/playbooks                       -> Playbook[]  (built-ins first, then custom ones by name)
+// POST   /api/playbooks                       PlaybookInput -> Playbook  (400 with the reason when a step is invalid)
+// PATCH  /api/playbooks/:id                   PlaybookPatch -> Playbook  (built-ins take `enabled` only)
+// DELETE /api/playbooks/:id                   -> { ok: true }  (400 for a built-in)
+// POST   /api/playbooks/match                 { goal } -> PlaybookMatch
+// GET    /api/workflows                       -> WorkflowSettings
+// PATCH  /api/workflows                       Partial<WorkflowSettings> -> WorkflowSettings
+// POST   /api/trust/check                     TrustCheckRequest -> GateReport   (dev only until tasks exist; 404 in production)
+// POST   /api/trust/review                    TrustReviewRequest -> Review      (dev only until tasks exist; 404 in production)
 // ---------------------------------------------------------------------------
 
 export interface CreateConversationRequest {
@@ -1070,4 +1084,180 @@ export interface PluginInput {
   config: PluginConfig;
   enabled?: boolean;
   providers?: ProviderId[];
+}
+
+// ---------------------------------------------------------------------------
+// Trust gates & playbooks (module 03, server/trust/). Coding work proves itself
+// before anyone sees a PR: each repo brain has a profile saying what "correct"
+// means there (its own commands, conventions, protected paths and limits);
+// gates run those commands and check the diff's scope, with failures that
+// already exist on the base branch not counting; a fresh model, on the other
+// provider by default, reviews the diff; and playbooks are the checklists a
+// task follows step by step.
+// ---------------------------------------------------------------------------
+
+export type RepoCommandName = "install" | "typecheck" | "lint" | "test" | "testFile" | "build" | "e2e";
+
+export interface RepoLimits {
+  maxChangedLines: number;
+  maxChangedFiles: number;
+  allowNewDependencies: boolean;
+  /** Each command is stopped after this long. */
+  commandTimeoutMinutes: number;
+}
+
+/** What "correct" means for one repo. Stored per repo brain; drafted from its code, editable by the user. */
+export interface RepoProfile {
+  brainId: string;
+  /** Run in the repo's folder on the agent's computer; missing = not used. `testFile` takes a {file} placeholder. */
+  commands: Partial<Record<RepoCommandName, string>>;
+  /** Short rules, e.g. "Use the Result type for errors, never throw in handlers". */
+  conventions: string[];
+  /** Globs agents must not change without asking, e.g. "migrations/**", ".github/**". */
+  protectedPaths: string[];
+  /** e.g. "Tests for new behaviour", "Docs updated for public APIs". */
+  definitionOfDone: string[];
+  limits: RepoLimits;
+  updatedAt: number;
+  updatedBy: "agent" | "user";
+}
+
+/** PUT /api/brains/:id/profile body. */
+export type RepoProfileInput = Pick<RepoProfile, "commands" | "conventions" | "protectedPaths" | "definitionOfDone" | "limits">;
+
+/** One command run on the agent's computer ("Run now"); output is clipped and scrubbed of secrets. */
+export interface CommandRun {
+  command: string;
+  exitCode: number;
+  timedOut: boolean;
+  durationMs: number;
+  outputTail: string;
+}
+
+export type GateName = "typecheck" | "lint" | "test" | "build" | "e2e" | "repro" | "scope" | "deps" | "size" | "review";
+
+/**
+ * A check with a pass/fail result. Hard gates (commands, protected paths) block the next
+ * step; soft ones (diff size, new dependencies, files outside the plan) ask the user.
+ */
+export interface GateResult {
+  gate: GateName;
+  status: "pass" | "fail" | "skipped" | "needs-approval";
+  command?: string;
+  exitCode?: number;
+  /** The last ~4 KB of output, secrets scrubbed. */
+  outputTail?: string;
+  /** The same check on the base branch. */
+  baseline?: "pass" | "fail";
+  /** When the check fails on the base branch too: failures it doesn't have. None = nothing new, so it doesn't block. */
+  newFailures?: string[];
+  durationMs?: number;
+  note?: string;
+  /** What's behind a finding: files outside the plan, protected paths touched, new dependencies, skipped tests. */
+  details?: string[];
+}
+
+export interface GateReport {
+  /** Nothing blocks and nothing waits for the user's OK. */
+  ok: boolean;
+  results: GateResult[];
+  at: number;
+  headSha: string | null;
+  /** Where the branch left the base (merge-base), which the baseline was taken on. */
+  baseSha: string | null;
+}
+
+export interface ReviewFinding {
+  file: string;
+  line?: number;
+  severity: "must-fix" | "should-fix" | "nit";
+  issue: string;
+  suggestion?: string;
+}
+
+/** An independent verdict on a diff, from a fresh session that never saw the work being done. */
+export interface Review {
+  verdict: "approve" | "changes-requested";
+  findings: ReviewFinding[];
+  summary: string;
+  reviewer: { provider: ProviderId; model: string };
+}
+
+export type PlaybookStepKind =
+  | "understand"
+  | "reproduce"
+  | "plan"
+  | "approve-plan"
+  | "implement"
+  | "verify"
+  | "review"
+  | "fix-loop"
+  | "summarize"
+  | "custom";
+
+export interface PlaybookStep {
+  id: string;
+  kind: PlaybookStepKind;
+  /** What the agent is told for this step. */
+  instructions: string;
+  /** Checks that must pass after the step. */
+  gates?: GateName[];
+  /** fix-loop only: rounds before asking the user. */
+  maxRounds?: number;
+}
+
+/** An ordered list of steps with gates: a task is matched to one, and it becomes the task's checklist. */
+export interface Playbook {
+  id: string;
+  name: string;
+  description: string;
+  /** Hints for choosing it automatically: "bug", "fix", "crash", "feature", "refactor"… */
+  match: string[];
+  steps: PlaybookStep[];
+  builtIn: boolean;
+  enabled: boolean;
+}
+
+/** POST /api/playbooks body (a custom playbook). */
+export type PlaybookInput = Pick<Playbook, "name" | "description" | "match" | "steps"> & { enabled?: boolean };
+
+/** PATCH /api/playbooks/:id body. Built-ins only take `enabled`; duplicate them to edit. */
+export type PlaybookPatch = Partial<PlaybookInput>;
+
+export interface PlaybookMatch {
+  playbook: Playbook;
+  /** Its match hints, the fast-tier classifier, or the fallback when neither decided. */
+  by: "hints" | "classifier" | "fallback";
+}
+
+/** Settings → Workflows defaults. */
+export interface WorkflowSettings {
+  /** Stop for the user's OK on the plan before implementing. */
+  requirePlanApproval: boolean;
+  /** "other" = the provider that didn't write the code. */
+  reviewer: "other" | ProviderId;
+  /** Fix rounds after failed checks or a review before asking the user. */
+  maxFixRounds: number;
+}
+
+/** POST /api/trust/check body (dev only until tasks exist): check any repo folder on the agent's computer. */
+export interface TrustCheckRequest {
+  agentId: string;
+  /** The repo's folder, relative to the computer's home, e.g. "repos/web". */
+  cwd: string;
+  baseRef: string;
+  /** The plan, whose cited paths are the files it may change. */
+  plan?: string;
+  /** Defaults to every command gate the repo's profile has, plus scope, deps and size. */
+  gates?: GateName[];
+}
+
+/** POST /api/trust/review body (dev only until tasks exist). */
+export interface TrustReviewRequest {
+  agentId: string;
+  cwd: string;
+  baseRef: string;
+  plan?: string;
+  /** Who wrote the code; the reviewer is the other provider unless Settings → Workflows picks one. */
+  implementedBy?: ProviderId;
 }

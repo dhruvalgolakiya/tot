@@ -11,6 +11,7 @@ import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { Modal } from "../ui/Modal";
 import { Skeleton } from "../ui/Skeleton";
+import { RepoProfileDialog } from "../trust/RepoProfileDialog";
 import { BrainSettingsDialog } from "./BrainSettingsDialog";
 import { BrainSwitcher } from "./BrainSwitcher";
 import { LearnRepoDialog } from "./LearnRepoDialog";
@@ -47,6 +48,7 @@ export function WikiView() {
   const [learnOpen, setLearnOpen] = useState(false);
   const [newBrainOpen, setNewBrainOpen] = useState(false);
   const [brainSettingsOpen, setBrainSettingsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const [query, setQuery] = useState("");
   const search = useDebouncedValue(query.trim(), 250);
@@ -235,6 +237,10 @@ export function WikiView() {
         setBrainSettingsOpen(true);
         setMobileTreeOpen(false);
       }}
+      onProfile={() => {
+        setProfileOpen(true);
+        setMobileTreeOpen(false);
+      }}
     />
   );
   const treeProps = {
@@ -361,6 +367,7 @@ export function WikiView() {
           onDeleted={() => navigateToWiki(agent.id)}
         />
       )}
+      {brain?.kind === "repo" && <RepoProfileDialog brain={brain} agent={agent} open={profileOpen} onOpenChange={setProfileOpen} />}
     </div>
   );
 }

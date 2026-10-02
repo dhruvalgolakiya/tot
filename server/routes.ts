@@ -60,6 +60,7 @@ import { MAX_UPLOAD_BYTES, toAttachment, uploads } from "./data/uploads.ts";
 import { wiki, WikiError } from "./data/wiki.ts";
 import { mailboxes } from "./mail/mailbox.ts";
 import { personaGitHub } from "./persona-github.ts";
+import { trustRoutes } from "./trust/routes.ts";
 
 export const api = new Hono();
 
@@ -834,3 +835,9 @@ api.patch("/settings", async (c) => {
   if (patch.claude || patch.anthropicApiKey !== undefined) void providerStatuses(true);
   return c.json(next);
 });
+
+// ---------------------------------------------------------------------------
+// Trust gates & playbooks (module 03): repo profiles, checks, reviews, playbooks
+// ---------------------------------------------------------------------------
+
+api.route("/", trustRoutes);

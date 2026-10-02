@@ -93,9 +93,7 @@ export function resolveRoute(modelId: string, text: string, opts: RouteOptions):
   }
 
   if (chatgptUp) {
-    // Default model (listed first) for quick asks; the frontier model for hard ones when the plan has it.
-    const light = chatgptModels[0];
-    const heavy = chatgptModels.find((m) => /astra/i.test(m)) ?? light;
+    const { light, heavy } = chatgptTiers(chatgptModels);
     const heavyTurn = opts.thinkHarder || complexity.complex;
     const model = heavyTurn ? heavy : light;
     const effort: Effort = opts.thinkHarder ? "xhigh" : complexity.complex ? "high" : "low";
@@ -116,4 +114,22 @@ export function resolveRoute(modelId: string, text: string, opts: RouteOptions):
     ok: false,
     error: "No model provider is connected. Log in to Claude Code (`claude`) or Codex (`codex login`), then reload.",
   };
+}
+
+/** Default model (listed first) for quick asks; the frontier model for hard ones when the plan has it. */
+function chatgptTiers(models: string[]): { light: string; heavy: string } {
+  const light = models[0];
+  return { light, heavy: models.find((m) => /astra/i.test(m)) ?? light };
+}
+
+/**
+ * The model for one-shot work TOT does itself on a given provider — light for drafting and
+ * classifying, heavy for reviewing code — with the same tiers as Auto. Null when the provider has none.
+ */
+export function modelForWork(provider: ProviderId, heavy: boolean, statuses: ProviderStatus[]): string | null {
+  if (provider === "claude") return heavy ? CLAUDE_OPUS : CLAUDE_SONNET;
+  const models = (statuses.find((s) => s.id === "chatgpt")?.models ?? []).filter((m) => m.available).map((m) => m.model);
+  if (!models.length) return null;
+  const tiers = chatgptTiers(models);
+  return heavy ? tiers.heavy : tiers.light;
 }

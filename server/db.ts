@@ -387,6 +387,44 @@ db.exec(`
 // Messages that were streaming when the server last stopped can never finish.
 db.exec(`UPDATE messages SET status = 'stopped' WHERE status = 'streaming'`);
 
+// Module 03 (trust gates & playbooks, server/trust/): each repo brain's profile, gate results
+// on base commits (so failures that already exist there don't block), and custom playbooks.
+// Built-in playbooks live in code; whether each is on, and the workflow defaults, live in settings.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS repo_profiles (
+    brain_id TEXT PRIMARY KEY REFERENCES brains(id) ON DELETE CASCADE,
+    -- RepoProfileInput, JSON
+    profile TEXT NOT NULL,
+    updated_by TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS gate_baselines (
+    -- The repo brain's id, or "<agentId>:<folder>" for a folder no brain covers.
+    scope TEXT NOT NULL,
+    base_sha TEXT NOT NULL,
+    gate TEXT NOT NULL,
+    command TEXT NOT NULL,
+    status TEXT NOT NULL,
+    -- Normalized failure lines, JSON, to tell new failures from ones the base already had.
+    failures TEXT NOT NULL DEFAULT '[]',
+    output_tail TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (scope, base_sha, gate, command)
+  );
+
+  CREATE TABLE IF NOT EXISTS playbooks (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    match TEXT NOT NULL DEFAULT '[]',
+    steps TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {
