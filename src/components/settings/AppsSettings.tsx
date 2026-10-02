@@ -53,8 +53,9 @@ export function AppsSettings() {
     return () => window.clearInterval(pollTimer.current);
   }, [state]);
 
-  // Popular apps (no q) on first load; re-runs whenever the status changes too,
-  // so each card's "connected" check stays current.
+  // Popular apps (no q) on first load, then search results. Only the query refetches:
+  // which apps are connected comes from the live status below, so status updates
+  // (several arrive while the page opens) never cancel a request in flight.
   useEffect(() => {
     if (state !== "running") return;
     if (debouncedQuery.length === 1) return; // Below the 2-char minimum; keep showing the last results.
@@ -71,7 +72,12 @@ export function AppsSettings() {
     return () => {
       cancelled = true;
     };
-  }, [state, debouncedQuery, apps]);
+  }, [state, debouncedQuery]);
+
+  const connectedCounts = new Map<string, number>();
+  for (const connection of apps?.apps ?? []) {
+    connectedCounts.set(connection.appId, (connectedCounts.get(connection.appId) ?? 0) + 1);
+  }
 
   async function setup() {
     setBusy(true);
@@ -141,7 +147,23 @@ export function AppsSettings() {
       {apps.state === "running" && (
         <div className="space-y-5">
           <section>
-            <h3 className="group-label mb-2">Your apps</h3>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="group-label">Your apps</h3>
+              <DropdownMenu.Root modal={false}>
+                <DropdownMenu.Trigger asChild>
+                  <IconButton label="More Apps options" size="sm">
+                    <Ellipsis />
+                  </IconButton>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content align="end" sideOffset={4} className="menu w-44">
+                    <DropdownMenu.Item className="menu-item menu-item-danger" onSelect={() => setConfirmOpen(true)}>
+                      <Power className="size-4" /> Turn off
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            </div>
             {apps.apps.length === 0 ? (
               <p className="text-sm text-fg-subtle">Add an app below to let agents use it.</p>
             ) : (
@@ -180,28 +202,16 @@ export function AppsSettings() {
             {catalog && catalog.length > 0 && (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {catalog.map((item) => (
-                  <AppCatalogCard key={item.appId} item={item} onConnect={() => start(item.appId, item.name, item.connect === "sign-in")} />
+                  <AppCatalogCard
+                    key={item.appId}
+                    item={{ ...item, accounts: connectedCounts.get(item.appId) ?? 0 }}
+                    onConnect={() => start(item.appId, item.name, item.connect === "sign-in")}
+                  />
                 ))}
               </div>
             )}
           </section>
 
-          <div className="flex justify-end border-t border-hairline pt-3">
-            <DropdownMenu.Root modal={false}>
-              <DropdownMenu.Trigger asChild>
-                <IconButton label="More Apps options" size="sm">
-                  <Ellipsis />
-                </IconButton>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content align="end" sideOffset={4} className="menu w-44">
-                  <DropdownMenu.Item className="menu-item menu-item-danger" onSelect={() => setConfirmOpen(true)}>
-                    <Power className="size-4" /> Turn off
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
-          </div>
         </div>
       )}
 
