@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { paths } from "./config.ts";
 
@@ -124,26 +125,36 @@ if (!hasColumn("memories", "agent_id")) {
   db.exec(`ALTER TABLE memories ADD COLUMN agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE`);
 }
 
-// v4: each agent's workspace wiki.
+// v6: brains — knowledge bases at the app level. Each agent owns one private
+// notebook brain; shared brains are attached to agents (read or write) or to all.
 db.exec(`
-  CREATE TABLE IF NOT EXISTS wiki_pages (
+  CREATE TABLE IF NOT EXISTS brains (
     id TEXT PRIMARY KEY,
-    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    parent_id TEXT REFERENCES wiki_pages(id) ON DELETE SET NULL,
-    title TEXT NOT NULL,
-    summary TEXT NOT NULL DEFAULT '',
-    content TEXT NOT NULL DEFAULT '',
-    pinned INTEGER NOT NULL DEFAULT 0,
-    position REAL NOT NULL DEFAULT 0,
-    updated_by TEXT NOT NULL,
-    conversation_id TEXT,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    source TEXT,
+    keywords TEXT NOT NULL DEFAULT '[]',
+    owner_agent_id TEXT UNIQUE REFERENCES agents(id) ON DELETE CASCADE,
+    all_agents INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    deleted_at INTEGER
   );
-  CREATE INDEX IF NOT EXISTS wiki_pages_by_agent ON wiki_pages(agent_id, parent_id, position);
-  CREATE VIRTUAL TABLE IF NOT EXISTS wiki_fts USING fts5(
-    title, summary, content, content='wiki_pages', content_rowid='rowid', tokenize='porter unicode61'
+  CREATE TABLE IF NOT EXISTS brain_agents (
+    brain_id TEXT NOT NULL REFERENCES brains(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    access TEXT NOT NULL,
+    PRIMARY KEY (brain_id, agent_id)
   );
+  CREATE INDEX IF NOT EXISTS brain_agents_by_agent ON brain_agents(agent_id);
+`);
+
+export const NOTEBOOK_NAME = "Notebook";
+export const NOTEBOOK_DESCRIPTION = "Your own notes: this workspace, the user's work here, and anything no other brain covers.";
+
+// v4: wiki pages (each brain's pages since v6; before that, each agent's).
+const WIKI_TRIGGERS = `
   CREATE TRIGGER IF NOT EXISTS wiki_pages_ai AFTER INSERT ON wiki_pages BEGIN
     INSERT INTO wiki_fts(rowid, title, summary, content) VALUES (new.rowid, new.title, new.summary, new.content);
   END;
@@ -153,7 +164,29 @@ db.exec(`
   CREATE TRIGGER IF NOT EXISTS wiki_pages_au AFTER UPDATE ON wiki_pages BEGIN
     INSERT INTO wiki_fts(wiki_fts, rowid, title, summary, content) VALUES ('delete', old.rowid, old.title, old.summary, old.content);
     INSERT INTO wiki_fts(rowid, title, summary, content) VALUES (new.rowid, new.title, new.summary, new.content);
-  END;
+  END;`;
+const wikiPagesTable = (name: string) => `
+  CREATE TABLE IF NOT EXISTS ${name} (
+    id TEXT PRIMARY KEY,
+    brain_id TEXT NOT NULL REFERENCES brains(id) ON DELETE CASCADE,
+    parent_id TEXT REFERENCES wiki_pages(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    position REAL NOT NULL DEFAULT 0,
+    updated_by TEXT NOT NULL,
+    conversation_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted_at INTEGER
+  );`;
+db.exec(`
+  ${wikiPagesTable("wiki_pages")}
+  CREATE VIRTUAL TABLE IF NOT EXISTS wiki_fts USING fts5(
+    title, summary, content, content='wiki_pages', content_rowid='rowid', tokenize='porter unicode61'
+  );
+  ${WIKI_TRIGGERS}
 
   CREATE TABLE IF NOT EXISTS wiki_revisions (
     id TEXT PRIMARY KEY,
@@ -170,6 +203,47 @@ db.exec(`
 
 // Deleted wiki pages are kept (with their history) so a deletion can be undone.
 if (!hasColumn("wiki_pages", "deleted_at")) db.exec(`ALTER TABLE wiki_pages ADD COLUMN deleted_at INTEGER`);
+
+// v6: each agent's wiki becomes its notebook brain. SQLite can't change a column's
+// constraints in place, so the pages move to a rebuilt table (same rowids, so the
+// search index and revisions carry over) — all or nothing.
+if (hasColumn("wiki_pages", "agent_id")) {
+  db.exec(`PRAGMA foreign_keys = OFF`);
+  db.exec("BEGIN");
+  try {
+    const now = Date.now();
+    for (const row of db.prepare(`SELECT id FROM agents WHERE id NOT IN (SELECT owner_agent_id FROM brains WHERE owner_agent_id IS NOT NULL)`).all() as { id: string }[]) {
+      db.prepare(
+        `INSERT INTO brains (id, name, kind, description, owner_agent_id, created_at, updated_at) VALUES (?, ?, 'notebook', ?, ?, ?, ?)`,
+      ).run(randomUUID(), NOTEBOOK_NAME, NOTEBOOK_DESCRIPTION, row.id, now, now);
+    }
+    db.exec(`
+      DROP TABLE IF EXISTS wiki_pages_v6;
+      ${wikiPagesTable("wiki_pages_v6")}
+      INSERT INTO wiki_pages_v6 (rowid, id, brain_id, parent_id, title, summary, content, pinned, position, updated_by, conversation_id, created_at, updated_at, deleted_at)
+        SELECT p.rowid, p.id, b.id, p.parent_id, p.title, p.summary, p.content, p.pinned, p.position, p.updated_by, p.conversation_id, p.created_at, p.updated_at, p.deleted_at
+        FROM wiki_pages p JOIN brains b ON b.owner_agent_id = p.agent_id;
+      DROP TRIGGER IF EXISTS wiki_pages_ai;
+      DROP TRIGGER IF EXISTS wiki_pages_ad;
+      DROP TRIGGER IF EXISTS wiki_pages_au;
+      DROP TABLE wiki_pages;
+      ALTER TABLE wiki_pages_v6 RENAME TO wiki_pages;
+      ${WIKI_TRIGGERS}
+      INSERT INTO wiki_fts(wiki_fts) VALUES ('rebuild');
+    `);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  } finally {
+    db.exec(`PRAGMA foreign_keys = ON`);
+  }
+}
+db.exec(`CREATE INDEX IF NOT EXISTS wiki_pages_by_brain ON wiki_pages(brain_id, parent_id, position)`);
+
+// A chat's focus brain (where new pages go by default), and the brains it has already been pointed at.
+if (!hasColumn("conversations", "brain_id")) db.exec(`ALTER TABLE conversations ADD COLUMN brain_id TEXT`);
+if (!hasColumn("conversations", "brain_hints")) db.exec(`ALTER TABLE conversations ADD COLUMN brain_hints TEXT NOT NULL DEFAULT '[]'`);
 
 // How far the wiki keeper has read each chat. Chats from before the wiki count as read.
 if (!hasColumn("conversations", "wiki_synced_at")) {

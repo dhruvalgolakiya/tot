@@ -3,6 +3,9 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { readFileSync } from "node:fs";
 import type {
+  BrainAccess,
+  BrainInput,
+  BrainPatch,
   AgentInput,
   AppConnectRequest,
   AppRule,
@@ -44,6 +47,7 @@ import { computerManager } from "./computer/manager.ts";
 import { screenshotFile } from "./computer/screens.ts";
 import { VERSION } from "./config.ts";
 import { agents, validateAgent } from "./data/agents.ts";
+import { BrainError, brains } from "./data/brains.ts";
 import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { mail, toMailMessage, toSummary } from "./data/mail.ts";
 import { memories } from "./data/memories.ts";
@@ -92,7 +96,7 @@ api.use("*", async (c, next) => {
 
 api.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
-  if (err instanceof WikiError || err instanceof GitHubError || err instanceof AppsError) return c.json({ error: err.message }, 400);
+  if (err instanceof WikiError || err instanceof BrainError || err instanceof GitHubError || err instanceof AppsError) return c.json({ error: err.message }, 400);
   if (err instanceof ExecutorError) return c.json({ error: err.message }, err.status === 404 ? 404 : 400);
   console.error("[tot] request failed:", err);
   return c.json({ error: err.message || "Something went wrong." }, 500);
@@ -142,6 +146,7 @@ api.post("/agents", async (c) => {
   const agent = agents.create(input);
   appEvents.publish({ type: "agent", agent });
   appEvents.personaChanged(agent.personaId);
+  appEvents.brainsChanged();
   return c.json(agent, 201);
 });
 
@@ -172,6 +177,7 @@ api.delete("/agents/:id", async (c) => {
   agents.delete(id);
   appEvents.publish({ type: "agent-deleted", agentId: id });
   for (const persona of affected) appEvents.personaChanged(persona.id);
+  appEvents.brainsChanged();
   return c.json({ ok: true });
 });
 
@@ -441,22 +447,59 @@ api.delete("/memories/:id", (c) => {
 // Wiki
 // ---------------------------------------------------------------------------
 
-function wikiChanged(agentId: string, countsChanged = false): void {
-  appEvents.publish({ type: "wiki", agentId });
-  if (countsChanged) appEvents.agentChanged(agentId);
+function wikiChanged(brainId: string, structure = false): void {
+  appEvents.brainChanged(brainId, { structure });
 }
 
-api.get("/agents/:id/wiki", (c) => {
-  const agent = found(agents.get(c.req.param("id")), "Agent not found.");
-  const q = c.req.query("q")?.trim();
-  return c.json(q ? wiki.search(agent.id, q, 30) : wiki.list(agent.id));
+api.get("/brains", (c) => c.json(brains.list()));
+
+api.post("/brains", async (c) => {
+  const input = await body<BrainInput>(c);
+  if (input.agentId) found(agents.get(input.agentId), "Agent not found.");
+  const { id } = brains.create({ ...input, kind: "notes" });
+  wiki.overview(id);
+  appEvents.brainsChanged();
+  return c.json(brains.get(id), 201);
 });
 
-api.post("/agents/:id/wiki", async (c) => {
-  const agent = found(agents.get(c.req.param("id")), "Agent not found.");
+api.patch("/brains/:id", async (c) => {
+  const brain = brains.update(found(brains.get(c.req.param("id")), "Brain not found.").id, await body<BrainPatch>(c));
+  appEvents.brainsChanged();
+  return c.json(brain);
+});
+
+api.delete("/brains/:id", (c) => {
+  brains.delete(found(brains.get(c.req.param("id")), "Brain not found.").id);
+  appEvents.brainsChanged();
+  return c.json({ ok: true });
+});
+
+api.put("/brains/:id/agents/:agentId", async (c) => {
+  const brain = found(brains.get(c.req.param("id")), "Brain not found.");
+  const agent = found(agents.get(c.req.param("agentId")), "Agent not found.");
+  const { access } = await body<{ access: BrainAccess }>(c);
+  const updated = brains.attach(brain.id, agent.id, access);
+  appEvents.brainsChanged();
+  return c.json(updated);
+});
+
+api.delete("/brains/:id/agents/:agentId", (c) => {
+  const updated = brains.detach(found(brains.get(c.req.param("id")), "Brain not found.").id, c.req.param("agentId"));
+  appEvents.brainsChanged();
+  return c.json(updated);
+});
+
+api.get("/brains/:id/wiki", (c) => {
+  const brain = found(brains.get(c.req.param("id")), "Brain not found.");
+  const q = c.req.query("q")?.trim();
+  return c.json(q ? wiki.search(brain.id, q, 30) : wiki.list(brain.id));
+});
+
+api.post("/brains/:id/wiki", async (c) => {
+  const brain = found(brains.get(c.req.param("id")), "Brain not found.");
   const input = await body<WikiPageInput>(c);
-  const page = wiki.create(agent.id, input, "user");
-  wikiChanged(agent.id, true);
+  const page = wiki.create(brain.id, input, "user");
+  wikiChanged(brain.id, true);
   return c.json(page, 201);
 });
 
@@ -473,13 +516,13 @@ api.patch("/wiki/:pageId", async (c) => {
   const patch = await body<WikiPagePatch>(c);
   if (patch.position !== undefined && !Number.isFinite(patch.position)) throw new HttpError(400, "Invalid position.");
   const updated = wiki.update(page.id, patch, "user");
-  wikiChanged(page.agentId);
+  wikiChanged(page.brainId);
   return c.json(updated);
 });
 
 api.delete("/wiki/:pageId", (c) => {
   const page = wiki.delete(found(wiki.get(c.req.param("pageId")), "Page not found.").id);
-  wikiChanged(page.agentId, true);
+  wikiChanged(page.brainId, true);
   return c.json({ ok: true });
 });
 
@@ -491,7 +534,7 @@ api.get("/wiki/:pageId/revisions", (c) => {
 api.post("/wiki/:pageId/revisions/:revisionId/restore", (c) => {
   const page = found(wiki.get(c.req.param("pageId")), "Page not found.");
   const restored = wiki.restore(page.id, c.req.param("revisionId"), "user");
-  wikiChanged(page.agentId);
+  wikiChanged(page.brainId);
   return c.json(restored);
 });
 

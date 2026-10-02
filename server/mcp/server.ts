@@ -4,6 +4,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
+import { brainHints } from "../agent/brain-hints.ts";
 import { computerManager, type ActiveComputer, type Screenshot } from "../computer/manager.ts";
 import { MCP_TOKEN, VERSION } from "../config.ts";
 import { appEvents } from "../app-events.ts";
@@ -201,6 +202,9 @@ function buildServer(conversationId: string, agentId: string): McpServer {
           if (result.stdout.trim()) sections.push(`--- stdout ---\n${clip(redactGitHubTokens(result.stdout), EXEC_OUTPUT_LIMIT)}`);
           if (result.stderr.trim()) sections.push(`--- stderr ---\n${clip(redactGitHubTokens(result.stderr), EXEC_OUTPUT_LIMIT / 2)}`);
           if (!result.stdout.trim() && !result.stderr.trim()) sections.push("(no output)");
+          // Working in a repo the agent has a brain for (~/repos/<folder>, its URL…): point it there once.
+          const hint = brainHints(agentId, conversationId, `${command}\n${cwd ?? ""}`);
+          if (hint) sections.push(hint);
           return reply(sections.join("\n"));
         }),
     );

@@ -5,6 +5,7 @@ import { appEvents } from "../app-events.ts";
 import { apps } from "../apps.ts";
 import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.ts";
 import { agents } from "../data/agents.ts";
+import { brains } from "../data/brains.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
@@ -18,6 +19,7 @@ import { bus } from "../events.ts";
 import { githubAccessFor, personaGitHub } from "../persona-github.ts";
 import { prepareAttachments } from "./attachments.ts";
 import { makeElicitor } from "./approvals.ts";
+import { brainHints } from "./brain-hints.ts";
 import { limits } from "./limits.ts";
 import { MessageBuilder } from "./message-builder.ts";
 import {
@@ -67,6 +69,13 @@ export interface TurnOptions {
   keepTitle?: boolean;
   /** Heavy work whatever the text looks like (Auto then picks the strongest model); the reason is shown. */
   heavy?: string;
+  /**
+   * Start a new provider session without the chat's transcript, for multi-step jobs that keep
+   * their state elsewhere (e.g. the wiki), so each step begins with a clean context.
+   */
+  freshSession?: boolean;
+  /** Raise the per-turn step cap for long jobs. */
+  maxSteps?: number;
 }
 
 export async function sendMessage(
@@ -145,6 +154,8 @@ export async function sendMessage(
     auto: parseModelId(modelId) === "auto",
     complexity,
     thinkHarder: Boolean(request.thinkHarder),
+    freshSession: Boolean(options.freshSession),
+    maxSteps: options.maxSteps,
   }).catch((err) => {
     // executeTurn handles provider failures itself; this only catches setup bugs, so the
     // chat still ends cleanly instead of an unhandled rejection taking the server down.
@@ -173,6 +184,8 @@ interface TurnContext {
   /** Set when the caller marked the turn as heavy work; a fallback route keeps it. */
   complexity?: Complexity;
   thinkHarder: boolean;
+  freshSession: boolean;
+  maxSteps?: number;
 }
 
 async function executeTurn(ctx: TurnContext): Promise<void> {
@@ -209,9 +222,9 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
 
     /** Turn input for a route: resume the provider's session when this chat already has one. */
     const inputFor = (route: Route, fresh = false): TurnInput => {
-      const resumable = !fresh && conversation.provider === route.provider && conversation.providerSessionId;
+      const resumable = !fresh && !ctx.freshSession && conversation.provider === route.provider && conversation.providerSessionId;
       // A different provider can't resume the old session: carry the transcript over instead.
-      const needsTranscript = !resumable && conversation.provider !== null;
+      const needsTranscript = !resumable && !ctx.freshSession && conversation.provider !== null;
       return {
         conversationId: conversation.id,
         prompt: needsTranscript || fresh ? withTranscript() : text,
@@ -224,6 +237,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         workDir: paths.agentHome,
         signal,
         elicit,
+        maxSteps: ctx.maxSteps,
       };
     };
 
@@ -313,8 +327,10 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
   const personaAccess: PersonaAccess = persona
     ? { name: persona.name, email: persona.email, mailbox: persona.mailbox.state !== "not-connected" }
     : null;
+  // Brains this message is about (its repo, URL, @name…) that the chat hasn't been shown yet.
+  const brainNote = ctx.text ? brainHints(conversation.agentId, conversation.id, ctx.text) : "";
   const text =
-    [githubNote, personaNote(conversation.systemPrompt, personaAccess), ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
+    [githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
   let systemPrompt = conversation.systemPrompt;
@@ -323,12 +339,19 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
     const agent = agents.get(conversation.agentId) ?? agents.first();
     let workspace: WorkspaceContext | null = null;
     if (settings.memory.enabled) {
+      const mine = brains.forAgent(agent.id);
+      const notebook = mine[0];
       workspace = {
         userMemories: memories.forPrompt(text),
         wiki: {
-          overview: wiki.overview(agent.id),
-          outline: wiki.outline(agent.id).filter((page) => !page.pinned),
-          relevant: wiki.relevant(agent.id, ctx.text, 3),
+          brains: mine,
+          overview: wiki.overview(notebook.id),
+          outline: wiki.outline(notebook.id).filter((page) => !page.pinned),
+          relevant: wiki.relevant(
+            mine.map((brain) => brain.id),
+            ctx.text,
+            3,
+          ),
         },
         recentChats: chatSearch.recent(agent.id, { exclude: conversation.id }),
       };

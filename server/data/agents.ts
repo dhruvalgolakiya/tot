@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Agent, AgentInput, MascotSpec } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
+import { brains } from "./brains.ts";
 import { personas } from "./personas.ts";
 import { wiki } from "./wiki.ts";
 
@@ -29,7 +30,7 @@ function toAgent(row: Row): Agent {
     personaId: (row.persona_id as string | null) ?? null,
     counts: {
       chats: count(`SELECT COUNT(*) AS n FROM conversations WHERE agent_id = ?`, id),
-      pages: count(`SELECT COUNT(*) AS n FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`, id),
+      pages: wiki.count(brains.forAgent(id).map((brain) => brain.id)),
       routines: count(`SELECT COUNT(*) AS n FROM routines WHERE agent_id = ?`, id),
     },
     createdAt: Number(row.created_at),
@@ -68,7 +69,7 @@ export const agents = {
       now,
       now,
     );
-    wiki.overview(id);
+    wiki.overview(brains.notebook(id).id);
     return agents.get(id)!;
   },
 

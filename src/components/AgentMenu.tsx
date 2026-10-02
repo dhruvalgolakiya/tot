@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { DropdownMenu } from "radix-ui";
-import { BookOpen, ChevronDown, Clock, Monitor, Settings } from "lucide-react";
+import { Brain, ChevronDown, Clock, Monitor, Settings } from "lucide-react";
 import type { Agent, ComputerSummary } from "@shared/types";
 import { computerTone } from "../lib/computer";
 import { navigateToWiki, openAgentSettings, setComputerPanelOpen } from "../store";
@@ -47,8 +47,8 @@ export function AgentMenu({ agent }: { agent: Agent }) {
           >
             Computer
           </MenuItem>
-          <MenuItem icon={<BookOpen />} detail={pages} onSelect={() => navigateToWiki(agent.id)}>
-            Wiki
+          <MenuItem icon={<Brain />} detail={pages} onSelect={() => navigateToWiki(agent.id)}>
+            Brains
           </MenuItem>
           <MenuItem icon={<Clock />} detail={routines} onSelect={() => openAgentSettings(agent.id, "routines")}>
             Routines

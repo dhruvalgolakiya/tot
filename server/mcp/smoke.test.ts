@@ -8,10 +8,11 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { Hono } from "hono";
 import { computerManager } from "../computer/manager.ts";
 import { MCP_TOKEN } from "../config.ts";
-import { repoName } from "../agent/learn-repo.ts";
+import { planProgress, repoName } from "../agent/learn-repo.ts";
 import { buildSystemPrompt } from "../agent/prompts.ts";
 import { keepConversation, parseUpdates } from "../agent/wiki-keeper.ts";
 import { agents } from "../data/agents.ts";
+import { brains } from "../data/brains.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
@@ -83,6 +84,9 @@ check("info", r.text.includes("Local workspace") && r.text.includes("port 8124")
 
 // Memory is about the user; workspace knowledge lives in the wiki.
 const other = agents.create({ name: "Other", mascot: { shape: "cat", color: "#f97316", accessory: "none", eyes: "dots" } });
+// Each agent's own knowledge lives in its private notebook brain.
+const nb = brains.notebook(agent.id).id;
+const otherNb = brains.notebook(other.id).id;
 r = await call("memory_save", { content: "Prefers TypeScript over Python" });
 check("memory save", !r.isError && r.text.startsWith("Saved"), r.text);
 r = await call("memory_save", { content: "prefers typescript over python" });
@@ -96,7 +100,7 @@ r = await call("memory_delete", { id: memoryId ?? "x" });
 check("memory delete", !r.isError, r.text);
 
 // Wiki: every workspace starts with an Overview; pages nest, and titles only need to be unique among siblings.
-check("overview exists", wiki.list(agent.id)[0]?.title === "Overview" && agents.get(agent.id)?.counts.pages === 1);
+check("overview exists", wiki.list(nb)[0]?.title === "Overview" && agents.get(agent.id)?.counts.pages === 1);
 r = await call("wiki_write", { title: "web", content: "Next.js storefront in `~/repos/web`." });
 check("new page needs a summary", r.isError, r.text);
 r = await call("wiki_write", { title: "web", summary: "The storefront repo", content: "Next.js storefront in `~/repos/web`." });
@@ -104,13 +108,13 @@ const webId = /\(([0-9a-f-]{36})\)/.exec(r.text)?.[1] ?? "";
 check("wiki create", !r.isError && r.text.startsWith("Created"), r.text);
 await call("wiki_write", { title: "api", summary: "The backend repo", content: "Hono API in `~/repos/api`." });
 r = await call("wiki_write", { title: "Architecture", summary: "How web fits together", content: "Pages call the API through `lib/client.ts`.", parent: "web" });
-check("nested page", !r.isError && wiki.find(agent.id, "Architecture")?.parentId === webId, r.text);
+check("nested page", !r.isError && wiki.find(nb, "Architecture")?.parentId === webId, r.text);
 r = await call("wiki_write", { title: "Architecture", summary: "How the API fits together", content: "Routes in `src/routes.ts` call services.", parent: "api" });
 check("same title under another parent", !r.isError && r.text.startsWith("Created"), r.text);
 r = await call("wiki_read", { page: "Architecture" });
 check("ambiguous title asks for an id", r.isError && r.text.includes("Several pages"), r.text);
 r = await call("wiki_write", { title: "Architecture", content: "Pages call the API through `lib/client.ts`; auth via middleware.", parent: "web" });
-check("update by title + parent", r.text.startsWith("Updated") && wiki.withTitle(agent.id, "Architecture").length === 2, r.text);
+check("update by title + parent", r.text.startsWith("Updated") && wiki.withTitle(nb, "Architecture").length === 2, r.text);
 r = await call("wiki_edit", { page: webId, old_text: "Next.js", new_text: "Next.js 16" });
 check("wiki edit", !r.isError && wiki.get(webId)?.content.includes("Next.js 16") === true, r.text);
 r = await call("wiki_edit", { page: "web", old_text: "", new_text: "## Gotchas\n- Run `pnpm i` first." });
@@ -122,18 +126,54 @@ r = await call("wiki_search", { query: "pnpm" });
 check("wiki search", r.text.includes(webId) && r.text.includes("«pnpm»"), r.text);
 r = await call("wiki_search");
 check("wiki outline", r.text.includes("- Overview") && r.text.includes("  - Architecture"), r.text);
-const othersPage = wiki.create(other.id, { title: "Billing", summary: "Other's secret", content: "Confidential pricing" }, "agent");
+const othersPage = wiki.create(otherNb, { title: "Billing", summary: "Other's secret", content: "Confidential pricing" }, "agent");
 r = await call("wiki_read", { page: othersPage.id });
 check("wiki stays in its workspace", r.isError, r.text);
 r = await call("wiki_delete", { page: "Overview" });
 check("overview can't be deleted", r.isError, r.text);
 r = await call("wiki_delete", { page: "api" });
-check("delete moves children up", !r.isError && wiki.withTitle(agent.id, "Architecture", null).length === 1, r.text);
+check("delete moves children up", !r.isError && wiki.withTitle(nb, "Architecture", null).length === 1, r.text);
 check("page count", agents.get(agent.id)?.counts.pages === 4, JSON.stringify(agents.get(agent.id)?.counts));
 const before = wiki.get(webId)!;
 wiki.update(webId, { content: "oops" }, "user");
 const restored = wiki.restore(webId, wiki.revisions(webId)[0]!.id, "user");
 check("restore", restored.content === before.content && wiki.revisions(webId)[0]?.content === "oops");
+
+// Brains: shared knowledge at the app level, attached to agents read or write; notebooks stay private.
+{
+  const web = brains.create({ name: "acme/web", kind: "repo", source: "https://github.com/acme/web", description: "The storefront", keywords: ["storefront"] });
+  r = await call("wiki_search", { query: "anything", brain: "acme/web" });
+  check("unattached brain is invisible", r.isError, r.text);
+  brains.attach(web.id, agent.id, "read");
+  r = await call("wiki_write", { title: "Checkout flow", summary: "How checkout works", content: "x", brain: "acme/web" });
+  check("read-only brain refuses writes", r.isError && r.text.includes("read-only"), r.text);
+  brains.attach(web.id, agent.id, "write");
+  r = await call("wiki_write", { title: "Checkout flow", summary: "How checkout works", content: "Totals in `src/checkout/total.ts`.", brain: "acme/web" });
+  check("write to a shared brain", !r.isError && wiki.withTitle(web.id, "Checkout flow").length === 1, r.text);
+  r = await call("wiki_search", { query: "checkout totals" });
+  check("search spans brains, labelled", r.text.includes("[acme/web]"), r.text);
+  r = await call("wiki_read", { page: "Overview" });
+  check("a shared title means the notebook's page", !r.isError && r.text.includes(`id ${wiki.overview(nb).id}`), r.text);
+  check(
+    "signals match requests",
+    brains.match(agent.id, "Can you fix the login bug in acme/web?")[0]?.id === web.id &&
+      brains.match(agent.id, "the storefront is slow")[0]?.id === web.id &&
+      brains.match(agent.id, "fix the website").length === 0,
+  );
+  check("notebooks stay private", brains.resolve(other.id, nb) === null && !brains.forAgent(other.id).some((b) => b.id === web.id));
+  // Working in the repo points the chat at its brain, once, and makes it the chat's focus.
+  r = await call("computer_exec", { command: "mkdir -p repos/web && cd repos/web && echo in-repo" });
+  check("a command in the repo points to its brain", r.text.includes("you have a brain for it") && brains.focus(conversation.id) === web.id, r.text);
+  r = await call("computer_exec", { command: "cd repos/web && echo again" });
+  check("only once per chat", !r.text.includes("you have a brain for it"), r.text);
+  r = await call("wiki_write", { title: "Deploys", summary: "How web deploys", content: "Vercel." });
+  check("new pages default to the focus brain", !r.isError && wiki.withTitle(web.id, "Deploys").length === 1, r.text);
+  const company = brains.create({ name: "Company", description: "Handbook", allAgents: true });
+  check("all-agents brains reach everyone", brains.access(other.id, company.id) === "write");
+  brains.delete(company.id);
+  check("deleted brains disappear", brains.access(other.id, company.id) === null);
+  brains.setFocus(conversation.id, null);
+}
 
 // Earlier chats in the same workspace are searchable and readable; other agents' aren't.
 const say = (conversationId: string, role: "user" | "assistant", body: string, at = Date.now()) =>
@@ -153,7 +193,7 @@ r = await call("chat_read", { chatId: elsewhere.id });
 check("chat read refuses other workspace", r.isError, r.text);
 
 // A new chat starts with the Overview, the page list, related pages in full, and recent chats.
-const overview = wiki.overview(agent.id);
+const overview = wiki.overview(nb);
 wiki.update(overview.id, { content: "Acme's storefront and API. Next: checkout redesign." }, "agent");
 const request = "Fix the bug where pnpm install fails in the storefront";
 const prompt = buildSystemPrompt({
@@ -162,9 +202,10 @@ const prompt = buildSystemPrompt({
   workspace: {
     userMemories: [],
     wiki: {
-      overview: wiki.overview(agent.id),
-      outline: wiki.outline(agent.id).filter((page) => !page.pinned),
-      relevant: wiki.relevant(agent.id, request, 3),
+      brains: brains.forAgent(agent.id),
+      overview: wiki.overview(nb),
+      outline: wiki.outline(nb).filter((page) => !page.pinned),
+      relevant: wiki.relevant(nb, request, 3),
     },
     recentChats: chatSearch.recent(agent.id, { exclude: conversation.id }),
   },
@@ -172,7 +213,7 @@ const prompt = buildSystemPrompt({
 check("prompt has overview + index", prompt.includes("checkout redesign") && prompt.includes(`- web (${webId})`), "");
 check("prompt includes related page", prompt.includes("## Pages related to this request") && prompt.includes("Run `pnpm i` first"), "");
 check("prompt lists recent chats", prompt.includes(earlier.id), "");
-check("small talk pulls in no pages", wiki.relevant(agent.id, "hey can you help me with this", 3).length === 0);
+check("small talk pulls in no pages", wiki.relevant(nb, "hey can you help me with this", 3).length === 0);
 check("chat count", agents.get(agent.id)?.counts.chats === 2, JSON.stringify(agents.get(agent.id)?.counts));
 
 // The keeper folds a quiet chat into the wiki through a (fake) model.
@@ -193,13 +234,13 @@ let changedPages = await keepConversation(
     { page: othersPage.id, title: "Billing", content: "hijacked" },
   ]),
 );
-check("keeper prompt has wiki + new messages", seenPrompt.includes("<page_index>") && seenPrompt.includes("gift card"), "");
-check("keeper applied allowed updates", changedPages.length === 2 && wiki.withTitle(agent.id, "Checkout", webId).length === 1, changedPages.map((p) => p.title).join(","));
+check("keeper prompt has wiki + new messages", seenPrompt.includes("<brains>") && seenPrompt.includes("gift card"), "");
+check("keeper applied allowed updates", changedPages.length === 2 && wiki.withTitle(nb, "Checkout", webId).length === 1, changedPages.map((p) => p.title).join(","));
 check("keeper can't touch other workspaces", wiki.get(othersPage.id)?.content === "Confidential pricing");
 const notice = messages.listByConversation(ticket.id).at(-1)?.parts.find((part) => part.type === "notice");
 check("keeper leaves a notice", notice?.type === "notice" && notice.kind === "wiki" && notice.pageIds?.length === 2, JSON.stringify(notice));
 changedPages = await keepConversation(ticket.id, fake([{ title: "Again", summary: "x", content: "y" }]));
-check("keeper reads each message once", changedPages.length === 0 && !wiki.withTitle(agent.id, "Again").length);
+check("keeper reads each message once", changedPages.length === 0 && !wiki.withTitle(nb, "Again").length);
 say(ticket.id, "user", "One more thing: the gift card endpoint is rate limited to 10 requests per minute per user. ".repeat(5), longAgo + 2);
 const webBefore = wiki.get(webId)!.content;
 wiki.update(webId, { content: `${webBefore}\n\n${"Detail. ".repeat(250)}` }, "user");
@@ -221,23 +262,27 @@ check("keeper skips pages edited meanwhile", changedPages.length === 0 && wiki.g
 const authorBefore = wiki.get(webId)!.updatedBy;
 wiki.update(webId, { position: 9 }, "agent");
 check("reorder keeps attribution", wiki.get(webId)?.updatedBy === authorBefore && wiki.get(webId)?.position === 9);
-wiki.create(agent.id, { title: "Runbook", summary: "Ops runbook", content: "Restart with `pm2 restart all`." }, "user");
-const infra = wiki.create(agent.id, { title: "infra", summary: "Infra repo", content: "Terraform." }, "agent");
-wiki.create(agent.id, { title: "Runbook", summary: "Infra runbook", content: "terraform apply", parentId: infra.id }, "agent");
+wiki.create(nb, { title: "Runbook", summary: "Ops runbook", content: "Restart with `pm2 restart all`." }, "user");
+const infra = wiki.create(nb, { title: "infra", summary: "Infra repo", content: "Terraform." }, "agent");
+wiki.create(nb, { title: "Runbook", summary: "Infra runbook", content: "terraform apply", parentId: infra.id }, "agent");
 const pagesBefore = agents.get(agent.id)!.counts.pages;
 wiki.delete(infra.id);
-check("delete renames clashing children", wiki.withTitle(agent.id, "Runbook (infra)", null).length === 1 && wiki.withTitle(agent.id, "Runbook", null).length === 1);
+check("delete renames clashing children", wiki.withTitle(nb, "Runbook (infra)", null).length === 1 && wiki.withTitle(nb, "Runbook", null).length === 1);
 check("deleted pages are hidden but kept", wiki.get(infra.id) === null && agents.get(agent.id)!.counts.pages === pagesBefore - 1 && db.prepare("SELECT 1 FROM wiki_pages WHERE id = ?").get(infra.id) !== undefined);
 check("titles compare across scripts", (() => {
-  wiki.create(agent.id, { title: "Ärzte", summary: "Doctors", content: "x" }, "user");
+  wiki.create(nb, { title: "Ärzte", summary: "Doctors", content: "x" }, "user");
   try {
-    wiki.create(agent.id, { title: "ärzte", summary: "dup", content: "y" }, "user");
+    wiki.create(nb, { title: "ärzte", summary: "dup", content: "y" }, "user");
     return false;
   } catch {
     return true;
   }
 })());
 check("repo names", repoName("https://github.com/acme/web.git") === "web" && repoName("git@github.com:acme/api") === "api" && repoName("~/repos/site/") === "site");
+{
+  const progress = planProgress("Commit: abc\n## Areas\n- [x] Core — src/core → Core\n- [ ] API — src/api\n  * [X] Jobs — src/jobs\n## Open questions\n- why [ ] here");
+  check("study plan progress", progress.done === 2 && progress.total === 3, JSON.stringify(progress));
+}
 
 agents.delete(other.id);
 

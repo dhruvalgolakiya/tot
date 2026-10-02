@@ -35,6 +35,8 @@ export interface TurnInput {
   signal: AbortSignal;
   /** Asks the user on behalf of an MCP server (elicitation); resolves with their answer. */
   elicit?: (request: ElicitRequest, signal?: AbortSignal) => Promise<ElicitAnswer>;
+  /** Most model/tool steps this turn may take, for long jobs; providers without a cap ignore it. */
+  maxSteps?: number;
 }
 
 /** An MCP server asking the user something mid-turn (MCP `elicitation/create`). */

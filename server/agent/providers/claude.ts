@@ -321,7 +321,7 @@ export const claudeProvider: AgentProvider = {
         settings: { disableClaudeAiConnectors: !settings.get().claude.useConnectedApps },
         resume: input.sessionId,
         includePartialMessages: true,
-        maxTurns: MAX_AGENT_TURNS,
+        maxTurns: input.maxSteps ?? MAX_AGENT_TURNS,
         stderr: (chunk) => stderr.push(chunk),
       },
     });
