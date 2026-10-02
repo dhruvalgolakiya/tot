@@ -3,6 +3,25 @@ import type { Conversation, ConversationKind, ConversationOrigin, ProviderId, Ta
 import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 
+/** Module 02's task fields, for tasks saved before they existed. */
+export const ORCHESTRATION_DEFAULTS: Pick<TaskInfo, "role" | "tier" | "provider" | "depth" | "group" | "then" | "brief" | "result" | "handoff" | "resumeAt"> = {
+  role: null,
+  tier: null,
+  provider: null,
+  depth: 1,
+  group: null,
+  then: null,
+  brief: null,
+  result: null,
+  handoff: null,
+  resumeAt: null,
+};
+
+function toTaskInfo(value: unknown): TaskInfo | null {
+  const task = parseJson<TaskInfo | null>(value, null);
+  return task && { ...ORCHESTRATION_DEFAULTS, ...task };
+}
+
 /** Server-side view of a conversation, including provider session state. */
 export interface ConversationRecord extends Conversation {
   providerSessionId: string | null;
@@ -28,7 +47,7 @@ function toRecord(row: Row): ConversationRecord {
     origin: parseJson<ConversationOrigin | null>(row.origin, null),
     kind: (row.kind as ConversationKind | null) ?? "chat",
     parentId: (row.parent_id as string | null) ?? null,
-    task: parseJson<TaskInfo | null>(row.task, null),
+    task: toTaskInfo(row.task),
     providerSessionId: (row.provider_session_id as string | null) ?? null,
     systemPrompt: (row.system_prompt as string | null) ?? null,
     childResults: parseJson<string[]>(row.child_results, []),

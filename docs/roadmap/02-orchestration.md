@@ -114,19 +114,19 @@ This works for non-coding work too. Research fans out to parallel searchers, the
 
 ## Milestones
 
-- [ ] **M1 · Tiers and roles.**
+- [x] **M1 · Tiers and roles.** Shipped: `server/orchestration/tiers.ts` (defaults read from each account's models), the router now tier-based, Settings → Models tier table and role tiers, `task_start` with role/tier/provider and a brief, structured results from `task_finish`, shown on cards and in the Plan tab.
   - `tiers.ts`; the router uses tiers; Settings → Models tier table; `task_start` takes `role` and `tier`; briefs and structured results.
   - *Accept:* an explorer child runs on the fast tier and returns a structured result; the parent shows it as a card, not a transcript dump.
-- [ ] **M2 · Automatic dispatch.**
+- [x] **M2 · Automatic dispatch.** Shipped: `server/orchestration/dispatch.ts` (rules, then a 2 s fast-tier classifier, else inline), the Auto / Inline / Task pill (remembered per chat), the decision chip, and Slack/email intake through the dispatcher. The fixture table routes 36/36.
   - Rules plus classifier; the composer override; the decision chip; Slack and email intake use the dispatcher.
   - *Accept:* a fixture table of at least 30 prompts (quick question, small edit, "fix bug X in repo Y", "compare 4 vendors", follow-up to a running task…) routes as expected at least 90% of the time. The table lives in the test.
-- [ ] **M3 · Handoff packets.**
+- [x] **M3 · Handoff packets.** Shipped: `server/orchestration/handoff.ts` (written on switch, pause, finish and failover; validated; a fallback from the task's state), `handoff_write`, the Handoff section, and "Continue on ChatGPT / Claude" (`POST /api/tasks/:id/continue-on`).
   - `handoff_write`, the packet UI, and "Continue on the other provider".
   - *Accept:* a task started on Claude continues on ChatGPT from the packet and finishes, without the transcript.
-- [ ] **M4 · Automatic failover.**
+- [x] **M4 · Automatic failover.** Shipped: `server/orchestration/failover.ts` — switch with a handoff, or pause until the cooldown ends and resume by itself (re-armed after a restart).
   - A limit hit mid-task leads to a handoff and the other provider, or to pause and auto-resume at reset.
   - *Accept:* with a fake provider that throws a usage-limit error mid-run, the task carries on (switching on) or pauses and resumes at the given reset time (switching off).
-- [ ] **M5 · Fan-out / fan-in patterns.**
+- [x] **M5 · Fan-out / fan-in patterns.** Shipped: `task_spawn_many`, depth/children/budget limits (`budget.ts`), group cards, nested sidebar rows, and fan-in (`fanin.ts`): one writer turn in the chat with the results as structured data, sent back to Slack/email when the chat came from there.
   - `task_spawn_many` and the writer synthesis; non-coding research works end to end.
   - *Accept:* "Compare Linear, Jira and Height for a 10-person team" spawns 3 researchers and 1 writer; the parent gets one combined answer with sources.
 
@@ -148,4 +148,15 @@ Test gates and reviewer verdicts (03). The reviewer *role* and its tier/provider
 ## Open questions
 
 - Should the classifier see the chat's last few messages, or only the new one? Proposal: the last 3 messages, truncated to stay cheap.
+  **Answer:** as proposed (the last 3, 400 characters each, plus the chat's running tasks).
 - When the user steers a parent, should the steer forward to its running children? Proposal: no. Ask "Also tell the 2 running tasks?" with one click.
+  **Answer:** no forwarding. In a chat, the dispatcher already sends a follow-up that's clearly for a running task to that task (`continue-task`); the one-click "Also tell…" prompt isn't built yet.
+
+## Notes from building
+
+- **ChatGPT tier defaults:** deep = the account's default model (listed first, e.g. GPT‑6.1 Sol), standard = the newest other "sol" (GPT‑6 Sol), fast = the newest "luna" (GPT‑6 Luna). ChatGPT efforts are low / medium / high; Claude's low / high / high (xhigh with "Think harder"). Settings can pin any model per tier; a pinned model that disappears falls back to the default.
+- **The writer is a turn, not a session:** when a group with `then: "synthesize"` finishes, the chat gets one auto turn on the writer's tier with every result as JSON (summary, findings, files, sources, confidence). A task that fans out doesn't get a writer turn; its loop waits for its children and its next turn starts with their results.
+- **Handoffs are written by the current provider's fast-tier model** (cheap), from the task state and the last ~30k characters of its transcript; TOT fills `from`, `createdAt` and `repo` itself. When no model can write one (or it fails validation twice), the packet comes from the task's plan and state.
+- **Failover vs. Auto:** Auto's existing switch for a turn that hits the limit before any output stays as it was; failover handles a task whose turn failed mid-way.
+- **Limits:** depth 2 below the chat, 6 tasks per chat or task (Settings → Tasks), and a token budget for everything under one chat (Settings → Tasks, shown as "per request"; default 5M, 0 = none). Over budget, no new tasks start and running ones pause.
+- **Not yet verified against the live providers.** One thing to watch: Claude's `complete()` starts the Claude Code CLI per call, so the 2 s classifier limit will often run out on Claude and fall back to inline. A warm process (or ChatGPT's app-server, which stays up) would fix that.

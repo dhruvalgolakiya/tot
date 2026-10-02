@@ -12,7 +12,8 @@ import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { messageText } from "./data/messages.ts";
 import { db, parseJson, type Row } from "./db.ts";
 import { lanUrls } from "./net.ts";
-import { workRequest } from "./tasks/intake.ts";
+import { chatContext, dispatcher, spawnedText } from "./orchestration/dispatch.ts";
+import { spawnMany } from "./orchestration/spawn.ts";
 import { isTask } from "./tasks/store.ts";
 import { tasks } from "./tasks/tasks.ts";
 
@@ -464,28 +465,42 @@ async function answer(
     const info = await api!.conversations.info({ channel }).catch(() => ({ channel: undefined }));
     const label = info.channel?.is_im ? `DM with ${await personName(userId)}` : info.channel?.name ? `#${info.channel.name}` : "Slack";
     const permalink = await api!.chat.getPermalink({ channel, message_ts: threadTs }).then((r) => r.permalink ?? null, () => null);
-    // Work ("fix the flaky test in web") becomes a task in the queue; its result is posted here when it's done.
-    const work = workRequest(picked.agent.id, request);
-    if (work) {
+    // TOT decides how to run it: work ("fix the flaky test in web") becomes tasks, whose results are posted here.
+    const origin = { kind: "slack" as const, label, url: permalink };
+    const decision = await dispatcher.decide({ agentId: picked.agent.id, text: request, attachments: 0, mode: "auto", running: [], recent: [] });
+    if (decision.mode === "spawn") {
       const earlier = message.thread_ts ? await threadTranscript(channel, threadTs, "0", ts) : "";
-      const task = tasks.create({
-        agentId: picked.agent.id,
-        title: work.title,
-        goal: `${work.goal}${earlier ? `\n\nThe Slack thread it came from (${label}):\n${earlier.slice(-6000)}` : ""}`,
-        repo: work.repo,
-        origin: { kind: "slack", label, url: permalink },
-      });
+      const context = earlier ? `\n\nThe Slack thread it came from (${label}):\n${earlier.slice(-6000)}` : "";
+      let target: string;
+      let ack: string;
+      if (decision.sessions.length === 1) {
+        // One piece of work: the thread becomes the task.
+        const only = decision.sessions[0]!;
+        const task = tasks.create({ agentId: picked.agent.id, ...only, goal: `${only.goal}${context}`, origin });
+        target = task.id;
+        const when = task.task.status === "queued" ? " It's queued and starts when a slot frees up;" : "";
+        ack = `Started a task: *${task.title}*.${when} I'll post the result here.`;
+      } else {
+        // Several: the thread becomes a chat with the tasks under it, and their combined answer comes back here.
+        const chat = conversations.create({ agentId: picked.agent.id, modelId: picked.agent.modelId, title: request.slice(0, 120), origin });
+        appEvents.publish({ type: "conversation", conversation: toPublicConversation(chat) });
+        const started = spawnMany(chat.id, decision.sessions.map((s) => ({ ...s, goal: `${s.goal}${context}` })), {
+          then: decision.then,
+          cards: { kind: "message", text: spawnedText(decision.sessions.length, decision.then === "synthesize"), userText: request },
+        });
+        target = chat.id;
+        ack = `Started ${started.length} tasks: ${started.map((task) => `*${task.title}*`).join(", ")}. I'll post ${decision.then === "synthesize" ? "the combined answer" : "each result"} here.`;
+      }
       db.prepare(`INSERT INTO slack_threads (channel, thread_ts, conversation_id, user_id, seen_ts, created_at) VALUES (?, ?, ?, ?, ?, ?)`).run(
         channel,
         threadTs,
-        task.id,
+        target,
         userId,
         ts,
         Date.now(),
       );
       await status.clear();
-      const when = task.task.status === "queued" ? " It's queued and starts when a slot frees up;" : "";
-      await post(channel, threadTs, `Started a task: *${task.title}*.${when} I'll post the result here.`, footer(task.id));
+      await post(channel, threadTs, ack, footer(target));
       return;
     }
     const conversation = conversations.create({
@@ -512,6 +527,17 @@ async function answer(
     context = fresh ? `New in the Slack thread since your last reply:\n<slack_thread>\n${fresh}\n</slack_thread>\n` : "";
     // A follow-up to a task: a note for it while it runs, else it picks the task up again.
     const existing = conversations.get(thread.conversationId);
+    // A chat thread whose tasks are still working: a follow-up meant for one of them goes to it.
+    if (existing && !isTask(existing)) {
+      const decision = await dispatcher.decide({ agentId: existing.agentId, text: request, attachments: 0, mode: "auto", ...chatContext(existing.id) });
+      if (decision.mode === "continue-task") {
+        markSeen(channel, threadTs, ts);
+        await tasks.message(decision.taskId, { text: request });
+        await status.clear();
+        await post(channel, threadTs, `Passed that on to *${conversations.get(decision.taskId)?.title ?? "the task"}*.`, footer(decision.taskId));
+        return;
+      }
+    }
     if (isTask(existing)) {
       markSeen(channel, threadTs, ts);
       const result = await tasks.message(existing.id, { text: fresh ? `${request}\n\n(Also new in the Slack thread:\n${fresh})` : request });

@@ -1,5 +1,9 @@
-import type { TaskInfo } from "../../shared/types.ts";
+import type { HandoffPacket, TaskInfo } from "../../shared/types.ts";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
+import { ROLES } from "../orchestration/roles.ts";
+
+/** Tasks can start tasks this many levels below the user's chat. */
+export const MAX_DEPTH = 2;
 
 /** What the agent is told about tasks: in a chat (it can start them) and inside one (how to work). */
 
@@ -11,12 +15,16 @@ export function chatTasksSection(): string {
 For real work that takes more than a few minutes — a change to a codebase, research across several sources, a report or comparison — start a task with task_start instead of doing it here. A task runs in the background on your computer (a coding task on its own git branch and worktree), shows in this chat as a live card, and reports its result back here when it finishes; the user can close the tab meanwhile. Start several at once for independent pieces of work (say, one per vendor to research). Keep quick questions and small edits inline.
 - Give each task a short title and a goal that stands on its own: the task doesn't see this chat, so include what it needs to know and what "done" means.
 - For code, pass \`repo\` (GitHub "owner/name", a git URL, or a folder on your computer such as ~/repos/web).
-- After starting tasks, tell the user in a sentence what you started; don't wait for them. task_list and task_status show how they're doing; task_message adds an instruction to a running one.`;
+- After starting tasks, tell the user in a sentence what you started; don't wait for them. task_list and task_status show how they're doing; task_message adds an instruction to a running one.
+${FAN_OUT}`;
 }
 
-/** Inside a task: its goal, where to work, and how to report. */
-export function taskSection(task: Pick<TaskInfo, "goal" | "repo">): string {
-  const { repo } = task;
+/** When to split work across several sessions, and when not to (module 02). */
+const FAN_OUT = `When to fan out with task_spawn_many: independent sub-questions (one researcher per vendor), a search across many files or sources, or work bigger than one sitting. Give each session a role — explorer (where/how, fast), planner, implementer (makes the change), tester, reviewer (runs on the other provider), researcher, writer — and pass then: "synthesize" to get one turn here with all their results to combine. Don't fan out for small or sequential work, or while the user is mid-conversation with you; at most 6 tasks per chat.`;
+
+/** Inside a task: its goal, role, where to work, and how to report. */
+export function taskSection(task: Pick<TaskInfo, "goal" | "repo" | "role" | "depth">): string {
+  const { repo, role } = task;
   const code = repo
     ? `
 Repository: ${repo.source}, on your computer at ${repo.folder}.
@@ -27,12 +35,17 @@ Your branch: ${repo.branch}${repo.baseBranch ? ` (from ${repo.baseBranch})` : ""
     : "";
   return `${TASK_SECTION_TITLE}
 You're working on a task. It runs in the background: work through it on your own until it's done. TOT keeps sending you turns while you make progress, and the user may read along and add notes.
-Goal: ${task.goal}${code}
+Goal: ${task.goal}${role ? `\nYour role: ${ROLES[role].label.toLowerCase()}. ${ROLES[role].instructions}` : ""}${code}
 
 How to work:
 - First write a short plan with task_update({ plan }): 3 to 8 concrete steps. Keep it current — tick steps as you finish them, and set \`progress\` to one line about what you're doing now.
 - Work end to end without asking. Only if you truly can't continue without the user (a decision only they can make, access you don't have), call task_update with a \`question\`, say it in your reply, and end your turn.
-- When the goal is met, or turns out impossible, call task_finish with outcome "done" or "failed" and a summary for whoever asked: what you did, the result, and where to find it (files, branch, links, sources). That summary is your report, so make it complete.`;
+- When the goal is met, or turns out impossible, call task_finish with outcome "done" or "failed" and a summary for whoever asked: what you did, the result, and where to find it (files, branch, links, sources). That summary is your report, so make it complete. Also fill in \`findings\`, \`files_changed\`, \`open_questions\`, \`sources\` and \`confidence\` where they apply: whoever asked gets them as a structured result.
+- At natural checkpoints in long work, call handoff_write with where things stand, so another session could carry on from it.${
+    task.depth < MAX_DEPTH
+      ? `\n- You can split off sessions of your own with task_start or task_spawn_many (a task can't go deeper than ${MAX_DEPTH} levels). Their results come to your next turn; TOT waits for them before continuing you.\n${FAN_OUT}`
+      : ""
+  }`;
 }
 
 const checklist = (plan: TaskInfo["plan"]) => (plan.length ? plan.map((step) => `- [${step.done ? "x" : " "}] ${step.text}`).join("\n") : "(no plan yet — write one with task_update)");
@@ -65,15 +78,46 @@ export function continuationPreamble(
   return lines.join("\n");
 }
 
+/** One finished task's result as structured data for a model: its summary plus findings, files and sources. */
+export function resultBlock(child: ConversationRecord): string {
+  const task = child.task!;
+  const result = task.result;
+  return JSON.stringify(
+    {
+      id: child.id,
+      title: child.title,
+      role: task.role,
+      status: task.status,
+      summary: clipped(result?.summary ?? task.summary ?? "(no summary)", 8000),
+      ...(result
+        ? { findings: result.findings, filesChanged: result.filesChanged, openQuestions: result.openQuestions, sources: result.sources, confidence: result.confidence }
+        : {}),
+      ...(task.repo ? { branch: task.repo.branch } : {}),
+    },
+    null,
+    1,
+  );
+}
+
 /** Results of a chat's tasks that finished since its model last heard, as a note for its next turn; "" when none. */
 export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults">): string {
   if (!conversation.childResults.length) return "";
-  const lines: string[] = [];
+  const blocks: string[] = [];
   for (const id of conversation.childResults) {
     const child = conversations.get(id);
     if (child?.kind !== "task" || !child.task) continue;
-    lines.push(`- “${child.title}” (${child.id}) — ${child.task.status}: ${clipped(child.task.summary ?? "(no summary)", 6000)}`);
+    blocks.push(resultBlock(child));
   }
   conversations.update(conversation.id, { childResults: [] });
-  return lines.length ? `[Tasks you started have finished since your last reply:\n${lines.join("\n")}\nUse their results where they matter; the user can see each one on its card.]` : "";
+  return blocks.length
+    ? `[Tasks you started have finished since your last reply. Their results:\n<task_results>\n${blocks.join("\n")}\n</task_results>\nUse them where they matter; the user can see each one on its card.]`
+    : "";
+}
+
+/** The opening of a fresh session that carries on from a handoff packet instead of the transcript. */
+export function handoffPreamble(packet: HandoffPacket, why: string): string {
+  return `[${why} You're continuing this task from a handoff packet written by ${packet.from.provider} (${packet.from.model}); you don't have the earlier conversation. Trust the packet, check the current state where it matters (your worktree, files), and carry on from its next step.
+<handoff>
+${JSON.stringify(packet, null, 1)}
+</handoff>]`;
 }

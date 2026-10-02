@@ -9,7 +9,8 @@ import { messageText } from "../data/messages.ts";
 import { personas } from "../data/personas.ts";
 import { db, type Row } from "../db.ts";
 import { pickAgent } from "../slack.ts";
-import { workRequest } from "../tasks/intake.ts";
+import { dispatcher, spawnedText } from "../orchestration/dispatch.ts";
+import { spawnMany } from "../orchestration/spawn.ts";
 import { isTask as isTaskConversation } from "../tasks/store.ts";
 import { tasks } from "../tasks/tasks.ts";
 import { mailboxes } from "./mailbox.ts";
@@ -110,27 +111,45 @@ async function handle(personaId: string, mailId: string): Promise<void> {
   if (!thread) {
     const picked = chooseAgent(persona, subject);
     const origin = { kind: "email" as const, label: `Email from ${email.from.name || email.from.address}`, url: null };
-    // Work ("Fix the login bug in web") becomes a task in the queue; the result is emailed back when it's done.
-    const work = workRequest(picked.agent.id, `${picked.text || subject}\n${request}`.trim());
-    if (work) {
+    // TOT decides how to run it: work ("Fix the login bug in web") becomes tasks; the result is emailed back.
+    const asked = `${picked.text || subject}\n${request}`.trim();
+    const decision = await dispatcher.decide({ agentId: picked.agent.id, text: asked, attachments: 0, mode: "auto", running: [], recent: [] });
+    if (decision.mode === "spawn") {
       const earlier = mail.thread(personaId, email.threadId).filter((e) => e.id !== email.id && e.date <= email.date);
-      const task = tasks.create({
-        agentId: picked.agent.id,
-        title: (picked.text || subject).slice(0, 120) || work.title,
-        goal: `${request || subject}${earlier.length ? `\n\nThe email thread it came from:\n${transcript(earlier).slice(-6000)}` : ""}`,
-        repo: work.repo,
-        origin,
-      });
+      const context = earlier.length ? `\n\nThe email thread it came from:\n${transcript(earlier).slice(-6000)}` : "";
+      let target: string;
+      let ack: string;
+      if (decision.sessions.length === 1) {
+        const only = decision.sessions[0]!;
+        const task = tasks.create({
+          agentId: picked.agent.id,
+          ...only,
+          title: (picked.text || subject).slice(0, 120) || only.title,
+          goal: `${request || subject}${context}`,
+          origin,
+        });
+        target = task.id;
+        ack = `I've started on this as a task: “${task.title}”. I'll reply in this thread with the result when it's done.`;
+      } else {
+        const chat = conversations.create({ agentId: picked.agent.id, modelId: picked.agent.modelId, title: (picked.text || subject).slice(0, 120) || "Emailed task", origin });
+        appEvents.publish({ type: "conversation", conversation: toPublicConversation(chat) });
+        const started = spawnMany(chat.id, decision.sessions.map((s) => ({ ...s, goal: `${s.goal}${context}` })), {
+          then: decision.then,
+          cards: { kind: "message", text: spawnedText(decision.sessions.length, decision.then === "synthesize"), userText: asked },
+        });
+        target = chat.id;
+        ack = `I've started ${started.length} tasks on this (${started.map((task) => `“${task.title}”`).join(", ")}). I'll reply in this thread with ${decision.then === "synthesize" ? "the combined answer" : "the results"}.`;
+      }
       db.prepare(`INSERT INTO mail_threads (persona_id, thread_id, conversation_id, sender, seen_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`).run(
         personaId,
         email.threadId,
-        task.id,
+        target,
         email.from.address,
         email.date,
         Date.now(),
       );
-      mail.setConversation(email.id, task.id);
-      await mailboxes.reply(personaId, email, `I've started on this as a task: “${task.title}”. I'll reply in this thread with the result when it's done.`);
+      mail.setConversation(email.id, target);
+      await mailboxes.reply(personaId, email, ack);
       return;
     }
     const conversation = conversations.create({

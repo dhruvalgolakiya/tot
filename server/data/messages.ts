@@ -1,14 +1,15 @@
 import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, Usage } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 
-/** Extras kept in the meta column (module 01): how a user message was sent. */
-type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto">;
+/** Extras kept in the meta column: how a user message was sent (module 01) and handled (module 02). */
+type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "dispatch">;
 
 function metaOf(message: Message): string | null {
   const meta: MessageMeta = {
     ...(message.steered ? { steered: true } : {}),
     ...(message.steeredInto ? { steeredInto: message.steeredInto } : {}),
     ...(message.auto ? { auto: true } : {}),
+    ...(message.dispatch ? { dispatch: message.dispatch } : {}),
   };
   return Object.keys(meta).length ? JSON.stringify(meta) : null;
 }
@@ -71,6 +72,12 @@ export const messages = {
       message.createdAt,
     );
     index(message);
+  },
+
+  /** Records how TOT handled a user message (its dispatch decision), once that's known. */
+  setDispatch(id: string, dispatch: Message["dispatch"]): void {
+    const message = messages.get(id);
+    if (message) db.prepare(`UPDATE messages SET meta = ? WHERE id = ?`).run(metaOf({ ...message, dispatch }), id);
   },
 
   get(id: string): Message | null {

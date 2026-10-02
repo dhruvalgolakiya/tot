@@ -68,6 +68,10 @@ export function toolTitle(name: string, input: unknown): string {
       return args.url ? `Read ${clip(args.url, 80)}` : "Read a web page";
     case "task_start":
       return args.title ? `Started task “${clip(args.title, 60)}”` : "Started a task";
+    case "task_spawn_many":
+      return Array.isArray(args.sessions) ? `Started ${args.sessions.length} tasks` : "Started tasks";
+    case "handoff_write":
+      return "Wrote a handoff";
     case "task_list":
       return "Checked on its tasks";
     case "task_status":

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse } from "../../shared/types.ts";
+import type { Dispatch, Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse, Tier } from "../../shared/types.ts";
 import { appEvents } from "../app-events.ts";
 import { apps } from "../apps.ts";
 import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.ts";
@@ -79,6 +79,12 @@ export interface TurnOptions {
   maxSteps?: number;
   /** TOT wrote the user message itself to keep a task going (shown as a quiet divider). */
   auto?: boolean;
+  /** Auto only: the model tier (a task's role, a dispatch decision); see orchestration/tiers.ts. */
+  tier?: Tier;
+  /** Auto only: the provider to run on when it can (a reviewer on the other provider, a switch after a limit). */
+  prefer?: ProviderId | null;
+  /** How TOT decided to handle the message, kept on it for the UI. */
+  dispatch?: Dispatch;
 }
 
 export async function sendMessage(
@@ -102,7 +108,14 @@ export async function sendMessage(
   const statuses = await providerStatuses();
   const routingText = text || attachments.map((file) => file.name).join(", ");
   const complexity = options.heavy ? ({ complex: true, why: options.heavy } as const) : undefined;
-  const result = resolveRoute(modelId, routingText, { thinkHarder: request.thinkHarder, statuses, limited: limits.active(), complexity });
+  const result = resolveRoute(modelId, routingText, {
+    thinkHarder: request.thinkHarder,
+    statuses,
+    limited: limits.active(),
+    complexity,
+    tier: options.tier,
+    prefer: options.prefer,
+  });
   if (!result.ok) throw new HttpError(400, result.error);
   const route = result.route;
 
@@ -118,6 +131,7 @@ export async function sendMessage(
     ],
     status: "complete",
     ...(options.auto ? { auto: true } : {}),
+    ...(options.dispatch ? { dispatch: options.dispatch } : {}),
     createdAt: now,
   };
   const assistant: Message = {
@@ -157,6 +171,7 @@ export async function sendMessage(
     autoTitle: isFirstTurn,
     auto: parseModelId(modelId) === "auto",
     complexity,
+    tier: options.tier,
     thinkHarder: Boolean(request.thinkHarder),
     freshSession: Boolean(options.freshSession),
     maxSteps: options.maxSteps,
@@ -187,6 +202,8 @@ interface TurnContext {
   auto: boolean;
   /** Set when the caller marked the turn as heavy work; a fallback route keeps it. */
   complexity?: Complexity;
+  /** The tier asked for, which a fallback route keeps too. */
+  tier?: Tier;
   thinkHarder: boolean;
   freshSession: boolean;
   maxSteps?: number;
@@ -286,6 +303,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
               statuses: await providerStatuses(),
               limited: limits.active(),
               complexity: ctx.complexity,
+              tier: ctx.tier,
             })
           : null;
         if (!fallback?.ok || fallback.route.provider === route.provider) throw err;

@@ -25,7 +25,7 @@ const { settings } = await import("./data/settings.ts");
 const { db } = await import("./db.ts");
 const { slack } = await import("./slack.ts");
 const { createApp } = await import("./app.ts");
-const { workRequest } = await import("./tasks/intake.ts");
+const { dispatcher, ruleDecision } = await import("./orchestration/dispatch.ts");
 const { taskNotifications } = await import("./tasks/notify.ts");
 const { childResultsNote, continuationPreamble } = await import("./tasks/prompt.ts");
 const { taskQueue } = await import("./tasks/queue.ts");
@@ -135,6 +135,8 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
   return { runId: run.id, userMessage: user, conversation: toPublicConversation(conversations.get(conversationId)!) };
 }
 runLoop.useSender(fakeSend);
+// The dispatcher's classifier is module 02's to test; here the rules decide, or it's answered inline.
+dispatcher.useClassifier(async () => null);
 
 // --- Fake notifiers ------------------------------------------------------------
 const notices: { via: string; id: string; text: string }[] = [];
@@ -281,7 +283,12 @@ await chatClient.close();
 // Inside a task: the task tools, not the chat ones.
 const { client: taskClient, call: taskCall } = await mcp(linearId);
 const taskTools = (await taskClient.listTools()).tools.map((t) => t.name);
-check("task sees task_update/task_finish only", taskTools.includes("task_update") && taskTools.includes("task_finish") && !taskTools.includes("task_start"), taskTools.join(","));
+// A chat's task is one level down, so it may start tasks of its own too (module 02).
+check(
+  "task sees its own tools",
+  ["task_update", "task_finish", "handoff_write", "task_start", "task_spawn_many"].every((name) => taskTools.includes(name)),
+  taskTools.join(","),
+);
 r = await taskCall("task_finish", { outcome: "done", summary: "again" });
 check("finishing twice is refused", r.isError, r.text);
 await taskClient.close();
@@ -628,10 +635,16 @@ await intakeComputer.backend.exec(
   { timeoutMs: 30_000 },
 );
 brains.create({ name: "tot", kind: "repo", source: "~/repos/tot", agentId: intakeAgent.id });
-check("intake: work on a known repo", workRequest(intakeAgent.id, "fix the flaky test in tot")?.repo === "~/repos/tot");
-check("intake: a job without a repo", workRequest(intakeAgent.id, "Research these 5 vendors and write a comparison")?.repo === undefined && workRequest(intakeAgent.id, "research these 5 vendors") !== null);
-check("intake: questions stay chats", workRequest(intakeAgent.id, "what's the weather in Paris?") === null && workRequest(intakeAgent.id, "add a footer") === null);
-check("intake: GitHub URLs count", workRequest(intakeAgent.id, "update the readme in https://github.com/acme/site.")?.repo === "https://github.com/acme/site");
+// Which Slack and email requests become tasks: the dispatcher's rules (module 02 replaced 01's keyword rule).
+const ruled = (text: string) => ruleDecision({ agentId: intakeAgent.id, text, attachments: 0, mode: "auto", running: [], recent: [] });
+const firstRepo = (text: string) => {
+  const decision = ruled(text);
+  return decision?.mode === "spawn" ? (decision.sessions[0]?.repo ?? "none") : null;
+};
+check("intake: work on a known repo", firstRepo("fix the flaky test in tot") === "~/repos/tot");
+check("intake: a job without a repo", firstRepo("Research these 5 vendors and write a comparison") === "none");
+check("intake: questions stay chats", ruled("what's the weather in Paris?")?.mode === "inline" && ruled("add a footer")?.mode !== "spawn");
+check("intake: GitHub URLs count", firstRepo("update the readme in https://github.com/acme/site.") === "https://github.com/acme/site");
 
 // Slack end to end: "@TOT fix the flaky test in tot" → a queued coding task → the result in the thread.
 const posted: { channel: string; thread_ts?: string; blocks?: any[] }[] = [];

@@ -13,6 +13,9 @@ import { emailTasks } from "./mail/tasks.ts";
 import { isLoopbackBind, lanUrls } from "./net.ts";
 import { tokenProblem } from "./session.ts";
 import { slack } from "./slack.ts";
+import { fanIn } from "./orchestration/fanin.ts";
+import { taskFailover } from "./orchestration/failover.ts";
+import { handoffs } from "./orchestration/handoff.ts";
 import { taskNotifications } from "./tasks/notify.ts";
 import { tasks } from "./tasks/tasks.ts";
 
@@ -46,6 +49,9 @@ mailboxes.resume();
 wikiKeeper.start();
 tasks.start();
 taskNotifications.start();
+fanIn.start();
+taskFailover.start();
+handoffs.start();
 
 let shuttingDown = false;
 async function shutdown(signal: string) {

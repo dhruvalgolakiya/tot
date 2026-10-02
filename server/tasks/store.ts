@@ -1,7 +1,7 @@
 import type { Conversation, TaskInfo, TaskStatus } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
-import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
+import { conversations, ORCHESTRATION_DEFAULTS, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 
 /**
  * A task's state lives in its conversation (the `task` JSON), so everything needed to carry
@@ -54,6 +54,7 @@ export function newTaskInfo(goal: string, repo: TaskInfo["repo"]): TaskInfo {
     summary: null,
     turns: 0,
     usage: { inputTokens: 0, outputTokens: 0 },
+    ...ORCHESTRATION_DEFAULTS,
   };
 }
 
@@ -97,6 +98,8 @@ export const taskStore = {
       ...(FINISHED.has(to) ? { finishedAt: now } : {}),
       ...(to !== "queued" ? { queuePosition: null } : {}),
       ...(to !== "needs-input" && !("question" in extra) ? { question: null } : {}),
+      // Leaving a pause by any route cancels its timed resume (module 02).
+      ...(to !== "paused" && !("resumeAt" in extra) ? { resumeAt: null } : {}),
     };
     const updated = taskStore.patch(id, next, true);
     if (updated && from !== to) for (const listener of listeners) listener(updated, from);

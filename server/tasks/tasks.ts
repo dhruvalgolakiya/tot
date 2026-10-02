@@ -4,12 +4,17 @@ import type {
   ConvertToTaskRequest,
   Message,
   MessagePart,
+  ProviderId,
+  Role,
   SendMessageRequest,
   SendMessageResponse,
   StartTaskRequest,
+  TaskBrief,
   TaskChanges,
   TaskInfo,
   TaskPatch,
+  TaskResult,
+  Tier,
 } from "../../shared/types.ts";
 import { validateRepoSource } from "../agent/learn-repo.ts";
 import { HttpError } from "../agent/orchestrator.ts";
@@ -20,6 +25,9 @@ import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { messages } from "../data/messages.ts";
 import { settings } from "../data/settings.ts";
+import { checkSpawn, childDepth } from "../orchestration/budget.ts";
+import { otherProvider, ROLE_NAMES, ROLES } from "../orchestration/roles.ts";
+import { roleTier, TIERS } from "../orchestration/tiers.ts";
 import { taskQueue } from "./queue.ts";
 import { runLoop } from "./run-loop.ts";
 import { steer } from "./steer.ts";
@@ -80,6 +88,28 @@ export interface CreateTaskInput extends StartTaskRequest {
   agentId: string;
   parentId?: string | null;
   origin?: ConversationOrigin;
+  /** Orchestration: tasks spawned together, what the parent does when they've all finished, and the brief. */
+  group?: string | null;
+  then?: "synthesize" | null;
+  brief?: TaskBrief | null;
+}
+
+function cleanRole(value: unknown): Role | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (!ROLE_NAMES.includes(value as Role)) throw new HttpError(400, `Unknown role "${value}". Roles: ${ROLE_NAMES.join(", ")}.`);
+  return value as Role;
+}
+
+function cleanTier(value: unknown): Tier | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (!TIERS.includes(value as Tier)) throw new HttpError(400, `Unknown tier "${value}". Tiers: ${TIERS.join(", ")}.`);
+  return value as Tier;
+}
+
+function cleanProvider(value: unknown): ProviderId | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (value !== "claude" && value !== "chatgpt") throw new HttpError(400, `Unknown provider "${value}".`);
+  return value;
 }
 
 function publishConversation(id: string, touch = false): void {
@@ -87,26 +117,30 @@ function publishConversation(id: string, touch = false): void {
   if (record) appEvents.publish({ type: "conversation", conversation: toPublicConversation(record) });
 }
 
-/** Adds a task's card to the chat that started it: into the agent's reply as it runs, or as a message of its own. */
-function showCard(parentId: string, taskId: string, userText?: string): void {
-  const part: MessagePart = { type: "task", id: `t_${randomUUID().slice(0, 12)}`, taskId };
+/**
+ * Adds tasks' cards to the chat that started them: into the agent's reply while it's being
+ * written, or as a message of their own (after the user's request, when they typed it).
+ */
+export function showCards(parentId: string, taskIds: string[], opts: { userText?: string; text?: string } = {}): void {
+  const parts: MessagePart[] = taskIds.map((taskId) => ({ type: "task", id: `t_${randomUUID().slice(0, 12)}`, taskId }));
   const run = runRegistry.activeFor(parentId);
-  if (!userText && run?.addPart) {
-    run.addPart(part);
+  if (!opts.userText && !opts.text && run?.addPart) {
+    for (const part of parts) run.addPart(part);
     return;
   }
   const now = Date.now();
-  if (userText) {
+  if (opts.userText) {
     messages.insert({
       id: randomUUID(),
       conversationId: parentId,
       role: "user",
-      parts: [{ type: "text", id: randomUUID(), text: userText }],
+      parts: [{ type: "text", id: randomUUID(), text: opts.userText }],
       status: "complete",
       createdAt: now,
     });
   }
-  messages.insert({ id: randomUUID(), conversationId: parentId, role: "assistant", parts: [part], status: "complete", createdAt: now + 1 });
+  const text: MessagePart[] = opts.text ? [{ type: "text", id: randomUUID(), text: opts.text }] : [];
+  messages.insert({ id: randomUUID(), conversationId: parentId, role: "assistant", parts: [...text, ...parts], status: "complete", createdAt: now + 1 });
   publishConversation(parentId, true);
 }
 
@@ -135,14 +169,27 @@ function create(input: CreateTaskInput): TaskRecord {
   const goal = cleanGoal(input.goal);
   const title = cleanTitle(input.title) ?? taskTitle(goal);
   const source = cleanRepo(input.repo);
+  const parent = input.parentId ? conversations.get(input.parentId) : null;
+  const role = cleanRole(input.role);
+  // A reviewer runs on the other provider from the session whose work it reviews.
+  const provider = cleanProvider(input.provider) ?? (role && ROLES[role].otherProvider && parent?.provider ? otherProvider(parent.provider) : null);
   const record = conversations.create({
     agentId: agent.id,
     modelId: cleanModel(input.modelId) ?? agent.modelId,
     title,
     origin: input.origin,
     kind: "task",
-    parentId: input.parentId ?? null,
-    task: newTaskInfo(goal, source ? planRepo(source, title, input.baseBranch) : null),
+    parentId: parent?.id ?? null,
+    task: {
+      ...newTaskInfo(goal, source ? planRepo(source, title, input.baseBranch) : null),
+      role,
+      tier: cleanTier(input.tier) ?? (role ? roleTier(role) : null),
+      provider,
+      depth: parent ? childDepth(parent) : 1,
+      group: input.group ?? null,
+      then: input.then ?? null,
+      brief: input.brief ?? null,
+    },
   });
   const task = taskStore.get(record.id)!;
   taskStore.publish(task);
@@ -155,17 +202,18 @@ let unsubscribe: (() => void) | null = null;
 
 export const tasks = {
   create,
+  showCards,
 
   /**
    * A task started from a chat: by its agent (task_start; the card goes into the reply being
    * written) or by the user ("Run as task"; their request and the card are added to the chat).
    */
-  startFromChat(parentId: string, request: StartTaskRequest, by: "agent" | "user"): TaskRecord {
+  startFromChat(parentId: string, request: StartTaskRequest & Pick<CreateTaskInput, "brief">, by: "agent" | "user"): TaskRecord {
     const parent = conversations.get(parentId);
     if (!parent) throw new HttpError(404, "Chat not found.");
-    if (parent.kind === "task") throw new HttpError(400, "A task can't start tasks of its own yet.");
+    checkSpawn(parent, 1);
     const task = create({ ...request, agentId: parent.agentId, parentId, modelId: request.modelId ?? parent.modelId });
-    showCard(parentId, task.id, by === "user" ? request.goal.trim() : undefined);
+    showCards(parentId, [task.id], by === "user" ? { userText: request.goal.trim() } : {});
     return task;
   },
 
@@ -265,11 +313,12 @@ export const tasks = {
     return taskStore.get(taskId)!;
   },
 
-  /** The agent's task_finish: the result, reported back to whoever asked. */
-  finish(taskId: string, outcome: "done" | "failed", summary: string): TaskRecord {
+  /** The agent's task_finish: the result (with its structured parts, when given), reported back to whoever asked. */
+  finish(taskId: string, outcome: "done" | "failed", summary: string, result?: TaskResult): TaskRecord {
     const task = taskStore.require(taskId);
     const working = task.task.status === "running" || task.task.status === "needs-input";
-    if (!working || !taskStore.transition(taskId, outcome, { summary: summary.trim().slice(0, 20_000) || null, progress: null })) {
+    const extra: Partial<TaskInfo> = { summary: summary.trim().slice(0, 20_000) || null, progress: null, ...(result ? { result } : {}) };
+    if (!working || !taskStore.transition(taskId, outcome, extra)) {
       throw new HttpError(409, `The task is ${task.task.status}; it can't be finished now.`);
     }
     return taskStore.get(taskId)!;
@@ -294,7 +343,7 @@ export const tasks = {
     if (!taskStore.transition(taskId, "running")) throw new HttpError(409, `A ${status} task can't take messages.`);
     let started: SendMessageResponse;
     try {
-      started = await runLoop.send(taskId, request, { heavy: task.task.repo ? "coding task" : "task" });
+      started = await runLoop.send(taskId, request, runLoop.turnOptions(task));
     } catch (err) {
       taskStore.transition(taskId, "failed", { summary: err instanceof Error ? err.message : String(err) });
       throw err;

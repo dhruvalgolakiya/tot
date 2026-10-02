@@ -36,6 +36,8 @@ function words(task: TaskRecord): { headline: string; body: string } {
 }
 
 async function notify(task: TaskRecord): Promise<void> {
+  // Tasks whose results get combined into one answer don't each post their own (the combined answer goes out instead).
+  if (task.task.then === "synthesize" && task.task.status !== "needs-input") return;
   const { headline, body } = words(task);
   const markdown = `*${headline}*${body ? `\n\n${body}` : ""}`;
   const text = `${headline}.${body ? `\n\n${body}` : ""}`;
@@ -59,6 +61,11 @@ export const taskNotifications = {
   stop(): void {
     unsubscribe?.();
     unsubscribe = null;
+  },
+
+  /** Sends a reply TOT wrote on its own (a combined answer) to the Slack or email thread the chat came from, if any. */
+  async deliver(conversationId: string, markdown: string): Promise<boolean> {
+    return (await notifiers.slackThread(conversationId, markdown)) || (await notifiers.emailThread(conversationId, markdown));
   },
 
   /** Tests: fake Slack and email. */

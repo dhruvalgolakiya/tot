@@ -71,6 +71,11 @@ export const limits = {
     return entry.message;
   },
 
+  /** When the provider's cooldown ends; undefined when it isn't limited. */
+  until(provider: ProviderId): number | undefined {
+    return limits.message(provider) === undefined ? undefined : limited.get(provider)?.until;
+  },
+
   active(): Set<ProviderId> {
     return new Set([...limited.keys()].filter((provider) => limits.message(provider) !== undefined));
   },

@@ -326,6 +326,8 @@ export interface Message {
   steeredInto?: { messageId: string; afterPartId: string | null };
   /** Written by TOT to keep a task going, e.g. "Continue the task"; shown as a quiet divider rather than a bubble. */
   auto?: boolean;
+  /** How TOT decided to handle this user message (module 02): answered here, sent to a task, or spawned tasks. */
+  dispatch?: Dispatch;
   createdAt: number;
 }
 
@@ -928,10 +930,13 @@ export interface Settings {
     useConnectedApps: boolean;
   };
   tasks: TaskSettings;
+  /** Model tiers (module 02). */
+  models: ModelTierSettings;
 }
 
 /** PATCH /api/settings body. Secrets are write-only and never returned. */
-export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "claude" | "chatgpt" | "tasks">> & {
+export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "claude" | "chatgpt" | "tasks" | "models">> & {
+  models?: Partial<ModelTierSettings>;
   computer?: Partial<Omit<Settings["computer"], "boatApiKeySet">>;
   memory?: Partial<Settings["memory"]>;
   claude?: Partial<Omit<Settings["claude"], "apiKeySet">>;
@@ -970,7 +975,10 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // DELETE /api/conversations/:id               -> { ok: true }
 // POST   /api/conversations/:id/messages      SendMessageRequest -> SendMessageResponse
 //                                              (a task: steers it while it runs or waits in the queue — runId is then the
-//                                              turn running, or "" — else picks it up again with this message)
+//                                              turn running, or "" — else picks it up again with this message.
+//                                              A chat: TOT decides (module 02; `mode` overrides): answers here, or passes the
+//                                              message to a running task or starts tasks — runId "" — with the decision on
+//                                              userMessage.dispatch)
 // POST   /api/conversations/:id/computer/stop -> ComputerSummary | null   (alias: the chat's agent's computer)
 //
 // Tasks (a task is a conversation with kind "task"; see TaskInfo)
@@ -984,6 +992,8 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/tasks/:id/stop                  -> Conversation  (the worktree and branch are kept)
 // POST   /api/tasks/:id/run-now               -> Conversation  (front of the queue; starts now if a slot is free)
 // POST   /api/tasks/:id/to-chat               -> { ok: true }  (a stopped, paused or finished task becomes a plain chat again)
+// POST   /api/tasks/:id/continue-on           ContinueOnRequest -> Conversation  (module 02: writes a handoff, then carries on
+//                                              in a fresh session on that provider; a finished task does so on its next message)
 // PATCH  /api/tasks/:id                       TaskPatch -> Conversation  (rename, goal, position in the queue)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
 // DELETE /api/conversations/:id?deleteBranch=1  (a task: also removes its worktree; its branch only with deleteBranch, and only if never pushed)
@@ -1093,6 +1103,8 @@ export interface SendMessageRequest {
   modelId?: string;
   /** Force the strongest model + higher effort for this turn. */
   thinkHarder?: boolean;
+  /** Chats: let TOT decide (default), answer here, or run it as a task. */
+  mode?: DispatchMode;
 }
 
 export interface SendMessageResponse {
@@ -1152,6 +1164,26 @@ export interface TaskInfo {
   /** Turns sent so far (TOT sends more while the task makes progress). */
   turns: number;
   usage: { inputTokens: number; outputTokens: number };
+  // Orchestration (module 02).
+  /** What this session is for; null for a task started without one. */
+  role: Role | null;
+  /** The model tier its turns use under TOT Auto; null = the strongest (deep). */
+  tier: Tier | null;
+  /** The provider it should run on (a reviewer on the other provider, a switch after a usage limit); null = Auto decides. */
+  provider: ProviderId | null;
+  /** Levels below the user's chat: 1 for a chat's task (or a top-level task), 2 for a task's own task. */
+  depth: number;
+  /** Tasks spawned together share a group; with `then: "synthesize"` the parent gets one writer turn once they've all finished. */
+  group: string | null;
+  then: "synthesize" | null;
+  /** What it was asked to do, when another session started it. */
+  brief: TaskBrief | null;
+  /** Its structured result (from task_finish). */
+  result: TaskResult | null;
+  /** The latest handoff packet: what another session or provider needs to carry on without the transcript. */
+  handoff: HandoffPacket | null;
+  /** Paused for a usage limit: when it resumes by itself. */
+  resumeAt: number | null;
 }
 
 export interface TaskRepo {
@@ -1173,6 +1205,10 @@ export interface StartTaskRequest {
   /** Defaults to a short title made from the goal. */
   title?: string;
   goal: string;
+  /** Orchestration (module 02): what the session is for, its tier, and a provider to prefer. */
+  role?: Role;
+  tier?: Tier;
+  provider?: ProviderId;
   /** GitHub "owner/name", a git URL, or a folder on the agent's computer; omit for a task without code. */
   repo?: string;
   /** Defaults to the repo's default branch. */
@@ -1220,10 +1256,102 @@ export interface TaskChangedFile {
 export interface TaskSettings {
   /** Tasks one agent runs at once (one computer each). */
   perAgentLimit: number;
+  /** When a running task's provider hits its usage limit: write a handoff and carry on with the other one (else pause until the reset). */
+  switchProviders: boolean;
+  /** Tokens one mission (a chat's tasks and their tasks) may use in all; 0 = no limit. */
+  missionTokenBudget: number;
+  /** Tasks one chat or task may start. */
+  maxChildren: number;
   /** Tasks running at once across all agents. */
   globalLimit: number;
   /** After a restart, pick tasks that were running back up by themselves. */
   resumeInterrupted: boolean;
   /** Also DM this Slack person when a task finishes or needs input; null = don't. */
   notifySlackUserId: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Orchestration (roadmap module 02). TOT decides how to run each request:
+// answer inline, pass it to a running task, or spawn sessions — each with a
+// role and a model tier (fast / standard / deep) — and combine their results.
+// Work moves between sessions and providers through handoff packets, so a
+// task can carry on with the other provider when one hits its usage limit.
+// ---------------------------------------------------------------------------
+
+export type Tier = "fast" | "standard" | "deep";
+
+/**
+ * What a session is for: explorer (reads and answers where/how), planner (writes the plan),
+ * implementer (makes the change), tester (writes and runs tests), reviewer (reviews, on the
+ * other provider), researcher (searches and reads, non-coding), writer (combines results).
+ */
+export type Role = "explorer" | "planner" | "implementer" | "tester" | "reviewer" | "researcher" | "writer";
+
+export interface ModelTierSettings {
+  /** The model for each tier on each provider (provider-native ids); null = TOT's default for that tier. */
+  tiers: Record<Tier, Record<ProviderId, string | null>>;
+  /** The tier each role runs on by default. */
+  roles: Record<Role, Tier>;
+}
+
+/** What a child session gets instead of the parent's transcript. */
+export interface TaskBrief {
+  goal: string;
+  constraints: string[];
+  /** Brain pages, files and links worth reading first. */
+  context: string[];
+  /** What "done" means. */
+  done: string;
+}
+
+/** What a child session reports back, besides its summary. */
+export interface TaskResult {
+  summary: string;
+  findings: string[];
+  filesChanged: string[];
+  openQuestions: string[];
+  confidence: "low" | "medium" | "high";
+  sources: string[];
+}
+
+/** Everything another session or provider needs to carry on, without the transcript. */
+export interface HandoffPacket {
+  goal: string;
+  /** Concise and factual. */
+  doneSoFar: string[];
+  decisions: { decision: string; why: string }[];
+  plan: TaskPlanItem[];
+  files: { path: string; change: string }[];
+  repo?: { branch: string; headSha: string; worktree: string };
+  tests: { command: string; status: "pass" | "fail" | "not-run"; note?: string }[];
+  openQuestions: string[];
+  nextStep: string;
+  from: { provider: ProviderId; model: string };
+  createdAt: number;
+}
+
+export type DispatchMode = "auto" | "inline" | "task";
+
+export interface SpawnSession {
+  role: Role;
+  title: string;
+  goal: string;
+  tier: Tier;
+  provider?: ProviderId;
+  repo?: string;
+}
+
+/** TOT's decision for one user message, kept on it and shown as a chip ("Auto → 2 tasks"). */
+export type Dispatch = (
+  | { mode: "inline"; tier: Tier }
+  | { mode: "continue-task"; taskId: string }
+  | { mode: "spawn"; sessions: SpawnSession[]; then?: "synthesize"; taskIds: string[] }
+) & {
+  reason: string;
+  /** A rule, the classifier, or the user's own choice in the composer. */
+  by: "rule" | "classifier" | "user";
+};
+
+export interface ContinueOnRequest {
+  provider: ProviderId;
 }

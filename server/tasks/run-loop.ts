@@ -1,10 +1,14 @@
 import { setImmediate as tick, setTimeout as sleep } from "node:timers/promises";
-import type { Message, MessageStatus, RunEvent, SendMessageRequest } from "../../shared/types.ts";
+import type { Message, MessageStatus, ProviderId, RunEvent, SendMessageRequest } from "../../shared/types.ts";
+import { limits } from "../agent/limits.ts";
 import { HttpError, sendMessage, type TurnOptions } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
+import { conversations } from "../data/conversations.ts";
 import { messageText, messages } from "../data/messages.ts";
-import { continuationPreamble } from "./prompt.ts";
-import { taskStore, type TaskRecord } from "./store.ts";
+import { overBudget } from "../orchestration/budget.ts";
+import { renderBrief } from "../orchestration/roles.ts";
+import { continuationPreamble, handoffPreamble } from "./prompt.ts";
+import { ACTIVE, taskStore, type TaskRecord } from "./store.ts";
 import { worktrees } from "./worktree.ts";
 
 /**
@@ -40,7 +44,11 @@ const loops = new Map<string, { agentId: string; done: Promise<void> }>();
 const notes = new Map<string, string[]>();
 /** Tasks resumed after a restart, whose next turn should say so. */
 const restarted = new Set<string>();
+/** Tasks whose next turn starts a fresh session from their handoff packet, and why (a provider switch). */
+const handOffs = new Map<string, string>();
 const idleListeners = new Set<() => void>();
+/** What to do when a task's provider hits its usage limit mid-run (orchestration/failover.ts): switch, or pause. */
+let onLimit: ((taskId: string, provider: ProviderId) => Promise<"switched" | "paused">) | null = null;
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -61,6 +69,24 @@ async function waitForIdle(conversationId: string): Promise<void> {
   for (let run = runRegistry.activeFor(conversationId); run && Date.now() < until; run = runRegistry.activeFor(conversationId)) {
     await Promise.race([runEnd(run.id), sleep(until - Date.now())]);
   }
+}
+
+const workingChildren = (taskId: string) => conversations.tasks({ parentId: taskId }).filter((child) => child.task && ACTIVE.has(child.task.status));
+
+/** A task that started tasks of its own waits for them before its next turn, which gets their results. */
+async function waitForChildren(taskId: string): Promise<void> {
+  if (!workingChildren(taskId).length) return;
+  await new Promise<void>((resolve) => {
+    const check = () => {
+      const self = taskStore.get(taskId);
+      if (shuttingDown || !self || self.task.status !== "running" || !workingChildren(taskId).length) {
+        stop();
+        resolve();
+      }
+    };
+    const stop = taskStore.onChange(check);
+    check();
+  });
 }
 
 interface Snapshot {
@@ -87,30 +113,45 @@ function nextTurn(task: TaskRecord): { body: SendMessageRequest; options: TurnOp
   const pending = notes.get(task.id) ?? [];
   notes.delete(task.id);
   const wasRestarted = restarted.delete(task.id);
-  // Task turns are real work: TOT Auto routes them to the strongest model.
-  const options: TurnOptions = { keepTitle: true, heavy: task.task.repo ? "coding task" : "task", maxSteps: STEP_LIMIT };
-  // A new task (nothing in it yet but notes the user sent while it waited) starts with its goal.
+  const options = turnOptions(task);
+  // A new task (nothing in it yet but notes the user sent while it waited) starts with its brief, or its goal.
   if (history.every((m) => m.steered)) {
     const preamble = pending.map((note) => `[The user added before you started: “${note}”]`).join("\n");
-    return { body: { text: task.task.goal }, options: { ...options, ...(preamble ? { preamble } : {}) } };
+    return { body: { text: task.task.brief ? renderBrief(task.task.brief) : task.task.goal }, options: { ...options, ...(preamble ? { preamble } : {}) } };
   }
   const lastReply = history.findLast((m) => m.role === "assistant");
-  const fresh = (lastReply?.usage?.inputTokens ?? 0) > FRESH_SESSION_TOKENS;
+  // After a provider switch the new session starts from the handoff packet instead of the transcript.
+  const handOff = handOffs.get(task.id);
+  handOffs.delete(task.id);
+  const packet = handOff ? task.task.handoff : null;
+  const fresh = Boolean(packet) || (lastReply?.usage?.inputTokens ?? 0) > FRESH_SESSION_TOKENS;
+  const continuation = continuationPreamble(task.task, {
+    turn: task.task.turns + 1,
+    notes: pending,
+    restarted: wasRestarted,
+    fresh: fresh && !packet,
+    lastReply: lastReply ? messageText(lastReply) : "",
+    firstTurnOfConvertedChat: task.task.turns === 0,
+  });
   return {
     body: { text: pending.length ? "Continue the task, with my note in mind." : "Continue the task." },
     options: {
       ...options,
       auto: true,
       freshSession: fresh,
-      preamble: continuationPreamble(task.task, {
-        turn: task.task.turns + 1,
-        notes: pending,
-        restarted: wasRestarted,
-        fresh,
-        lastReply: lastReply ? messageText(lastReply) : "",
-        firstTurnOfConvertedChat: task.task.turns === 0,
-      }),
+      preamble: packet ? `${handoffPreamble(packet, `${handOff}.`)}\n${continuation}` : continuation,
     },
+  };
+}
+
+/** Task turns are real work: under TOT Auto they run on the task's tier (deep unless its role says otherwise) and preferred provider. */
+function turnOptions(task: TaskRecord): TurnOptions {
+  return {
+    keepTitle: true,
+    heavy: task.task.role ?? (task.task.repo ? "coding task" : "task"),
+    tier: task.task.tier ?? "deep",
+    prefer: task.task.provider,
+    maxSteps: STEP_LIMIT,
   };
 }
 
@@ -157,8 +198,15 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
       fail(taskId, `Stopped after ${MAX_TURNS} turns without finishing. Reply to keep it going.`);
       return;
     }
+    const spent = overBudget(task);
+    if (spent) {
+      taskStore.transition(taskId, "paused", {
+        progress: `Paused: this work used its token budget (${Math.round(spent.used / 1000)}k tokens). Raise it in Settings → Tasks, then resume.`,
+      });
+      return;
+    }
     const before = snapshot(task);
-    const turn = request ? { body: request, options: { keepTitle: true, heavy: task.task.repo ? "coding task" : "task", maxSteps: STEP_LIMIT } } : nextTurn(task);
+    const turn = request ? { body: request, options: turnOptions(task) } : nextTurn(task);
     let runId: string;
     try {
       ({ runId } = await send(taskId, turn.body, turn.options));
@@ -192,6 +240,13 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
       return;
     }
     if (status === "error") {
+      // Its provider hit its usage limit: carry on with the other one, or wait for the reset.
+      const provider = end?.message.provider;
+      if (provider && onLimit && limits.active().has(provider)) {
+        if ((await onLimit(taskId, provider)) === "paused") return;
+        stalls = 0;
+        continue;
+      }
       stalls++;
       if (stalls >= MAX_STALLS) {
         fail(taskId, `Stopped after repeated errors: ${end?.message.error ?? "the turn ended unexpectedly."}`);
@@ -204,6 +259,8 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
       fail(taskId, `Stalled: no progress in the last ${MAX_STALLS} turns, and the task wasn't finished. Reply to nudge it, or look at what it did.`);
       return;
     }
+    // Tasks it started work on their own; its next turn starts with their results.
+    await waitForChildren(taskId);
   }
 }
 
@@ -233,6 +290,9 @@ export const runLoop = {
     return send(taskId, request, { maxSteps: STEP_LIMIT, ...options });
   },
 
+  /** How a task's turns run: its tier, preferred provider and step cap. */
+  turnOptions,
+
   isRunning(taskId: string): boolean {
     return loops.has(taskId);
   },
@@ -261,6 +321,16 @@ export const runLoop = {
 
   markRestarted(taskId: string): void {
     restarted.add(taskId);
+  },
+
+  /** The task's next turn starts a fresh session from its handoff packet; `why` says what happened. */
+  handOff(taskId: string, why: string): void {
+    handOffs.set(taskId, why);
+  },
+
+  /** Set by failover: what to do when a task's provider hits its usage limit mid-run. */
+  onLimit(handler: typeof onLimit): void {
+    onLimit = handler;
   },
 
   /** Called whenever a loop ends, so the queue can start the next task. */
