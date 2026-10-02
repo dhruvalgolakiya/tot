@@ -66,8 +66,15 @@ export const MCP_TOKEN = randomBytes(24).toString("hex");
 // Secrets: write-only from the UI, stored in a 0600 file, env vars as fallback.
 // ---------------------------------------------------------------------------
 
-/** `mailPassword:<personaId>` is a persona's mailbox (app) password. */
-type SecretName = "boatApiKey" | "anthropicApiKey" | "githubToken" | "slackAppToken" | "slackBotToken" | `mailPassword:${string}`;
+/** `mailPassword:<personaId>` is a persona's mailbox (app) password; `personaGitHubToken:<personaId>` its GitHub token. */
+type SecretName =
+  | "boatApiKey"
+  | "anthropicApiKey"
+  | "githubToken"
+  | "slackAppToken"
+  | "slackBotToken"
+  | `mailPassword:${string}`
+  | `personaGitHubToken:${string}`;
 
 // No env fallback for the GitHub token: env vars reach the harness processes TOT spawns.
 const ENV_FALLBACK: Partial<Record<SecretName, string>> = {
@@ -87,6 +94,13 @@ function readSecrets(): Partial<Record<SecretName, string>> {
 export function getSecret(name: SecretName): string | undefined {
   const fallback = ENV_FALLBACK[name];
   return readSecrets()[name] || (fallback ? process.env[fallback] : undefined) || undefined;
+}
+
+/** Every saved secret whose name starts with `prefix`, e.g. all personas' GitHub tokens. */
+export function secretValues(prefix: string): string[] {
+  return Object.entries(readSecrets())
+    .filter(([name, value]) => name.startsWith(prefix) && value)
+    .map(([, value]) => value!);
 }
 
 export function setSecret(name: SecretName, value: string): void {

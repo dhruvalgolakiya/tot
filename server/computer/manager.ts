@@ -154,7 +154,7 @@ export const computerManager = {
       pending = bringUp(agentId)
         .then(async (active) => {
           try {
-            await syncGitHubLogin(active);
+            await syncGitHubLogin(agentId, active);
           } catch (err) {
             // The computer still works without GitHub; the agent finds out when git asks for a login.
             console.warn("[tot] GitHub login on the agent's computer failed:", errorText(err));

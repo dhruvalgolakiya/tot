@@ -13,6 +13,7 @@ import type {
   GitHubConnectRequest,
   LearnRepoRequest,
   MailboxConnectRequest,
+  PersonaGitHubConnectRequest,
   PersonaInput,
   PersonaPatch,
   PluginInput,
@@ -38,7 +39,7 @@ import { runRegistry } from "./agent/runs.ts";
 import { runRoutine } from "./agent/scheduler.ts";
 import { answerApproval } from "./agent/approvals.ts";
 import { learnRepo, validateRepoSource } from "./agent/learn-repo.ts";
-import { logoutAllComputers } from "./computer/github-login.ts";
+import { refreshGitHubLogins } from "./computer/github-login.ts";
 import { computerManager } from "./computer/manager.ts";
 import { screenshotFile } from "./computer/screens.ts";
 import { VERSION } from "./config.ts";
@@ -54,6 +55,7 @@ import { settings } from "./data/settings.ts";
 import { MAX_UPLOAD_BYTES, toAttachment, uploads } from "./data/uploads.ts";
 import { wiki, WikiError } from "./data/wiki.ts";
 import { mailboxes } from "./mail/mailbox.ts";
+import { personaGitHub } from "./persona-github.ts";
 
 export const api = new Hono();
 
@@ -151,10 +153,11 @@ api.patch("/agents/:id", async (c) => {
   if (problem) throw new HttpError(400, problem);
   const agent = found(agents.update(id, patch));
   appEvents.publish({ type: "agent", agent });
-  // Each persona lists the agents working as it.
+  // Each persona lists the agents working as it; the agent may now use another GitHub account.
   if (before.personaId !== agent.personaId) {
     appEvents.personaChanged(before.personaId);
     appEvents.personaChanged(agent.personaId);
+    void refreshGitHubLogins();
   }
   return c.json(agent);
 });
@@ -513,7 +516,7 @@ api.patch("/github", async (c) => {
 api.delete("/github", async (c) => {
   const status = await github.disconnect();
   // Take the token off agents' computers now rather than on their next use.
-  void logoutAllComputers();
+  void refreshGitHubLogins();
   return c.json(status);
 });
 
@@ -612,10 +615,15 @@ api.patch("/slack", async (c) => {
 api.delete("/slack", async (c) => c.json(await slack.disconnect()));
 
 // ---------------------------------------------------------------------------
-// Personas and their mailboxes (passwords never leave the server)
+// Personas, their mailboxes and GitHub accounts (passwords and tokens never leave the server)
 // ---------------------------------------------------------------------------
 
-api.get("/personas", (c) => c.json(personas.list()));
+api.get("/personas", (c) => {
+  const list = personas.list();
+  // A GitHub token found revoked shows up on the persona via a "persona" event.
+  for (const persona of list) if (persona.github) void personaGitHub.check(persona.id);
+  return c.json(list);
+});
 
 /** One persona per mailbox: two would both answer the same emailed tasks. */
 function addressFree(email: string, exceptId?: string): void {
@@ -660,7 +668,10 @@ api.patch("/personas/:id", async (c) => {
 api.delete("/personas/:id", async (c) => {
   const persona = found(personas.get(c.req.param("id")), "Persona not found.");
   await mailboxes.disconnect(persona.id);
+  personaGitHub.disconnect(persona.id);
   personas.delete(persona.id);
+  // Its agents go back to the user's GitHub connection, if any.
+  void refreshGitHubLogins();
   for (const agentId of persona.agentIds) appEvents.agentChanged(agentId);
   appEvents.publish({ type: "persona-deleted", personaId: persona.id });
   return c.json({ ok: true });
@@ -681,6 +692,31 @@ api.post("/personas/:id/mailbox/refresh", async (c) => {
   const persona = found(personas.get(c.req.param("id")), "Persona not found.");
   await mailboxes.refresh(persona.id);
   return c.json(personas.get(persona.id));
+});
+
+// Agents working as the persona switch accounts: their computers are updated now rather than on next use.
+api.put("/personas/:id/github", async (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  const { token } = await body<Partial<PersonaGitHubConnectRequest>>(c);
+  const updated = await personaGitHub.connect(persona.id, token);
+  void refreshGitHubLogins();
+  return c.json(updated);
+});
+
+api.patch("/personas/:id/github", async (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  const { allowWrites } = await body<{ allowWrites?: unknown }>(c);
+  if (typeof allowWrites !== "boolean") throw new HttpError(400, "Expected { allowWrites: true | false }.");
+  const updated = personaGitHub.setAllowWrites(persona.id, allowWrites);
+  void refreshGitHubLogins();
+  return c.json(updated);
+});
+
+api.delete("/personas/:id/github", (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  const updated = personaGitHub.disconnect(persona.id);
+  void refreshGitHubLogins();
+  return c.json(updated);
 });
 
 api.get("/personas/:id/mail", (c) => {

@@ -2,7 +2,8 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { ComputerKind } from "../../shared/types.ts";
 import { computers } from "../data/computers.ts";
-import { github, type GitHubIdentity } from "../github.ts";
+import type { GitHubIdentity } from "../github.ts";
+import { githubAccessFor, githubFingerprintFor } from "../persona-github.ts";
 import { boatBackend } from "./boat.ts";
 import { localBackend } from "./local.ts";
 import type { ComputerBackend } from "./types.ts";
@@ -10,14 +11,16 @@ import type { ComputerBackend } from "./types.ts";
 const backendFor = (kind: ComputerKind): ComputerBackend => (kind === "boat" ? boatBackend : localBackend);
 
 /**
- * Keeps each agent computer's GitHub login in step with the app's connection:
- * git (credential store) is logged in as the connected account so private repos
- * clone, and commits are attributed to it. While writes are off, gh stays logged
- * out and git pushes to GitHub are rewritten to an unreachable host — a
- * guardrail rather than a guarantee, since git's login could still write; the
- * GitHub tools themselves are read-only on GitHub's side. Runs before a computer
- * is used when the connection changed, the computer just started, or a while
- * has passed. The token is written as files, never placed in a command line.
+ * Keeps each agent computer's GitHub login in step with the account its agent
+ * uses (its persona's own, else the app's connection; see githubAccessFor):
+ * git (credential store) is logged in as that account so private repos clone,
+ * and commits are attributed to it (the persona step that runs next may make
+ * the persona the author). While writes are off, gh stays logged out and git
+ * pushes to GitHub are rewritten to an unreachable host — a guardrail rather
+ * than a guarantee, since git's login could still write; the GitHub tools
+ * themselves are read-only on GitHub's side. Runs before a computer is used
+ * when the account changed, the computer just started, or a while has passed.
+ * The token is written as files, never placed in a command line.
  */
 
 /** Pushes are rewritten to this unreachable host while writes are off, so `git push` fails with a hint. */
@@ -84,17 +87,16 @@ const LOGOUT_SCRIPT = [
   "true",
 ].join("; ");
 
-/** Brings one computer's GitHub login up to date; a no-op when nothing changed recently. */
-export async function syncGitHubLogin(computer: {
-  backend: ComputerBackend;
-  externalId: string;
-  event?: "created" | "resumed";
-}): Promise<void> {
-  const fingerprint = github.fingerprint();
+/** Brings one agent's computer's GitHub login up to date; a no-op when nothing changed recently. */
+export async function syncGitHubLogin(
+  agentId: string,
+  computer: { backend: ComputerBackend; externalId: string; event?: "created" | "resumed" },
+): Promise<void> {
+  const fingerprint = githubFingerprintFor(agentId);
   const last = synced.get(computer.externalId);
   if (!computer.event && last?.fingerprint === fingerprint && Date.now() - last.at < RESYNC_MS) return;
   const { backend, externalId } = computer;
-  const who = github.identity();
+  const who = githubAccessFor(agentId);
   // A computer that was never logged in has nothing to log out of.
   if (!who && !synced.has(externalId)) {
     const probe = await backend.exec(externalId, "test -f ~/.git-credentials || git config --global tot.githubLogin", { timeoutMs: 15_000 });
@@ -113,21 +115,26 @@ export async function syncGitHubLogin(computer: {
 }
 
 /**
- * After a disconnect, removes the token from every computer right away instead of on
- * next use: local workspaces directly on disk, running cloud computers over the network.
- * Stopped cloud computers are logged out when they next start.
+ * After a GitHub account changed (disconnected, connected or switched for a persona, writes
+ * toggled, an agent's persona changed), takes the old login off the affected computers right
+ * away instead of on next use: local workspaces lose it directly on disk (and log in again as the
+ * right account when next used), running cloud computers are brought up to date over the
+ * network. Stopped cloud computers catch up when they next start. Computers whose agent's
+ * account didn't change are left alone.
  */
-export async function logoutAllComputers(): Promise<void> {
+export async function refreshGitHubLogins(): Promise<void> {
   for (const record of computers.list()) {
+    if (record.externalId && synced.get(record.externalId)?.fingerprint === githubFingerprintFor(record.agentId)) continue;
     try {
       if (record.kind === "local" && record.workspacePath) {
         for (const file of [".git-credentials", ".config/gh/hosts.yml"]) rmSync(join(record.workspacePath, file), { force: true });
         if (record.externalId) synced.delete(record.externalId);
       } else if (record.externalId && record.state === "running") {
-        await syncGitHubLogin({ backend: backendFor(record.kind), externalId: record.externalId });
+        // Next use re-applies the persona's git author (persona-identity.ts) if this changed it.
+        await syncGitHubLogin(record.agentId, { backend: backendFor(record.kind), externalId: record.externalId });
       }
     } catch (err) {
-      console.warn("[tot] couldn't log a computer out of GitHub:", err instanceof Error ? err.message : err);
+      console.warn("[tot] couldn't update a computer's GitHub login:", err instanceof Error ? err.message : err);
     }
   }
 }

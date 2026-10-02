@@ -15,7 +15,7 @@ import { settings as settingsStore } from "../data/settings.ts";
 import { toAttachment, uploads, type UploadRecord } from "../data/uploads.ts";
 import { wiki } from "../data/wiki.ts";
 import { bus } from "../events.ts";
-import { github } from "../github.ts";
+import { githubAccessFor, personaGitHub } from "../persona-github.ts";
 import { prepareAttachments } from "./attachments.ts";
 import { makeElicitor } from "./approvals.ts";
 import { limits } from "./limits.ts";
@@ -26,6 +26,7 @@ import {
   githubStateLine,
   personaNote,
   transcriptPreamble,
+  type GitHubAccess,
   type PersonaAccess,
   type WorkspaceContext,
 } from "./prompts.ts";
@@ -219,7 +220,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         effort: route.effort,
         sessionId: resumable ? conversation.providerSessionId! : undefined,
         systemPrompt,
-        mcpServers: mcpServersFor(conversation.id, route.provider),
+        mcpServers: mcpServersFor(conversation, route.provider),
         workDir: paths.agentHome,
         signal,
         elicit,
@@ -299,15 +300,16 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
   const { conversation } = ctx;
   // Attached files: images for the model, small text inline, the rest onto the agent's computer.
   const prepared = await prepareAttachments(ctx.attachments, conversation.agentId);
-  // The system prompt is frozen per chat; if GitHub was connected or changed since, say so this turn.
-  const who = github.identity();
-  const access = who ? { login: who.login, allowWrites: who.allowWrites } : null;
+  // The system prompt is frozen per chat; if the agent's GitHub account was connected or changed since, say so this turn.
+  const access = promptGitHubAccess(conversation.agentId);
   const githubNote =
     conversation.systemPrompt && !conversation.systemPrompt.includes(githubStateLine(access))
       ? `[GitHub changed since this chat started; this replaces your earlier GitHub instructions:\n${githubSection(access, settingsStore.get().computer.mode !== "off")}]`
       : "";
   // Likewise for the persona the agent works as (added, changed or removed later).
   const persona = personas.forAgent(conversation.agentId);
+  // Notices a persona token GitHub no longer accepts (at most every few minutes), for the persona's settings.
+  if (persona?.github) void personaGitHub.check(persona.id);
   const personaAccess: PersonaAccess = persona
     ? { name: persona.name, email: persona.email, mailbox: persona.mailbox.state !== "not-connected" }
     : null;
@@ -337,11 +339,19 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
   return { text, images: prepared.images, systemPrompt };
 }
 
-function mcpServersFor(conversationId: string, provider: ProviderId): McpServerSpec[] {
+/** What an agent's prompt says about GitHub: the account it uses (and whose it is), and whether it may write. */
+export function promptGitHubAccess(agentId: string): GitHubAccess {
+  const account = githubAccessFor(agentId);
+  if (!account) return null;
+  const asPersona = Boolean(personas.idForAgent(agentId));
+  return { login: account.login, allowWrites: account.allowWrites, source: account.source, asPersona };
+}
+
+export function mcpServersFor(conversation: Pick<ConversationRecord, "id" | "agentId">, provider: ProviderId): McpServerSpec[] {
   const tot: McpServerSpec = {
     name: "tot",
     type: "http",
-    url: `${INTERNAL_BASE_URL}/mcp/${conversationId}`,
+    url: `${INTERNAL_BASE_URL}/mcp/${conversation.id}`,
     headers: { Authorization: `Bearer ${MCP_TOKEN}` },
   };
   const extra = plugins.enabledFor(provider).map((plugin): McpServerSpec =>
@@ -355,9 +365,9 @@ function mcpServersFor(conversationId: string, provider: ProviderId): McpServerS
           env: plugin.config.env,
         },
   );
-  // The connected GitHub account, through GitHub's own MCP server: read-only (enforced by GitHub)
-  // unless writes are allowed, and even then without tools that merge, delete or commit straight to a branch.
-  const who = github.identity();
+  // The agent's GitHub account (its persona's own, else the user's), through GitHub's own MCP server: read-only
+  // (enforced by GitHub) unless writes are allowed, and even then without tools that merge, delete or commit straight to a branch.
+  const who = githubAccessFor(conversation.agentId);
   const githubServer: McpServerSpec[] =
     who && !extra.some((spec) => spec.name.toLowerCase() === "github")
       ? [

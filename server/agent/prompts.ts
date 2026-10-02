@@ -35,12 +35,20 @@ The user's connected apps (e.g. Gmail, Calendar, Linear, Notion) are available t
 - Never copy secrets you see in app data into chats, files or the wiki.`;
 }
 
-export type GitHubAccess = { login: string; allowWrites: boolean } | null;
+/** The GitHub account an agent uses: the user's (the app-wide connection) or its persona's own. */
+export type GitHubAccess = {
+  login: string;
+  allowWrites: boolean;
+  source: "user" | "persona";
+  /** The agent works as a persona; with the user's account, its GitHub work still shows up as the user. */
+  asPersona?: boolean;
+} | null;
 
 /** One line naming the GitHub state a prompt was written for, so a later change can be noticed. */
 export function githubStateLine(github: GitHubAccess): string {
   if (!github) return "GitHub status: not connected.";
-  return `GitHub status: connected as @${github.login}, ${github.allowWrites ? "writes allowed" : "read-only"}.`;
+  const whose = github.source === "persona" ? " (your persona's own account)" : github.asPersona ? " (the user's account)" : "";
+  return `GitHub status: connected as @${github.login}${whose}, ${github.allowWrites ? "writes allowed" : "read-only"}.`;
 }
 
 export function githubSection(github: GitHubAccess, computerOn: boolean): string {
@@ -48,15 +56,23 @@ export function githubSection(github: GitHubAccess, computerOn: boolean): string
     return `# GitHub
 ${githubStateLine(null)} Public repos clone fine${computerOn ? "" : " (with the computer on)"}; for private repos, issues or pull requests, tell the user to connect GitHub in Settings → Connections.`;
   }
+  const whose =
+    github.source === "persona"
+      ? `You use the GitHub account @${github.login} (this persona's, not the user's), so your work on GitHub shows up as @${github.login}.`
+      : github.asPersona
+        ? "This is the user's own account, not your persona's: anything you do on GitHub (pushes, pull requests, comments) shows up as the user."
+        : "This is the user's own account.";
+  const writesSetting =
+    github.source === "persona" ? "this persona's GitHub settings (Settings → Personas)" : "Settings → Connections → GitHub";
   const rules = github.allowWrites
     ? `- Writing is allowed, within these rules (they protect the user's repos):
   - Work on a branch named \`tot/<short-topic>\`; commit in small steps with clear messages.
   - Push your branch and open a pull request (as a draft unless told otherwise) only when the user asked for that in this chat, or the task you were given is to deliver a PR (e.g. "fix issue #12 and open a PR").
   - Never push to the default branch, force-push, merge or close pull requests, delete branches, tags or repos, change repo settings, or post comments or reviews unless the user explicitly asked for that exact action.
   - After pushing, share the link to the branch or pull request.`
-    : `- You're read-only: read code, issues, pull requests and history freely, but don't push, open pull requests, comment or change anything on GitHub (git push is blocked on your computer). If the user wants that, tell them to turn on "Agents can push and open pull requests" in Settings → Connections → GitHub.`;
+    : `- You're read-only: read code, issues, pull requests and history freely, but don't push, open pull requests, comment or change anything on GitHub (git push is blocked on your computer). If the user wants that, tell them to turn on "Agents can push and open pull requests" in ${writesSetting}.`;
   return `# GitHub
-${githubStateLine(github)} This is the user's own account.
+${githubStateLine(github)} ${whose}
 - GitHub tools (from the "github" MCP server) read issues, pull requests, commits and files, and search code across their repos. Use them to understand a ticket before you start.${
     computerOn
       ? `

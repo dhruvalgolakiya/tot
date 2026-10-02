@@ -1,5 +1,4 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
@@ -12,13 +11,14 @@ import type {
   GitHubStatus,
 } from "../shared/types.ts";
 import { appEvents } from "./app-events.ts";
-import { GITHUB_API_URL, GITHUB_CLIENT_ID, GITHUB_WEB_URL, getSecret, setSecret } from "./config.ts";
+import { GITHUB_API_URL, GITHUB_CLIENT_ID, GITHUB_WEB_URL, getSecret, secretValues, setSecret } from "./config.ts";
 import { db, parseJson, type Row } from "./db.ts";
 
 /**
  * The app-wide GitHub connection. The token lives with TOT's other secrets
  * (never sent to the browser); the account's public profile and the writes
- * switch are kept in the settings table.
+ * switch are kept in the settings table. Personas' own accounts are in
+ * persona-github.ts, which also decides which account each agent uses.
  */
 
 const run = promisify(execFile);
@@ -121,8 +121,13 @@ async function cliLogin(): Promise<{ login: string } | null> {
   return value;
 }
 
-/** Checks a token with GitHub and returns the account it belongs to. */
-async function lookUp(token: string): Promise<{ profile: Omit<GitHubConnection, "source" | "connectedAt">; id: number }> {
+/**
+ * Checks a token with GitHub and returns the account it belongs to. `listsScopes`: GitHub listed the
+ * token's scopes (classic and OAuth tokens); fine-grained tokens have none, so their access can't be checked up front.
+ */
+export async function lookUpAccount(
+  token: string,
+): Promise<{ profile: Omit<GitHubConnection, "source" | "connectedAt">; id: number; listsScopes: boolean }> {
   let res: Response;
   try {
     res = await api("/user", token);
@@ -132,15 +137,26 @@ async function lookUp(token: string): Promise<{ profile: Omit<GitHubConnection, 
   if (res.status === 401) throw new GitHubError("GitHub didn't accept that token. Check it and try again.");
   if (!res.ok) throw new GitHubError(`GitHub answered ${res.status}. Try again in a moment.`);
   const user = (await res.json()) as { login: string; name: string | null; avatar_url: string; id: number };
-  const scopes = (res.headers.get("x-oauth-scopes") ?? "")
+  const header = res.headers.get("x-oauth-scopes");
+  const scopes = (header ?? "")
     .split(",")
     .map((scope) => scope.trim())
     .filter(Boolean);
-  return { profile: { login: user.login, name: user.name || null, avatarUrl: user.avatar_url, scopes }, id: user.id };
+  return { profile: { login: user.login, name: user.name || null, avatarUrl: user.avatar_url, scopes }, id: user.id, listsScopes: header !== null };
+}
+
+/** Whether GitHub still accepts a saved token: false once it's revoked or expired, null when GitHub can't be reached. */
+export async function tokenAccepted(token: string): Promise<boolean | null> {
+  try {
+    const res = await api("/user", token, { signal: AbortSignal.timeout(5_000) });
+    return res.status === 401 ? false : res.ok ? true : null;
+  } catch {
+    return null;
+  }
 }
 
 async function save(token: string, source: GitHubConnection["source"]): Promise<GitHubStatus> {
-  const { profile, id } = await lookUp(token);
+  const { profile, id } = await lookUpAccount(token);
   const stored = readStored();
   setSecret("githubToken", token);
   // A different account starts read-only, whatever the previous one was allowed.
@@ -176,15 +192,11 @@ export const github = {
     // Notice a revoked token, at most every few minutes; being offline isn't a problem.
     if (token && connection && Date.now() - lastValidated > VALIDATE_EVERY_MS) {
       lastValidated = Date.now();
-      try {
-        const res = await api("/user", token, { signal: AbortSignal.timeout(5_000) });
-        // Only if that's still the saved token (the user may have reconnected meanwhile).
-        if (getSecret("githubToken") === token) {
-          if (res.status === 401) problem = "GitHub no longer accepts the saved login. Reconnect to keep agents working on GitHub.";
-          else if (res.ok) problem = null;
-        }
-      } catch {
-        // Offline: keep whatever we knew.
+      const accepted = await tokenAccepted(token);
+      // Only if that's still the saved token (the user may have reconnected meanwhile); offline keeps whatever we knew.
+      if (getSecret("githubToken") === token) {
+        if (accepted === false) problem = "GitHub no longer accepts the saved login. Reconnect to keep agents working on GitHub.";
+        else if (accepted) problem = null;
       }
     }
     let publicConnection: GitHubConnection | null = null;
@@ -201,19 +213,12 @@ export const github = {
     };
   },
 
-  /** The connected account with its token, for agents' computers and tools. */
+  /** The connected account with its token. Agents reach it through githubAccessFor (persona-github.ts). */
   identity(): GitHubIdentity | null {
     const token = getSecret("githubToken");
     const { connection, allowWrites } = readStored();
     if (!token || !connection) return null;
     return { token, login: connection.login, name: connection.name, id: connection.id, allowWrites };
-  },
-
-  /** Changes whenever what agents' computers should hold changes. */
-  fingerprint(): string {
-    const who = github.identity();
-    if (!who) return "none";
-    return createHash("sha256").update(JSON.stringify(who)).digest("hex").slice(0, 16);
   },
 
   async connect(request: GitHubConnectRequest): Promise<GitHubStatus> {
@@ -359,10 +364,11 @@ export const github = {
 
 const TOKEN_PATTERN = /\b(?:gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g;
 
-/** Hides GitHub tokens (the connected one and any that look like one) in text an agent will see or save. */
+/** Hides GitHub tokens (the connected one, personas' and any that look like one) in text an agent will see or save. */
 export function redactGitHubTokens(text: string): string {
-  const token = getSecret("githubToken");
-  let out = token && token.length >= 8 ? text.split(token).join("[GitHub token hidden]") : text;
-  out = out.replace(TOKEN_PATTERN, "[GitHub token hidden]");
-  return out;
+  let out = text;
+  for (const token of [getSecret("githubToken"), ...secretValues("personaGitHubToken:")]) {
+    if (token && token.length >= 8) out = out.split(token).join("[GitHub token hidden]");
+  }
+  return out.replace(TOKEN_PATTERN, "[GitHub token hidden]");
 }

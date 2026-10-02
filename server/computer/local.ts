@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, wr
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { DATA_DIR, EXECUTOR_PORT, IS_PROD, PORT, paths } from "../config.ts";
-import { github } from "../github.ts";
+import { githubAccessFor } from "../persona-github.ts";
 import type { ComputerBackend, ExecResult } from "./types.ts";
 
 /**
@@ -107,7 +107,9 @@ function inside(workspace: string, path: string): string {
   return real;
 }
 
-function environment(workspace: string): Record<string, string> {
+/** A local computer's id is its agent's (see create). */
+function environment(workspace: string, agentId: string): Record<string, string> {
+  const github = githubAccessFor(agentId);
   const path = [
     dirname(process.execPath),
     "/opt/homebrew/bin",
@@ -126,7 +128,7 @@ function environment(workspace: string): Record<string, string> {
     TMPDIR: process.env.TMPDIR ?? "/tmp",
     npm_config_cache: join(workspace, ".npm"),
     // gh is logged in only while agents may write (see github-login.ts); the env var is its most reliable route.
-    ...(github.identity()?.allowWrites ? { GH_TOKEN: github.identity()!.token } : {}),
+    ...(github?.allowWrites ? { GH_TOKEN: github.token } : {}),
   };
 }
 
@@ -174,7 +176,7 @@ export const localBackend: ComputerBackend = {
 
     return new Promise<ExecResult>((done) => {
       const started = Date.now();
-      const child = spawn(file, args, { cwd: dir, env: environment(workspace), detached: true, stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(file, args, { cwd: dir, env: environment(workspace, externalId), detached: true, stdio: ["ignore", "pipe", "pipe"] });
       if (child.pid) {
         const set = groups.get(externalId) ?? new Set<number>();
         set.add(child.pid);
