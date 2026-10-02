@@ -22,7 +22,7 @@ export function Badge({ tone = "neutral", dot = false, className, children, ...p
   return (
     <span
       className={clsx(
-        "inline-flex h-5 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-2xs font-medium whitespace-nowrap",
+        "inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full px-2 text-2xs font-medium whitespace-nowrap",
         TONES[tone],
         className,
       )}

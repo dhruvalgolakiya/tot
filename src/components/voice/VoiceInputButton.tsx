@@ -73,7 +73,7 @@ export function VoiceInputButton({ onTranscript, disabled, className }: VoiceInp
       disabled={disabled}
       onClick={() => (listening ? stop() : start())}
       className={clsx(
-        "relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors disabled:pointer-events-none disabled:opacity-40",
+        "relative inline-flex size-9 shrink-0 items-center justify-center rounded-full transition-colors disabled:pointer-events-none disabled:opacity-40",
         listening ? "text-accent-text" : "text-fg-muted hover:bg-hover hover:text-fg",
         className,
       )}

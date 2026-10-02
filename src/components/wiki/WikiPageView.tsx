@@ -3,9 +3,7 @@ import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { ArrowUp, Ellipsis, History, LoaderCircle, Pencil, Trash } from "lucide-react";
 import type { WikiPage } from "@shared/types";
-import { DEFAULT_ACCENT } from "../../hooks/useAgentAccent";
 import { api } from "../../lib/api";
-import { isLightColor } from "../../lib/color";
 import { relativeTime } from "../../lib/format";
 import { navigateToConversation, notifyError, selectActiveAgent, sendMessage, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -182,11 +180,8 @@ function PageMeta({ page, agentName }: { page: WikiPage; agentName: string }) {
 
 /** A small composer pinned under the page: asks the agent about it in a new chat. */
 function AskBox({ agentName, pageTitle }: { agentName: string; pageTitle: string }) {
-  const agent = useStore(selectActiveAgent);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const accent = agent?.mascot.color ?? DEFAULT_ACCENT;
-  const sendForeground = isLightColor(accent) ? "#0a0a0c" : "#fdfdfd";
   const canSend = text.trim().length > 0 && !sending;
 
   async function submit() {
@@ -217,8 +212,10 @@ function AskBox({ agentName, pageTitle }: { agentName: string; pageTitle: string
         type="submit"
         disabled={!canSend}
         aria-label="Ask"
-        style={canSend ? { background: "var(--agent-accent)", color: sendForeground } : undefined}
-        className={clsx("grid size-8 shrink-0 place-items-center rounded-full transition-colors", !canSend && "bg-fill-strong text-fg-subtle")}
+        className={clsx(
+          "grid size-8 shrink-0 place-items-center rounded-full transition-colors",
+          canSend ? "bg-fg text-canvas" : "bg-fill-strong text-fg-subtle",
+        )}
       >
         {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" strokeWidth={2.25} />}
       </button>

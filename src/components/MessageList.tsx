@@ -3,8 +3,6 @@ import { ArrowDown } from "lucide-react";
 import type { Message } from "@shared/types";
 import { useStickToBottom } from "../hooks/useStickToBottom";
 import { retryConversation, selectActiveAgent, setChatScrolled, useStore } from "../store";
-import { defaultMascot } from "./mascot";
-import { AssistantAvatar } from "./AssistantAvatar";
 import { AssistantMessage } from "./AssistantMessage";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { UserMessage } from "./UserMessage";
@@ -45,7 +43,6 @@ export function MessageList({ conversationId }: { conversationId: string }) {
   // Between "sent" and the run's first event there is no assistant message yet.
   const awaitingReply = run ? !run.messageId : sending;
   const lastAssistantId = messages.findLast((m) => m.role === "assistant")?.id;
-  const mascot = agent?.mascot ?? defaultMascot;
   const agentName = agent?.name ?? "TOT";
 
   return (
@@ -84,16 +81,12 @@ export function MessageList({ conversationId }: { conversationId: string }) {
                 message={message}
                 live={run?.messageId === message.id}
                 justFinished={justFinished && message.id === lastAssistantId}
+                isLatest={message.id === lastAssistantId}
               />
             ),
           )}
 
-          {awaitingReply && (
-            <div className="flex gap-3 sm:gap-4">
-              <AssistantAvatar mascot={mascot} name={agentName} state="thinking" />
-              <ThinkingIndicator agentName={agentName} />
-            </div>
-          )}
+          {awaitingReply && <ThinkingIndicator agentName={agentName} />}
         </div>
       </div>
 

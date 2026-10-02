@@ -29,10 +29,10 @@ export function RadioCards<T extends string>({ value, onValueChange, options, la
         <RadioGroup.Item
           key={option.value}
           value={option.value}
-          className="group flex w-full items-start gap-3 rounded-xl border border-edge bg-fill-subtle px-3.5 py-3 text-left transition-colors hover:border-edge-strong hover:bg-hover data-[state=checked]:border-accent-edge data-[state=checked]:bg-accent-soft/60"
+          className="group flex w-full items-start gap-3 rounded-xl border border-edge bg-fill-subtle px-3.5 py-3 text-left transition-colors hover:border-edge-strong hover:bg-hover data-[state=checked]:border-edge-strong data-[state=checked]:bg-fill"
         >
-          <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-fg-faint transition-colors group-data-[state=checked]:border-accent">
-            <RadioGroup.Indicator className="size-2 rounded-full bg-accent" />
+          <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-fg-faint transition-colors group-data-[state=checked]:border-fg">
+            <RadioGroup.Indicator className="size-2 rounded-full bg-fg" />
           </span>
           <span className="min-w-0">
             <span className="block text-sm font-medium text-fg">{option.label}</span>

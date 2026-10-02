@@ -25,8 +25,8 @@ export function AgentMenu({ agent }: { agent: Agent }) {
           type="button"
           className="flex min-w-0 items-center gap-1 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-hover data-[state=open]:bg-selected"
         >
-          <span className="truncate text-heading text-fg-strong">{agent.name}</span>
-          <ChevronDown className="size-4 shrink-0 text-fg-subtle" />
+          <span className="truncate text-sm font-medium text-fg">{agent.name}</span>
+          <ChevronDown className="size-4 shrink-0 text-fg-muted" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

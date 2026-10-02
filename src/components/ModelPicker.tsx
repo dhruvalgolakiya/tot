@@ -15,7 +15,7 @@ export function ModelPicker() {
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="flex h-9 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-fg transition-colors hover:bg-hover data-[state=open]:bg-selected"
+          className="flex h-9 min-w-0 items-center gap-1 rounded-lg px-2 text-lg font-semibold text-fg transition-colors hover:bg-hover data-[state=open]:bg-selected"
         >
           <span className="truncate">{modelLabel(models, currentModelId)}</span>
           <ChevronDown className="size-4 shrink-0 text-fg-subtle" />

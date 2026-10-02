@@ -240,7 +240,7 @@ function ConnectedView({ status }: { status: SlackStatus }) {
             value={selectedAgentId}
             onChange={(event) => void setDefaultAgent(event.target.value)}
             disabled={agentSaving}
-            className="input bg-elevated"
+            className="input h-10 rounded-xl bg-elevated"
           >
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>

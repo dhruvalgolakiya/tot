@@ -14,7 +14,7 @@ import { SidePanel } from "./ui/SidePanel";
 
 const tabTrigger =
   "relative -mb-px flex h-10 items-center border-b-2 border-transparent px-3 text-sm text-fg-muted outline-none transition-colors " +
-  "hover:text-fg focus-visible:text-fg data-[state=active]:border-accent data-[state=active]:text-fg";
+  "hover:text-fg focus-visible:text-fg data-[state=active]:border-fg data-[state=active]:text-fg";
 
 /** Right-hand panel with the active agent's profile and routines; follows the agent picked in the rail. */
 export function AgentSettingsPanel() {

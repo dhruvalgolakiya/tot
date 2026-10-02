@@ -1,4 +1,3 @@
-import clsx from "clsx";
 import { PanelLeft, SquarePen } from "lucide-react";
 import {
   navigateToAgentHome,
@@ -17,29 +16,22 @@ import { SlackMark } from "./ui/SlackMark";
 import { Tip } from "./ui/Tip";
 
 /**
- * Floats over the chat content (no hard bottom border at rest) and only grows
- * a blurred background once that content has scrolled under it — see the
- * `chatScrolled` listener in MessageList.
+ * Floats over the chat content on a flat, always-opaque `bg-canvas` — no
+ * border, no blur card. `bg-canvas` matches the content below it exactly, so
+ * the header stays legible once that content scrolls underneath without
+ * needing the old scroll-triggered blur (see `chatScrolled`/MessageList).
  */
 export function Header() {
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const agent = useStore(selectActiveAgent);
   const working = useStore((s) => (agent ? selectAgentWorking(s, agent.id) : false));
-  const scrolled = useStore((s) => s.chatScrolled);
   const slackUrl = useStore((s) => {
     const origin = selectCurrentConversation(s)?.origin;
     return origin?.kind === "slack" ? origin.url : null;
   });
 
   return (
-    <header
-      className={clsx(
-        "absolute inset-x-0 top-0 z-10 flex h-14 shrink-0 items-center gap-1 border-b px-2 transition-all duration-200 sm:px-3",
-        scrolled
-          ? "border-hairline bg-canvas/80 backdrop-blur-xl"
-          : "border-transparent bg-transparent backdrop-blur-none",
-      )}
-    >
+    <header className="absolute inset-x-0 top-0 z-10 flex h-14 shrink-0 items-center gap-1 bg-canvas px-3">
       {!sidebarOpen && (
         <>
           <Tip content="Open sidebar" side="bottom">

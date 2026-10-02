@@ -98,7 +98,7 @@ export function MemoryBrowser() {
           }}
           placeholder="Add something for TOT to remember, e.g. “I live in Berlin and work in UTC+1.”"
           aria-label="New memory"
-          className="input resize-none leading-relaxed"
+          className="input resize-none rounded-xl leading-relaxed"
         />
         <div className="mt-2 flex items-center justify-end gap-3">
           <span className="hidden text-xs text-fg-faint sm:inline">

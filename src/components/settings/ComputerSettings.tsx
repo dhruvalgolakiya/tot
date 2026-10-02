@@ -68,7 +68,7 @@ export function ComputerSettings({ draft, onChange, secrets, onSecretsChange }: 
               id="boat-size"
               value={computer.size}
               onChange={(event) => update({ size: event.target.value as ComputerDraft["size"] })}
-              className="input bg-elevated"
+              className="input h-10 rounded-xl bg-elevated"
             >
               {COMPUTER_SIZES.map((size) => (
                 <option key={size.value} value={size.value}>
@@ -97,7 +97,7 @@ export function ComputerSettings({ draft, onChange, secrets, onSecretsChange }: 
               value={Number.isNaN(computer.idleStopMinutes) ? "" : computer.idleStopMinutes}
               onChange={(event) => update({ idleStopMinutes: event.target.valueAsNumber })}
               aria-invalid={!idleValid}
-              className="input w-28"
+              className="input h-10 w-28 rounded-xl"
             />
             <span className="text-sm text-fg-muted">minutes</span>
           </div>

@@ -1,5 +1,4 @@
 import { useEffect, type CSSProperties } from "react";
-import clsx from "clsx";
 import { Toaster } from "sonner";
 import { useResolvedTheme } from "./lib/theme";
 import { Tooltip } from "radix-ui";
@@ -43,7 +42,6 @@ const TOAST_THEME = {
 
 export default function App() {
   const theme = useResolvedTheme();
-  const sidebarOpen = useStore((s) => s.sidebarOpen);
   const page = useStore((s) => s.page);
   const viewKey = useStore((s) => s.viewKey);
   const current = useStore(selectCurrentConversation);
@@ -115,13 +113,8 @@ export default function App() {
     <Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
       <div className="flex h-dvh overflow-hidden bg-canvas text-fg md:bg-panel">
         <Sidebar />
-        {/* Inset layout: from tablet width up, the chat is a rounded card floating on the page background. */}
-        <main
-          className={clsx(
-            "relative flex min-w-0 flex-1 flex-col md:my-2 md:mr-2 md:overflow-hidden md:rounded-lg md:border md:border-hairline md:bg-canvas",
-            !sidebarOpen && "md:ml-2",
-          )}
-        >
+        {/* Full-bleed chat canvas, flush against the sidebar (no inset card, no divider — ChatGPT-style). */}
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-canvas">
           {page === "settings" ? (
             <SettingsPage key={viewKey} />
           ) : (

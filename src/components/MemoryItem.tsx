@@ -66,7 +66,7 @@ export function MemoryItem({ memory, onUpdated, onDeleted }: MemoryItemProps) {
             }
           }}
           aria-label="Edit memory"
-          className="input resize-y leading-relaxed"
+          className="input resize-y rounded-xl leading-relaxed"
         />
         <div className="mt-2 flex justify-end gap-2">
           <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy}>

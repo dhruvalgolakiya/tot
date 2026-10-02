@@ -61,7 +61,7 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
             placeholder="github"
             autoComplete="off"
             spellCheck={false}
-            className="input font-mono"
+            className="input h-10 rounded-xl font-mono"
           />
         </Field>
         <Field label="Description" htmlFor="plugin-description" hint="Optional.">
@@ -70,7 +70,7 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
             value={values.description}
             onChange={(event) => set({ description: event.target.value })}
             placeholder="Issues and pull requests"
-            className="input"
+            className="input h-10 rounded-xl"
           />
         </Field>
       </div>
@@ -96,7 +96,7 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
               onChange={(event) => set({ url: event.target.value })}
               placeholder="https://mcp.example.com/mcp"
               spellCheck={false}
-              className="input font-mono"
+              className="input h-10 rounded-xl font-mono"
             />
           </Field>
           <Field label="Headers" htmlFor="plugin-headers" hint="Optional. One “Key: value” per line.">
@@ -107,7 +107,7 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
               onChange={(event) => set({ headers: event.target.value })}
               placeholder="Authorization: Bearer …"
               spellCheck={false}
-              className="input resize-y font-mono"
+              className="input resize-y rounded-xl font-mono"
             />
           </Field>
         </>
@@ -121,7 +121,7 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
                 onChange={(event) => set({ command: event.target.value })}
                 placeholder="npx"
                 spellCheck={false}
-                className="input font-mono"
+                className="input h-10 rounded-xl font-mono"
               />
             </Field>
             <Field label="Arguments" htmlFor="plugin-args" hint="Space-separated; quote to group.">
@@ -131,7 +131,7 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
                 onChange={(event) => set({ args: event.target.value })}
                 placeholder="-y @modelcontextprotocol/server-github"
                 spellCheck={false}
-                className="input font-mono"
+                className="input h-10 rounded-xl font-mono"
               />
             </Field>
           </div>
@@ -143,7 +143,7 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
               onChange={(event) => set({ env: event.target.value })}
               placeholder="GITHUB_TOKEN=…"
               spellCheck={false}
-              className="input resize-y font-mono"
+              className="input resize-y rounded-xl font-mono"
             />
           </Field>
         </>
@@ -158,7 +158,7 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
                 type="checkbox"
                 checked={values.providers.includes(id)}
                 onChange={(event) => toggleProvider(id, event.target.checked)}
-                className="size-4 accent-accent"
+                className="size-4 accent-fg"
               />
               {PROVIDER_LABELS[id]}
             </label>

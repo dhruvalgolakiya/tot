@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import { openAgentSettings, selectActiveAgent, useStore } from "../store";
-import { defaultMascot, MascotStage } from "./mascot";
+import { defaultMascot, Mascot } from "./mascot";
 import { routinesApi } from "./routines/routinesApi";
 
-/** An agent's new-chat hero: its mascot, a greeting, and a one-line pitch. */
+/** An agent's new-chat hero: a small mascot and a ChatGPT-style greeting above the composer. */
 export function AgentHome() {
   const agent = useStore(selectActiveAgent);
   const name = agent?.name ?? "TOT";
@@ -28,17 +28,14 @@ export function AgentHome() {
   }, [agent?.id]);
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-end px-4 pt-14 pb-8">
-      <MascotStage spec={agent?.mascot ?? defaultMascot} size={200} title={name} />
-      <h1 className="mt-6 text-center text-display text-fg-strong">Hi, I'm {name}</h1>
-      <p className="mt-2 max-w-md text-center text-sm leading-relaxed text-fg-muted">
-        Ask me anything, or hand me a task — I can browse the web, use a computer, and remember what matters to you.
-      </p>
+    <div className="flex flex-1 flex-col items-center justify-end px-4 pb-6">
+      <Mascot spec={agent?.mascot ?? defaultMascot} size={48} title={name} />
+      <h1 className="mt-4 text-center text-3xl font-semibold text-fg-strong">What can I help with?</h1>
       {agent && routineCount > 0 && (
         <button
           type="button"
           onClick={() => openAgentSettings(agent.id, "routines")}
-          className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-edge bg-fill-subtle px-3 py-1 text-xs font-medium text-fg-muted transition-colors hover:border-edge-strong hover:bg-hover hover:text-fg"
+          className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-edge px-3 py-1 text-xs font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg"
         >
           <Clock className="size-3.5" />
           <span className="tabular-nums">

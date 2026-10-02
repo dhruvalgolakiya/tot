@@ -267,7 +267,7 @@ export function GitHubSettings() {
             <>
               <p className="text-xs text-fg-subtle">Enter this code at GitHub to connect your account:</p>
               <div className="flex items-center gap-2">
-                <span className="flex-1 rounded-lg border border-edge bg-fill-subtle px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-fg">
+                <span className="flex-1 rounded-xl border border-edge bg-fill-subtle px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-fg">
                   {device.userCode}
                 </span>
                 <Tip content={copied ? "Copied" : "Copy code"}>

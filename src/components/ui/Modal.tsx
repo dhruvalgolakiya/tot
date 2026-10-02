@@ -32,13 +32,13 @@ export function Modal({ open, onOpenChange, title, description, className, child
               if (focused instanceof HTMLElement && focused.closest("[data-escape-cancels]")) event.preventDefault();
             }}
             className={clsx(
-              "pointer-events-auto flex max-h-[min(88dvh,820px)] w-full flex-col overflow-hidden rounded-2xl border border-edge bg-elevated shadow-dialog outline-none data-[state=closed]:animate-pop-out data-[state=open]:animate-pop-in",
+              "pointer-events-auto flex max-h-[min(88dvh,820px)] w-full flex-col overflow-hidden rounded-2xl border border-hairline bg-elevated shadow-dialog outline-none data-[state=closed]:animate-pop-out data-[state=open]:animate-pop-in",
               className ?? "max-w-lg",
             )}
           >
-            <div className="flex shrink-0 items-start gap-4 px-5 pt-5 pb-3">
+            <div className="flex shrink-0 items-start gap-4 px-6 pt-6 pb-4">
               <div className="min-w-0 flex-1">
-                <Dialog.Title className="text-heading text-fg-strong">{title}</Dialog.Title>
+                <Dialog.Title className="text-lg font-semibold text-fg-strong">{title}</Dialog.Title>
                 {description && (
                   <Dialog.Description className="mt-1 text-sm leading-relaxed text-fg-muted">
                     {description}
@@ -46,7 +46,7 @@ export function Modal({ open, onOpenChange, title, description, className, child
                 )}
               </div>
               <Dialog.Close asChild>
-                <IconButton label="Close" size="sm" className="-mt-1 -mr-1.5">
+                <IconButton label="Close" size="sm" className="-mt-1.5 -mr-2">
                   <X />
                 </IconButton>
               </Dialog.Close>
@@ -61,7 +61,7 @@ export function Modal({ open, onOpenChange, title, description, className, child
 
 /** Scrollable dialog content with the standard gutter. */
 export function ModalBody({ className, ...props }: ComponentProps<"div">) {
-  return <div className={clsx("min-h-0 flex-1 overflow-y-auto px-5 pt-1 pb-5", className)} {...props} />;
+  return <div className={clsx("min-h-0 flex-1 overflow-y-auto px-6 pt-1 pb-6", className)} {...props} />;
 }
 
 type ModalFooterProps = ComponentProps<"div"> & {
@@ -74,8 +74,8 @@ export function ModalFooter({ divider = true, className, ...props }: ModalFooter
   return (
     <div
       className={clsx(
-        "flex shrink-0 items-center justify-end gap-2 px-5",
-        divider ? "border-t border-hairline py-3" : "pt-2 pb-5",
+        "flex shrink-0 items-center justify-end gap-2 px-6",
+        divider ? "border-t border-hairline py-4" : "pt-2 pb-6",
         className,
       )}
       {...props}

@@ -1,9 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Lightbulb, LoaderCircle, Paperclip, Square } from "lucide-react";
+import { ArrowUp, Lightbulb, LoaderCircle, Plus, Square } from "lucide-react";
 import type { UseAttachments } from "../hooks/useAttachments";
-import { DEFAULT_ACCENT } from "../hooks/useAgentAccent";
-import { isLightColor } from "../lib/color";
 import { selectActiveAgent, sendMessage, stopRun, useStore } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { Tip } from "./ui/Tip";
@@ -29,8 +27,6 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
 
   const canSend = (text.trim().length > 0 || attachments.ready.length > 0) && !run && !sending && !attachments.uploading;
   const agentName = agent?.name ?? "TOT";
-  const accent = agent?.mascot.color ?? DEFAULT_ACCENT;
-  const sendForeground = isLightColor(accent) ? "#0a0a0c" : "#fdfdfd";
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -92,7 +88,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
         event.preventDefault();
         void submit();
       }}
-      className="surface-raised accent-focus min-h-[60px] rounded-3xl"
+      className="surface-raised min-h-[60px] rounded-3xl border border-edge transition-colors focus-within:border-edge-strong"
     >
       <input
         ref={fileInputRef}
@@ -122,11 +118,11 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        placeholder={`Ask ${agentName} anything…`}
-        className="block max-h-[200px] w-full resize-none overflow-y-auto bg-transparent px-5 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
+        placeholder={`Ask ${agentName} anything`}
+        className="block max-h-[200px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
       />
       {interim.trim() && (
-        <p aria-live="polite" className="truncate px-5 pb-1 text-ui text-fg-subtle italic">
+        <p aria-live="polite" className="truncate px-4 pb-1 text-ui text-fg-subtle italic">
           {interim}
         </p>
       )}
@@ -138,7 +134,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
             aria-label="Attach files"
             className="flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-hover hover:text-fg"
           >
-            <Paperclip className="size-4" />
+            <Plus className="size-4" />
           </button>
         </Tip>
         <VoiceInputButton onTranscript={onTranscript} />
@@ -147,7 +143,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
             type="button"
             aria-pressed={thinkHarder}
             onClick={() => setThinkHarder((value) => !value)}
-            className="flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-accent-soft aria-pressed:text-accent-text"
+            className="flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-selected aria-pressed:text-fg"
           >
             <Lightbulb className="size-3.5" />
             Think harder
@@ -172,8 +168,10 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
               type="submit"
               disabled={!canSend}
               aria-label="Send"
-              style={canSend ? { background: "var(--agent-accent)", color: sendForeground } : undefined}
-              className={clsx("grid size-9 place-items-center rounded-full transition-colors", !canSend && "bg-fill-strong text-fg-faint")}
+              className={clsx(
+                "grid size-9 place-items-center rounded-full transition-colors",
+                canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-faint",
+              )}
             >
               {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
             </button>

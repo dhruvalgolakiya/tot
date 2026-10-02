@@ -66,11 +66,11 @@ export function ChatView() {
       </div>
 
       {currentId ? (
-        <p className="shrink-0 px-4 pb-2.5 text-center text-xs text-fg-faint">{CAPTION}</p>
+        <p className="shrink-0 px-4 pb-2.5 text-center text-xs text-fg-subtle">{CAPTION}</p>
       ) : (
-        <div className="flex flex-1 flex-col pt-3">
+        <div className="flex flex-1 flex-col pt-4">
           <Suggestions />
-          <p className="mt-auto px-4 pt-6 pb-3 text-center text-xs text-fg-faint">{CAPTION}</p>
+          <p className="mt-auto px-4 pt-6 pb-3 text-center text-xs text-fg-subtle">{CAPTION}</p>
         </div>
       )}
 

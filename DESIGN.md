@@ -7,6 +7,22 @@ Tokens live in `src/index.css`; primitives in `src/components/ui/`. **New and mi
 tokens only** — no `white/[0.0x]`, no `text-zinc-*`, no `text-[13px]`. (Exceptions: mascot art, code-block
 chrome, and the `.dark` islands' internals.)
 
+## 0. Style: ChatGPT/Codex
+
+TOT's look now tracks ChatGPT's and Codex's desktop apps: true neutral greys (no blue/purple tint) —
+dark canvas `#212121`, panel `#181818`, elevated `#2b2b2b`, bubble `#303030`; light canvas `#fff`, panel
+`#f9f9f9`, bubble `#f4f4f4` — with the chat column full-bleed against the canvas instead of boxed in a
+card. The composer and the wiki's "Ask about this page" box are pill-shaped (`rounded-full`/`.surface-raised`),
+and tool/thinking lines in chat read as quiet, muted text rather than bordered chips. Settings read as flat
+rows (label left, control right, `border-t border-hairline` between them) rather than boxed cards —
+`cardClass()`'s default dropped its fill, keeping only a hairline border, so the few remaining "boxed" uses
+(provider status, catalog cards) read as deliberate, not default. Buttons are pills (`rounded-full`); primary
+is monochrome — `bg-fg text-canvas` (white-on-dark in dark mode, black-on-white in light), never the agent
+accent. Switches, radio cards, segmented controls and tabs went neutral too (`bg-fg`/`bg-selected`, not
+`bg-accent`) — the agent accent is reserved for genuinely tiny indicators (a search-match highlight, a badge
+dot), not for fills, borders or "selected" states. Dialogs stay `rounded-2xl` with roomier `p-6` padding and
+an 18px (`text-lg font-semibold`) title.
+
 ## 1. Theming in one paragraph
 
 Light mode mirrors the palette (`white` becomes near-black, `zinc-100` ↔ `zinc-900`, …), so dark-first
@@ -27,7 +43,7 @@ code blocks). For a literal white or black that must not flip, use `fixed-white`
 | Selected overlay | `bg-selected` | current row, pressed (`active:`), open trigger | `bg-white/[0.07–0.08]` on active rows |
 | Fills | `bg-fill-subtle` · `bg-fill` · `bg-fill-strong` | cards/inputs · chips, tiles, skeletons · disabled send, strong chips | `bg-white/[0.02–0.03]` · `[0.04–0.06]` · `[0.08–0.1]` |
 | Lines | `border-hairline` · `border-edge` · `border-edge-strong` | dividers, cards, panels · inputs, secondary buttons, menus · hovered controls | `border-white/[0.04–0.08]` · `/10` · `/15–25` |
-| Accent | `bg-accent` · `text-accent-text` · `bg-accent-soft` (`hover:bg-accent-soft-hover`) · `border-accent-edge` | send/switch/active marker · accent text & links · on/selected tints, pills · tinted borders | `[var(--agent-accent…)]` arbitrary values |
+| Accent | `bg-accent` · `text-accent-text` · `bg-accent-soft` (`hover:bg-accent-soft-hover`) · `border-accent-edge` | tiny indicators only: active-agent marker, focus ring, links, search-match highlights | `[var(--agent-accent…)]` arbitrary values |
 | Focus | `outline-focus` / `ring-focus` | only if you must draw focus yourself | `ring-[var(--agent-accent-ring)]` |
 | Status | `text-success\|warning\|danger`, `bg-*-soft`, `border-*-edge`, `bg-danger-solid` | status text/icons, tinted boxes, destructive button | `emerald-*`, `amber-*`, `red-*` |
 
@@ -35,9 +51,11 @@ Surfaces (unchanged): `bg-panel` app chrome (rail, sidebar) · `bg-canvas` main 
 `bg-elevated` menus, dialogs, selects, toasts · `bg-bubble` user messages · `bg-sunken` insets (screens,
 paths) · `bg-scrim/60` overlays.
 
-**Accent** is the active agent's mascot color and the only saturated color: send button, switches/radios,
-the active-agent marker, focus, links, "on" toggles, memory/wiki pills. Primary buttons are monochrome
-(`bg-fg`), never accent. Status colors only carry status — never decoration.
+**Accent** is the active agent's mascot color and the only saturated color — but it's reserved for genuinely
+tiny indicators now (the active-agent marker, focus, links, a search-match highlight), not for fills, borders
+or "selected" states. Switches, radio cards, segmented controls and tabs went neutral (`bg-fg`/`bg-selected`).
+Primary buttons are monochrome (`bg-fg text-canvas`), never accent. Status colors only carry status — never
+decoration.
 
 ## 3. Typography
 
@@ -68,10 +86,10 @@ Use `leading-relaxed` only for multi-line descriptions/hints. One title + at mos
 - **Widths:** chat column `max-w-3xl`; settings column `max-w-[640px]`; dialogs `max-w-sm` (confirm) / `max-w-md` / `max-w-lg`.
 - **Heights:** 28 `h-7` (sm icon buttons, pills, chips) · 32 `h-8` (sm buttons, `.input-sm`, menu items, tree rows) ·
   36 `h-9` (md buttons, `.input`, md icon buttons, nav rows) · 56 `h-14` (top bars, panel headers).
-- **Radii:** `rounded-md` 6 (badges, kbd, sm icon buttons, `.input-sm`) · `rounded-lg` 8 (buttons, inputs, rows,
-  menu items, callouts, main card) · `rounded-xl` 12 (cards, menus, tool cards, toasts) · `rounded-2xl` 16 (dialogs) ·
-  `rounded-full` (pills, avatars, switches, send/stop) · `rounded-3xl` only for the composer and user bubble.
-  Nested radius = outer − inset (menu 12 − p-1 → item 8).
+- **Radii:** `rounded-md` 6 (kbd, sm icon buttons) · `rounded-lg` 8 (inputs, rows, menu items, callouts, main card) ·
+  `rounded-xl` 12 (cards, menus, tool cards, toasts, `.input`/`.input-sm` in settings and dialogs) ·
+  `rounded-2xl` 16 (dialogs; the apps catalog grid) · `rounded-full` (buttons, badges, pills, avatars, switches,
+  send/stop) · `rounded-3xl` only for the composer and user bubble. Nested radius = outer − inset (menu 12 − p-1 → item 8).
 - **Icons:** lucide, `size-3.5` (14: sm buttons, chips, meta rows) · `size-4` (16: default, menus, rows) ·
   `size-4.5` (18: md icon buttons, bars). Stroke is 1.75 app-wide (`LucideProvider` in `main.tsx`); pass
   `strokeWidth` only for the send/ask arrow (2.25). Icons are `text-fg-muted`/`text-fg-subtle` or inherit;
@@ -79,7 +97,8 @@ Use `leading-relaxed` only for multi-line descriptions/hints. One title + at mos
 
 ## 5. Surfaces & elevation
 
-In-flow things never cast shadows: cards are `border-hairline bg-fill-subtle` (use `Card`/`cardClass`).
+In-flow things never cast shadows: cards are flat — `border-hairline`, no fill by default (use `Card`/`cardClass`;
+pass `bg-fill-subtle` yourself for the rare card that wants one, e.g. the apps catalog grid).
 Shadows exist only for things floating above the page:
 `shadow-popover` (menus, tooltips, toasts, dropdowns) · `shadow-dialog` (modals, overlay drawers/panels) ·
 `.surface-raised` (composer, wiki ask box; add `.accent-focus` for the focus glow). Don't use `shadow-lg/xl/2xl`.
@@ -135,8 +154,9 @@ sentence case — replaces `.label-caps`) · `.surface-raised` · `.accent-focus
 - **Page:** `PageHeader` (mb-8) → sections separated by `space-y-8`. One page-level primary action at most.
 - **Section:** `SectionHeader` → content `mt-3`. Titles in sentence case, no trailing colon or period.
 - **Setting row:** `flex items-start justify-between gap-4 py-3`; left: title `text-sm font-medium text-fg` +
-  description `mt-0.5 text-xs leading-relaxed text-fg-subtle`; right: the control (`pt-0.5`). Group rows in a
-  `Card padding="none"` with `divide-y divide-hairline` and `px-4` rows.
+  description `mt-0.5 text-xs leading-relaxed text-fg-subtle`; right: the control (`pt-0.5`). Several rows in a
+  group: `Card padding="none"` with `divide-y divide-hairline` and `px-4` rows. One row on its own (e.g. with a
+  single quiet link under it): skip the card, just a `border-t border-hairline pt-5` divider above it.
 - **Card list:** `ul.space-y-2 > li.cardClass({ padding: "sm" })`: title `text-sm font-medium text-fg`, meta
   `text-xs text-fg-subtle`, at most one visible trailing control (a Switch or a button) plus an Ellipsis menu for the rest.
 - **List row:** `ListRow` / `listRowClass`; trailing meta in `text-xs text-fg-subtle tabular-nums`; row actions

@@ -1,10 +1,10 @@
+import clsx from "clsx";
 import { ArrowLeft, PanelLeftClose } from "lucide-react";
 import { exitSettings, goToSettings, setSidebarOpen, useStore } from "../../store";
 import { IconButton } from "../ui/IconButton";
-import { ListRow } from "../ui/ListRow";
+import { listRowClass } from "../ui/ListRow";
 import { Tip } from "../ui/Tip";
 import { SETTINGS_SECTIONS } from "./settingsSections";
-
 /**
  * Desktop settings nav: replaces the chats panel next to the agent rail while
  * on the settings page (see Sidebar.tsx). Mirrors the chats panel's header
@@ -38,9 +38,15 @@ export function SettingsNav() {
             const active = id === section;
             return (
               <li key={id}>
-                <ListRow icon={<Icon />} selected={active} aria-current={active ? "page" : undefined} onClick={() => goToSettings(id)}>
-                  {label}
-                </ListRow>
+                <button
+                  type="button"
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => goToSettings(id)}
+                  className={listRowClass({ selected: active })}
+                >
+                  <Icon className={clsx("size-4 shrink-0", active ? "text-fg" : "text-fg-muted")} />
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                </button>
               </li>
             );
           })}

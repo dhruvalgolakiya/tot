@@ -19,7 +19,6 @@ type ConversationItemProps = {
   /** A run is streaming in this chat. */
   streaming: boolean;
 };
-
 export function ConversationItem({ conversation, active, streaming }: ConversationItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -67,18 +66,13 @@ export function ConversationItem({ conversation, active, streaming }: Conversati
         title={title}
         className={listRowClass({ selected: active, className: "pr-8" })}
       >
-        {streaming && (
-          <span
-            className="size-1.5 shrink-0 animate-pulse rounded-full"
-            style={{ background: "var(--agent-accent)" }}
-          />
-        )}
+        {streaming && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />}
         {conversation.routineId && (
-          <Clock className="size-3.5 shrink-0 text-fg-subtle" aria-label="Scheduled routine" />
+          <Clock className="size-3.5 shrink-0 text-fg-muted" aria-label="Scheduled routine" />
         )}
         {conversation.origin?.kind === "slack" && (
           <Tip content={conversation.origin.label}>
-            <span className="shrink-0 text-fg-subtle" title={conversation.origin.label}>
+            <span className="shrink-0 text-fg-muted" title={conversation.origin.label}>
               <SlackMark className="size-3" />
             </span>
           </Tip>

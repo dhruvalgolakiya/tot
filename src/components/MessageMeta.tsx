@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { Check, Copy } from "lucide-react";
 import type { Message } from "@shared/types";
 import { useCopy } from "../hooks/useCopy";
@@ -10,7 +11,7 @@ import { IconButton } from "./ui/IconButton";
 import { Tip } from "./ui/Tip";
 
 /** Under a finished assistant message: error, copy, model (why it was picked), stop state. */
-export function MessageMeta({ message }: { message: Message }) {
+export function MessageMeta({ message, isLatest = false }: { message: Message; isLatest?: boolean }) {
   const models = useStore((s) => s.models);
   const { copied, copy } = useCopy();
   const text = messageText(message);
@@ -27,7 +28,12 @@ export function MessageMeta({ message }: { message: Message }) {
           <Callout tone="danger">{message.error || "Something went wrong while answering."}</Callout>
         </div>
       )}
-      <div className="flex h-7 items-center gap-0.5 text-xs text-fg-subtle opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+      <div
+        className={clsx(
+          "flex h-7 items-center gap-0.5 text-xs text-fg-subtle transition-opacity",
+          !isLatest && "opacity-0 group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
+        )}
+      >
         {text && (
           <Tip content={copied ? "Copied" : "Copy"}>
             <IconButton label="Copy message" size="sm" onClick={() => void copy(text)}>

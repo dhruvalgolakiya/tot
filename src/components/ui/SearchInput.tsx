@@ -26,7 +26,12 @@ export function SearchInput({ compact = false, trailing, containerClassName, cla
         type="text"
         autoComplete="off"
         {...props}
-        className={clsx("input", compact ? "input-sm pl-8" : "pl-9", trailing !== undefined && "pr-14", className)}
+        className={clsx(
+          "input",
+          compact ? "input-sm pl-8" : "h-10 rounded-xl pl-9",
+          trailing !== undefined && "pr-14",
+          className,
+        )}
       />
       {trailing !== undefined && (
         <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2">{trailing}</span>

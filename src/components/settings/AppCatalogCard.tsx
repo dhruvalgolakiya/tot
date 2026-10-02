@@ -18,7 +18,7 @@ export function AppCatalogCard({ item, onConnect }: AppCatalogCardProps) {
     <button
       type="button"
       onClick={onConnect}
-      className={cardClass({ padding: "sm", interactive: true, className: "flex items-start gap-3" })}
+      className={cardClass({ padding: "sm", radius: "2xl", interactive: true, className: "bg-fill-subtle flex items-start gap-3" })}
     >
       <AppIcon name={item.name} iconUrl={item.iconUrl} />
       <div className="min-w-0 flex-1">

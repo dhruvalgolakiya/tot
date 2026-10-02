@@ -20,8 +20,8 @@ const VARIANTS: Record<ButtonVariant, string> = {
 };
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: "h-8 gap-1.5 rounded-lg px-3 text-ui [&_svg]:size-3.5",
-  md: "h-9 gap-2 rounded-lg px-3.5 text-sm [&_svg]:size-4",
+  sm: "h-8 gap-1.5 rounded-full px-3.5 text-ui [&_svg]:size-3.5",
+  md: "h-9 gap-2 rounded-full px-4 text-sm [&_svg]:size-4",
 };
 
 /** Shared by <Button> and links styled as buttons. */

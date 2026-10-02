@@ -8,7 +8,6 @@ import { api, ApiError } from "../lib/api";
 import { toMs, truncate } from "../lib/format";
 import { notifyError, useStore } from "../store";
 import { Button } from "./ui/Button";
-import { cardClass } from "./ui/Card";
 import { Field } from "./ui/Field";
 import { Switch } from "./ui/Switch";
 
@@ -136,7 +135,7 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
   if (!actionable) {
     const Icon = STATUS_ICON[status];
     return (
-      <div className={clsx(cardClass({ padding: "sm" }), "flex max-w-md min-w-0 items-center gap-2 text-xs")}>
+      <div className="flex max-w-md min-w-0 items-center gap-2 rounded-2xl border border-edge bg-elevated p-3 text-xs">
         <Icon className={clsx("size-4 shrink-0", status === "accepted" ? "text-success" : "text-fg-subtle")} />
         <span className="min-w-0 truncate text-fg-subtle">
           <span className="font-medium text-fg-muted">{STATUS_LABEL[status]}</span>
@@ -169,7 +168,7 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
   }
 
   return (
-    <div className={clsx(cardClass({ padding: "none" }), "max-w-md space-y-3 px-3.5 py-3")}>
+    <div className="max-w-md space-y-3 rounded-2xl border border-edge bg-elevated px-3.5 py-3">
       <div className="flex items-center gap-1.5 text-xs text-fg-subtle">
         <Icon className="size-3.5 shrink-0" />
         <span className="truncate font-medium">{part.source}</span>

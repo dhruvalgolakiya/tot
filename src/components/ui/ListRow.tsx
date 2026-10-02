@@ -10,15 +10,16 @@ type ListRowStyle = {
 };
 
 /**
- * A navigation/list row: 13px text, muted until hovered or selected. Use `listRowClass()` on your own
- * <a>/<button>/<div> when the row needs custom children (e.g. a hover menu button positioned inside it).
+ * A navigation/list row in the ChatGPT style: 14px text that stays `text-fg`; only the background
+ * marks hover and the current item. Use `listRowClass()` on your own <a>/<button>/<div> when the row
+ * needs custom children (e.g. a hover menu button positioned inside it).
  */
 export function listRowClass({ selected = false, size = "md", className }: ListRowStyle = {}) {
   return clsx(
-    "group/row relative flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-ui transition-colors",
+    "group/row relative flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-fg transition-colors",
     "focus-visible:-outline-offset-2",
     size === "sm" ? "h-8" : "h-9",
-    selected ? "bg-selected text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
+    selected ? "bg-selected" : "hover:bg-hover",
     className,
   );
 }
@@ -39,7 +40,7 @@ export function ListRow({ selected, size, icon, trailing, className, children, .
         <span
           className={clsx(
             "grid shrink-0 place-items-center transition-colors [&_svg]:size-4",
-            selected ? "text-fg" : "text-fg-subtle group-hover/row:text-fg-muted",
+            selected ? "text-fg" : "text-fg-muted group-hover/row:text-fg",
           )}
         >
           {icon}

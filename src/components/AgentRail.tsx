@@ -19,7 +19,9 @@ import { Tip } from "./ui/Tip";
  * Discord/Slack-style workspace rail: TOT mark, one mascot per agent (the
  * workspace switcher), "add agent", then app-wide settings and theme at
  * the bottom. Always visible on desktop — collapsing the sidebar only hides
- * the chats panel next to it.
+ * the chats panel next to it. Shares `bg-panel` with that panel (painted by
+ * the shared wrapper in App.tsx) and has no divider against it, so rail +
+ * panel read as one flat sidebar, ChatGPT-style.
  */
 export function AgentRail({ className }: { className?: string }) {
   const agents = useStore((s) => s.agents);
@@ -27,10 +29,7 @@ export function AgentRail({ className }: { className?: string }) {
   const settingsActive = useStore((s) => s.page === "settings");
 
   return (
-    <nav
-      aria-label="Agents"
-      className={clsx("flex h-full w-16 shrink-0 flex-col items-center border-r border-hairline py-3", className)}
-    >
+    <nav aria-label="Agents" className={clsx("flex h-full w-16 shrink-0 flex-col items-center py-3", className)}>
       <Logo className="mb-3 size-7 shrink-0" />
 
       <ul className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto">
@@ -40,14 +39,9 @@ export function AgentRail({ className }: { className?: string }) {
       </ul>
 
       <Tip content="New agent" side="right">
-        <button
-          type="button"
-          aria-label="New agent"
-          onClick={() => setNewAgentDialogOpen(true)}
-          className="mt-1.5 grid size-10 shrink-0 place-items-center rounded-full border border-dashed border-edge text-fg-subtle transition-colors hover:border-edge-strong hover:bg-hover hover:text-fg-muted"
-        >
-          <Plus className="size-4" />
-        </button>
+        <IconButton label="New agent" className="mt-1.5" onClick={() => setNewAgentDialogOpen(true)}>
+          <Plus />
+        </IconButton>
       </Tip>
 
       <div className="mt-2 flex w-full shrink-0 flex-col items-center gap-1 border-t border-hairline pt-2.5">
@@ -93,8 +87,8 @@ function RailAgentButton({ agent, active }: RailAgentButtonProps) {
           aria-current={active ? "page" : undefined}
           onClick={() => navigateToAgentHome(agent.id)}
           className={clsx(
-            "relative grid size-11 shrink-0 place-items-center rounded-2xl transition-colors hover:bg-hover",
-            active && "bg-accent-soft",
+            "relative grid size-10 shrink-0 place-items-center rounded-xl transition-colors hover:bg-hover",
+            active && "bg-selected",
           )}
         >
           <Mascot spec={agent.mascot} size={32} state={mascotState} title={agent.name} />

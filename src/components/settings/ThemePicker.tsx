@@ -22,7 +22,7 @@ export function ThemePicker() {
         <RadioGroup.Item
           key={value}
           value={value}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-ui font-medium text-fg-muted transition-colors hover:text-fg data-[state=checked]:bg-accent-soft data-[state=checked]:text-accent-text"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-ui font-medium text-fg-muted transition-colors hover:text-fg data-[state=checked]:bg-fg data-[state=checked]:text-canvas"
         >
           <Icon className="size-3.5" />
           {label}

@@ -79,7 +79,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
           value={values.name}
           onChange={(event) => set({ name: event.target.value })}
           placeholder="Morning AI news"
-          className="input"
+          className="input h-10 rounded-xl"
         />
       </Field>
 
@@ -90,7 +90,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
           value={values.prompt}
           onChange={(event) => set({ prompt: event.target.value })}
           placeholder="Brief me on today's top AI news."
-          className="input resize-y leading-relaxed"
+          className="input resize-y rounded-xl leading-relaxed"
         />
       </Field>
 
@@ -109,7 +109,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
               onClick={() => set({ scheduleKind: option.value })}
               className={clsx(
                 "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
-                values.scheduleKind === option.value ? "bg-accent-soft text-accent-text" : "text-fg-muted hover:text-fg",
+                values.scheduleKind === option.value ? "bg-canvas text-fg shadow-sm" : "text-fg-muted hover:text-fg",
               )}
             >
               {option.label}
@@ -125,7 +125,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
                 type="time"
                 value={values.time}
                 onChange={(event) => set({ time: event.target.value })}
-                className="input w-36"
+                className="input h-10 w-36 rounded-xl"
               />
             </Field>
             <div className="space-y-1.5">
@@ -135,14 +135,14 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
                   <button
                     type="button"
                     onClick={() => set({ days: [] })}
-                    className={clsx("font-medium hover:underline", isEveryDay ? "text-accent-text" : "text-fg-muted")}
+                    className={clsx("font-medium hover:underline", isEveryDay ? "text-fg" : "text-fg-muted")}
                   >
                     Every day
                   </button>
                   <button
                     type="button"
                     onClick={() => set({ days: WEEKDAYS })}
-                    className={clsx("font-medium hover:underline", isWeekdays ? "text-accent-text" : "text-fg-muted")}
+                    className={clsx("font-medium hover:underline", isWeekdays ? "text-fg" : "text-fg-muted")}
                   >
                     Weekdays
                   </button>
@@ -162,7 +162,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
                       onClick={() => set({ days: toggleDay(values.days, index) })}
                       className={clsx(
                         "flex size-8 items-center justify-center rounded-full text-xs font-semibold transition-colors",
-                        active ? "bg-accent-soft text-accent-text" : "bg-fill text-fg-subtle hover:bg-fill-strong hover:text-fg-muted",
+                        active ? "bg-fg text-canvas" : "bg-fill text-fg-subtle hover:bg-fill-strong hover:text-fg-muted",
                       )}
                     >
                       {letter}
@@ -184,13 +184,13 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
                   step={1}
                   value={values.intervalValue}
                   onChange={(event) => set({ intervalValue: event.target.value })}
-                  className="input w-24"
+                  className="input h-10 w-24 rounded-xl"
                 />
                 <select
                   aria-label="Interval unit"
                   value={values.intervalUnit}
                   onChange={(event) => set({ intervalUnit: event.target.value as "minutes" | "hours" })}
-                  className="input w-32"
+                  className="input h-10 w-32 rounded-xl"
                 >
                   <option value="minutes">minutes</option>
                   <option value="hours">hours</option>

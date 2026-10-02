@@ -251,7 +251,7 @@ function ClientStep({ provider, redirectUri, consoleUrl, onCancel, onSubmit }: C
                 }}
                 autoComplete="off"
                 spellCheck={false}
-                className="input font-mono"
+                className="input h-10 rounded-xl font-mono"
               />
             </Field>
             <Field label="Client secret" htmlFor="app-client-secret">

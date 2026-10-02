@@ -55,7 +55,7 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
             maxLength={40}
             autoFocus={!target}
             autoComplete="off"
-            className="input"
+            className="input h-10 rounded-xl"
           />
         </Field>
 
@@ -74,7 +74,7 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
             value={instructions}
             onChange={(event) => setInstructions(event.target.value)}
             placeholder="e.g. You're upbeat and concise. Prefer getting things done on the computer over just describing how."
-            className="input min-h-24 resize-y leading-relaxed"
+            className="input min-h-24 resize-y rounded-xl leading-relaxed"
           />
         </Field>
 
@@ -83,7 +83,7 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
             id="agent-model"
             value={modelId}
             onChange={(event) => setModelId(event.target.value)}
-            className="input bg-elevated"
+            className="input h-10 rounded-xl bg-elevated"
           >
             {!knownModel && <option value={modelId}>{modelLabel(models, modelId)}</option>}
             {groups.auto.map((model) => (

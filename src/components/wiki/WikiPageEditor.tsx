@@ -54,7 +54,7 @@ export function WikiPageEditor({ page, onSaved, onCancel }: WikiPageEditorProps)
           autoFocus
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          className="input text-lg font-semibold"
+          className="input h-10 rounded-xl text-lg font-semibold"
         />
       </Field>
       <Field label="Summary" htmlFor="wiki-edit-summary" hint="One line: what's on the page, shown in the page list.">
@@ -62,7 +62,7 @@ export function WikiPageEditor({ page, onSaved, onCancel }: WikiPageEditorProps)
           id="wiki-edit-summary"
           value={summary}
           onChange={(event) => setSummary(event.target.value)}
-          className="input"
+          className="input h-10 rounded-xl"
         />
       </Field>
       <Field label="Content" htmlFor="wiki-edit-content">
@@ -73,7 +73,7 @@ export function WikiPageEditor({ page, onSaved, onCancel }: WikiPageEditorProps)
           value={content}
           onChange={(event) => setContent(event.target.value)}
           placeholder="Markdown…"
-          className="input min-h-[260px] resize-none font-mono text-ui leading-relaxed"
+          className="input min-h-[260px] resize-none rounded-xl font-mono text-ui leading-relaxed"
         />
       </Field>
       {error && <Callout tone="danger">{error}</Callout>}

@@ -1,7 +1,6 @@
 import { displayLabel, groupModels, modelLabel } from "../../lib/models";
 import type { SettingsSectionProps } from "../../lib/settings";
 import { goToSettings, useStore } from "../../store";
-import { Card } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { Switch } from "../ui/Switch";
 import { SettingRow } from "./SettingRow";
@@ -28,7 +27,7 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
           placeholder="e.g. Alex"
           maxLength={80}
           autoComplete="name"
-          className="input"
+          className="input h-10 rounded-xl"
         />
       </Field>
 
@@ -43,7 +42,7 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
           value={draft.customInstructions}
           onChange={(event) => onChange({ ...draft, customInstructions: event.target.value })}
           placeholder="e.g. I'm a frontend engineer in Berlin. Keep answers short and use TypeScript for code."
-          className="input min-h-32 resize-y leading-relaxed"
+          className="input min-h-32 resize-y rounded-xl leading-relaxed"
         />
       </Field>
 
@@ -52,7 +51,7 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
           id="settings-model"
           value={draft.defaultModelId}
           onChange={(event) => onChange({ ...draft, defaultModelId: event.target.value })}
-          className="input bg-elevated"
+          className="input h-10 rounded-xl bg-elevated"
         >
           {!knownDefault && <option value={draft.defaultModelId}>{modelLabel(models, draft.defaultModelId)}</option>}
           {groups.auto.map((model) => (
@@ -81,12 +80,11 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
         </select>
       </Field>
 
-      <Card padding="none">
+      <div className="border-t border-hairline pt-5">
         <SettingRow
           htmlFor="settings-memory"
           title="Memory"
           description="Let TOT save useful facts and recall them in future chats."
-          className="px-4"
           control={
             <Switch
               id="settings-memory"
@@ -95,12 +93,10 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
             />
           }
         />
-        <div className="border-t border-hairline px-4 py-3">
-          <button type="button" onClick={() => goToSettings("memory")} className="link-muted text-xs">
-            Manage memories →
-          </button>
-        </div>
-      </Card>
+        <button type="button" onClick={() => goToSettings("memory")} className="link-muted text-xs">
+          Manage memories →
+        </button>
+      </div>
     </div>
   );
 }

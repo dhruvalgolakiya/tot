@@ -92,12 +92,12 @@ export function LearnRepoDialog({ agent, open, onOpenChange }: LearnRepoDialogPr
               placeholder="https://github.com/acme/web"
               autoFocus
               autoComplete="off"
-              className="input"
+              className="input h-10 rounded-xl"
             />
           </Field>
 
           {connected && repos && repos.length > 0 && (
-            <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-lg border border-hairline p-1">
+            <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-xl border border-hairline p-1">
               {repos.map((repo) => (
                 <li key={repo.fullName}>
                   <button

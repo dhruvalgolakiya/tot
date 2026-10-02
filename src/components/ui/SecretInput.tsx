@@ -30,13 +30,13 @@ export function SecretInput({ id, value, onChange, saved, cleared, onClearedChan
           placeholder={saved && !cleared ? "Enter a new key to replace the saved one" : placeholder}
           autoComplete="off"
           spellCheck={false}
-          className="input pr-10 font-mono"
+          className="input h-10 rounded-xl pr-10 font-mono"
         />
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
           aria-label={visible ? "Hide key" : "Show key"}
-          className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-lg text-fg-subtle transition-colors hover:text-fg focus-visible:-outline-offset-2"
+          className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-xl text-fg-subtle transition-colors hover:text-fg focus-visible:-outline-offset-2"
         >
           {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
         </button>
