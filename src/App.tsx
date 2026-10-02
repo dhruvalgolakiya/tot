@@ -9,6 +9,7 @@ import { Header } from "./components/Header";
 import { MascotGallery } from "./components/mascot";
 import { NewAgentDialog } from "./components/NewAgentDialog";
 import { SettingsPage } from "./components/settings/SettingsPage";
+import { TrustLab } from "./components/trust/TrustLab";
 import { Sidebar } from "./components/Sidebar";
 import { WikiView } from "./components/wiki/WikiView";
 import { useAgentAccent } from "./hooks/useAgentAccent";
@@ -117,6 +118,8 @@ export default function App() {
         <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-canvas">
           {page === "settings" ? (
             <SettingsPage key={viewKey} />
+          ) : page === "trust-lab" ? (
+            <TrustLab key={viewKey} />
           ) : (
             <>
               <Header />

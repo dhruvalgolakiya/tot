@@ -38,6 +38,7 @@ import {
   settingsPath,
   settingsSectionFromPath,
   type SettingsSection,
+  TRUST_LAB_PATH,
   wikiFromPath,
   wikiPath,
 } from "./lib/router";
@@ -48,7 +49,7 @@ export type AgentSettingsTab = "profile" | "routines";
 type LoadState = "loading" | "ready" | "error";
 
 /** Which top-level screen is showing; drives what `App` mounts. */
-export type Page = "home" | "chat" | "mascots" | "wiki" | "settings";
+export type Page = "home" | "chat" | "mascots" | "wiki" | "settings" | "trust-lab";
 
 /** How long a just-finished reply keeps its mascot "happy" before it idles. */
 export const MASCOT_HAPPY_MS = 2200;
@@ -608,6 +609,10 @@ export function syncWithLocation() {
   }
   if (pathname === MASCOTS_PATH) {
     set({ page: "mascots" });
+    return;
+  }
+  if (pathname === TRUST_LAB_PATH) {
+    set({ page: "trust-lab" });
     return;
   }
   const wiki = wikiFromPath(pathname);

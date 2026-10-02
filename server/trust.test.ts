@@ -184,6 +184,149 @@ const elsewhere = brains.create({ name: "acme/api", kind: "repo", source: "https
 const missing = await request<{ error: string }>("POST", `/brains/${elsewhere.id}/profile/draft`, { agentId: agent.id });
 check("draft for a repo that isn't cloned says so", missing.status === 400 && /isn't on Builder's computer/.test(missing.json.error), missing.json.error);
 
+// --- M2 · Gates -----------------------------------------------------------------------------------------
+const { blocks, failureLines, runGates } = await import("./trust/gates.ts");
+const { citedPaths, globMatcher } = await import("./trust/scope.ts");
+const { db } = await import("./db.ts");
+
+const glob = (pattern: string, path: string) => globMatcher(pattern)(path);
+check(
+  "globs: ** spans folders, * doesn't, bare names match at any depth",
+  glob("db/migrations/**", "db/migrations/001.sql") &&
+    !glob("migrations/**", "db/migrations/001.sql") &&
+    glob("**/migrations/**", "db/migrations/001.sql") &&
+    glob("*.lock", "deep/yarn.lock") &&
+    glob(".github/", ".github/workflows/ci.yml") &&
+    glob("src/**/*.ts", "src/a.ts") &&
+    !glob("src/*.ts", "src/deep/a.ts"),
+);
+const cited = citedPaths("Change `src/cart.ts:42` and src/checkout.js (line 7–9), add test/cart.test.js, see package.json and https://example.com/docs/a.md. Also e.g. this.");
+check(
+  "plans: cited paths without line numbers or URLs",
+  ["src/cart.ts", "src/checkout.js", "test/cart.test.js", "package.json"].every((path) => cited.includes(path)) && !cited.some((path) => /example|e\.g/.test(path)),
+  JSON.stringify(cited),
+);
+check(
+  "failure lines ignore folders, timings and counts",
+  JSON.stringify(failureLines("✖ subtracts (1.2ms)\n  at /work/a/test.js:3:9\n# fail 1", ["/work/a"])) ===
+    JSON.stringify(failureLines("✖ subtracts (7.9ms)\n  at /base/b/test.js:3:9\n# fail 1", ["/base/b"])),
+);
+
+const repo = "repos/gates";
+await write(repo, {
+  "package.json": JSON.stringify({ name: "gates", type: "module", scripts: { test: "node --test", lint: "node lint.mjs" }, dependencies: {} }, null, 2),
+  "package-lock.json": "{}\n",
+  "lint.mjs": "process.exit(0);\n",
+  "src/math.js": "export const add = (a, b) => a + b;\nexport const sub = (a, b) => a + b; // the old bug\n",
+  "test/math.test.js":
+    "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { add, sub } from '../src/math.js';\n\ntest('adds', () => assert.equal(add(2, 2), 4));\ntest('legacy subtracts', () => assert.equal(sub(5, 3), 2));\n",
+  "migrations/001.sql": "create table t (id int);\n",
+});
+await run(`${GIT} init -q && ${GIT} add -A && ${GIT} commit -qm base && git checkout -qb work`, repo);
+const profile = { ...detectProfile({ manifests: {}, files: [] }), commands: { test: "npm test", lint: "npm run lint" }, protectedPaths: ["migrations/**"] };
+const gatesFor = (extra: Partial<Parameters<typeof runGates>[0]> = {}) =>
+  runGates({ agentId: agent.id, cwd: repo, baseRef: "main", profile, brainId: null, gates: ["lint", "test", "scope", "deps", "size"], ...extra });
+const gate = (report: Awaited<ReturnType<typeof runGates>>, name: string) => report.results.find((result) => result.gate === name)!;
+
+// An unrelated change: the old failing test still fails, but that doesn't block.
+await write(repo, { "src/math.js": "export const add = (a, b) => a + b;\nexport const sub = (a, b) => a + b; // the old bug\nexport const one = 1;\n" });
+let report = await gatesFor();
+check(
+  "failure the base already has doesn't block",
+  gate(report, "test").status === "fail" && gate(report, "test").baseline === "fail" && gate(report, "test").newFailures?.length === 0 && !blocks(gate(report, "test")) && report.ok,
+  JSON.stringify(gate(report, "test")),
+);
+check("base result is cached by commit", Number((db.prepare("SELECT COUNT(*) AS n FROM gate_baselines WHERE gate = 'test'").get() as { n: number }).n) === 1);
+check("the base worktree is cleaned up", (await run("git worktree list", repo)).trim().split("\n").length === 1 && !(await run("ls -a")).includes(".tot-baselines/"));
+
+// A new failure on the branch blocks; the old one is still not counted against it.
+await write(repo, {
+  "test/more.test.js": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { add } from '../src/math.js';\n\ntest('adds negatives', () => assert.equal(add(-2, -2), -5));\n",
+});
+report = await gatesFor();
+const newOnes = gate(report, "test").newFailures ?? [];
+check(
+  "only the new failure blocks",
+  !report.ok && blocks(gate(report, "test")) && newOnes.some((line) => line.includes("adds negatives")) && !newOnes.some((line) => line.includes("legacy subtracts")),
+  JSON.stringify(newOnes),
+);
+check("lint passes and scope is clean", gate(report, "lint").status === "pass" && gate(report, "scope").status === "pass" && gate(report, "size").status === "pass");
+await run("rm test/more.test.js", repo);
+
+// A new dependency needs the user's OK (and is fine when the profile allows it).
+await write(repo, {
+  "package.json": JSON.stringify({ name: "gates", type: "module", scripts: { test: "node --test", lint: "node lint.mjs" }, dependencies: { "left-pad": "^1.3.0" } }, null, 2),
+  "package-lock.json": '{"packages":{"node_modules/left-pad":{}}}\n',
+});
+report = await gatesFor();
+check(
+  "new dependency needs approval",
+  gate(report, "deps").status === "needs-approval" && Boolean(gate(report, "deps").details?.some((line) => line.includes("+ left-pad ^1.3.0"))) && !report.ok,
+  JSON.stringify(gate(report, "deps")),
+);
+report = await gatesFor({ profile: { ...profile, limits: { ...profile.limits, allowNewDependencies: true } } });
+check("allowed by the profile, it passes", gate(report, "deps").status === "pass");
+await run("git checkout -q -- package.json package-lock.json", repo);
+
+// Skipped tests are caught, even when the test run itself doesn't block.
+await write(repo, {
+  "test/math.test.js":
+    "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { add, sub } from '../src/math.js';\n\ntest.skip('adds', () => assert.equal(add(2, 2), 4));\ntest('legacy subtracts', () => assert.equal(sub(5, 3), 2));\n",
+});
+report = await gatesFor();
+check(
+  ".skip is caught",
+  gate(report, "test").status === "needs-approval" && Boolean(gate(report, "test").details?.some((line) => line.includes("skips a test"))) && !report.ok,
+  JSON.stringify(gate(report, "test")),
+);
+await write(repo, {
+  "test/math.test.js": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { add, sub } from '../src/math.js';\n\n// test('adds', () => assert.equal(add(2, 2), 4));\n",
+});
+report = await gatesFor();
+const findings = gate(report, "test").details ?? [];
+check("commented-out and removed tests are caught", findings.some((line) => line.includes("comments out a test")) && findings.some((line) => line.includes("removes 2 tests")), JSON.stringify(findings));
+await run("git checkout -q -- test/math.test.js && git rm -q test/math.test.js", repo);
+report = await gatesFor({ gates: ["scope"] });
+check("a deleted test file is caught", Boolean(gate(report, "test")?.details?.some((line) => line.includes("test file deleted"))));
+await run("git reset -q && git checkout -q -- test", repo);
+
+// Protected paths, the plan's files, size limits, read-only work.
+await write(repo, { "migrations/002.sql": "alter table t add column x int;\n", "src/extra.js": "export const two = 2;\n" });
+report = await gatesFor({ plan: { text: "Change src/math.js", files: ["src/math.js"] } });
+const scopeDetails = gate(report, "scope").details ?? [];
+check(
+  "protected paths and files outside the plan need approval",
+  gate(report, "scope").status === "needs-approval" &&
+    scopeDetails.some((line) => line.startsWith("migrations/002.sql (protected")) &&
+    scopeDetails.some((line) => line.startsWith("src/extra.js (outside the plan)")) &&
+    !scopeDetails.some((line) => line.startsWith("src/math.js")),
+  JSON.stringify(scopeDetails),
+);
+report = await gatesFor({ profile: { ...profile, protectedPaths: [], limits: { ...profile.limits, maxChangedLines: 2, maxChangedFiles: 1 } } });
+check("over the size limits needs approval", gate(report, "size").status === "needs-approval" && /limit 2\b/.test(gate(report, "size").note ?? ""), gate(report, "size").note);
+report = await gatesFor({ readOnly: true, gates: ["scope"] });
+check("read-only work fails on any change", gate(report, "scope").status === "fail");
+await run("rm -f migrations/002.sql src/extra.js && git checkout -q -- src", repo);
+
+// Reproducing a bug: the repro must fail before the fix and pass after.
+const repro = { command: "node -e \"import('./src/math.js').then(m => process.exit(m.sub(5, 3) === 2 ? 0 : 1))\"", expect: "fail" as const };
+report = await gatesFor({ gates: ["repro"], repro });
+check("repro fails before the fix: pass", gate(report, "repro").status === "pass", JSON.stringify(gate(report, "repro")));
+await write(repo, { "src/math.js": "export const add = (a, b) => a + b;\nexport const sub = (a, b) => a - b;\n" });
+report = await gatesFor({ gates: ["repro", "test"], repro: { ...repro, expect: "pass" } });
+check("after the fix the repro passes and so do the tests", gate(report, "repro").status === "pass" && gate(report, "test").status === "pass" && report.ok, JSON.stringify(report.results.map((r) => [r.gate, r.status])));
+
+// The dev route: any folder, with the profile read from it.
+const checked = await request<{ ok: boolean; results: { gate: string; status: string }[] }>("POST", "/trust/check", { agentId: agent.id, cwd: repo, baseRef: "main" });
+check(
+  "dev route checks a folder with a detected profile",
+  checked.status === 200 && ["lint", "test", "scope", "deps", "size"].every((name) => checked.json.results.some((r) => r.gate === name)),
+  JSON.stringify(checked.json),
+);
+check("dev route refuses option-like refs", (await request("POST", "/trust/check", { agentId: agent.id, cwd: repo, baseRef: "--output=/tmp/x" })).status === 400);
+check("dev route: unknown base", (await request("POST", "/trust/check", { agentId: agent.id, cwd: repo, baseRef: "nope" })).status === 400);
+check("dev route: not a repo", (await request("POST", "/trust/check", { agentId: agent.id, cwd: "repos/nowhere", baseRef: "main" })).status === 400);
+
 // ---------------------------------------------------------------------------------------------------------
 trustModel.use(null);
 await computerManager.destroy(agent.id);

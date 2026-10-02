@@ -52,6 +52,8 @@ export function conversationIdFromPath(pathname: string): string | null {
 }
 
 export const MASCOTS_PATH = "/mascots";
+/** Dev page for module 03's checks and reviewer until tasks exist. */
+export const TRUST_LAB_PATH = "/dev/trust";
 
 export type SettingsSection =
   | "general"

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { LoaderCircle, Play, ShieldCheck } from "lucide-react";
 import type { Agent, Brain, CommandRun, RepoCommandName, RepoProfile, RepoProfileInput } from "@shared/types";
 import { errorMessage } from "../../lib/api";
+import { formatDuration } from "../../lib/format";
 import { ToolOutput } from "../ToolOutput";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -333,9 +334,9 @@ function CommandRow({
                 <Badge tone={run.timedOut ? "warning" : run.exitCode === 0 ? "success" : "danger"} dot>
                   {run.timedOut ? "Timed out" : run.exitCode === 0 ? "Passed" : `Exit ${run.exitCode}`}
                 </Badge>
-                {(run.durationMs / 1000).toFixed(1)}s
+                {formatDuration(run.durationMs)}
               </div>
-              {run.outputTail && <ToolOutput label="Output" text={run.outputTail} error={run.exitCode !== 0} />}
+              {run.outputTail && <ToolOutput label="Output" text={run.outputTail} error={run.exitCode !== 0} startAtEnd />}
             </>
           )}
         </div>

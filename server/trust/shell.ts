@@ -63,7 +63,8 @@ export const output = (result: ExecResult) => [result.stdout.trimEnd(), result.s
 export const folderArg = (folder: string) => sh(folder.trim().replace(/^~\/?/, "") || ".");
 
 /**
- * Runs a script that prints sections, each started by a line "@@@ <name>", and returns them by name.
+ * Runs a script that prints sections, each started by a line "@@@ <name>", and returns them by name
+ * (print a newline after file contents: a marker must start its own line).
  * Lets one round trip to the computer collect everything a check needs. With `folder`, the script
  * runs there, and a folder that doesn't exist comes back as a "missing" section (it isn't created).
  */
@@ -89,6 +90,7 @@ export async function sections(agentId: string, script: string, folder?: string)
 
 /** The commit HEAD points at, and where the branch left `baseRef` (the merge-base), in a repo folder. */
 export async function repoState(agentId: string, cwd: string, baseRef: string): Promise<{ headSha: string | null; baseSha: string }> {
+  if (!/^[\w./@^~{}+-]+$/.test(baseRef) || baseRef.startsWith("-")) throw new HttpError(400, `“${baseRef}” isn't a branch, tag or commit name.`);
   const found = await sections(
     agentId,
     `git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "@@@ not-git"; exit 0; }

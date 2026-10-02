@@ -511,3 +511,12 @@ export async function draftAfterLearning(brainId: string, agentId: string): Prom
   if (repoProfiles.get(brainId)?.updatedBy === "user") return;
   repoProfiles.save(brainId, await draftProfile(brainId, agentId), "agent");
 }
+
+/** The profile for a repo folder: its brain's saved one, or one read from the folder now (not saved). */
+export async function profileForFolder(agentId: string, folder: string): Promise<{ brainId: string | null; profile: RepoProfileInput }> {
+  const clean = folder.trim().replace(/^~\/?/, "").replace(/\/+$/, "");
+  const brain = brains.list().find((b) => b.kind === "repo" && b.source && repoFolder(b.source) === clean) ?? null;
+  const saved = brain ? repoProfiles.get(brain.id) : null;
+  if (saved) return { brainId: brain!.id, profile: saved };
+  return { brainId: brain?.id ?? null, profile: detectProfile(await scanRepo(agentId, clean)) };
+}
