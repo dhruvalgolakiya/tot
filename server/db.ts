@@ -351,6 +351,8 @@ if (!hasColumn("agents", "persona_id")) {
 }
 // The persona's own GitHub account (PersonaGitHub plus the account's id), JSON; its token lives in secrets.json.
 if (!hasColumn("personas", "github")) db.exec(`ALTER TABLE personas ADD COLUMN github TEXT`);
+// The persona's picture: an id in uploads.
+if (!hasColumn("personas", "avatar_id")) db.exec(`ALTER TABLE personas ADD COLUMN avatar_id TEXT`);
 
 // Full-text index of what was said in each chat, so agents can search their earlier chats.
 db.exec(`

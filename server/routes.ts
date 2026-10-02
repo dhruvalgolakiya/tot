@@ -324,6 +324,7 @@ api.post("/routines/:id/run", async (c) => {
 // ---------------------------------------------------------------------------
 
 const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 api.post("/uploads", async (c) => {
   if (Number(c.req.header("content-length") ?? 0) > MAX_UPLOAD_BYTES + 64 * 1024) {
@@ -696,10 +697,16 @@ api.patch("/personas/:id", async (c) => {
   }
   if (email) addressFree(email, persona.id);
   if (patch.defaultAgentId && !agents.get(patch.defaultAgentId)) throw new HttpError(404, "Agent not found.");
+  if (patch.avatarId) {
+    const image = found(uploads.get(patch.avatarId), "Picture not found; upload it first.");
+    if (!INLINE_TYPES.has(image.mimeType)) throw new HttpError(400, "The picture must be a PNG, JPEG, GIF or WebP image.");
+    if (image.size > MAX_AVATAR_BYTES) throw new HttpError(400, "The picture can be at most 5 MB.");
+  }
   const updated = found(
     personas.update(persona.id, {
       name: patch.name,
       email,
+      avatarId: patch.avatarId,
       allowedSenders: patch.allowedSenders && [...new Set(patch.allowedSenders.map((sender) => sender.trim().toLowerCase()))],
       defaultAgentId: patch.defaultAgentId,
     }),

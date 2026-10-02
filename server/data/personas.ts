@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Persona, PersonaGitHub, PersonaInput, PersonaMailbox, PersonaPatch } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { mail } from "./mail.ts";
+import { uploads } from "./uploads.ts";
 
 /**
  * Personas: identities agents work as (a name, a real mailbox and optionally a GitHub account).
@@ -59,10 +60,12 @@ function toPersona(row: Row): Persona {
     const { id: _githubId, ...rest } = stored;
     github = rest;
   }
+  const avatar = row.avatar_id ? uploads.get(String(row.avatar_id)) : null;
   return {
     id,
     name: String(row.name),
     email: String(row.email),
+    avatarUrl: avatar?.url ?? null,
     mailbox,
     github,
     allowedSenders: parseJson<string[]>(row.allowed_senders, []),
@@ -119,6 +122,7 @@ export const personas = {
     const columns: Record<string, string | null | undefined> = {
       name: patch.name?.trim(),
       email: patch.email?.trim().toLowerCase(),
+      avatar_id: patch.avatarId,
       allowed_senders: patch.allowedSenders && JSON.stringify(patch.allowedSenders),
       default_agent_id: patch.defaultAgentId,
     };
@@ -190,6 +194,9 @@ export function validatePersona(input: Partial<PersonaInput & PersonaPatch>, cre
   }
   if (input.defaultAgentId !== undefined && input.defaultAgentId !== null && typeof input.defaultAgentId !== "string") {
     return "The default agent must be an agent id or null.";
+  }
+  if (input.avatarId !== undefined && input.avatarId !== null && typeof input.avatarId !== "string") {
+    return "The picture must be an uploaded file's id or null.";
   }
   return null;
 }

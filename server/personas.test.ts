@@ -345,6 +345,17 @@ check("PATCH sets it", patched.personaId === persona.id);
 patched = (await request<Agent>("PATCH", `/agents/${plain.id}`, { personaId: null })).json;
 check("null clears it", patched.personaId === null && !(await request<Persona[]>("GET", "/personas")).json[0]!.agentIds.includes(plain.id));
 
+// Picture: an uploaded image, shown as avatarUrl; other files refused; null removes it.
+const { uploads } = await import("./data/uploads.ts");
+const png = uploads.save({ name: "tot.png", mimeType: "image/png", data: Buffer.from("not really a png") });
+const pdf = uploads.save({ name: "notes.pdf", mimeType: "application/pdf", data: Buffer.from("%PDF") });
+let pictured = await request<Persona>("PATCH", `/personas/${persona.id}`, { avatarId: png.id });
+check("picture set", pictured.json.avatarUrl === png.url, JSON.stringify(pictured.json.avatarUrl));
+check("only images", (await request("PATCH", `/personas/${persona.id}`, { avatarId: pdf.id })).status === 400);
+check("unknown upload refused", (await request("PATCH", `/personas/${persona.id}`, { avatarId: "missing" })).status === 404);
+pictured = await request<Persona>("PATCH", `/personas/${persona.id}`, { avatarId: null });
+check("picture removed", pictured.json.avatarUrl === null);
+
 // Prompts.
 const access = { name: "Tot", email: "tot.agent@gmail.com", mailbox: true };
 const prompt = buildSystemPrompt({ settings: settings.get(), workspace: null, agent: tot, persona: access });

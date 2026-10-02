@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { DropdownMenu } from "radix-ui";
-import { ArrowLeft, Ellipsis, Pencil, RefreshCw, Trash, Unplug } from "lucide-react";
+import { ArrowLeft, Camera, Ellipsis, ImageMinus, Pencil, RefreshCw, Trash, Unplug } from "lucide-react";
 import type { Persona } from "@shared/types";
 import { api } from "../../lib/api";
 import { mailboxStatus } from "../../lib/personas";
@@ -32,6 +32,26 @@ export function PersonaDetail({ persona, onBack }: PersonaDetailProps) {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const hasMailbox = persona.mailbox.state === "connected" || persona.mailbox.state === "error";
+  const pictureInput = useRef<HTMLInputElement>(null);
+  const [savingPicture, setSavingPicture] = useState(false);
+
+  async function setPicture(file: File | null) {
+    setSavingPicture(true);
+    try {
+      const avatarId = file ? (await api.uploadFile(file)).id : null;
+      setPersona(await api.updatePersona(persona.id, { avatarId }));
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setSavingPicture(false);
+    }
+  }
+
+  function onPicturePicked(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) void setPicture(file);
+  }
 
   async function checkForMail() {
     setRefreshing(true);
@@ -73,7 +93,21 @@ export function PersonaDetail({ persona, onBack }: PersonaDetailProps) {
         <IconButton label="Back to personas" onClick={onBack}>
           <ArrowLeft />
         </IconButton>
-        <PersonaAvatar name={persona.name} size="size-10" />
+        <Tip content={persona.avatarUrl ? "Change picture" : "Add a picture"}>
+          <button
+            type="button"
+            aria-label={persona.avatarUrl ? "Change picture" : "Add a picture"}
+            disabled={savingPicture}
+            onClick={() => pictureInput.current?.click()}
+            className="group/avatar relative shrink-0 rounded-full disabled:opacity-60"
+          >
+            <PersonaAvatar name={persona.name} url={persona.avatarUrl} size="size-10" />
+            <span className="dark absolute inset-0 grid place-items-center rounded-full bg-black/50 text-white opacity-0 transition-opacity group-hover/avatar:opacity-100 group-focus-visible/avatar:opacity-100 [&_svg]:size-4">
+              <Camera />
+            </span>
+          </button>
+        </Tip>
+        <input ref={pictureInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={onPicturePicked} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-heading text-fg-strong">{persona.name}</p>
           <p className="truncate text-xs text-fg-subtle">{persona.email}</p>
@@ -94,6 +128,14 @@ export function PersonaDetail({ persona, onBack }: PersonaDetailProps) {
               <DropdownMenu.Item className="menu-item" onSelect={() => setRenaming(true)}>
                 <Pencil className="size-4 text-fg-muted" /> Rename / Change email
               </DropdownMenu.Item>
+              <DropdownMenu.Item className="menu-item" disabled={savingPicture} onSelect={() => pictureInput.current?.click()}>
+                <Camera className="size-4 text-fg-muted" /> {persona.avatarUrl ? "Change picture" : "Add a picture"}
+              </DropdownMenu.Item>
+              {persona.avatarUrl && (
+                <DropdownMenu.Item className="menu-item" disabled={savingPicture} onSelect={() => void setPicture(null)}>
+                  <ImageMinus className="size-4 text-fg-muted" /> Remove picture
+                </DropdownMenu.Item>
+              )}
               {persona.mailbox.state === "connected" && (
                 <DropdownMenu.Item className="menu-item" disabled={refreshing} onSelect={() => void checkForMail()}>
                   <RefreshCw className="size-4 text-fg-muted" /> {refreshing ? "Checking…" : "Check for new mail"}

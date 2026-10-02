@@ -749,6 +749,8 @@ export interface Persona {
   name: string;
   /** The mailbox's address, e.g. "tot.agent@gmail.com"; also the git author email. */
   email: string;
+  /** Its picture (an uploaded image's URL); null shows its initials. */
+  avatarUrl: string | null;
   mailbox: PersonaMailbox;
   /** The persona's own GitHub account; null = agents working as it have no GitHub access of their own. */
   github: PersonaGitHub | null;
@@ -798,6 +800,8 @@ export interface PersonaInput {
 export interface PersonaPatch {
   name?: string;
   email?: string;
+  /** An image uploaded with POST /api/uploads (PNG, JPEG, GIF or WebP, up to 5 MB); null removes the picture. */
+  avatarId?: string | null;
   allowedSenders?: string[];
   defaultAgentId?: string | null;
 }

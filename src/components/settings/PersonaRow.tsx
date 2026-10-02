@@ -27,7 +27,7 @@ export function PersonaRow({ persona, agents, onClick }: PersonaRowProps) {
         onClick={onClick}
         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-hover"
       >
-        <PersonaAvatar name={persona.name} size="size-10" />
+        <PersonaAvatar name={persona.name} url={persona.avatarUrl} size="size-10" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <p className="truncate text-sm font-medium text-fg">{persona.name}</p>
