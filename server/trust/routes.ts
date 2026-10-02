@@ -1,12 +1,14 @@
 import { Hono, type Context } from "hono";
-import type { GateName, RepoProfileInput, TrustCheckRequest, TrustReviewRequest } from "../../shared/types.ts";
+import type { GateName, PlaybookInput, PlaybookPatch, RepoProfileInput, TrustCheckRequest, TrustReviewRequest, WorkflowSettings } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { IS_PROD } from "../config.ts";
 import { agents } from "../data/agents.ts";
 import { COMMAND_GATES, runGates } from "./gates.ts";
+import { matchPlaybook, playbooks } from "./playbooks.ts";
 import { draftProfile, profileForFolder, repoProfiles, runProfileCommand } from "./profile.ts";
 import { reviewDiff } from "./review.ts";
 import { planFrom } from "./scope.ts";
+import { workflows } from "./settings.ts";
 
 /** Trust gates & playbooks (module 03). Mounted under /api; errors reach the API's own handler. */
 export const trustRoutes = new Hono();
@@ -44,6 +46,28 @@ trustRoutes.post("/brains/:id/profile/run", async (c) => {
   const { agentId, command } = await body<{ agentId?: string; command: string }>(c);
   return c.json(await runProfileCommand(c.req.param("id"), command, agentId));
 });
+
+// --- Playbooks and the workflow defaults (Settings → Workflows) -----------------
+
+trustRoutes.get("/playbooks", (c) => c.json(playbooks.list()));
+
+trustRoutes.post("/playbooks", async (c) => c.json(playbooks.create(await body<PlaybookInput>(c)), 201));
+
+trustRoutes.post("/playbooks/match", async (c) => {
+  const { goal } = await body<{ goal?: unknown }>(c);
+  return c.json(await matchPlaybook(typeof goal === "string" ? goal : ""));
+});
+
+trustRoutes.patch("/playbooks/:id", async (c) => c.json(playbooks.update(c.req.param("id"), await body<PlaybookPatch>(c))));
+
+trustRoutes.delete("/playbooks/:id", (c) => {
+  playbooks.delete(c.req.param("id"));
+  return c.json({ ok: true });
+});
+
+trustRoutes.get("/workflows", (c) => c.json(workflows.get()));
+
+trustRoutes.patch("/workflows", async (c) => c.json(workflows.patch(await body<Partial<WorkflowSettings>>(c))));
 
 // --- Dev only until tasks exist: exercise the services on any repo folder ---
 

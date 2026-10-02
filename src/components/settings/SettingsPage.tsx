@@ -33,6 +33,7 @@ import { ListRow } from "../ui/ListRow";
 import { PageHeader } from "../ui/SectionHeader";
 import { Skeleton } from "../ui/Skeleton";
 import { Tip } from "../ui/Tip";
+import { WorkflowsSettings } from "../trust/WorkflowsSettings";
 import { AppsSettings } from "./AppsSettings";
 import { ComputerSettings } from "./ComputerSettings";
 import { GeneralSettings } from "./GeneralSettings";
@@ -228,6 +229,8 @@ function SectionBody({
       return <MemoryBrowser />;
     case "github":
       return <GitHubSettings />;
+    case "workflows":
+      return <WorkflowsSettings />;
     case "apps":
       return <AppsSettings />;
     case "slack":

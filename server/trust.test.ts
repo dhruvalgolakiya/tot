@@ -412,6 +412,86 @@ check("dev route reviews a folder", viaRoute.status === 200 && viaRoute.json.ver
 await run("git checkout -q -- .", shop2);
 check("nothing to review is a 400", (await request("POST", "/trust/review", { agentId: agent.id, cwd: shop2, baseRef: "main" })).status === 400);
 
+// --- M4 · Playbooks -------------------------------------------------------------------------------------
+type PlaybookT = import("../shared/types.ts").Playbook;
+type MatchT = import("../shared/types.ts").PlaybookMatch;
+const { hintScore, isReadOnly } = await import("./trust/playbooks.ts");
+
+calls.length = 0;
+let matched = await request<MatchT>("POST", "/playbooks/match", { goal: "the checkout page crashes when the cart is empty" });
+check("“the checkout page crashes when the cart is empty” → Bug fix", matched.json.playbook.id === "bug-fix" && matched.json.by === "hints", JSON.stringify(matched.json.by));
+matched = await request<MatchT>("POST", "/playbooks/match", { goal: "add CSV export" });
+check("“add CSV export” → Feature", matched.json.playbook.id === "feature" && matched.json.by === "hints");
+matched = await request<MatchT>("POST", "/playbooks/match", { goal: "Why doesn’t the nightly job pick up new carts?" });
+check("investigate questions match too", matched.json.playbook.id === "investigate", matched.json.playbook.id);
+check("hints match whole words with endings", hintScore("It crashed while adding items", ["crash", "add"]) === 2 && hintScore("the prefix address", ["fix", "add"]) === 0);
+check("no model call when the hints decide", calls.length === 0);
+
+answer = () => "refactor";
+matched = await request<MatchT>("POST", "/playbooks/match", { goal: "tidy up the error handling" });
+check("a tie goes to the light classifier", matched.json.playbook.id === "refactor" && matched.json.by === "classifier" && calls.at(-1)?.model === "claude-sonnet-5-5", JSON.stringify(matched.json.by));
+answer = () => "I can't tell.";
+matched = await request<MatchT>("POST", "/playbooks/match", { goal: "the quarterly numbers" });
+check("no hints and no answer: Feature as the fallback", matched.json.playbook.id === "feature" && matched.json.by === "fallback");
+
+let list = (await request<PlaybookT[]>("GET", "/playbooks")).json;
+check("built-ins listed first", ["bug-fix", "feature", "refactor", "investigate", "review-pr"].every((id, i) => list[i]?.id === id && list[i].builtIn && list[i].enabled));
+const bugFix = list[0];
+check(
+  "bug fix: reproduce (repro) before the plan, verify needs the repro to pass, fix loop after review",
+  bugFix.steps.map((s) => s.kind).join(" → ") === "understand → reproduce → plan → approve-plan → implement → verify → review → fix-loop → summarize" &&
+    bugFix.steps[1].gates?.includes("repro") === true &&
+    bugFix.steps[5].gates?.includes("repro") === true,
+);
+check("investigate and review a PR are read-only", isReadOnly(list[3]) && isReadOnly(list[4]) && !isReadOnly(bugFix));
+check("built-ins can't be edited", (await request("PATCH", "/playbooks/bug-fix", { name: "Mine" })).status === 400);
+check("built-ins can't be deleted", (await request("DELETE", "/playbooks/bug-fix")).status === 400);
+check("built-ins can be turned off", (await request<PlaybookT>("PATCH", "/playbooks/investigate", { enabled: false })).json.enabled === false);
+matched = await request<MatchT>("POST", "/playbooks/match", { goal: "Why doesn't the nightly job pick up new carts?" });
+check("a playbook that's off isn't matched", matched.json.playbook.id !== "investigate");
+await request("PATCH", "/playbooks/investigate", { enabled: true });
+
+// Duplicate a built-in, edit the copy, save it.
+const copy = await request<PlaybookT>("POST", "/playbooks", { name: "Bug fix (copy)", description: bugFix.description, match: bugFix.match, steps: bugFix.steps });
+check("a duplicate is a custom playbook", copy.status === 201 && !copy.json.builtIn && copy.json.steps.length === bugFix.steps.length);
+const steps = copy.json.steps.filter((s) => s.kind !== "approve-plan").map((s) => (s.kind === "fix-loop" ? { ...s, maxRounds: 5 } : s));
+const edited2 = await request<PlaybookT>("PATCH", `/playbooks/${copy.json.id}`, {
+  name: "Hotfix",
+  match: ["hotfix", "Outage", "outage"],
+  steps: [...steps.slice(0, -1), { kind: "custom", instructions: "Post the fix to #incidents as a draft.", gates: [] }, steps.at(-1)],
+});
+check(
+  "edited and saved",
+  edited2.status === 200 &&
+    edited2.json.name === "Hotfix" &&
+    edited2.json.match.join() === "hotfix,outage" &&
+    !edited2.json.steps.some((s) => s.kind === "approve-plan") &&
+    edited2.json.steps.find((s) => s.kind === "fix-loop")?.maxRounds === 5 &&
+    edited2.json.steps.some((s) => s.kind === "custom" && s.id === "custom"),
+  JSON.stringify(edited2.json).slice(0, 300),
+);
+list = (await request<PlaybookT[]>("GET", "/playbooks")).json;
+check("the edit persists", list.find((p) => p.id === copy.json.id)?.name === "Hotfix");
+matched = await request<MatchT>("POST", "/playbooks/match", { goal: "outage: hotfix the payment webhook" });
+check("custom playbooks are matched by their hints", matched.json.playbook.id === copy.json.id, matched.json.playbook.name);
+
+const invalid = async (patch: object) => (await request<{ error: string }>("PATCH", `/playbooks/${copy.json.id}`, patch)).json.error ?? "";
+check("needs a step", /at least one step/.test(await invalid({ steps: [] })));
+check("steps need instructions", /Step 1 needs instructions/.test(await invalid({ steps: [{ kind: "implement", instructions: " " }] })));
+check("unknown step kinds are refused", /needs a kind/.test(await invalid({ steps: [{ kind: "deploy", instructions: "Ship it" }] })));
+check("approve-plan needs a plan first", /needs a plan step before it/.test(await invalid({ steps: [{ kind: "approve-plan", instructions: "OK?" }] })));
+check("a fix loop needs something to fix", /verify or review step before it/.test(await invalid({ steps: [{ kind: "implement", instructions: "Do" }, { kind: "fix-loop", instructions: "Fix" }] })));
+check("unknown checks are refused", /checks are some of/.test(await invalid({ steps: [{ kind: "verify", instructions: "Check", gates: ["vibes"] }] })));
+check("names are unique", /already a playbook called/.test(await invalid({ name: "feature" })));
+check("deleted", (await request("DELETE", `/playbooks/${copy.json.id}`)).status === 200 && !(await request<PlaybookT[]>("GET", "/playbooks")).json.some((p) => p.id === copy.json.id));
+
+// Workflow defaults.
+let flows = await request<{ requirePlanApproval: boolean; reviewer: string; maxFixRounds: number }>("GET", "/workflows");
+check("workflow defaults: plans need an OK, the other provider reviews, 3 fix rounds", flows.json.requirePlanApproval && flows.json.reviewer === "other" && flows.json.maxFixRounds === 3);
+flows = await request("PATCH", "/workflows", { requirePlanApproval: false, maxFixRounds: 2 });
+check("workflow defaults saved", !flows.json.requirePlanApproval && flows.json.maxFixRounds === 2 && (await request<typeof flows.json>("GET", "/workflows")).json.maxFixRounds === 2);
+check("workflow defaults validated", (await request("PATCH", "/workflows", { maxFixRounds: 0 })).status === 400 && (await request("PATCH", "/workflows", { reviewer: "gemini" })).status === 400);
+
 // ---------------------------------------------------------------------------------------------------------
 trustModel.use(null);
 await computerManager.destroy(agent.id);

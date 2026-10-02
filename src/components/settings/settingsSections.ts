@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Brain, IdCard, LayoutGrid, Monitor, Plug, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Brain, IdCard, LayoutGrid, ListChecks, Monitor, Plug, SlidersHorizontal, Sparkles } from "lucide-react";
 import type { SettingsSection } from "../../lib/router";
 import { GitHubMark } from "../ui/GitHubMark";
 import { SlackMark } from "../ui/SlackMark";
@@ -49,6 +49,13 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     label: "GitHub",
     description: "Give agents GitHub access for issues, pull requests, and private repos.",
     icon: GitHubMark,
+    hasDraft: false,
+  },
+  {
+    id: "workflows",
+    label: "Workflows",
+    description: "How agents work through coding tasks: playbooks, plan approval, and independent reviews.",
+    icon: ListChecks,
     hasDraft: false,
   },
   {
