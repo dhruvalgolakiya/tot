@@ -60,6 +60,10 @@ import { MAX_UPLOAD_BYTES, toAttachment, uploads } from "./data/uploads.ts";
 import { wiki, WikiError } from "./data/wiki.ts";
 import { mailboxes } from "./mail/mailbox.ts";
 import { personaGitHub } from "./persona-github.ts";
+import { taskQueue } from "./tasks/queue.ts";
+import { taskRoutes } from "./tasks/routes.ts";
+import { isTask } from "./tasks/store.ts";
+import { tasks } from "./tasks/tasks.ts";
 
 export const api = new Hono();
 
@@ -267,9 +271,13 @@ api.patch("/conversations/:id", async (c) => {
   return c.json(conversation);
 });
 
-// The computer belongs to the agent, so deleting a chat leaves it alone.
-api.delete("/conversations/:id", (c) => {
+// The computer belongs to the agent, so deleting a chat leaves it alone (a task's worktree goes with it).
+api.delete("/conversations/:id", async (c) => {
   const id = c.req.param("id");
+  if (isTask(conversations.get(id))) {
+    await tasks.remove(id, { deleteBranch: c.req.query("deleteBranch") === "1" });
+    return c.json({ ok: true });
+  }
   runRegistry.activeFor(id)?.stop();
   const agentId = conversations.get(id)?.agentId;
   conversations.delete(id);
@@ -279,8 +287,15 @@ api.delete("/conversations/:id", (c) => {
 });
 
 api.post("/conversations/:id/messages", async (c) => {
+  const id = c.req.param("id");
   const request = await body<SendMessageRequest>(c);
-  return c.json(await sendMessage(c.req.param("id"), request));
+  const conversation = conversations.get(id);
+  if (isTask(conversation)) {
+    const result = await tasks.message(id, request);
+    if ("started" in result) return c.json(result.started);
+    return c.json({ runId: runRegistry.activeFor(id)?.id ?? "", userMessage: result.steered, conversation: toPublicConversation(conversations.get(id)!) });
+  }
+  return c.json(await sendMessage(id, request));
 });
 
 // Aliases for the chat's agent's computer.
@@ -293,6 +308,8 @@ api.post("/conversations/:id/computer/stop", async (c) => {
   const conversation = found(conversations.get(c.req.param("id")), "Chat not found.");
   return c.json(await computerManager.stop(conversation.agentId));
 });
+
+api.route("/", taskRoutes);
 
 // ---------------------------------------------------------------------------
 // Routines
@@ -829,7 +846,23 @@ api.patch("/settings", async (c) => {
     }
     patch.computer.idleStopMinutes = minutes;
   }
+  if (patch.tasks) {
+    const limit = (value: unknown, max: number, what: string) => {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 1 || n > max) throw new HttpError(400, `${what} must be between 1 and ${max}.`);
+      return n;
+    };
+    const { perAgentLimit, globalLimit, resumeInterrupted, notifySlackUserId } = patch.tasks;
+    patch.tasks = {
+      ...(perAgentLimit !== undefined ? { perAgentLimit: limit(perAgentLimit, 10, "Tasks per agent") } : {}),
+      ...(globalLimit !== undefined ? { globalLimit: limit(globalLimit, 20, "Tasks at once") } : {}),
+      ...(typeof resumeInterrupted === "boolean" ? { resumeInterrupted } : {}),
+      ...(notifySlackUserId === null || (typeof notifySlackUserId === "string" && /^[A-Z0-9]+$/.test(notifySlackUserId)) ? { notifySlackUserId } : {}),
+    };
+  }
   const next = settings.patch(patch);
+  // New limits may free up slots for queued tasks.
+  if (patch.tasks) taskQueue.pump();
   // Auth changes alter provider status; don't serve a stale cached one.
   if (patch.claude || patch.anthropicApiKey !== undefined) void providerStatuses(true);
   return c.json(next);

@@ -52,7 +52,8 @@ const call = async (name: string, args: Record<string, unknown> = {}) => {
 };
 
 const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-check("tools listed", tools.length === 19 && tools.includes("routine_create") && tools.includes("wiki_edit"), tools.join(", "));
+// 19 plus the chat's task tools (task_start, task_list, task_status, task_message).
+check("tools listed", tools.length === 23 && tools.includes("routine_create") && tools.includes("wiki_edit") && tools.includes("task_start"), tools.join(", "));
 
 let r = await call("computer_exec", { command: "echo hi && pwd && node -v" });
 check("exec starts computer", !r.isError && r.text.includes("Started a new computer") && r.text.includes("hi"), r.text);

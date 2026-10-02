@@ -16,6 +16,7 @@ import { settings as settingsStore } from "../data/settings.ts";
 import { toAttachment, uploads, type UploadRecord } from "../data/uploads.ts";
 import { wiki } from "../data/wiki.ts";
 import { bus } from "../events.ts";
+import { chatTasksSection, childResultsNote, taskSection } from "../tasks/prompt.ts";
 import { githubAccessFor, personaGitHub } from "../persona-github.ts";
 import { prepareAttachments } from "./attachments.ts";
 import { makeElicitor } from "./approvals.ts";
@@ -76,6 +77,8 @@ export interface TurnOptions {
   freshSession?: boolean;
   /** Raise the per-turn step cap for long jobs. */
   maxSteps?: number;
+  /** TOT wrote the user message itself to keep a task going (shown as a quiet divider). */
+  auto?: boolean;
 }
 
 export async function sendMessage(
@@ -114,6 +117,7 @@ export async function sendMessage(
       ...(text ? [{ type: "text" as const, id: randomUUID(), text }] : []),
     ],
     status: "complete",
+    ...(options.auto ? { auto: true } : {}),
     createdAt: now,
   };
   const assistant: Message = {
@@ -191,9 +195,19 @@ interface TurnContext {
 async function executeTurn(ctx: TurnContext): Promise<void> {
   const { run, conversation, assistant, history } = ctx;
   const builder = new MessageBuilder(assistant, (event) => run.push(event));
-  // Tools that need the user's OK pause the turn and show a card; routine runs wait longer.
-  const elicit = makeElicitor({ run, builder, agentId: conversation.agentId, unattended: Boolean(conversation.routineId) });
+  // Tools that need the user's OK pause the turn and show a card; routine runs and tasks wait longer.
+  const elicit = makeElicitor({
+    run,
+    builder,
+    agentId: conversation.agentId,
+    unattended: Boolean(conversation.routineId) || conversation.kind === "task",
+  });
   const signal = run.controller.signal;
+  run.reply = () => builder.message;
+  run.addPart = (part) => {
+    builder.add(part);
+    messages.save(builder.message);
+  };
 
   run.push({
     type: "run-start",
@@ -238,6 +252,8 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         signal,
         elicit,
         maxSteps: ctx.maxSteps,
+        // Tasks can be steered mid-turn when the provider supports it (see tasks/steer.ts).
+        ...(conversation.kind === "task" ? { onSteerable: (deliver: (text: string) => Promise<boolean>) => void (run.steer = deliver) } : {}),
       };
     };
 
@@ -294,11 +310,13 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
     error = err instanceof Error ? err.message : String(err);
   }
   if (signal.aborted) {
-    status = "stopped";
+    // Stopped to hand the task a steering note: what it did so far stands as a finished reply.
+    status = run.stopReason === "steer" ? "complete" : "stopped";
     error = undefined;
   }
 
   unsubscribe();
+  run.steer = undefined;
   const final = builder.finish(status, error);
   messages.save(final);
   if (title) await Promise.race([title, sleep(TITLE_GRACE_MS)]);
@@ -329,8 +347,10 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
     : null;
   // Brains this message is about (its repo, URL, @name…) that the chat hasn't been shown yet.
   const brainNote = ctx.text ? brainHints(conversation.agentId, conversation.id, ctx.text) : "";
+  // Results of tasks this chat started that finished since its model last heard.
+  const tasksNote = childResultsNote(conversation);
   const text =
-    [githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
+    [githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
   let systemPrompt = conversation.systemPrompt;
@@ -356,7 +376,16 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
         recentChats: chatSearch.recent(agent.id, { exclude: conversation.id }),
       };
     }
-    systemPrompt = buildSystemPrompt({ settings, workspace, agent, github: access, apps: apps.running, persona: personaAccess });
+    systemPrompt = buildSystemPrompt({
+      settings,
+      workspace,
+      agent,
+      github: access,
+      apps: apps.running,
+      persona: personaAccess,
+      // A task is told its goal and where to work; a chat, when to start tasks.
+      tasks: conversation.kind === "task" && conversation.task ? taskSection(conversation.task) : chatTasksSection(),
+    });
     conversations.update(conversation.id, { systemPrompt });
   }
   return { text, images: prepared.images, systemPrompt };

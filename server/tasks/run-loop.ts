@@ -1,0 +1,284 @@
+import { setImmediate as tick, setTimeout as sleep } from "node:timers/promises";
+import type { Message, MessageStatus, RunEvent, SendMessageRequest } from "../../shared/types.ts";
+import { HttpError, sendMessage, type TurnOptions } from "../agent/orchestrator.ts";
+import { runRegistry } from "../agent/runs.ts";
+import { messageText, messages } from "../data/messages.ts";
+import { continuationPreamble } from "./prompt.ts";
+import { taskStore, type TaskRecord } from "./store.ts";
+import { worktrees } from "./worktree.ts";
+
+/**
+ * Keeps a task going. One provider turn ends when the model stops talking; a task keeps
+ * going until the agent calls task_finish: after each turn that made progress (ticked its
+ * plan, changed its branch, or used tools), TOT sends another turn with the plan so far.
+ * Turns that make no progress twice in a row mean it's stuck: the task fails as "stalled"
+ * (the same rule as Learn a repo's study steps). Everything a loop needs to carry on lives in
+ * the conversation and its task, so after a restart a new loop picks up where it left off.
+ */
+
+/** Model/tool steps one turn may take; a turn that runs out is simply continued. */
+const STEP_LIMIT = 200;
+/** Turns a task may take before TOT stops it and asks the user to look. */
+const MAX_TURNS = 40;
+/** Turns in a row without progress (or failing) before the task counts as stalled. */
+const MAX_STALLS = 2;
+/** Past this much context, the next turn starts a fresh session with the plan carried over. */
+const FRESH_SESSION_TOKENS = 150_000;
+/** How long a loop waits for a turn someone else started in the task to end. */
+const BUSY_WAIT_MS = 10 * 60_000;
+
+type Sender = typeof sendMessage;
+type RunEnd = Extract<RunEvent, { type: "run-end" }>;
+
+/** How a turn is started; tests swap in a fake. */
+let send: Sender = sendMessage;
+let shuttingDown = false;
+
+/** Task id → its loop, while one runs. */
+const loops = new Map<string, { agentId: string; done: Promise<void> }>();
+/** Steering notes waiting for the task's next turn (they missed the turn that was running). */
+const notes = new Map<string, string[]>();
+/** Tasks resumed after a restart, whose next turn should say so. */
+const restarted = new Set<string>();
+const idleListeners = new Set<() => void>();
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** Resolves with how a run ended (null when it's unknown). */
+function runEnd(runId: string): Promise<RunEnd | null> {
+  const run = runRegistry.get(runId);
+  if (!run) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    run.subscribe((_seq, event) => {
+      if (event.type === "run-end") resolve(event);
+    });
+  });
+}
+
+/** Waits (up to a limit) for turns someone else started in the task to end. */
+async function waitForIdle(conversationId: string): Promise<void> {
+  const until = Date.now() + BUSY_WAIT_MS;
+  for (let run = runRegistry.activeFor(conversationId); run && Date.now() < until; run = runRegistry.activeFor(conversationId)) {
+    await Promise.race([runEnd(run.id), sleep(until - Date.now())]);
+  }
+}
+
+interface Snapshot {
+  plan: string;
+  progress: string | null;
+  headSha: string | null;
+}
+
+const snapshot = (task: TaskRecord): Snapshot => ({
+  plan: JSON.stringify(task.task.plan),
+  progress: task.task.progress,
+  headSha: task.task.repo?.headSha ?? null,
+});
+
+/** Whether a turn moved the task forward: it ticked the plan, changed the branch, or got tools to work. */
+export function madeProgress(before: Snapshot, after: Snapshot, reply: Message | undefined): boolean {
+  const toolsWorked = (reply?.parts ?? []).some((part) => part.type === "tool" && part.status === "done");
+  return toolsWorked || before.plan !== after.plan || before.progress !== after.progress || before.headSha !== after.headSha;
+}
+
+/** The next turn: the goal to start with, else "continue" with the plan, notes and context carried over. */
+function nextTurn(task: TaskRecord): { body: SendMessageRequest; options: TurnOptions } {
+  const history = messages.listByConversation(task.id);
+  const pending = notes.get(task.id) ?? [];
+  notes.delete(task.id);
+  const wasRestarted = restarted.delete(task.id);
+  // Task turns are real work: TOT Auto routes them to the strongest model.
+  const options: TurnOptions = { keepTitle: true, heavy: task.task.repo ? "coding task" : "task", maxSteps: STEP_LIMIT };
+  // A new task (nothing in it yet but notes the user sent while it waited) starts with its goal.
+  if (history.every((m) => m.steered)) {
+    const preamble = pending.map((note) => `[The user added before you started: “${note}”]`).join("\n");
+    return { body: { text: task.task.goal }, options: { ...options, ...(preamble ? { preamble } : {}) } };
+  }
+  const lastReply = history.findLast((m) => m.role === "assistant");
+  const fresh = (lastReply?.usage?.inputTokens ?? 0) > FRESH_SESSION_TOKENS;
+  return {
+    body: { text: pending.length ? "Continue the task, with my note in mind." : "Continue the task." },
+    options: {
+      ...options,
+      auto: true,
+      freshSession: fresh,
+      preamble: continuationPreamble(task.task, {
+        turn: task.task.turns + 1,
+        notes: pending,
+        restarted: wasRestarted,
+        fresh,
+        lastReply: lastReply ? messageText(lastReply) : "",
+        firstTurnOfConvertedChat: task.task.turns === 0,
+      }),
+    },
+  };
+}
+
+/** After a turn: add up its tokens and note where the branch is now. */
+async function recordTurn(task: TaskRecord, reply: Message | undefined): Promise<Snapshot> {
+  const usage = {
+    inputTokens: task.task.usage.inputTokens + (reply?.usage?.inputTokens ?? 0),
+    outputTokens: task.task.usage.outputTokens + (reply?.usage?.outputTokens ?? 0),
+  };
+  const repo = task.task.repo;
+  const headSha = repo ? await worktrees.head(task.agentId, repo) : null;
+  const updated = taskStore.patch(task.id, { usage, ...(repo ? { repo: { ...repo, headSha: headSha ?? repo.headSha } } : {}) });
+  return snapshot(updated ?? task);
+}
+
+function fail(taskId: string, summary: string): void {
+  taskStore.transition(taskId, "failed", { summary });
+}
+
+async function loop(taskId: string, first: SendMessageRequest | null): Promise<void> {
+  let task = taskStore.get(taskId);
+  if (!task || !taskStore.transition(taskId, "running")) return;
+
+  if (task.task.repo) {
+    // The first run clones the repo and adds the worktree, which can take a while: say so on the card.
+    const setup = `Setting up ${task.task.repo.branch}…`;
+    if (!task.task.repo.headSha) taskStore.patch(taskId, { progress: setup });
+    try {
+      const repo = await worktrees.ensure(task.agentId, task.task.repo);
+      const current = taskStore.get(taskId);
+      taskStore.patch(taskId, { repo, ...(current?.task.progress === setup ? { progress: null } : {}) });
+    } catch (err) {
+      fail(taskId, `Couldn't set up ${task.task.repo.source} on the computer: ${errorText(err)}`);
+      return;
+    }
+  }
+
+  let request = first;
+  let stalls = 0;
+  while (!shuttingDown) {
+    task = taskStore.get(taskId);
+    if (!task || task.task.status !== "running") return;
+    if (!request && task.task.turns >= MAX_TURNS) {
+      fail(taskId, `Stopped after ${MAX_TURNS} turns without finishing. Reply to keep it going.`);
+      return;
+    }
+    const before = snapshot(task);
+    const turn = request ? { body: request, options: { keepTitle: true, heavy: task.task.repo ? "coding task" : "task", maxSteps: STEP_LIMIT } } : nextTurn(task);
+    let runId: string;
+    try {
+      ({ runId } = await send(taskId, turn.body, turn.options));
+    } catch (err) {
+      // Someone (the user, a Slack follow-up) is already running a turn here: let it finish first.
+      if (err instanceof HttpError && err.status === 409) {
+        await waitForIdle(taskId);
+        continue;
+      }
+      fail(taskId, `Couldn't continue: ${errorText(err)}`);
+      return;
+    }
+    request = null;
+    taskStore.patch(taskId, { turns: task.task.turns + 1 });
+
+    const end = await runEnd(runId);
+    // A steer that missed this turn lands in `notes` a moment after it ends.
+    await tick();
+    if (shuttingDown) return;
+    task = taskStore.get(taskId);
+    if (!task) return;
+    const after = await recordTurn(task, end?.message);
+    task = taskStore.get(taskId);
+    // Finished (task_finish), asked the user something, or paused or stopped meanwhile.
+    if (!task || task.task.status !== "running") return;
+
+    const status: MessageStatus = end?.status ?? "error";
+    if (status === "stopped" && !notes.has(taskId)) {
+      // The turn itself was stopped (not through pause or stop): hold the task until the user resumes it.
+      taskStore.transition(taskId, "paused");
+      return;
+    }
+    if (status === "error") {
+      stalls++;
+      if (stalls >= MAX_STALLS) {
+        fail(taskId, `Stopped after repeated errors: ${end?.message.error ?? "the turn ended unexpectedly."}`);
+        return;
+      }
+      continue;
+    }
+    stalls = madeProgress(before, after, end?.message) || notes.has(taskId) ? 0 : stalls + 1;
+    if (stalls >= MAX_STALLS) {
+      fail(taskId, `Stalled: no progress in the last ${MAX_STALLS} turns, and the task wasn't finished. Reply to nudge it, or look at what it did.`);
+      return;
+    }
+  }
+}
+
+export const runLoop = {
+  /**
+   * Starts a task's loop (it becomes "running"); false when one is already running or the task
+   * can't start. `first` is a message from the user to send as the first turn.
+   */
+  start(taskId: string, first: SendMessageRequest | null = null): boolean {
+    const task = taskStore.get(taskId);
+    if (!task || loops.has(taskId) || shuttingDown) return false;
+    const done = loop(taskId, first)
+      .catch((err) => {
+        console.error(`[tot] task ${taskId} crashed:`, err);
+        fail(taskId, `Something went wrong in TOT: ${errorText(err)}`);
+      })
+      .finally(() => {
+        loops.delete(taskId);
+        for (const listener of idleListeners) listener();
+      });
+    loops.set(taskId, { agentId: task.agentId, done });
+    return true;
+  },
+
+  /** Starts one turn in a task, the way loops do (tests swap in a fake). */
+  send(taskId: string, request: SendMessageRequest, options: TurnOptions): ReturnType<Sender> {
+    return send(taskId, request, { maxSteps: STEP_LIMIT, ...options });
+  },
+
+  isRunning(taskId: string): boolean {
+    return loops.has(taskId);
+  },
+
+  /** Loops running now: all of them, or one agent's. */
+  count(agentId?: string): number {
+    if (!agentId) return loops.size;
+    let n = 0;
+    for (const entry of loops.values()) if (entry.agentId === agentId) n++;
+    return n;
+  },
+
+  /** Resolves when the task's loop (if any) has ended. */
+  async settled(taskId: string): Promise<void> {
+    await loops.get(taskId)?.done;
+  },
+
+  /** A note for the task's next turn (a steer that couldn't reach the running one). */
+  addNote(taskId: string, text: string): void {
+    notes.set(taskId, [...(notes.get(taskId) ?? []), text]);
+  },
+
+  hasNotes(taskId: string): boolean {
+    return notes.has(taskId);
+  },
+
+  markRestarted(taskId: string): void {
+    restarted.add(taskId);
+  },
+
+  /** Called whenever a loop ends, so the queue can start the next task. */
+  onIdle(listener: () => void): () => void {
+    idleListeners.add(listener);
+    return () => idleListeners.delete(listener);
+  },
+
+  /** The server is stopping: runs get stopped, and loops must not take that as the user's doing. */
+  shutdown(): void {
+    shuttingDown = true;
+  },
+
+  /** Tests: start turns with a fake instead of the real models, and undo a simulated shutdown. */
+  useSender(fake: Sender): void {
+    send = fake;
+  },
+  reset(): void {
+    shuttingDown = false;
+  },
+};

@@ -17,6 +17,7 @@ function defaults(): StoredSettings {
     memory: { enabled: true },
     claude: { authMode: "subscription", useConnectedApps: true },
     chatgpt: { useConnectedApps: true },
+    tasks: { perAgentLimit: 2, globalLimit: 4, resumeInterrupted: true, notifySlackUserId: null },
   };
 }
 
@@ -31,6 +32,7 @@ function readStored(): StoredSettings {
     memory: { ...base.memory, ...stored.memory },
     claude: { ...base.claude, ...stored.claude },
     chatgpt: { ...base.chatgpt, ...stored.chatgpt },
+    tasks: { ...base.tasks, ...stored.tasks },
   };
 }
 
@@ -49,7 +51,7 @@ export const settings = {
 
   patch(patch: SettingsPatch): Settings {
     const current = readStored();
-    const { boatApiKey, anthropicApiKey, computer, memory, claude, chatgpt, ...top } = patch;
+    const { boatApiKey, anthropicApiKey, computer, memory, claude, chatgpt, tasks, ...top } = patch;
 
     if (boatApiKey !== undefined) setSecret("boatApiKey", boatApiKey.trim());
     if (anthropicApiKey !== undefined) setSecret("anthropicApiKey", anthropicApiKey.trim());
@@ -61,6 +63,7 @@ export const settings = {
       memory: { ...current.memory, ...memory },
       claude: { ...current.claude, ...claude },
       chatgpt: { ...current.chatgpt, ...chatgpt },
+      tasks: { ...current.tasks, ...tasks },
     };
     // Adding a Boat key is a clear signal: switch local computers to Boat unless told otherwise.
     if (boatApiKey && !computer?.mode) next.computer.mode = "boat";

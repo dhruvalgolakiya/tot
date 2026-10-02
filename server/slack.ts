@@ -12,6 +12,9 @@ import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { messageText } from "./data/messages.ts";
 import { db, parseJson, type Row } from "./db.ts";
 import { lanUrls } from "./net.ts";
+import { workRequest } from "./tasks/intake.ts";
+import { isTask } from "./tasks/store.ts";
+import { tasks } from "./tasks/tasks.ts";
 
 /**
  * TOT's Slack bot. The user creates a Slack app from TOT's manifest and pastes
@@ -461,6 +464,30 @@ async function answer(
     const info = await api!.conversations.info({ channel }).catch(() => ({ channel: undefined }));
     const label = info.channel?.is_im ? `DM with ${await personName(userId)}` : info.channel?.name ? `#${info.channel.name}` : "Slack";
     const permalink = await api!.chat.getPermalink({ channel, message_ts: threadTs }).then((r) => r.permalink ?? null, () => null);
+    // Work ("fix the flaky test in web") becomes a task in the queue; its result is posted here when it's done.
+    const work = workRequest(picked.agent.id, request);
+    if (work) {
+      const earlier = message.thread_ts ? await threadTranscript(channel, threadTs, "0", ts) : "";
+      const task = tasks.create({
+        agentId: picked.agent.id,
+        title: work.title,
+        goal: `${work.goal}${earlier ? `\n\nThe Slack thread it came from (${label}):\n${earlier.slice(-6000)}` : ""}`,
+        repo: work.repo,
+        origin: { kind: "slack", label, url: permalink },
+      });
+      db.prepare(`INSERT INTO slack_threads (channel, thread_ts, conversation_id, user_id, seen_ts, created_at) VALUES (?, ?, ?, ?, ?, ?)`).run(
+        channel,
+        threadTs,
+        task.id,
+        userId,
+        ts,
+        Date.now(),
+      );
+      await status.clear();
+      const when = task.task.status === "queued" ? " It's queued and starts when a slot frees up;" : "";
+      await post(channel, threadTs, `Started a task: *${task.title}*.${when} I'll post the result here.`, footer(task.id));
+      return;
+    }
     const conversation = conversations.create({
       agentId: picked.agent.id,
       modelId: picked.agent.modelId,
@@ -483,6 +510,15 @@ async function answer(
   } else {
     const fresh = await threadTranscript(channel, threadTs, thread.seenTs, ts);
     context = fresh ? `New in the Slack thread since your last reply:\n<slack_thread>\n${fresh}\n</slack_thread>\n` : "";
+    // A follow-up to a task: a note for it while it runs, else it picks the task up again.
+    const existing = conversations.get(thread.conversationId);
+    if (isTask(existing)) {
+      markSeen(channel, threadTs, ts);
+      const result = await tasks.message(existing.id, { text: fresh ? `${request}\n\n(Also new in the Slack thread:\n${fresh})` : request });
+      await status.clear();
+      await post(channel, threadTs, "steered" in result ? "Passed that on to the task." : "Picked the task up again. I'll post the result here.", footer(existing.id));
+      return;
+    }
   }
   markSeen(channel, threadTs, ts);
 
@@ -506,11 +542,13 @@ async function answer(
   const reply = end ? messageText(end.message) : "";
   const failed = !end || end.status === "error";
   const body = failed ? `Sorry, that didn't work: ${end?.message.error ?? "the run ended unexpectedly."}` : reply || "(done, nothing to say)";
-  const footer = [{ type: "context", elements: [{ type: "mrkdwn", text: chatLink(conversation.id) }] }];
   // Messages written while the agent worked stay unseen, so its next turn gets them (its own replies are skipped).
   await status.clear();
-  await post(channel, threadTs, body, footer);
+  await post(channel, threadTs, body, footer(conversation.id));
 }
+
+/** The "TOT ↗" link under a reply. */
+const footer = (conversationId: string) => [{ type: "context", elements: [{ type: "mrkdwn", text: chatLink(conversationId) }] }];
 
 function enqueue(message: SlackMessage): void {
   const key = `${message.channel}:${message.thread_ts ?? message.ts}`;
@@ -681,6 +719,23 @@ export const slack = {
 
   async stop(): Promise<void> {
     await close();
+  },
+
+  /** Posts in the Slack thread a conversation belongs to (e.g. a task's result); false when it has none or Slack is off. */
+  async postToThread(conversationId: string, markdown: string): Promise<boolean> {
+    const row = db.prepare(`SELECT channel, thread_ts FROM slack_threads WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1`).get(conversationId) as
+      | Row
+      | undefined;
+    if (!row || !api || state !== "connected") return false;
+    await post(String(row.channel), String(row.thread_ts), markdown, footer(conversationId));
+    return true;
+  },
+
+  /** A direct message from the bot to an allowed person (e.g. "your task is done"); false when Slack is off. */
+  async dm(userId: string, markdown: string): Promise<boolean> {
+    if (!api || state !== "connected" || !allowed(userId)) return false;
+    await api.chat.postMessage({ channel: userId, text: markdown.slice(0, 300), blocks: [{ type: "markdown", text: markdown.slice(0, BLOCK_LIMIT) }], unfurl_links: false });
+    return true;
   },
 
   /** Tests: start turns with a fake instead of the real models. */

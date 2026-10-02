@@ -1,6 +1,18 @@
 import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, Usage } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 
+/** Extras kept in the meta column (module 01): how a user message was sent. */
+type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto">;
+
+function metaOf(message: Message): string | null {
+  const meta: MessageMeta = {
+    ...(message.steered ? { steered: true } : {}),
+    ...(message.steeredInto ? { steeredInto: message.steeredInto } : {}),
+    ...(message.auto ? { auto: true } : {}),
+  };
+  return Object.keys(meta).length ? JSON.stringify(meta) : null;
+}
+
 function toMessage(row: Row): Message {
   return {
     id: String(row.id),
@@ -13,6 +25,7 @@ function toMessage(row: Row): Message {
     routeReason: (row.route_reason as string | null) ?? undefined,
     error: (row.error as string | null) ?? undefined,
     usage: parseJson<Usage | undefined>(row.usage, undefined),
+    ...parseJson<MessageMeta>(row.meta, {}),
     createdAt: Number(row.created_at),
   };
 }
@@ -41,8 +54,8 @@ export const messages = {
 
   insert(message: Message): void {
     db.prepare(
-      `INSERT INTO messages (id, conversation_id, role, parts, status, provider, model, route_reason, error, usage, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (id, conversation_id, role, parts, status, provider, model, route_reason, error, usage, meta, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       message.id,
       message.conversationId,
@@ -54,9 +67,15 @@ export const messages = {
       message.routeReason ?? null,
       message.error ?? null,
       message.usage ? JSON.stringify(message.usage) : null,
+      metaOf(message),
       message.createdAt,
     );
     index(message);
+  },
+
+  get(id: string): Message | null {
+    const row = db.prepare(`SELECT * FROM messages WHERE id = ?`).get(id) as Row | undefined;
+    return row ? toMessage(row) : null;
   },
 
   /** Overwrites the mutable fields of an assistant message as it streams. */

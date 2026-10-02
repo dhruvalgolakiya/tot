@@ -13,6 +13,8 @@ import { emailTasks } from "./mail/tasks.ts";
 import { isLoopbackBind, lanUrls } from "./net.ts";
 import { tokenProblem } from "./session.ts";
 import { slack } from "./slack.ts";
+import { taskNotifications } from "./tasks/notify.ts";
+import { tasks } from "./tasks/tasks.ts";
 
 // Never put TOT on the network without sign-in: it drives paid subscriptions and runs commands.
 const exposed = LAN || !isLoopbackBind(HOST);
@@ -42,6 +44,8 @@ void slack.resume();
 emailTasks.start();
 mailboxes.resume();
 wikiKeeper.start();
+tasks.start();
+taskNotifications.start();
 
 let shuttingDown = false;
 async function shutdown(signal: string) {
@@ -51,6 +55,8 @@ async function shutdown(signal: string) {
   scheduler.stop();
   wikiKeeper.stop();
   emailTasks.stop();
+  // Running tasks show as interrupted next time (and resume by themselves, unless that's turned off).
+  tasks.shutdown();
   runRegistry.stopAll();
   await Promise.allSettled([computerManager.shutdown(), stopCodex(), apps.stop({ keepEnabled: true }), slack.stop(), mailboxes.stopAll()]);
   server.close();
