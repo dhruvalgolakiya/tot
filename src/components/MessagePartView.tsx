@@ -5,6 +5,7 @@ import { LazyMarkdown } from "./LazyMarkdown";
 import { MemoryPill } from "./MemoryPill";
 import { NoticePart } from "./NoticePart";
 import { ReasoningPart } from "./ReasoningPart";
+import { TaskCard } from "./tasks/TaskCard";
 import { ToolPart } from "./ToolPart";
 import { WikiPill } from "./WikiPill";
 
@@ -36,5 +37,7 @@ export const MessagePartView = memo(function MessagePartView({ part, active, liv
       return null;
     case "approval":
       return <ApprovalCard part={part} conversationId={conversationId} />;
+    case "task":
+      return <TaskCard taskId={part.taskId} />;
   }
 });

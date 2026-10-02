@@ -20,6 +20,8 @@ import type {
   Settings,
   SettingsPatch,
   SlackStatus,
+  StartTaskRequest,
+  TaskPatch,
   UpdateConversationRequest,
 } from "@shared/types";
 import { api, ApiError, errorMessage } from "./lib/api";
@@ -41,10 +43,13 @@ import {
   wikiFromPath,
   wikiPath,
 } from "./lib/router";
-import { buildSettingsPatch, EMPTY_SECRETS, isValidIdleMinutes, type SecretDrafts } from "./lib/settings";
+import { buildSettingsPatch, EMPTY_SECRETS, isValidIdleMinutes, isValidTaskLimit, TASK_LIMITS, type SecretDrafts } from "./lib/settings";
 import { subscribeToRun } from "./lib/stream";
+import { isTask } from "./lib/tasks";
 
 export type AgentSettingsTab = "profile" | "routines";
+/** Tabs of the task side panel; later modules add their own (e.g. checks, the pull request). */
+export type TaskPanelTab = "plan" | "changes" | "activity";
 type LoadState = "loading" | "ready" | "error";
 
 /** Which top-level screen is showing; drives what `App` mounts. */
@@ -121,6 +126,9 @@ export interface TotState {
 
   sidebarOpen: boolean;
   computerPanelOpen: boolean;
+  /** Right-hand panel with the open task's plan, changes and activity. */
+  taskPanelOpen: boolean;
+  taskPanelTab: TaskPanelTab;
   /** Null = no section chosen yet: bare "/settings" shows General on desktop, the section list on mobile. */
   settingsSection: SettingsSection | null;
   /** Path to return to when leaving settings; null falls back to the active agent's home. */
@@ -195,6 +203,8 @@ export const useStore = create<TotState>()(() => ({
 
   sidebarOpen: isDesktop() && readPref(SIDEBAR_KEY) !== "closed",
   computerPanelOpen: false,
+  taskPanelOpen: false,
+  taskPanelTab: "plan",
   settingsSection: null,
   settingsReturnPath: null,
   settingsDraft: null,
@@ -504,7 +514,7 @@ export const setNewAgentDialogOpen = (open: boolean) => set({ newAgentDialogOpen
 /** Opens the settings panel for an agent (switching to it first), in place of the computer panel. */
 export function openAgentSettings(agentId: string, tab: AgentSettingsTab = "profile") {
   if (selectActiveAgentId(get()) !== agentId) navigateToAgentHome(agentId);
-  set({ agentSettingsOpen: true, agentSettingsTab: tab, computerPanelOpen: false });
+  set({ agentSettingsOpen: true, agentSettingsTab: tab, computerPanelOpen: false, taskPanelOpen: false });
 }
 
 export const closeAgentSettings = () => set({ agentSettingsOpen: false });
@@ -576,7 +586,7 @@ export async function stopAgentComputer(agentId: string) {
 // ---------------------------------------------------------------------------
 
 function showAgentHome(agentId: string | null) {
-  set({ currentId: null, homeAgentId: agentId, computerPanelOpen: false });
+  set({ currentId: null, homeAgentId: agentId, computerPanelOpen: false, taskPanelOpen: false });
 }
 
 function showWiki(agentId: string, pageId: string | null, brainId: string | null = null) {
@@ -688,7 +698,7 @@ export function openWikiPage(pageId: string | null, brainId?: string | null) {
 }
 
 async function openConversation(id: string) {
-  if (get().currentId !== id) set({ currentId: id, computerPanelOpen: false });
+  if (get().currentId !== id) set({ currentId: id, computerPanelOpen: false, taskPanelOpen: false });
   // While we follow a live run, the in-memory messages are the freshest copy.
   if (streams.has(id)) return;
   await loadConversation(id);
@@ -969,7 +979,8 @@ export async function sendMessage(
         [id]: (s.messages[id] ?? []).map((m) => (m.id === tempId ? response.userMessage : m)),
       },
     }));
-    attachRun(id, response.runId);
+    // A task that was busy took the message as a note; there's no new turn to follow.
+    if (response.runId) attachRun(id, response.runId);
     return true;
   } catch (error) {
     if (conversationId) {
@@ -1222,9 +1233,175 @@ export function handleAppEvent(event: AppEvent) {
     case "approval":
       handleApprovalEvent(event);
       break;
-    case "run":
-      // Handled separately by useRunningAgents() + setRunningAgents.
+    case "task":
+      handleTaskEvent(event.conversation);
       break;
+    case "run":
+      // Running agents are tracked by useRunningAgents() + setRunningAgents; here, follow turns
+      // TOT started on its own (a task's next turn, a study step) in the chat that's open.
+      if (event.status === "running") followServerRun(event.conversationId);
+      break;
+  }
+}
+
+/** A turn started outside this tab in the open chat: load it, which attaches to the live run. */
+function followServerRun(conversationId: string) {
+  const s = get();
+  if (s.currentId !== conversationId || s.sending || streams.has(conversationId)) return;
+  void loadConversation(conversationId);
+}
+
+/** Statuses worth telling the user about when they're looking elsewhere. */
+const NOTIFY_STATUSES = new Set(["done", "failed", "needs-input"]);
+
+/**
+ * A task changed. Keeps the list current; when it just finished or needs the user and they're
+ * not looking at it, a toast (and a browser notification while TOT is in the background); and
+ * when it finished, the chat that started it reloads to show the result note.
+ */
+function handleTaskEvent(conversation: Conversation) {
+  const previous = get().conversations.find((c) => c.id === conversation.id);
+  set((s) => ({ conversations: upsertConversation(s.conversations, conversation) }));
+  if (!isTask(conversation)) return;
+  const status = conversation.task.status;
+  if (!previous?.task || previous.task.status === status || !NOTIFY_STATUSES.has(status)) return;
+
+  const parentId = conversation.parentId;
+  if ((status === "done" || status === "failed") && parentId && get().currentId === parentId && !get().activeRuns[parentId]) {
+    void loadConversation(parentId);
+  }
+  const watching = get().currentId === conversation.id && document.visibilityState === "visible";
+  if (watching) return;
+  const headline =
+    status === "needs-input" ? `“${conversation.title}” needs your input` : `“${conversation.title}” ${status === "done" ? "is done" : "failed"}`;
+  const detail = status === "needs-input" ? (conversation.task.question ?? "It's waiting for your OK.") : (conversation.task.summary ?? "");
+  const open = () => navigateToConversation(conversation.id);
+  (status === "failed" ? toast.error : toast)(headline, {
+    id: `task-${conversation.id}`,
+    description: truncate(detail, 140),
+    action: { label: "Open", onClick: open },
+  });
+  if (document.visibilityState !== "visible" && "Notification" in window && Notification.permission === "granted") {
+    const notification = new Notification(headline, { body: truncate(detail, 180), tag: `task-${conversation.id}` });
+    notification.onclick = () => {
+      window.focus();
+      open();
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
+/** Browser notifications are asked for once, the first time the user starts a task. */
+function askForNotifications() {
+  if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
+}
+
+export interface TaskOptions {
+  repo?: string;
+  baseBranch?: string;
+}
+
+/**
+ * "Run as task": in a chat, a task started from it (its request and card are added to the chat);
+ * on an agent's home screen, a task of its own, which opens.
+ */
+export async function startTask(goal: string, { repo, baseBranch }: TaskOptions = {}): Promise<boolean> {
+  const text = goal.trim();
+  if (!text || get().sending) return false;
+  set({ sending: true });
+  askForNotifications();
+  const body: StartTaskRequest = { goal: text, ...(repo ? { repo } : {}), ...(baseBranch ? { baseBranch } : {}) };
+  try {
+    const { currentId, homeAgentId, agents } = get();
+    const current = currentId ? get().conversations.find((c) => c.id === currentId) : undefined;
+    if (current && !isTask(current)) {
+      const task = await api.startTaskFromChat(current.id, body);
+      set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
+      await loadConversation(current.id);
+      return true;
+    }
+    const task = await api.createTask({ ...body, agentId: current?.agentId ?? homeAgentId ?? agents[0]?.id });
+    set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
+    navigateToConversation(task.id);
+    return true;
+  } catch (error) {
+    notifyError(error);
+    return false;
+  } finally {
+    set({ sending: false });
+  }
+}
+
+/** A note to the open task while it runs: saved in its transcript, delivered mid-turn or with its next turn. */
+export async function steerTask(conversationId: string, text: string): Promise<boolean> {
+  const body = text.trim();
+  if (!body) return false;
+  try {
+    const message = await api.steerTask(conversationId, body);
+    setMessages(conversationId, (list) => upsertMessage(list, message));
+    return true;
+  } catch (error) {
+    notifyError(error);
+    return false;
+  }
+}
+
+async function taskAction(action: () => Promise<Conversation>) {
+  try {
+    const task = await action();
+    set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
+  } catch (error) {
+    notifyError(error);
+  }
+}
+
+export const pauseTask = (id: string) => taskAction(() => api.pauseTask(id));
+export const resumeTask = (id: string) => taskAction(() => api.resumeTask(id));
+export const stopTask = (id: string) => taskAction(() => api.stopTask(id));
+export const runTaskNow = (id: string) => taskAction(() => api.runTaskNow(id));
+export const patchTask = (id: string, patch: TaskPatch) => taskAction(() => api.patchTask(id, patch));
+
+/** Turns the open chat into a task (its transcript stays). */
+export async function convertToTask(conversationId: string, options: { goal?: string } & TaskOptions): Promise<boolean> {
+  askForNotifications();
+  try {
+    const task = await api.convertToTask(conversationId, options);
+    set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
+    toast.success("Now a task");
+    return true;
+  } catch (error) {
+    notifyError(error);
+    return false;
+  }
+}
+
+export async function taskToChat(id: string) {
+  try {
+    await api.taskToChat(id);
+    await loadConversation(id, { attach: false });
+    setTaskPanelOpen(false);
+  } catch (error) {
+    notifyError(error);
+  }
+}
+
+/** Deletes a task with its worktree; with `deleteBranch`, its never-pushed branch too. */
+export async function deleteTask(id: string, { deleteBranch = false } = {}) {
+  try {
+    await api.deleteConversation(id, { deleteBranch });
+  } catch (error) {
+    notifyError(error);
+    return;
+  }
+  const wasCurrent = get().currentId === id;
+  const agentId = get().conversations.find((c) => c.id === id)?.agentId ?? null;
+  forgetConversation(id);
+  if (wasCurrent) {
+    if (agentId) navigateToAgentHome(agentId);
+    else redirectHome();
   }
 }
 
@@ -1247,7 +1424,12 @@ export function setSidebarOpen(open: boolean) {
 export const toggleSidebar = () => setSidebarOpen(!get().sidebarOpen);
 /** The computer and agent-settings panels share the right side, so opening one closes the other. */
 export const setComputerPanelOpen = (open: boolean) =>
-  set(open ? { computerPanelOpen: true, agentSettingsOpen: false } : { computerPanelOpen: false });
+  set(open ? { computerPanelOpen: true, agentSettingsOpen: false, taskPanelOpen: false } : { computerPanelOpen: false });
+/** The task panel shares the right side too. */
+export function setTaskPanelOpen(open: boolean, tab?: TaskPanelTab) {
+  set(open ? { taskPanelOpen: true, computerPanelOpen: false, agentSettingsOpen: false, ...(tab ? { taskPanelTab: tab } : {}) } : { taskPanelOpen: false });
+}
+export const setTaskPanelTab = (tab: TaskPanelTab) => set({ taskPanelTab: tab });
 export function setChatScrolled(value: boolean) {
   if (get().chatScrolled !== value) set({ chatScrolled: value });
 }
@@ -1370,7 +1552,12 @@ export function selectSettingsDirty(s: TotState): boolean {
 
 export function selectSettingsValid(s: TotState): boolean {
   if (!s.settingsDraft) return true;
-  return s.settingsDraft.computer.mode === "off" || isValidIdleMinutes(s.settingsDraft.computer.idleStopMinutes);
+  const { computer, tasks } = s.settingsDraft;
+  return (
+    (computer.mode === "off" || isValidIdleMinutes(computer.idleStopMinutes)) &&
+    isValidTaskLimit(tasks.perAgentLimit, TASK_LIMITS.perAgent) &&
+    isValidTaskLimit(tasks.globalLimit, TASK_LIMITS.global)
+  );
 }
 
 /** Open the sidebar (if needed) and focus its search box. */

@@ -18,8 +18,10 @@ type ConversationItemProps = {
   active: boolean;
   /** A run is streaming in this chat. */
   streaming: boolean;
+  /** Tasks started from this chat that are still working. */
+  workingTasks?: number;
 };
-export function ConversationItem({ conversation, active, streaming }: ConversationItemProps) {
+export function ConversationItem({ conversation, active, streaming, workingTasks = 0 }: ConversationItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -78,6 +80,14 @@ export function ConversationItem({ conversation, active, streaming }: Conversati
           </Tip>
         )}
         <span className="min-w-0 flex-1 truncate">{title}</span>
+        {workingTasks > 0 && (
+          <span
+            title={`${workingTasks} task${workingTasks === 1 ? "" : "s"} working`}
+            className="grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-fill px-1 text-2xs font-medium text-fg-muted tabular-nums"
+          >
+            {workingTasks}
+          </span>
+        )}
         {pendingApproval && (
           <span title="Needs your approval">
             <StatusDot tone="amber" />

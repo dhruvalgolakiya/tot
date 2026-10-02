@@ -16,6 +16,7 @@ import type {
   ComputerSummary,
   Conversation,
   ConversationDetail,
+  ConvertToTaskRequest,
   CreateConversationRequest,
   GitHubConnectRequest,
   GitHubDevicePoll,
@@ -26,6 +27,7 @@ import type {
   MailMessage,
   MailSummary,
   Memory,
+  Message,
   ModelOption,
   MailboxConnectRequest,
   Persona,
@@ -43,6 +45,10 @@ import type {
   SlackPatch,
   SlackStatus,
   SlackTokens,
+  StartTaskRequest,
+  TaskChanges,
+  TaskPatch,
+  TaskStatus,
   UpdateConversationRequest,
   WikiPage,
   WikiPageInput,
@@ -147,11 +153,37 @@ export const api = {
   getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${seg(id)}`),
   updateConversation: (id: string, body: UpdateConversationRequest) =>
     request<Conversation>("PATCH", `/conversations/${seg(id)}`, body),
-  deleteConversation: (id: string) => request<Ok>("DELETE", `/conversations/${seg(id)}`),
+  /** Tasks: `deleteBranch` also deletes the task's branch, if it was never pushed. */
+  deleteConversation: (id: string, opts: { deleteBranch?: boolean } = {}) =>
+    request<Ok>("DELETE", `/conversations/${seg(id)}${opts.deleteBranch ? "?deleteBranch=1" : ""}`),
   sendMessage: (id: string, body: SendMessageRequest) =>
     request<SendMessageResponse>("POST", `/conversations/${seg(id)}/messages`, body),
   stopComputer: (id: string) =>
     request<ComputerSummary | null>("POST", `/conversations/${seg(id)}/computer/stop`, {}),
+
+  /** Tasks: conversations that work in the background until they're done. */
+  listTasks: (opts: { agentId?: string; status?: TaskStatus } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.agentId) params.set("agentId", opts.agentId);
+    if (opts.status) params.set("status", opts.status);
+    const qs = params.toString();
+    return request<Conversation[]>("GET", `/tasks${qs ? `?${qs}` : ""}`);
+  },
+  createTask: (body: StartTaskRequest & { agentId?: string }) => request<Conversation>("POST", "/tasks", body),
+  /** A task started from a chat: the request and its card are added to the chat. */
+  startTaskFromChat: (conversationId: string, body: StartTaskRequest) =>
+    request<Conversation>("POST", `/conversations/${seg(conversationId)}/tasks`, body),
+  convertToTask: (conversationId: string, body: ConvertToTaskRequest) =>
+    request<Conversation>("POST", `/conversations/${seg(conversationId)}/convert`, body),
+  /** A note for a running task; resolves with the saved message. */
+  steerTask: (conversationId: string, text: string) => request<Message>("POST", `/conversations/${seg(conversationId)}/steer`, { text }),
+  pauseTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/pause`, {}),
+  resumeTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/resume`, {}),
+  stopTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/stop`, {}),
+  runTaskNow: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/run-now`, {}),
+  taskToChat: (id: string) => request<Ok>("POST", `/tasks/${seg(id)}/to-chat`, {}),
+  patchTask: (id: string, patch: TaskPatch) => request<Conversation>("PATCH", `/tasks/${seg(id)}`, patch),
+  taskChanges: (id: string) => request<TaskChanges>("GET", `/tasks/${seg(id)}/changes`),
 
   stopRun: (runId: string) => request<Ok>("POST", `/runs/${seg(runId)}/stop`, {}),
   /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */

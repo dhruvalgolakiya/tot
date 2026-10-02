@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Lightbulb, LoaderCircle, Plus, Square } from "lucide-react";
+import { ArrowUp, Lightbulb, ListChecks, LoaderCircle, Plus, Square } from "lucide-react";
 import type { UseAttachments } from "../hooks/useAttachments";
-import { selectActiveAgent, sendMessage, stopRun, useStore } from "../store";
+import { isSteerable, isTask } from "../lib/tasks";
+import { selectActiveAgent, selectActiveAgentId, selectCurrentConversation, sendMessage, startTask, steerTask, stopRun, useStore } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
+import { RepoChip } from "./tasks/RepoPicker";
+import { Kbd } from "./ui/Kbd";
 import { Tip } from "./ui/Tip";
 import { VoiceInputButton } from "./voice";
 
@@ -11,22 +14,47 @@ const MAX_HEIGHT_PX = 200;
 // Phones and tablets: Enter inserts a newline, the button sends.
 const touchOnly = () => window.matchMedia("(pointer: coarse)").matches;
 
+const pill =
+  "flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-selected aria-pressed:text-fg";
+
 export function Composer({ attachments }: { attachments: UseAttachments }) {
   const currentId = useStore((s) => s.currentId);
   const run = useStore((s) => (s.currentId ? s.activeRuns[s.currentId] : undefined));
   const sending = useStore((s) => s.sending);
   const agent = useStore(selectActiveAgent);
+  const agentId = useStore(selectActiveAgentId);
+  const conversation = useStore(selectCurrentConversation);
+  const task = isTask(conversation) ? conversation.task : null;
+  // In a task that's working, the composer adds notes to it ("steering") instead of starting turns.
+  const steering = Boolean(task && isSteerable(task));
   const [text, setText] = useState("");
   // The in-progress (not-yet-final) speech recognition guess, shown as a quiet
   // preview under the textarea — never merged into `text` until it finalizes,
   // so it can't clobber anything the user has typed.
   const [interim, setInterim] = useState("");
   const [thinkHarder, setThinkHarder] = useState(false);
+  // "Run as task" (or ⌘↩): the message becomes a task, working in a repo when one is picked.
+  const [asTask, setAsTask] = useState(false);
+  const [repo, setRepo] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canSend = (text.trim().length > 0 || attachments.ready.length > 0) && !run && !sending && !attachments.uploading;
+  const taskMode = asTask && !task;
+  const canSend = steering
+    ? text.trim().length > 0 && attachments.items.length === 0
+    : (text.trim().length > 0 || attachments.ready.length > 0) && !run && !sending && !attachments.uploading;
+  const canStartTask = !task && text.trim().length > 0 && attachments.items.length === 0 && !run && !sending;
+  const ready = taskMode ? canStartTask : canSend;
   const agentName = agent?.name ?? "TOT";
+  const placeholder = steering
+    ? "Steer this task…"
+    : task?.status === "needs-input"
+      ? "Answer the task…"
+      : task
+        ? "Reply to pick this task up again…"
+        : taskMode
+          ? "Describe the task…"
+          : `Ask ${agentName} anything`;
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -39,9 +67,19 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
     if (!touchOnly()) inputRef.current?.focus();
   }, []);
 
-  async function submit() {
+  async function submit(mode: "message" | "task" = taskMode ? "task" : "message") {
+    if (mode === "task") {
+      await submitTask();
+      return;
+    }
     if (!canSend) return;
     const value = text;
+    if (steering && currentId) {
+      setText("");
+      setInterim("");
+      if (!(await steerTask(currentId, value))) setText((current) => current || value);
+      return;
+    }
     const harder = thinkHarder;
     const files = attachments.ready.map((it) => it.attachment);
     const previousItems = attachments.items;
@@ -57,8 +95,27 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
     }
   }
 
+  async function submitTask() {
+    if (!canStartTask) return;
+    const value = text;
+    setText("");
+    setInterim("");
+    if (await startTask(value, { repo })) {
+      setAsTask(false);
+      setRepo("");
+    } else {
+      setText((current) => current || value);
+    }
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return;
+    // ⌘↩ / Ctrl+↩ runs it as a task.
+    if ((event.metaKey || event.ctrlKey) && !task) {
+      event.preventDefault();
+      void submit("task");
+      return;
+    }
     if (touchOnly()) return;
     event.preventDefault();
     void submit();
@@ -108,7 +165,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
         </div>
       )}
       <label htmlFor="composer-input" className="sr-only">
-        Message {agentName}
+        {steering ? "Note for the task" : `Message ${agentName}`}
       </label>
       <textarea
         id="composer-input"
@@ -118,7 +175,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        placeholder={`Ask ${agentName} anything`}
+        placeholder={placeholder}
         className="block max-h-[200px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
       />
       {interim.trim() && (
@@ -127,31 +184,45 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
         </p>
       )}
       <div className="flex items-center gap-1.5 px-3 pt-1 pb-3">
-        <Tip content="Attach files">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Attach files"
-            className="flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-hover hover:text-fg"
-          >
-            <Plus className="size-4" />
-          </button>
-        </Tip>
+        {!steering && !taskMode && (
+          <Tip content="Attach files">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach files"
+              className="flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+            >
+              <Plus className="size-4" />
+            </button>
+          </Tip>
+        )}
         <VoiceInputButton onTranscript={onTranscript} />
-        <Tip content="Use the strongest model with extra effort, for your next message only">
-          <button
-            type="button"
-            aria-pressed={thinkHarder}
-            onClick={() => setThinkHarder((value) => !value)}
-            className="flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-selected aria-pressed:text-fg"
+        {!steering && !taskMode && (
+          <Tip content="Use the strongest model with extra effort, for your next message only">
+            <button type="button" aria-pressed={thinkHarder} onClick={() => setThinkHarder((value) => !value)} className={pill}>
+              <Lightbulb className="size-3.5" />
+              <span className="hidden sm:inline">Think harder</span>
+            </button>
+          </Tip>
+        )}
+        {!task && (
+          <Tip
+            content={
+              <span className="flex items-center gap-2">
+                Works in the background until it's done <Kbd keys={["mod", "↩"]} />
+              </span>
+            }
           >
-            <Lightbulb className="size-3.5" />
-            Think harder
-          </button>
-        </Tip>
+            <button type="button" aria-pressed={asTask} onClick={() => setAsTask((value) => !value)} className={pill}>
+              <ListChecks className="size-3.5" />
+              <span className={clsx(!asTask && "hidden sm:inline")}>Run as task</span>
+            </button>
+          </Tip>
+        )}
+        {taskMode && <RepoChip agentId={agentId} value={repo} onChange={setRepo} />}
 
         <div className="ml-auto">
-          {run && currentId ? (
+          {run && currentId && !steering ? (
             <Tip content="Stop">
               <button
                 type="button"
@@ -166,11 +237,11 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
           ) : (
             <button
               type="submit"
-              disabled={!canSend}
-              aria-label="Send"
+              disabled={!ready}
+              aria-label={steering ? "Send note" : taskMode ? "Start task" : "Send"}
               className={clsx(
                 "grid size-9 place-items-center rounded-full transition-colors",
-                canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-faint",
+                ready ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-faint",
               )}
             >
               {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}

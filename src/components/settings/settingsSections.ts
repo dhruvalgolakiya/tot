@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Brain, IdCard, LayoutGrid, Monitor, Plug, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Brain, IdCard, LayoutGrid, ListChecks, Monitor, Plug, SlidersHorizontal, Sparkles } from "lucide-react";
 import type { SettingsSection } from "../../lib/router";
 import { GitHubMark } from "../ui/GitHubMark";
 import { SlackMark } from "../ui/SlackMark";
@@ -10,7 +10,7 @@ export interface SettingsSectionMeta {
   /** One-line muted description shown under the section title. */
   description: string;
   icon: ComponentType<{ className?: string }>;
-  /** General / Models / Computer share one draft + the sticky Save bar; the rest apply changes immediately. */
+  /** General / Models / Computer / Tasks share one draft + the sticky Save bar; the rest apply changes immediately. */
   hasDraft: boolean;
 }
 
@@ -42,6 +42,13 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     label: "Computer",
     description: "Choose where agents run commands: a cloud VM, a local sandbox, or off.",
     icon: Monitor,
+    hasDraft: true,
+  },
+  {
+    id: "tasks",
+    label: "Tasks",
+    description: "How many tasks run at once, what happens after a restart, and who hears when they're done.",
+    icon: ListChecks,
     hasDraft: true,
   },
   {

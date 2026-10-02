@@ -58,6 +58,7 @@ export type SettingsSection =
   | "models"
   | "memory"
   | "computer"
+  | "tasks"
   | "github"
   | "apps"
   | "slack"
@@ -69,6 +70,7 @@ const SETTINGS_SECTION_IDS: readonly SettingsSection[] = [
   "models",
   "memory",
   "computer",
+  "tasks",
   "github",
   "apps",
   "slack",

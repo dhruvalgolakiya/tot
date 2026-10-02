@@ -49,6 +49,8 @@ export function buildSettingsPatch(saved: Settings, draft: Settings, secrets: Se
   if (claude) patch.claude = claude;
   const chatgpt = changed(saved.chatgpt, draft.chatgpt, ["useConnectedApps"]);
   if (chatgpt) patch.chatgpt = chatgpt;
+  const tasks = changed(saved.tasks, draft.tasks, ["perAgentLimit", "globalLimit", "resumeInterrupted", "notifySlackUserId"]);
+  if (tasks) patch.tasks = tasks;
 
   const anthropicKey = secrets.anthropicApiKey.trim();
   if (anthropicKey) patch.anthropicApiKey = anthropicKey;
@@ -65,4 +67,10 @@ export const IDLE_MINUTES = { min: 1, max: 1440 };
 
 export function isValidIdleMinutes(value: number): boolean {
   return Number.isInteger(value) && value >= IDLE_MINUTES.min && value <= IDLE_MINUTES.max;
+}
+
+export const TASK_LIMITS = { perAgent: 10, global: 20 };
+
+export function isValidTaskLimit(value: number, max: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= max;
 }

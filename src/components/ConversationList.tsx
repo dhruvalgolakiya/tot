@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { groupConversations } from "../lib/conversations";
+import { isTask } from "../lib/tasks";
 import { loadConversations, selectActiveAgentId, useStore } from "../store";
 import { ConversationItem } from "./ConversationItem";
+import { TaskList } from "./tasks/TaskList";
 import { Callout } from "./ui/Callout";
 import { EmptyState } from "./ui/EmptyState";
 import { Skeleton } from "./ui/Skeleton";
@@ -12,14 +14,27 @@ export function ConversationList({ query }: { query: string }) {
   const currentId = useStore((s) => s.currentId);
   const activeRuns = useStore((s) => s.activeRuns);
   const activeAgentId = useStore(selectActiveAgentId);
-  const agentConversations = useMemo(
-    () => (activeAgentId ? conversations.filter((c) => c.agentId === activeAgentId) : conversations),
+  // Tasks have their own group above the chats.
+  const agentChats = useMemo(
+    () => conversations.filter((c) => c.kind !== "task" && (!activeAgentId || c.agentId === activeAgentId)),
     [conversations, activeAgentId],
   );
-  const groups = useMemo(() => groupConversations(agentConversations, query), [agentConversations, query]);
+  const groups = useMemo(() => groupConversations(agentChats, query), [agentChats, query]);
+  /** Chats with tasks still working: they show a count. */
+  const workingTasks = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of conversations) {
+      if (isTask(c) && c.parentId && (c.task.status === "running" || c.task.status === "needs-input")) {
+        counts.set(c.parentId, (counts.get(c.parentId) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [conversations]);
 
   return (
     <nav aria-label="Chat history" className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      <TaskList query={query} />
+
       {state === "loading" && conversations.length === 0 && (
         <div className="space-y-2 px-2.5 pt-4" aria-busy="true" aria-label="Loading chats">
           {[72, 56, 64, 48, 60].map((width) => (
@@ -60,6 +75,7 @@ export function ConversationList({ query }: { query: string }) {
                   conversation={conversation}
                   active={conversation.id === currentId}
                   streaming={Boolean(activeRuns[conversation.id])}
+                  workingTasks={workingTasks.get(conversation.id) ?? 0}
                 />
               </li>
             ))}

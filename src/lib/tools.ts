@@ -12,6 +12,7 @@ import {
   Keyboard,
   LayoutGrid,
   Link,
+  ListChecks,
   Monitor,
   MousePointerClick,
   MoveVertical,
@@ -44,6 +45,7 @@ export function toolIcon(name: string): LucideIcon {
   if (ICONS[name]) return ICONS[name];
   if (name.startsWith("memory_")) return Brain;
   if (name.startsWith("wiki_")) return BookOpen;
+  if (name.startsWith("task_")) return ListChecks;
   // lucide-react dropped brand marks (no "Github"); GitBranch is the closest stand-in.
   if (name.startsWith("github/")) return GitBranch;
   if (name.startsWith("apps/")) return LayoutGrid;
