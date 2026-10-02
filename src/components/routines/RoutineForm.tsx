@@ -5,6 +5,7 @@ import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { cardClass } from "../ui/Card";
 import { Field } from "../ui/Field";
+import { Select } from "../ui/Select";
 import { formatSchedule } from "./format";
 import {
   buildSchedule,
@@ -186,15 +187,16 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
                   onChange={(event) => set({ intervalValue: event.target.value })}
                   className="input h-10 w-24 rounded-xl"
                 />
-                <select
+                <Select
                   aria-label="Interval unit"
                   value={values.intervalUnit}
-                  onChange={(event) => set({ intervalUnit: event.target.value as "minutes" | "hours" })}
-                  className="input h-10 w-32 rounded-xl"
-                >
-                  <option value="minutes">minutes</option>
-                  <option value="hours">hours</option>
-                </select>
+                  onValueChange={(intervalUnit) => set({ intervalUnit: intervalUnit as "minutes" | "hours" })}
+                  className="h-10 w-32 rounded-xl"
+                  options={[
+                    { value: "minutes", label: "minutes" },
+                    { value: "hours", label: "hours" },
+                  ]}
+                />
               </div>
             </Field>
           </div>

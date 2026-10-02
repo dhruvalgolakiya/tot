@@ -41,3 +41,20 @@ export function groupModels(models: ModelOption[]) {
     chatgpt: models.filter((m) => m.provider === "chatgpt"),
   };
 }
+
+/**
+ * `<Select>` options for picking a model: the current model first if it isn't in the list yet (the list
+ * hasn't loaded, or it's since been retired), then Auto ungrouped, then Claude and ChatGPT as labeled groups.
+ * Shaped to match `SelectOption`/`SelectOptionGroup` structurally, without importing the UI types here.
+ */
+export function modelSelectOptions(models: ModelOption[], currentId: string) {
+  const groups = groupModels(models);
+  const known = models.some((m) => m.id === currentId);
+  const toOption = (model: ModelOption) => ({ value: model.id, label: model.label, disabled: !model.available });
+  return [
+    ...(known ? [] : [{ value: currentId, label: modelLabel(models, currentId) }]),
+    ...groups.auto.map((model) => ({ value: model.id, label: displayLabel(model), disabled: !model.available })),
+    ...(groups.claude.length > 0 ? [{ label: "Claude", options: groups.claude.map(toOption) }] : []),
+    ...(groups.chatgpt.length > 0 ? [{ label: "ChatGPT", options: groups.chatgpt.map(toOption) }] : []),
+  ];
+}

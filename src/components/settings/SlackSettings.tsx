@@ -12,6 +12,7 @@ import { cardClass } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { IconButton } from "../ui/IconButton";
 import { SecretInput } from "../ui/SecretInput";
+import { Select } from "../ui/Select";
 import { Skeleton } from "../ui/Skeleton";
 import { StatusDot } from "../ui/StatusDot";
 import { Tip } from "../ui/Tip";
@@ -235,20 +236,17 @@ function ConnectedView({ status }: { status: SlackStatus }) {
           htmlFor="slack-default-agent"
           hint="Answers when a message doesn't start with an agent's name."
         >
-          <select
+          <Select
             id="slack-default-agent"
             value={selectedAgentId}
-            onChange={(event) => void setDefaultAgent(event.target.value)}
+            onValueChange={(agentId) => void setDefaultAgent(agentId)}
             disabled={agentSaving}
-            className="input h-10 rounded-xl bg-elevated"
-          >
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-                {agent.id === firstAgentId ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
+            className="h-10 rounded-xl"
+            options={agents.map((agent) => ({
+              value: agent.id,
+              label: agent.id === firstAgentId ? `${agent.name} (default)` : agent.name,
+            }))}
+          />
         </Field>
       )}
 

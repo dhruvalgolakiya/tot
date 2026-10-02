@@ -342,10 +342,6 @@
       border-color: var(--color-red-400);
       box-shadow: 0 0 0 3px var(--color-danger-soft);
     }
-    &:is(select) {
-      /* The native option list paints with the select's background, so it must be opaque. */
-      background-color: var(--color-elevated);
-    }
   }
 
   .input-sm {
@@ -403,8 +399,7 @@
    16px fields. Unlayered so it wins over the text-size utilities. */
 @media (pointer: coarse) {
   input,
-  textarea,
-  select {
+  textarea {
     font-size: 16px;
   }
 }

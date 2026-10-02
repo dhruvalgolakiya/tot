@@ -1,15 +1,14 @@
-import { displayLabel, groupModels, modelLabel } from "../../lib/models";
+import { modelSelectOptions } from "../../lib/models";
 import type { SettingsSectionProps } from "../../lib/settings";
 import { goToSettings, useStore } from "../../store";
 import { Field } from "../ui/Field";
+import { Select } from "../ui/Select";
 import { Switch } from "../ui/Switch";
 import { SettingRow } from "./SettingRow";
 import { ThemePicker } from "./ThemePicker";
 
 export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
   const models = useStore((s) => s.models);
-  const groups = groupModels(models);
-  const knownDefault = models.some((m) => m.id === draft.defaultModelId);
 
   return (
     <div className="space-y-6">
@@ -47,37 +46,13 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
       </Field>
 
       <Field label="Default model" htmlFor="settings-model" hint="Used for new chats. You can switch models in any chat.">
-        <select
+        <Select
           id="settings-model"
           value={draft.defaultModelId}
-          onChange={(event) => onChange({ ...draft, defaultModelId: event.target.value })}
-          className="input h-10 rounded-xl bg-elevated"
-        >
-          {!knownDefault && <option value={draft.defaultModelId}>{modelLabel(models, draft.defaultModelId)}</option>}
-          {groups.auto.map((model) => (
-            <option key={model.id} value={model.id} disabled={!model.available}>
-              {displayLabel(model)}
-            </option>
-          ))}
-          {groups.claude.length > 0 && (
-            <optgroup label="Claude">
-              {groups.claude.map((model) => (
-                <option key={model.id} value={model.id} disabled={!model.available}>
-                  {model.label}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {groups.chatgpt.length > 0 && (
-            <optgroup label="ChatGPT">
-              {groups.chatgpt.map((model) => (
-                <option key={model.id} value={model.id} disabled={!model.available}>
-                  {model.label}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
+          onValueChange={(defaultModelId) => onChange({ ...draft, defaultModelId })}
+          className="h-10 rounded-xl"
+          options={modelSelectOptions(models, draft.defaultModelId)}
+        />
       </Field>
 
       <div className="border-t border-hairline pt-5">

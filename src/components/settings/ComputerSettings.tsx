@@ -4,6 +4,7 @@ import { IDLE_MINUTES, isValidIdleMinutes, type SettingsSectionProps } from "../
 import { Field } from "../ui/Field";
 import { RadioCards } from "../ui/RadioCards";
 import { SecretInput } from "../ui/SecretInput";
+import { Select } from "../ui/Select";
 
 type ComputerDraft = Settings["computer"];
 
@@ -64,18 +65,13 @@ export function ComputerSettings({ draft, onChange, secrets, onSecretsChange }: 
           </Field>
 
           <Field label="VM size" htmlFor="boat-size">
-            <select
+            <Select
               id="boat-size"
               value={computer.size}
-              onChange={(event) => update({ size: event.target.value as ComputerDraft["size"] })}
-              className="input h-10 rounded-xl bg-elevated"
-            >
-              {COMPUTER_SIZES.map((size) => (
-                <option key={size.value} value={size.value}>
-                  {size.label}
-                </option>
-              ))}
-            </select>
+              onValueChange={(size) => update({ size: size as ComputerDraft["size"] })}
+              className="h-10 rounded-xl"
+              options={COMPUTER_SIZES.map((size) => ({ value: size.value, label: size.label }))}
+            />
           </Field>
         </>
       )}

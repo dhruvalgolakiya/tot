@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import type { Agent, AgentInput, MascotSpec } from "@shared/types";
-import { AUTO_MODEL_ID, displayLabel, groupModels, modelLabel } from "../lib/models";
+import { AUTO_MODEL_ID, modelSelectOptions } from "../lib/models";
 import { createAgent, deleteAgent, goToSettings, setNewAgentDialogOpen, updateAgent, useStore } from "../store";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { MascotPicker, randomMascot, suggestName } from "./mascot";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
 import { ModalBody, ModalFooter } from "./ui/Modal";
+import { Select } from "./ui/Select";
 
 /** Profile fields for a new agent (in the New agent dialog) or an existing one (in its settings panel). */
 export function AgentForm({ target, canDelete }: { target: Agent | null; canDelete: boolean }) {
@@ -21,8 +22,6 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const models = useStore((s) => s.models);
   const personas = useStore((s) => s.personas);
-  const groups = groupModels(models);
-  const knownModel = models.some((m) => m.id === modelId);
   const trimmedName = name.trim();
 
   async function onSubmit(event: FormEvent) {
@@ -77,19 +76,16 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
             </>
           }
         >
-          <select
+          <Select
             id="agent-persona"
             value={personaId ?? ""}
-            onChange={(event) => setPersonaId(event.target.value || null)}
-            className="input h-10 rounded-xl bg-elevated"
-          >
-            <option value="">Me</option>
-            {personas.map((persona) => (
-              <option key={persona.id} value={persona.id}>
-                {persona.name} · {persona.email}
-              </option>
-            ))}
-          </select>
+            onValueChange={(next) => setPersonaId(next || null)}
+            className="h-10 rounded-xl"
+            options={[
+              { value: "", label: "Me" },
+              ...personas.map((persona) => ({ value: persona.id, label: `${persona.name} · ${persona.email}` })),
+            ]}
+          />
         </Field>
 
         <Field
@@ -108,37 +104,13 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
         </Field>
 
         <Field label="Default model" htmlFor="agent-model" hint="New chats with this agent start here.">
-          <select
+          <Select
             id="agent-model"
             value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
-            className="input h-10 rounded-xl bg-elevated"
-          >
-            {!knownModel && <option value={modelId}>{modelLabel(models, modelId)}</option>}
-            {groups.auto.map((model) => (
-              <option key={model.id} value={model.id} disabled={!model.available}>
-                {displayLabel(model)}
-              </option>
-            ))}
-            {groups.claude.length > 0 && (
-              <optgroup label="Claude">
-                {groups.claude.map((model) => (
-                  <option key={model.id} value={model.id} disabled={!model.available}>
-                    {model.label}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {groups.chatgpt.length > 0 && (
-              <optgroup label="ChatGPT">
-                {groups.chatgpt.map((model) => (
-                  <option key={model.id} value={model.id} disabled={!model.available}>
-                    {model.label}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+            onValueChange={setModelId}
+            className="h-10 rounded-xl"
+            options={modelSelectOptions(models, modelId)}
+          />
         </Field>
       </ModalBody>
 

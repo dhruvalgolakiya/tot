@@ -9,6 +9,7 @@ import { toMs, truncate } from "../lib/format";
 import { notifyError, useStore } from "../store";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
+import { Select } from "./ui/Select";
 import { Switch } from "./ui/Switch";
 
 type Approval = Extract<MessagePart, { type: "approval" }>;
@@ -302,22 +303,17 @@ function ApprovalFieldInput({ field, value, disabled, onChange }: ApprovalFieldI
   if (field.type === "enum") {
     return (
       <Field label={label} htmlFor={id} hint={field.description}>
-        <select
+        <Select
           id={id}
           value={typeof value === "string" ? value : ""}
           disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
-          className="input bg-elevated"
-        >
-          <option value="" disabled={field.required}>
-            Select…
-          </option>
-          {field.options?.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+          onValueChange={onChange}
+          placeholder="Select…"
+          options={[
+            { value: "", label: "Select…", disabled: field.required },
+            ...(field.options?.map((option) => ({ value: option, label: option })) ?? []),
+          ]}
+        />
       </Field>
     );
   }

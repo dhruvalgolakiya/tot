@@ -8,6 +8,7 @@ import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { Field } from "../ui/Field";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
+import { Select } from "../ui/Select";
 import { Switch } from "../ui/Switch";
 
 type Choice = BrainAccess | "none";
@@ -161,16 +162,18 @@ export function BrainSettingsDialog({ brain, agents, viewerAgentId, open, onOpen
                     {agents.map((agent) => (
                       <li key={agent.id} className="flex items-center gap-3 px-3 py-2">
                         <span className="min-w-0 flex-1 truncate text-sm text-fg">{agent.name}</span>
-                        <select
+                        <Select
                           aria-label={`${agent.name}'s access`}
                           value={access[agent.id] ?? "none"}
-                          onChange={(e) => setAccess((current) => ({ ...current, [agent.id]: e.target.value as Choice }))}
-                          className="input input-sm w-40 rounded-lg bg-elevated"
-                        >
-                          <option value="none">No access</option>
-                          <option value="read">Can read</option>
-                          <option value="write">Can read & write</option>
-                        </select>
+                          onValueChange={(next) => setAccess((current) => ({ ...current, [agent.id]: next as Choice }))}
+                          size="sm"
+                          className="w-40 rounded-lg"
+                          options={[
+                            { value: "none", label: "No access" },
+                            { value: "read", label: "Can read" },
+                            { value: "write", label: "Can read & write" },
+                          ]}
+                        />
                       </li>
                     ))}
                   </ul>

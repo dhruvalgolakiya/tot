@@ -6,6 +6,7 @@ import { isValidEmail } from "../../lib/personas";
 import { notifyError, setPersona } from "../../store";
 import { Field } from "../ui/Field";
 import { SectionHeader } from "../ui/SectionHeader";
+import { Select } from "../ui/Select";
 
 type PersonaEmailTasksProps = {
   persona: Persona;
@@ -103,20 +104,17 @@ export function PersonaEmailTasks({ persona, agents }: PersonaEmailTasksProps) {
 
       {workingAgents.length > 0 ? (
         <Field label="Default agent" htmlFor="persona-default-agent" hint="Answers emailed tasks when more than one agent works as this persona.">
-          <select
+          <Select
             id="persona-default-agent"
             value={persona.defaultAgentId ?? firstAgentId ?? ""}
-            onChange={(event) => void patch({ defaultAgentId: event.target.value === firstAgentId ? null : event.target.value })}
+            onValueChange={(agentId) => void patch({ defaultAgentId: agentId === firstAgentId ? null : agentId })}
             disabled={busy}
-            className="input h-10 rounded-xl bg-elevated"
-          >
-            {workingAgents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-                {agent.id === firstAgentId ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
+            className="h-10 rounded-xl"
+            options={workingAgents.map((agent) => ({
+              value: agent.id,
+              label: agent.id === firstAgentId ? `${agent.name} (default)` : agent.name,
+            }))}
+          />
         </Field>
       ) : (
         <p className="text-xs text-fg-subtle">No agents work as {persona.name} yet — add one in its agent settings.</p>
