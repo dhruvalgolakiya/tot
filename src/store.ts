@@ -8,6 +8,7 @@ import type {
   Attachment,
   ComputerSummary,
   Conversation,
+  Brain,
   GitHubStatus,
   Message,
   ModelOption,
@@ -79,10 +80,14 @@ export interface TotState {
   conversationsState: LoadState;
   /** Open conversation; null on an agent's home screen or wiki. */
   currentId: string | null;
-  /** The open page of the active agent's wiki; null shows the Overview. Only meaningful when `page === "wiki"`. */
+  /** The open page of the wiki; null shows the open brain's Overview. Only meaningful when `page === "wiki"`. */
   wikiPageId: string | null;
-  /** Bumped whenever an agent's wiki changes (an AppEvent), for the open WikiView to react to. */
-  wikiEvent: { agentId: string; conversationId?: string; at: number } | null;
+  /** The brain open in the wiki; null means the open page's brain, or else the agent's notebook. */
+  wikiBrainId: string | null;
+  /** Bumped whenever a brain's pages change (an AppEvent), for the open WikiView to react to. */
+  wikiEvent: { brainId: string; conversationId?: string; at: number } | null;
+  /** Every brain (notebooks and shared ones); null while still loading. */
+  brains: Brain[] | null;
   /** Bumped on every navigation so the chat view remounts fresh. */
   viewKey: number;
   messages: Record<string, Message[]>;
@@ -159,7 +164,9 @@ export const useStore = create<TotState>()(() => ({
   conversationsState: "loading",
   currentId: null,
   wikiPageId: null,
+  wikiBrainId: null,
   wikiEvent: null,
+  brains: null,
   viewKey: 0,
   messages: {},
   detailState: {},
@@ -275,6 +282,7 @@ export function initApp() {
   void refreshProviders();
   void loadSettings();
   void loadGithubStatus();
+  void loadBrains();
   void loadAppsStatus();
   void loadSlackStatus();
 }
@@ -383,6 +391,22 @@ export async function saveSettings(patch: SettingsPatch): Promise<boolean> {
     notifyError(error);
     return false;
   }
+}
+
+/** Loaded at app init; kept live via the `brains` AppEvent. */
+export async function loadBrains() {
+  try {
+    set({ brains: await api.listBrains() });
+  } catch (error) {
+    notifyError(error);
+  }
+}
+
+/** Puts a brain the server just returned into the list (before its AppEvent arrives). */
+export function upsertBrain(brain: Brain) {
+  set((s) => ({
+    brains: s.brains?.some((b) => b.id === brain.id) ? s.brains.map((b) => (b.id === brain.id ? brain : b)) : [...(s.brains ?? []), brain],
+  }));
 }
 
 /** Loaded at app init and refreshed whenever the Settings dialog opens; also kept live via the `github` AppEvent. */
@@ -511,8 +535,15 @@ function showAgentHome(agentId: string | null) {
   set({ currentId: null, homeAgentId: agentId, computerPanelOpen: false });
 }
 
-function showWiki(agentId: string, pageId: string | null) {
-  set({ currentId: null, homeAgentId: agentId, wikiPageId: pageId, computerPanelOpen: false, agentSettingsOpen: false });
+function showWiki(agentId: string, pageId: string | null, brainId: string | null = null) {
+  set({
+    currentId: null,
+    homeAgentId: agentId,
+    wikiPageId: pageId,
+    wikiBrainId: brainId,
+    computerPanelOpen: false,
+    agentSettingsOpen: false,
+  });
 }
 
 function redirectHome() {
@@ -538,7 +569,7 @@ export function syncWithLocation() {
   const wiki = wikiFromPath(pathname);
   if (wiki) {
     set({ page: "wiki" });
-    showWiki(wiki.agentId, wiki.pageId);
+    showWiki(wiki.agentId, wiki.pageId, wiki.brainId);
     return;
   }
   const conversationId = conversationIdFromPath(pathname);
@@ -575,15 +606,27 @@ export function navigateToConversation(id: string) {
   void openConversation(id);
 }
 
-/** Open an agent's wiki (optionally to a specific page); makes that agent active and pushes a fresh history entry. */
-export function navigateToWiki(agentId: string, pageId?: string | null) {
+/**
+ * Open the wiki as an agent sees it — its notebook, a page (in whichever brain it lives), or one
+ * brain's Overview; makes that agent active and pushes a fresh history entry.
+ */
+export function navigateToWiki(agentId: string, pageId?: string | null, brainId?: string | null) {
   if (!isDesktop()) set({ sidebarOpen: false });
   const s = get();
   const targetPageId = pageId ?? null;
-  if (s.page === "wiki" && s.homeAgentId === agentId && s.wikiPageId === targetPageId) return;
-  pushPath(wikiPath(agentId, targetPageId));
+  const targetBrainId = targetPageId ? null : (brainId ?? null);
+  if (s.page === "wiki" && s.homeAgentId === agentId && s.wikiPageId === targetPageId && s.wikiBrainId === targetBrainId) return;
+  pushPath(wikiPath(agentId, targetPageId, targetBrainId));
   set((s2) => ({ viewKey: s2.viewKey + 1, page: "wiki" }));
-  showWiki(agentId, targetPageId);
+  showWiki(agentId, targetPageId, targetBrainId);
+}
+
+/** Switch the wiki that's open to another brain (its Overview), keeping the view mounted. */
+export function openBrain(brainId: string) {
+  const s = get();
+  if (s.page !== "wiki" || !s.homeAgentId || (s.wikiBrainId === brainId && s.wikiPageId === null)) return;
+  pushPath(wikiPath(s.homeAgentId, null, brainId));
+  set({ wikiBrainId: brainId, wikiPageId: null });
 }
 
 /**
@@ -591,11 +634,13 @@ export function navigateToWiki(agentId: string, pageId?: string | null) {
  * the view (so the tree's scroll position and search box survive) — mirrors how
  * `sendMessage` moves from the home screen into a chat without a route change.
  */
-export function openWikiPage(pageId: string | null) {
+export function openWikiPage(pageId: string | null, brainId?: string | null) {
   const s = get();
   if (s.page !== "wiki" || !s.homeAgentId || s.wikiPageId === pageId) return;
-  pushPath(wikiPath(s.homeAgentId, pageId));
-  set({ wikiPageId: pageId });
+  // Pages of the brain that's open stay in it (the URL names only the page).
+  const keepBrain = brainId ?? s.wikiBrainId;
+  pushPath(pageId ? wikiPath(s.homeAgentId, pageId) : wikiPath(s.homeAgentId, null, keepBrain));
+  set({ wikiPageId: pageId, wikiBrainId: keepBrain });
 }
 
 async function openConversation(id: string) {
@@ -1028,8 +1073,8 @@ function handleComputerEvent(agentId: string, computer: ComputerSummary) {
  * touched a chat (the keeper folding in what it learned), reload that chat's
  * messages too, unless it's actively streaming and already showing them live.
  */
-function handleWikiEvent(agentId: string, conversationId?: string) {
-  set({ wikiEvent: { agentId, conversationId, at: Date.now() } });
+function handleWikiEvent(brainId: string, conversationId?: string) {
+  set({ wikiEvent: { brainId, conversationId, at: Date.now() } });
   if (conversationId && get().currentId === conversationId && !get().activeRuns[conversationId]) {
     void loadConversation(conversationId);
   }
@@ -1094,7 +1139,10 @@ export function handleAppEvent(event: AppEvent) {
       handleComputerEvent(event.agentId, event.computer);
       break;
     case "wiki":
-      handleWikiEvent(event.agentId, event.conversationId);
+      handleWikiEvent(event.brainId, event.conversationId);
+      break;
+    case "brains":
+      set({ brains: event.brains });
       break;
     case "github":
       setGithubStatus(event.status);

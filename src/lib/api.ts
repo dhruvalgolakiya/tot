@@ -1,4 +1,8 @@
 import type {
+  Brain,
+  BrainAccess,
+  BrainInput,
+  BrainPatch,
   Agent,
   AgentInput,
   AppCatalogItem,
@@ -147,15 +151,24 @@ export const api = {
   answerApproval: (runId: string, partId: string, answer: ApprovalAnswer) =>
     request<Ok>("POST", `/runs/${seg(runId)}/approvals/${seg(partId)}`, answer),
 
-  /** An agent's workspace wiki: a page tree the agent reads/writes with tools and the user can browse/edit. */
-  listWikiPages: (agentId: string) => request<WikiPageSummary[]>("GET", `/agents/${seg(agentId)}/wiki`),
-  searchWiki: (agentId: string, q: string) =>
-    request<WikiSearchHit[]>("GET", `/agents/${seg(agentId)}/wiki?q=${encodeURIComponent(q)}`),
-  createWikiPage: (agentId: string, input: WikiPageInput) =>
-    request<WikiPage>("POST", `/agents/${seg(agentId)}/wiki`, input),
-  /** Asks the agent to study a repo and write it up; returns the chat to watch it happen. */
+  /** Brains: knowledge bases at the app level — each agent's private notebook, and shared ones attached to agents. */
+  listBrains: () => request<Brain[]>("GET", "/brains"),
+  createBrain: (input: BrainInput) => request<Brain>("POST", "/brains", input),
+  updateBrain: (id: string, patch: BrainPatch) => request<Brain>("PATCH", `/brains/${seg(id)}`, patch),
+  deleteBrain: (id: string) => request<Ok>("DELETE", `/brains/${seg(id)}`),
+  setBrainAccess: (id: string, agentId: string, access: BrainAccess) =>
+    request<Brain>("PUT", `/brains/${seg(id)}/agents/${seg(agentId)}`, { access }),
+  removeBrainAccess: (id: string, agentId: string) => request<Brain>("DELETE", `/brains/${seg(id)}/agents/${seg(agentId)}`),
+
+  /** A brain's wiki: a page tree agents read/write with tools and the user can browse/edit. */
+  listWikiPages: (brainId: string) => request<WikiPageSummary[]>("GET", `/brains/${seg(brainId)}/wiki`),
+  searchWiki: (brainId: string, q: string) =>
+    request<WikiSearchHit[]>("GET", `/brains/${seg(brainId)}/wiki?q=${encodeURIComponent(q)}`),
+  createWikiPage: (brainId: string, input: WikiPageInput) =>
+    request<WikiPage>("POST", `/brains/${seg(brainId)}/wiki`, input),
+  /** Asks the agent to study a repo and write it up as its own brain; returns the chat to watch it happen. */
   learnRepo: (agentId: string, body: LearnRepoRequest) =>
-    request<{ conversationId: string; runId: string }>("POST", `/agents/${seg(agentId)}/wiki/learn`, body),
+    request<{ conversationId: string; runId: string; brainId: string }>("POST", `/agents/${seg(agentId)}/wiki/learn`, body),
   getWikiPage: (pageId: string) => request<WikiPage>("GET", `/wiki/${seg(pageId)}`),
   updateWikiPage: (pageId: string, patch: WikiPagePatch) =>
     request<WikiPage>("PATCH", `/wiki/${seg(pageId)}`, patch),

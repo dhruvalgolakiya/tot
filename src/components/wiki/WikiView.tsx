@@ -5,26 +5,35 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { DESKTOP_QUERY, useMediaQuery, XL_QUERY } from "../../hooks/useMediaQuery";
 import { api, errorMessage } from "../../lib/api";
 import { extractHeadings } from "../../lib/wiki";
-import { openWikiPage, selectActiveAgent, useStore } from "../../store";
+import { brainName } from "../../lib/brains";
+import { navigateToWiki, openBrain, openWikiPage, selectActiveAgent, useStore } from "../../store";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { Modal } from "../ui/Modal";
 import { Skeleton } from "../ui/Skeleton";
+import { BrainSettingsDialog } from "./BrainSettingsDialog";
+import { BrainSwitcher } from "./BrainSwitcher";
 import { LearnRepoDialog } from "./LearnRepoDialog";
+import { NewBrainDialog } from "./NewBrainDialog";
 import { WikiEmptyState } from "./WikiEmptyState";
 import { WikiOutline } from "./WikiOutline";
 import { WikiPageView } from "./WikiPageView";
 import { WikiTree } from "./WikiTree";
 
 /**
- * Wiki view: a page tree on the left, the open page in the middle, an optional
- * "On this page" outline on very wide screens. Mounted in the main card in
- * place of ChatView while `page === "wiki"` (see App.tsx and store.ts).
+ * Wiki view: a brain switcher and the open brain's page tree on the left, the
+ * open page in the middle, an optional "On this page" outline on very wide
+ * screens. Mounted in the main card in place of ChatView while `page === "wiki"`
+ * (see App.tsx and store.ts). The brain shown is the one picked, else the open
+ * page's, else the agent's notebook.
  */
 export function WikiView() {
   const agent = useStore(selectActiveAgent);
   const agentId = agent?.id ?? null;
+  const agents = useStore((s) => s.agents);
+  const brains = useStore((s) => s.brains);
   const wikiPageId = useStore((s) => s.wikiPageId);
+  const wikiBrainId = useStore((s) => s.wikiBrainId);
   const wikiEvent = useStore((s) => s.wikiEvent);
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const xlWide = useMediaQuery(XL_QUERY);
@@ -36,6 +45,8 @@ export function WikiView() {
   const [editing, setEditing] = useState(false);
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [learnOpen, setLearnOpen] = useState(false);
+  const [newBrainOpen, setNewBrainOpen] = useState(false);
+  const [brainSettingsOpen, setBrainSettingsOpen] = useState(false);
 
   const [query, setQuery] = useState("");
   const search = useDebouncedValue(query.trim(), 250);
@@ -44,6 +55,10 @@ export function WikiView() {
 
   const contentRef = useRef<HTMLDivElement>(null);
 
+  const notebookId = brains?.find((b) => b.ownerAgentId === agentId)?.id ?? null;
+  // A page opened by id (from a chat notice, say) shows its own brain; until it loads, nothing is listed.
+  const brainId = wikiBrainId ?? (wikiPageId ? (page?.id === wikiPageId ? page.brainId : null) : notebookId);
+  const brain = brains?.find((b) => b.id === brainId) ?? null;
   const activePageId = wikiPageId ?? pages?.[0]?.id ?? null;
 
   function loadPages(id: string) {
@@ -60,18 +75,15 @@ export function WikiView() {
     api.getWikiPage(id).then(setPage, (error: unknown) => setPageError(errorMessage(error)));
   }
 
-  // Load this agent's wiki fresh whenever the active agent changes.
+  // Load the brain's pages fresh whenever another brain is shown.
   useEffect(() => {
-    if (!agentId) return;
     setPages(null);
     setPagesError(null);
-    setPage(null);
-    setPageError(null);
-    setEditing(false);
     setQuery("");
-    loadPages(agentId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload keyed only on the agent
-  }, [agentId]);
+    if (!brainId) return;
+    loadPages(brainId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload keyed only on the brain
+  }, [brainId]);
 
   // Fetch the open page whenever it changes (but not when we already have it,
   // e.g. right after creating one — see `createPage`).
@@ -99,25 +111,25 @@ export function WikiView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `page` is read only to skip a redundant fetch
   }, [activePageId]);
 
-  // A tool call or the background keeper changed this workspace's wiki: refresh
-  // the tree, and the open page too — unless it's being edited right now.
+  // A tool call or the background keeper changed this brain: refresh the tree,
+  // and the open page too — unless it's being edited right now.
   useEffect(() => {
-    if (!agentId || !wikiEvent || wikiEvent.agentId !== agentId) return;
-    loadPages(agentId);
+    if (!brainId || !wikiEvent || wikiEvent.brainId !== brainId) return;
+    loadPages(brainId);
     if (activePageId && !editing) refetchActivePage(activePageId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when a new event comes in
   }, [wikiEvent]);
 
-  // Search the wiki instead of showing the tree once there's a query.
+  // Search the brain instead of showing the tree once there's a query.
   useEffect(() => {
-    if (!agentId || !search) {
+    if (!brainId || !search) {
       setSearchHits(null);
       setSearching(false);
       return;
     }
     let cancelled = false;
     setSearching(true);
-    api.searchWiki(agentId, search).then(
+    api.searchWiki(brainId, search).then(
       (hits) => {
         if (!cancelled) {
           setSearchHits(hits);
@@ -134,7 +146,7 @@ export function WikiView() {
     return () => {
       cancelled = true;
     };
-  }, [agentId, search]);
+  }, [brainId, search]);
 
   const headings = useMemo(() => (page ? extractHeadings(page.content) : []), [page]);
 
@@ -159,17 +171,18 @@ export function WikiView() {
   }
 
   function handleSelect(pageId: string) {
-    openWikiPage(pageId);
+    openWikiPage(pageId, brainId);
     setMobileTreeOpen(false);
   }
 
   async function createPage() {
     try {
-      const created = await api.createWikiPage(agent!.id, { title: "Untitled", content: "" });
+      if (!brainId) return;
+      const created = await api.createWikiPage(brainId, { title: "Untitled", content: "" });
       setPages((list) => (list ? [...list, created] : [created]));
       setPage(created);
       setEditing(true);
-      openWikiPage(created.id);
+      openWikiPage(created.id, brainId);
       setMobileTreeOpen(false);
     } catch (error) {
       setPagesError(errorMessage(error));
@@ -189,8 +202,13 @@ export function WikiView() {
   }
 
   function handlePageDeleted() {
-    loadPages(agent!.id);
+    if (brainId) loadPages(brainId);
     openWikiPage(null);
+  }
+
+  function handleOpenBrain(id: string) {
+    openBrain(id);
+    setMobileTreeOpen(false);
   }
 
   function scrollToHeading(text: string) {
@@ -200,7 +218,25 @@ export function WikiView() {
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  const isEmptyWorkspace = pages !== null && pages.length === 1 && page !== null && !page.content.trim();
+  const isEmptyWorkspace =
+    brain?.kind === "notebook" && pages !== null && pages.length === 1 && page !== null && !page.content.trim();
+  const switcher = (
+    <BrainSwitcher
+      agent={agent}
+      agents={agents}
+      brains={brains}
+      current={brain}
+      onOpen={handleOpenBrain}
+      onNew={() => {
+        setNewBrainOpen(true);
+        setMobileTreeOpen(false);
+      }}
+      onSettings={() => {
+        setBrainSettingsOpen(true);
+        setMobileTreeOpen(false);
+      }}
+    />
+  );
   const treeProps = {
     pages: pages ?? [],
     activePageId,
@@ -208,6 +244,7 @@ export function WikiView() {
     onQueryChange: setQuery,
     searchHits,
     searching,
+    searchLabel: brain ? `Search ${brainName(brain, agents, agent.id)}` : "Search",
     onNewPage: () => void createPage(),
     onLearnRepo: () => {
       setLearnOpen(true);
@@ -219,7 +256,8 @@ export function WikiView() {
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 overflow-hidden pt-14">
         {desktop && (
-          <aside aria-label="Wiki pages" className="flex h-full w-60 shrink-0 flex-col border-r border-hairline">
+          <aside aria-label="Brains and pages" className="flex h-full w-64 shrink-0 flex-col border-r border-hairline">
+            {switcher}
             <WikiTree {...treeProps} onSelect={handleSelect} />
           </aside>
         )}
@@ -238,7 +276,7 @@ export function WikiView() {
               <Callout
                 tone="danger"
                 action={
-                  <button type="button" onClick={() => loadPages(agent.id)} className="link-muted">
+                  <button type="button" onClick={() => brainId && loadPages(brainId)} className="link-muted">
                     Try again
                   </button>
                 }
@@ -246,7 +284,7 @@ export function WikiView() {
                 {pagesError}
               </Callout>
             </div>
-          ) : pages === null || (activePageId !== null && page === null && !pageError) ? (
+          ) : (pages === null && !pageError) || (activePageId !== null && page === null && !pageError) ? (
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div
                 className="mx-auto w-full max-w-3xl space-y-3 px-4 py-8 sm:px-8"
@@ -300,11 +338,29 @@ export function WikiView() {
           title="Pages"
           className="flex h-[min(80dvh,560px)] max-w-sm flex-col"
         >
+          {switcher}
           <WikiTree {...treeProps} onSelect={handleSelect} />
         </Modal>
       )}
 
       <LearnRepoDialog agent={agent} open={learnOpen} onOpenChange={setLearnOpen} />
+      <NewBrainDialog
+        agent={agent}
+        open={newBrainOpen}
+        onOpenChange={setNewBrainOpen}
+        onCreated={(created) => openBrain(created.id)}
+        onLearnRepo={() => setLearnOpen(true)}
+      />
+      {brain && (
+        <BrainSettingsDialog
+          brain={brain}
+          agents={agents}
+          viewerAgentId={agent.id}
+          open={brainSettingsOpen}
+          onOpenChange={setBrainSettingsOpen}
+          onDeleted={() => navigateToWiki(agent.id)}
+        />
+      )}
     </div>
   );
 }

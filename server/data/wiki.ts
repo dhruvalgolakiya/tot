@@ -9,22 +9,30 @@ import type {
   WikiSearchHit,
 } from "../../shared/types.ts";
 import { db, type Row } from "../db.ts";
+import { brains } from "./brains.ts";
 import { toFtsQuery } from "./memories.ts";
 
 /**
- * Each agent's workspace wiki: markdown pages that nest, searchable, with a
+ * Each brain's wiki (see brains.ts): markdown pages that nest, searchable, with a
  * revision kept before every change. Titles are unique among siblings (so two
- * repo pages can each have an "Architecture" child); the agent refers to pages
- * by id, or by title when that's unambiguous. Every workspace has one pinned
- * Overview page, created on first use. Deleting a page only marks it deleted,
- * so it and its history can be recovered.
+ * repo pages can each have an "Architecture" child); agents refer to pages by
+ * id, or by title when that's unambiguous. Every brain has one pinned Overview
+ * page, created on first use. Deleting a page only marks it deleted, so it and
+ * its history can be recovered. Reads can span several brains (`BrainScope`);
+ * writes go to one.
  */
+
+/** One brain id, or several (e.g. every brain an agent can see). */
+export type BrainScope = string | string[];
+const scopeJson = (scope: BrainScope) => JSON.stringify(typeof scope === "string" ? [scope] : scope);
+const IN_SCOPE = `brain_id IN (SELECT value FROM json_each(?))`;
 
 /** A change the user should see as a validation message (bad title, unknown page…). */
 export class WikiError extends Error {}
 
 export const OVERVIEW_TITLE = "Overview";
 const OVERVIEW_SUMMARY = "What this workspace is for, its projects and where they live, current status and next steps.";
+const SHARED_OVERVIEW_SUMMARY = "Start here: what this brain covers, where things live, and a map of its pages.";
 
 const STOPWORDS = new Set(
   (
@@ -45,7 +53,7 @@ const MAX_REVISIONS_PER_PAGE = 30;
 function toSummary(row: Row): WikiPageSummary {
   return {
     id: String(row.id),
-    agentId: String(row.agent_id),
+    brainId: String(row.brain_id),
     parentId: (row.parent_id as string | null) ?? null,
     title: String(row.title),
     summary: String(row.summary),
@@ -130,55 +138,54 @@ function cleanContent(content: unknown): string {
 const sameTitle = (a: string, b: string) => a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
 
 export const wiki = {
-  /** The workspace's pinned Overview, created on first use. */
-  overview(agentId: string): WikiPage {
-    const row = db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND pinned = 1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`).get(agentId) as
+  /** The brain's pinned Overview (its start-here page), created on first use. */
+  overview(brainId: string): WikiPage {
+    const row = db.prepare(`SELECT * FROM wiki_pages WHERE brain_id = ? AND pinned = 1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`).get(brainId) as
       | Row
       | undefined;
     if (row) return toPage(row);
     const id = randomUUID();
     const now = Date.now();
+    const summary = brains.get(brainId)?.kind === "notebook" ? OVERVIEW_SUMMARY : SHARED_OVERVIEW_SUMMARY;
     db.prepare(
-      `INSERT INTO wiki_pages (id, agent_id, title, summary, content, pinned, position, updated_by, created_at, updated_at)
+      `INSERT INTO wiki_pages (id, brain_id, title, summary, content, pinned, position, updated_by, created_at, updated_at)
        VALUES (?, ?, ?, ?, '', 1, 0, 'agent', ?, ?)`,
-    ).run(id, agentId, OVERVIEW_TITLE, OVERVIEW_SUMMARY, now, now);
+    ).run(id, brainId, OVERVIEW_TITLE, summary, now, now);
     return wiki.get(id)!;
   },
 
-  /** Every page of a workspace, Overview first, then in tree order. */
-  list(agentId: string): WikiPageSummary[] {
-    wiki.overview(agentId);
-    const rows = db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`).all(agentId) as Row[];
-    return treeOrder(rows.map(toSummary)).map(({ depth: _depth, ...page }) => page);
+  /** Every page of a brain, Overview first, then in tree order. */
+  list(brainId: string): WikiPageSummary[] {
+    return wiki.outline(brainId).map(({ depth: _depth, ...page }) => page);
   },
 
   /** The page index as the agent sees it: titles indented by depth. */
-  outline(agentId: string): (WikiPageSummary & { depth: number })[] {
-    wiki.overview(agentId);
-    const rows = db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`).all(agentId) as Row[];
+  outline(brainId: string): (WikiPageSummary & { depth: number })[] {
+    wiki.overview(brainId);
+    const rows = db.prepare(`SELECT * FROM wiki_pages WHERE brain_id = ? AND deleted_at IS NULL`).all(brainId) as Row[];
     return treeOrder(rows.map(toSummary));
   },
 
-  count(agentId: string): number {
-    return Number((db.prepare(`SELECT COUNT(*) AS n FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`).get(agentId) as Row).n);
+  count(scope: BrainScope): number {
+    return Number((db.prepare(`SELECT COUNT(*) AS n FROM wiki_pages WHERE ${IN_SCOPE} AND deleted_at IS NULL`).get(scopeJson(scope)) as Row).n);
   },
 
-  search(agentId: string, query: string, limit = 10): WikiSearchHit[] {
+  search(scope: BrainScope, query: string, limit = 10): WikiSearchHit[] {
     const fts = toFtsQuery(query);
     if (!fts) return [];
     const rows = db
       .prepare(
         `SELECT p.*, snippet(wiki_fts, -1, '«', '»', ' … ', 16) AS snippet
          FROM wiki_fts f JOIN wiki_pages p ON p.rowid = f.rowid
-         WHERE wiki_fts MATCH ? AND p.agent_id = ? AND p.deleted_at IS NULL
+         WHERE wiki_fts MATCH ? AND p.${IN_SCOPE} AND p.deleted_at IS NULL
          ORDER BY bm25(wiki_fts, 8.0, 3.0, 1.0) LIMIT ?`,
       )
-      .all(fts, agentId, limit) as Row[];
+      .all(fts, scopeJson(scope), limit) as Row[];
     return rows.map((row) => ({ ...toSummary(row), snippet: String(row.snippet) }));
   },
 
   /** Full pages ranked by relevance to some text, e.g. the first message of a chat. */
-  relevant(agentId: string, text: string, limit: number): WikiPage[] {
+  relevant(scope: BrainScope, text: string, limit: number): WikiPage[] {
     // Only meaningful words, so "can you fix the bug" doesn't match every page.
     const words = text.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}_-]{2,}/gu)?.filter((word) => !STOPWORDS.has(word)) ?? [];
     const fts = toFtsQuery(words.join(" "));
@@ -186,10 +193,10 @@ export const wiki = {
     const rows = db
       .prepare(
         `SELECT p.* FROM wiki_fts f JOIN wiki_pages p ON p.rowid = f.rowid
-         WHERE wiki_fts MATCH ? AND p.agent_id = ? AND p.pinned = 0 AND p.deleted_at IS NULL
+         WHERE wiki_fts MATCH ? AND p.${IN_SCOPE} AND p.pinned = 0 AND p.deleted_at IS NULL
          ORDER BY bm25(wiki_fts, 8.0, 3.0, 1.0) LIMIT ?`,
       )
-      .all(fts, agentId, limit) as Row[];
+      .all(fts, scopeJson(scope), limit) as Row[];
     return rows.map(toPage);
   },
 
@@ -198,51 +205,59 @@ export const wiki = {
     return row ? toPage(row) : null;
   },
 
-  /** A page in this workspace by id or (case-insensitive) title; throws when several pages share the title. */
-  find(agentId: string, ref: string): WikiPage | null {
+  /** A page in these brains by id or (case-insensitive) title; throws when several pages share the title. */
+  find(scope: BrainScope, ref: string): WikiPage | null {
     const key = ref.trim();
-    const byId = db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND id = ? AND deleted_at IS NULL`).get(agentId, key) as
+    const byId = db.prepare(`SELECT * FROM wiki_pages WHERE ${IN_SCOPE} AND id = ? AND deleted_at IS NULL`).get(scopeJson(scope), key) as
       | Row
       | undefined;
     if (byId) return toPage(byId);
-    const matches = wiki.withTitle(agentId, key);
+    const matches = wiki.withTitle(scope, key);
     if (matches.length > 1) {
-      const options = matches.map((page) => `${page.id}${page.parentId ? ` (under “${wiki.get(page.parentId)?.title}”)` : ""}`);
+      const several = new Set(matches.map((page) => page.brainId)).size > 1;
+      const options = matches.map((page) => {
+        const where = [
+          several && `in brain “${brains.get(page.brainId)?.name}”`,
+          page.parentId && `under “${wiki.get(page.parentId)?.title}”`,
+        ].filter(Boolean);
+        return `${page.id}${where.length ? ` (${where.join(", ")})` : ""}`;
+      });
       throw new WikiError(`Several pages are called “${key}”; use the id: ${options.join(", ")}.`);
     }
     return matches[0] ?? null;
   },
 
   /** Pages with this title (case-insensitive), optionally only under one parent (null = top level). */
-  withTitle(agentId: string, title: string, parentId?: string | null): WikiPage[] {
+  withTitle(scope: BrainScope, title: string, parentId?: string | null): WikiPage[] {
     const rows =
       parentId === undefined
-        ? db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`).all(agentId)
-        : db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND parent_id IS ? AND deleted_at IS NULL`).all(agentId, parentId);
+        ? db.prepare(`SELECT * FROM wiki_pages WHERE ${IN_SCOPE} AND deleted_at IS NULL`).all(scopeJson(scope))
+        : db.prepare(`SELECT * FROM wiki_pages WHERE ${IN_SCOPE} AND parent_id IS ? AND deleted_at IS NULL`).all(scopeJson(scope), parentId);
     return (rows as Row[]).map(toPage).filter((page) => sameTitle(page.title, title));
   },
 
-  create(agentId: string, input: WikiPageInput, author: WikiAuthor, conversationId: string | null = null): WikiPage {
+  create(brainId: string, input: WikiPageInput, author: WikiAuthor, conversationId: string | null = null): WikiPage {
     const title = cleanTitle(input.title);
     const summary = cleanSummary(input.summary);
     const content = cleanContent(input.content);
-    const parentId = input.parentId ? wiki.checkParent(agentId, input.parentId, null) : null;
-    if (wiki.withTitle(agentId, title, parentId).length) throw new WikiError(`There's already a page called “${title}” here.`);
+    wiki.overview(brainId);
+    const parentId = input.parentId ? wiki.checkParent(brainId, input.parentId, null) : null;
+    if (wiki.withTitle(brainId, title, parentId).length) throw new WikiError(`There's already a page called “${title}” here.`);
     const position = Number(
       (
         db
           .prepare(
-            `SELECT COALESCE(MAX(position), 0) + 1 AS next FROM wiki_pages WHERE agent_id = ? AND parent_id IS ? AND deleted_at IS NULL`,
+            `SELECT COALESCE(MAX(position), 0) + 1 AS next FROM wiki_pages WHERE brain_id = ? AND parent_id IS ? AND deleted_at IS NULL`,
           )
-          .get(agentId, parentId) as Row
+          .get(brainId, parentId) as Row
       ).next,
     );
     const id = randomUUID();
     const now = Date.now();
     db.prepare(
-      `INSERT INTO wiki_pages (id, agent_id, parent_id, title, summary, content, pinned, position, updated_by, conversation_id, created_at, updated_at)
+      `INSERT INTO wiki_pages (id, brain_id, parent_id, title, summary, content, pinned, position, updated_by, conversation_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
-    ).run(id, agentId, parentId, title, summary, content, position, author, conversationId, now, now);
+    ).run(id, brainId, parentId, title, summary, content, position, author, conversationId, now, now);
     return wiki.get(id)!;
   },
 
@@ -256,11 +271,11 @@ export const wiki = {
     let parentId = page.parentId;
     if (patch.parentId !== undefined) {
       if (page.pinned && patch.parentId) throw new WikiError(`The ${page.title} page stays at the top.`);
-      parentId = patch.parentId ? wiki.checkParent(page.agentId, patch.parentId, page.id) : null;
+      parentId = patch.parentId ? wiki.checkParent(page.brainId, patch.parentId, page.id) : null;
     }
     // Only a rename or a move can create a clash; re-checking otherwise would lock out pages that already clash.
     const renamedOrMoved = !sameTitle(title, page.title) || parentId !== page.parentId;
-    if (renamedOrMoved && wiki.withTitle(page.agentId, title, parentId).some((other) => other.id !== page.id)) {
+    if (renamedOrMoved && wiki.withTitle(page.brainId, title, parentId).some((other) => other.id !== page.id)) {
       throw new WikiError(`There's already a page called “${title}” here.`);
     }
     const position = patch.position ?? page.position;
@@ -289,7 +304,7 @@ export const wiki = {
     for (const child of db.prepare(`SELECT * FROM wiki_pages WHERE parent_id = ? AND deleted_at IS NULL`).all(id) as Row[]) {
       const { id: childId, title } = toSummary(child);
       let free = title;
-      for (let n = 1; wiki.withTitle(page.agentId, free, page.parentId).length; n++) {
+      for (let n = 1; wiki.withTitle(page.brainId, free, page.parentId).length; n++) {
         free = n === 1 ? `${title} (${page.title})` : `${title} (${page.title} ${n})`;
       }
       db.prepare(`UPDATE wiki_pages SET parent_id = ?, title = ? WHERE id = ?`).run(page.parentId, free, childId);
@@ -312,7 +327,7 @@ export const wiki = {
     if (!page) throw new WikiError("Page not found.");
     // The old title comes back unless it's pinned or a sibling took it meanwhile.
     const titleFree =
-      !page.pinned && !wiki.withTitle(page.agentId, revision.title, page.parentId).some((other) => other.id !== page.id);
+      !page.pinned && !wiki.withTitle(page.brainId, revision.title, page.parentId).some((other) => other.id !== page.id);
     // Restoring always records the current state, so a restore can itself be undone.
     wiki.snapshot(page, author, null, true);
     db.prepare(`UPDATE wiki_pages SET title = ?, summary = ?, content = ?, updated_by = ?, conversation_id = NULL, updated_at = ? WHERE id = ?`).run(
@@ -350,9 +365,9 @@ export const wiki = {
   },
 
   /** Validates a parent reference (id or title) and returns its id; refuses cycles. */
-  checkParent(agentId: string, ref: unknown, childId: string | null): string {
+  checkParent(brainId: string, ref: unknown, childId: string | null): string {
     if (typeof ref !== "string") throw new WikiError("The parent must be a page id or title.");
-    const parent = wiki.find(agentId, ref);
+    const parent = wiki.find(brainId, ref);
     if (!parent) throw new WikiError(`No parent page “${ref}” in this wiki.`);
     for (let at: WikiPage | null = parent; at; at = at.parentId ? wiki.get(at.parentId) : null) {
       if (at.id === childId) throw new WikiError("A page can't be nested inside itself.");
@@ -361,8 +376,9 @@ export const wiki = {
   },
 };
 
-// Every workspace has its Overview from the start.
-for (const row of db.prepare(`SELECT id FROM agents`).all() as Row[]) wiki.overview(String(row.id));
+// Every agent has its notebook, and every brain its Overview, from the start.
+for (const row of db.prepare(`SELECT id FROM agents`).all() as Row[]) brains.notebook(String(row.id));
+for (const brain of brains.list()) wiki.overview(brain.id);
 
 // Notes saved per workspace before the wiki existed move into a "Notes" page, all
 // or nothing, and never in a way that could stop the server from starting.
@@ -375,11 +391,11 @@ if (workspaceNotes.length) {
   db.exec("BEGIN");
   try {
     for (const [agentId, notes] of byAgent) {
-      wiki.overview(agentId);
+      const notebook = brains.notebook(agentId).id;
       let title = "Notes";
-      for (let n = 2; wiki.withTitle(agentId, title, null).length; n++) title = `Notes ${n}`;
+      for (let n = 2; wiki.withTitle(notebook, title, null).length; n++) title = `Notes ${n}`;
       const content = notes.map((note) => `- ${note}`).join("\n").slice(0, MAX_PAGE_CHARS);
-      wiki.create(agentId, { title, summary: "Notes saved before the wiki existed", content }, "agent");
+      wiki.create(notebook, { title, summary: "Notes saved before the wiki existed", content }, "agent");
     }
     db.prepare(`DELETE FROM memories WHERE agent_id IS NOT NULL`).run();
     db.exec("COMMIT");

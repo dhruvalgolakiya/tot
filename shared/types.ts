@@ -46,10 +46,11 @@ export interface ProviderStatus {
 // Agents & mascots
 //
 // An agent is a workspace (like a project, team or company): a name, a mascot,
-// a personality, its own computer, its own wiki and routines, and any number
-// of chats. Chats are tasks inside the workspace (e.g. one per ticket): each
-// new chat starts with the wiki's Overview, its page index, the pages most
-// relevant to the request, and a list of recent chats; it can search earlier
+// a personality, its own computer, its own notebook brain and routines, any
+// shared brains attached to it, and any number of chats. Chats are tasks inside
+// the workspace (e.g. one per ticket): each new chat starts with its brains'
+// cards, the notebook's Overview and page index, the brains the request is
+// about, the pages most relevant to it, and a list of recent chats; it can search earlier
 // chats. Memory about the user is shared by every agent. A default agent
 // ("Tot") always exists.
 // ---------------------------------------------------------------------------
@@ -353,8 +354,10 @@ export type AppEvent =
   | { type: "computer"; agentId: string; computer: ComputerSummary }
   | { type: "agent"; agent: Agent }
   | { type: "agent-deleted"; agentId: string }
-  /** An agent's wiki changed; `conversationId` is set when a chat's messages changed too (keeper notice). */
-  | { type: "wiki"; agentId: string; conversationId?: string }
+  /** A brain's pages changed; `conversationId` is set when a chat's messages changed too (keeper notice). */
+  | { type: "wiki"; brainId: string; conversationId?: string }
+  /** Brains were added, removed, renamed, or attached to / detached from agents. */
+  | { type: "brains"; brains: Brain[] }
   /** The GitHub connection changed (connected, disconnected, writes toggled). */
   | { type: "github"; status: GitHubStatus }
   /** The Slack bot's state or its people changed. */
@@ -408,19 +411,61 @@ export interface Memory {
 }
 
 // ---------------------------------------------------------------------------
-// Workspace wiki: the agent's long-term knowledge base for its workspace, like
-// a company brain (DeepWiki-style pages). The agent reads and writes it with
-// wiki_* tools; after a chat goes quiet a background "keeper" folds what was
-// learned into it; the user can browse and edit it. Every workspace has a
-// pinned "Overview" page (created on first use, can't be deleted) that goes
-// into every new chat in full.
+// Brains: long-term knowledge bases, each a wiki of DeepWiki-style pages. They
+// live at the app level, not inside an agent: every agent has a private
+// "notebook" brain, and shared brains (one per repo, client, product…) are
+// attached to the agents that need them, read-only or read-write — or to every
+// agent at once. Agents read and write them with wiki_* tools; after a chat goes
+// quiet a background "keeper" folds what was learned into them; the user can
+// browse and edit them. Every brain has a pinned "Overview" page (can't be
+// deleted) — for a repo brain, its start-here guide.
+//
+// Which brain a task is about is decided by plain signals rather than a model:
+// a repo's name, URL or ~/repos/<name> path, an @name mention, or the brain's
+// keywords. A matching brain's Overview is put in front of the agent, and the
+// first one becomes the chat's focus (where new pages go by default).
 // ---------------------------------------------------------------------------
+
+export type BrainKind = "notebook" | "repo" | "notes";
+export type BrainAccess = "read" | "write";
+
+export interface Brain {
+  id: string;
+  name: string;
+  kind: BrainKind;
+  /** One line: what it knows and when to use it. Shown to agents as the brain's card. */
+  description: string;
+  /** Repo brains: the git URL or folder it was learned from. */
+  source: string | null;
+  /** Words that mean a request is about this brain (e.g. product or service names). */
+  keywords: string[];
+  /** A notebook's agent; only that agent sees it. Null for shared brains. */
+  ownerAgentId: string | null;
+  /** Every agent can read and write it, attached or not. */
+  allAgents: boolean;
+  /** Agents attached to it, and what they may do. */
+  agents: { agentId: string; access: BrainAccess }[];
+  pageCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface BrainInput {
+  name: string;
+  description?: string;
+  keywords?: string[];
+  allAgents?: boolean;
+  /** Attach this agent (read-write) right away. */
+  agentId?: string;
+}
+
+export type BrainPatch = Partial<Omit<BrainInput, "agentId">>;
 
 export type WikiAuthor = "agent" | "keeper" | "user";
 
 export interface WikiPageSummary {
   id: string;
-  agentId: string;
+  brainId: string;
   /** Parent page (pages nest, e.g. a repo page with Architecture under it); null at the top. */
   parentId: string | null;
   title: string;
@@ -471,7 +516,7 @@ export interface WikiPagePatch extends Partial<WikiPageInput> {
   position?: number;
 }
 
-/** Ask the agent to study a code repository and write it up in its wiki. */
+/** Ask the agent to study a code repository and write it up as a brain of its own. */
 export interface LearnRepoRequest {
   /** A git URL (e.g. https://github.com/acme/web) or a folder on the agent's computer. */
   source: string;
@@ -777,10 +822,16 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/runs/:runId/stop                -> { ok: true }
 // POST   /api/runs/:runId/approvals/:partId   ApprovalAnswer -> { ok: true }  (404 when it's no longer pending)
 //
-// GET    /api/agents/:id/wiki                 -> WikiPageSummary[]  (all pages; Overview first, then by parent/position)
-// GET    /api/agents/:id/wiki?q=              -> WikiSearchHit[]    (best matches first)
-// POST   /api/agents/:id/wiki                 WikiPageInput -> WikiPage
-// POST   /api/agents/:id/wiki/learn           LearnRepoRequest -> { conversationId, runId }  (400 when the computer is off)
+// GET    /api/brains                          -> Brain[]  (notebooks first, in agent order, then shared brains by name)
+// POST   /api/brains                          BrainInput -> Brain
+// PATCH  /api/brains/:id                      BrainPatch -> Brain  (a notebook can't be renamed or shared)
+// DELETE /api/brains/:id                      -> { ok: true }  (400 for a notebook)
+// PUT    /api/brains/:id/agents/:agentId      { access: BrainAccess } -> Brain
+// DELETE /api/brains/:id/agents/:agentId      -> Brain
+// GET    /api/brains/:id/wiki                 -> WikiPageSummary[]  (all pages; Overview first, then by parent/position)
+// GET    /api/brains/:id/wiki?q=              -> WikiSearchHit[]    (best matches first)
+// POST   /api/brains/:id/wiki                 WikiPageInput -> WikiPage
+// POST   /api/agents/:id/wiki/learn           LearnRepoRequest -> { conversationId, runId, brainId }  (400 when the computer is off)
 // GET    /api/wiki/:pageId                    -> WikiPage
 // PATCH  /api/wiki/:pageId                    WikiPagePatch -> WikiPage
 // DELETE /api/wiki/:pageId                    -> { ok: true }  (400 for a pinned page; children move up a level)
