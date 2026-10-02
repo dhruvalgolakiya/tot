@@ -18,8 +18,9 @@ import { lanUrls } from "./net.ts";
  * two tokens; TOT connects over Socket Mode (it opens the connection, so no
  * public URL is needed). A DM or an @mention from an allowed person becomes a
  * turn in a TOT chat tied to that Slack thread: the thread so far is passed as
- * context, the answer is posted back in the thread, and approval requests are
- * Approve/Deny buttons there. Everyone else is recorded as a request to allow.
+ * context, a status line shows what the agent is doing while it works, the
+ * answer is posted back in the thread, and approval requests are Approve/Deny
+ * buttons there. Everyone else is recorded as a request to allow.
  */
 
 /** The subset of Slack's Web API the bot uses (WebClient satisfies it; tests pass a fake). */
@@ -28,6 +29,7 @@ export interface SlackApi {
   chat: {
     postMessage(args: Record<string, unknown>): Promise<{ ts?: string }>;
     update(args: Record<string, unknown>): Promise<unknown>;
+    delete(args: { channel: string; ts: string }): Promise<unknown>;
     getPermalink(args: { channel: string; message_ts: string }): Promise<{ permalink?: string }>;
   };
   conversations: {
@@ -35,7 +37,6 @@ export interface SlackApi {
     info(args: { channel: string }): Promise<{ channel?: { name?: string; is_im?: boolean; is_mpim?: boolean } }>;
   };
   users: { info(args: { user: string }): Promise<{ user?: { name?: string; real_name?: string; profile?: { display_name?: string; real_name?: string } } }> };
-  reactions: { add(args: Record<string, unknown>): Promise<unknown>; remove(args: Record<string, unknown>): Promise<unknown> };
 }
 
 /** A Socket Mode connection: emits Slack events by type, plus "interactive" for button presses. */
@@ -73,6 +74,8 @@ interface Thread {
 const BLOCK_LIMIT = 11_500;
 const CONTEXT_CHARS = 20_000;
 const REFUSAL_EVERY_MS = 6 * 60 * 60_000;
+/** The status line is edited at most this often (Slack rate-limits chat.update). */
+const STATUS_EVERY_MS = 2_000;
 
 /** TOT's Slack app: Socket Mode, DMs and mentions, reading threads for context, buttons for approvals. */
 export const SLACK_MANIFEST = {
@@ -100,7 +103,6 @@ export const SLACK_MANIFEST = {
         "mpim:history",
         "mpim:read",
         "users:read",
-        "reactions:write",
       ],
     },
   },
@@ -271,8 +273,82 @@ async function post(channel: string, threadTs: string, markdown: string, extra: 
   return ts;
 }
 
-const react = (channel: string, ts: string, name: string, add = true) =>
-  (add ? api!.reactions.add({ channel, timestamp: ts, name }) : api!.reactions.remove({ channel, timestamp: ts, name })).catch(() => {});
+interface StatusLine {
+  /** What the agent is doing now, e.g. "searching the web" (shown as "Tot is searching the web…"). */
+  set(activity: string): void;
+  /** Removes the line; safe to call more than once. */
+  clear(): Promise<void>;
+}
+
+/**
+ * A small "Tot is thinking…" line in the thread while a turn runs: Slack has no
+ * typing indicator for bots in channels. It follows the agent's steps and is
+ * deleted before the answer is posted, so the answer itself still notifies.
+ */
+function statusLine(channel: string, threadTs: string, agentName: string): StatusLine {
+  const say = (activity: string) => `${agentName} is ${activity}…`;
+  const blocks = (activity: string) => [{ type: "context", elements: [{ type: "mrkdwn", text: `_${say(activity)}_` }] }];
+  let shown = "thinking";
+  let wanted = shown;
+  let shownAt = Date.now();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let cleared: Promise<void> | null = null;
+  const posted = api!.chat.postMessage({ channel, thread_ts: threadTs, text: say(shown), blocks: blocks(shown) }).then(
+    (res) => res.ts,
+    () => undefined,
+  );
+  const flush = async () => {
+    timer = null;
+    const ts = await posted;
+    if (cleared || !ts || wanted === shown) return;
+    shown = wanted;
+    shownAt = Date.now();
+    await api!.chat.update({ channel, ts, text: say(shown), blocks: blocks(shown) }).catch(() => {});
+  };
+  return {
+    set(activity) {
+      wanted = activity;
+      if (cleared || timer) return;
+      timer = setTimeout(() => void flush(), Math.max(0, STATUS_EVERY_MS - (Date.now() - shownAt)));
+    },
+    clear() {
+      cleared ??= (async () => {
+        if (timer) clearTimeout(timer);
+        const ts = await posted;
+        if (ts) await api!.chat.delete({ channel, ts }).catch(() => {});
+      })();
+      return cleared;
+    },
+  };
+}
+
+/** A step as the status line says it: "searching the web", "running a command"… */
+function activityOf(part: MessagePart): string | null {
+  if (part.type === "reasoning") return "thinking";
+  if (part.type === "text") return "typing";
+  if (part.type === "approval") return part.status === "pending" ? "waiting for your OK" : "thinking";
+  if (part.type !== "tool") return null;
+  if (part.status !== "running") return "thinking";
+  const name = part.name;
+  if (name === "web_search") return "searching the web";
+  if (name === "web_fetch") return "reading a web page";
+  if (name === "computer_exec") return "running a command";
+  if (name === "computer_read_file") return "reading files";
+  if (name === "computer_write_file") return "editing files";
+  if (name.startsWith("computer_")) return "using its computer";
+  if (name.startsWith("memory_")) return "checking its memory";
+  if (name.startsWith("chat_")) return "looking through past chats";
+  if (name.startsWith("wiki_")) return /^wiki_(write|edit|delete)$/.test(name) ? "updating the wiki" : "reading the wiki";
+  if (name.startsWith("routine_")) return "setting up a routine";
+  if (name.startsWith("github/")) return "checking GitHub";
+  if (name.startsWith("apps/")) {
+    const code = (part.input as { code?: unknown } | undefined)?.code;
+    const app = typeof code === "string" ? /tools\.([a-zA-Z0-9_-]+)/.exec(code)?.[1] : undefined;
+    return app ? `using ${app.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}` : "using your apps";
+  }
+  if (name.includes("/")) return `using ${name.split("/")[0]}`;
+  return "working";
+}
 
 function approvalBlocks(runId: string, partId: string, text: string, decided?: string): Record<string, unknown>[] {
   const blocks: Record<string, unknown>[] = [{ type: "section", text: { type: "mrkdwn", text: `*Needs your OK:* ${text}`.slice(0, 2900) } }];
@@ -291,14 +367,16 @@ function approvalBlocks(runId: string, partId: string, text: string, decided?: s
   return blocks;
 }
 
-/** Follows a run: approval requests become buttons; resolves with the finished reply. */
-function follow(runId: string, channel: string, threadTs: string): Promise<Extract<RunEvent, { type: "run-end" }> | null> {
+/** Follows a run: steps go to the status line, approval requests become buttons; resolves with the finished reply. */
+function follow(runId: string, channel: string, threadTs: string, status: StatusLine): Promise<Extract<RunEvent, { type: "run-end" }> | null> {
   const run = runRegistry.get(runId);
   if (!run) return Promise.resolve(null);
   return new Promise((resolve) => {
     run.subscribe((_seq, event) => {
-      if ((event.type === "part-start" || event.type === "part-update") && event.part.type === "approval") {
-        void showApproval(runId, channel, threadTs, event.part);
+      if (event.type === "part-start" || event.type === "part-update") {
+        const activity = activityOf(event.part);
+        if (activity) status.set(activity);
+        if (event.part.type === "approval") void showApproval(runId, channel, threadTs, event.part);
       }
       if (event.type === "run-end") resolve(event);
     });
@@ -349,13 +427,35 @@ async function handle(message: SlackMessage): Promise<void> {
     await post(channel, threadTs, "What would you like me to do?");
     return;
   }
-  await react(channel, ts, "eyes");
+  // Picked up front so the status line can name the agent right away.
+  const thread = getThread(channel, threadTs);
+  const picked = thread ? null : pickAgent(text, agents.list(), readStored().defaultAgentId);
+  const agentId = picked?.agent.id ?? conversations.get(thread!.conversationId)!.agentId;
+  const status = statusLine(channel, threadTs, agents.get(agentId)?.name ?? "TOT");
+  try {
+    await answer(message, text, thread, picked, status);
+  } finally {
+    await status.clear();
+  }
+}
 
-  let thread = getThread(channel, threadTs);
+/** The turn itself: ties the thread to a chat, runs the agent with the thread as context, posts the answer. */
+async function answer(
+  message: SlackMessage,
+  text: string,
+  existing: Thread | null,
+  picked: ReturnType<typeof pickAgent> | null,
+  status: StatusLine,
+): Promise<void> {
+  const channel = message.channel!;
+  const ts = message.ts!;
+  const userId = message.user!;
+  const threadTs = message.thread_ts ?? ts;
+  let thread = existing;
   let request = text;
   let context = "";
   if (!thread) {
-    const picked = pickAgent(text, agents.list(), readStored().defaultAgentId);
+    picked ??= pickAgent(text, agents.list(), readStored().defaultAgentId);
     request = picked.text || text;
     const info = await api!.conversations.info({ channel }).catch(() => ({ channel: undefined }));
     const label = info.channel?.is_im ? `DM with ${await personName(userId)}` : info.channel?.name ? `#${info.channel.name}` : "Slack";
@@ -401,15 +501,14 @@ async function handle(message: SlackMessage): Promise<void> {
   }
   if (!started) throw new Error("The chat stayed busy; try again in a moment.");
 
-  const end = await follow(started.runId, channel, threadTs);
+  const end = await follow(started.runId, channel, threadTs, status);
   const reply = end ? messageText(end.message) : "";
   const failed = !end || end.status === "error";
   const body = failed ? `Sorry, that didn't work: ${end?.message.error ?? "the run ended unexpectedly."}` : reply || "(done, nothing to say)";
   const footer = [{ type: "context", elements: [{ type: "mrkdwn", text: chatLink(conversation.id) }] }];
   // Messages written while the agent worked stay unseen, so its next turn gets them (its own replies are skipped).
+  await status.clear();
   await post(channel, threadTs, body, footer);
-  await react(channel, ts, "eyes", false);
-  await react(channel, ts, failed ? "x" : "white_check_mark");
 }
 
 function enqueue(message: SlackMessage): void {

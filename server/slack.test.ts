@@ -29,7 +29,13 @@ async function until(condition: () => boolean, ms = 3000) {
 // --- Fake Slack -------------------------------------------------------------
 const posted: { channel: string; thread_ts?: string; text?: string; blocks?: any[]; ts: string }[] = [];
 const updated: { ts: string; text?: string }[] = [];
-const reactions: string[] = [];
+// The "Tot is thinking…" line is a lone context block; kept apart from real replies.
+const statusLines: { thread_ts?: string; text?: string; ts: string }[] = [];
+const statusEdits: string[] = [];
+const deleted: string[] = [];
+/** Order of status posts, deletes and replies, e.g. "status 1790002000.000100". */
+const timeline: string[] = [];
+const isStatus = (args: any) => args.blocks?.length === 1 && args.blocks[0].type === "context";
 let tsCounter = 2000;
 const nextTs = () => `17900${String(tsCounter++).padStart(5, "0")}.000100`;
 const said = (p: { blocks?: any[] }, text: string) => JSON.stringify(p.blocks ?? []).includes(text);
@@ -39,10 +45,17 @@ const api = {
   chat: {
     postMessage: async (args: any) => {
       const ts = nextTs();
-      posted.push({ ...args, ts });
+      if (isStatus(args)) statusLines.push({ ...args, ts });
+      else posted.push({ ...args, ts });
+      timeline.push(`${isStatus(args) ? "status" : "reply"} ${ts}`);
       return { ts };
     },
-    update: async (args: any) => updated.push({ ts: args.ts, text: args.text }),
+    update: async (args: any) => (isStatus(args) ? statusEdits.push(args.text) : updated.push({ ts: args.ts, text: args.text })),
+    delete: async (args: any) => {
+      deleted.push(args.ts);
+      timeline.push(`delete ${args.ts}`);
+      return {};
+    },
     getPermalink: async (args: any) => ({ permalink: `https://acme.slack.com/archives/${args.channel}/p${args.message_ts.replace(".", "")}` }),
   },
   conversations: {
@@ -50,10 +63,6 @@ const api = {
     info: async (args: any) => ({ channel: args.channel.startsWith("D") ? { is_im: true } : { name: "eng" } }),
   },
   users: { info: async (args: any) => ({ user: { profile: { display_name: { UALICE: "Alice", UBOB: "Bob", UEVE: "Eve" }[args.user as string] ?? args.user } } }) },
-  reactions: {
-    add: async (args: any) => reactions.push(`+${args.name}`),
-    remove: async (args: any) => reactions.push(`-${args.name}`),
-  },
 };
 class FakeSocket extends EventEmitter {
   async start() {
@@ -70,6 +79,8 @@ const press = (actionId: string, value: string, user: string) =>
 // --- Fake model turn: optionally asks for approval, then answers -------------
 const sent: { conversationId: string; text: string; preamble: string }[] = [];
 let askApproval = false;
+/** Makes the fake turn search the web for a moment first, long enough for the status line to show it. */
+let slowSearch = false;
 slack.useSender(async (conversationId: string, request: SendMessageRequest, options: { preamble?: string } = {}) => {
   sent.push({ conversationId, text: request.text, preamble: options.preamble ?? "" });
   const conversation = conversations.get(conversationId)!;
@@ -78,6 +89,10 @@ slack.useSender(async (conversationId: string, request: SendMessageRequest, opti
   const run = runRegistry.create(conversationId, assistant.id);
   const builder = new MessageBuilder(assistant, (event) => run.push(event));
   void (async () => {
+    if (slowSearch) {
+      run.push({ type: "part-start", part: { type: "tool", id: randomUUID(), name: "web_search", status: "running" } });
+      await sleep(2300);
+    }
     let answer = `Done: ${request.text}`;
     if (askApproval) {
       const elicit = makeElicitor({ run, builder, agentId: conversation.agentId, unattended: false, waitMs: 1500 });
@@ -118,6 +133,7 @@ check("allow moves request to people", status.allowedUsers.some((p) => p.id === 
 
 // --- A DM picks an agent by name and gets an answer in the thread -----------
 posted.length = 0;
+timeline.length = 0;
 deliver("message", { channel: "DALICE", channel_type: "im", user: "UALICE", text: "Puddin: summarize <https://acme.dev|the docs> for <@UBOB>", ts: "1790000002.000100" });
 await until(() => posted.length > 0);
 const chat = conversations.get(sent[0]?.conversationId ?? "")!;
@@ -126,7 +142,9 @@ check("chat remembers it came from Slack", chat?.origin?.kind === "slack" && cha
 check("preamble says where it's from", /came from Slack \(DM with Alice\), from Alice/.test(sent[0]!.preamble));
 check("answer posted in the thread", posted[0]?.thread_ts === "1790000002.000100" && posted[0]?.blocks?.[0]?.type === "markdown" && posted[0]?.blocks?.[0]?.text.includes("Done: summarize"));
 check("with a link to the chat in TOT", JSON.stringify(posted[0]?.blocks).includes(`/c/${chat.id}|TOT ↗`));
-check("eyes then check", reactions.join(",") === "+eyes,-eyes,+white_check_mark", reactions.join(","));
+const line = statusLines[0];
+check("status line while it works", line?.thread_ts === "1790000002.000100" && line.text === "Puddin is thinking…", JSON.stringify(line));
+check("removed just before the answer", timeline.join(",") === `status ${line?.ts},delete ${line?.ts},reply ${posted[0]?.ts}`, timeline.join(","));
 
 // --- Mentioned inside an existing channel thread: the thread is context -------
 posted.length = 0;
@@ -136,8 +154,11 @@ threadReplies.set("CENG:1790000003.000100", [
   { ts: "1790000003.000250", bot_id: "B1", text: "some other bot" },
   { ts: "1790000003.000300", user: "UALICE", text: "<@UBOT> can you look into it?" },
 ]);
+slowSearch = true;
 deliver("app_mention", { channel: "CENG", user: "UALICE", text: "<@UBOT> can you look into it?", ts: "1790000003.000300", thread_ts: "1790000003.000100" });
-await until(() => posted.length > 0);
+await until(() => posted.length > 0, 5000);
+slowSearch = false;
+check("status line follows the steps", statusEdits.some((text) => / is searching the web…$/.test(text)), statusEdits.join(" | "));
 const threadRun = sent.at(-1)!;
 check("thread so far is context", threadRun.preamble.includes("Bob: Checkout is failing") && threadRun.preamble.includes("Eve: Started after") && !threadRun.preamble.includes("other bot"), threadRun.preamble);
 check("default agent answers", conversations.get(threadRun.conversationId)?.agentId === agents.list()[0]!.id);
