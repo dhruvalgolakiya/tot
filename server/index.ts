@@ -8,6 +8,8 @@ import { createApp } from "./app.ts";
 import { apps } from "./apps.ts";
 import { computerManager } from "./computer/manager.ts";
 import { ACCESS_TOKEN, DATA_DIR, HOST, IS_PROD, LAN, PORT, VERSION } from "./config.ts";
+import { mailboxes } from "./mail/mailbox.ts";
+import { emailTasks } from "./mail/tasks.ts";
 import { isLoopbackBind, lanUrls } from "./net.ts";
 import { tokenProblem } from "./session.ts";
 import { slack } from "./slack.ts";
@@ -37,6 +39,8 @@ computerManager.startIdleReaper();
 scheduler.start();
 void apps.resume();
 void slack.resume();
+emailTasks.start();
+mailboxes.resume();
 wikiKeeper.start();
 
 let shuttingDown = false;
@@ -46,8 +50,9 @@ async function shutdown(signal: string) {
   console.log(`\n${signal} received, stopping runs…`);
   scheduler.stop();
   wikiKeeper.stop();
+  emailTasks.stop();
   runRegistry.stopAll();
-  await Promise.allSettled([computerManager.shutdown(), stopCodex(), apps.stop({ keepEnabled: true }), slack.stop()]);
+  await Promise.allSettled([computerManager.shutdown(), stopCodex(), apps.stop({ keepEnabled: true }), slack.stop(), mailboxes.stopAll()]);
   server.close();
   process.exit(0);
 }

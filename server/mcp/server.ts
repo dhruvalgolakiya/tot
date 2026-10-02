@@ -15,6 +15,7 @@ import { settings } from "../data/settings.ts";
 import { redactGitHubTokens } from "../github.ts";
 import { isThisMachine } from "../net.ts";
 import { clip, guarded, isoDay, reply } from "./results.ts";
+import { registerMailTools } from "./mail-tools.ts";
 import { registerWikiTools } from "./wiki-tools.ts";
 
 /**
@@ -388,6 +389,7 @@ function buildServer(conversationId: string, agentId: string): McpServer {
   }
 
   registerRoutineTools(server, agentId);
+  registerMailTools(server, agentId, conversationId);
   return server;
 }
 

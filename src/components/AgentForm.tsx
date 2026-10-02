@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import type { Agent, AgentInput, MascotSpec } from "@shared/types";
 import { AUTO_MODEL_ID, displayLabel, groupModels, modelLabel } from "../lib/models";
-import { createAgent, deleteAgent, setNewAgentDialogOpen, updateAgent, useStore } from "../store";
+import { createAgent, deleteAgent, goToSettings, setNewAgentDialogOpen, updateAgent, useStore } from "../store";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { MascotPicker, randomMascot, suggestName } from "./mascot";
 import { Button } from "./ui/Button";
@@ -15,10 +15,12 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
   const [name, setName] = useState(() => target?.name ?? suggestName(mascot));
   const [instructions, setInstructions] = useState(target?.instructions ?? "");
   const [modelId, setModelId] = useState(target?.modelId ?? AUTO_MODEL_ID);
+  const [personaId, setPersonaId] = useState<string | null>(target?.personaId ?? null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const models = useStore((s) => s.models);
+  const personas = useStore((s) => s.personas);
   const groups = groupModels(models);
   const knownModel = models.some((m) => m.id === modelId);
   const trimmedName = name.trim();
@@ -27,7 +29,7 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
     event.preventDefault();
     if (!trimmedName || saving) return;
     setSaving(true);
-    const input: AgentInput = { name: trimmedName, mascot, instructions: instructions.trim(), modelId };
+    const input: AgentInput = { name: trimmedName, mascot, instructions: instructions.trim(), modelId, personaId };
     if (target) {
       if (await updateAgent(target.id, input)) toast.success("Saved");
     } else {
@@ -61,6 +63,33 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
 
         <Field label="Mascot">
           <MascotPicker value={mascot} onChange={setMascot} />
+        </Field>
+
+        <Field
+          label="Works as"
+          htmlFor="agent-persona"
+          hint={
+            <>
+              Gives it its own email, git author and GitHub account instead of yours.{" "}
+              <button type="button" onClick={() => goToSettings("personas")} className="link-muted">
+                Manage personas
+              </button>
+            </>
+          }
+        >
+          <select
+            id="agent-persona"
+            value={personaId ?? ""}
+            onChange={(event) => setPersonaId(event.target.value || null)}
+            className="input h-10 rounded-xl bg-elevated"
+          >
+            <option value="">Me</option>
+            {personas.map((persona) => (
+              <option key={persona.id} value={persona.id}>
+                {persona.name} · {persona.email}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <Field

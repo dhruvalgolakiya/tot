@@ -14,7 +14,7 @@
     "build": "vite build",
     "start": "NODE_ENV=production NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx server/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
-    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/smoke.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/desktop.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/computer/boat.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/auth.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/guard.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/github.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/approvals.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/slack.test.ts'",
+    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/smoke.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/desktop.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/computer/boat.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/auth.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/guard.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/github.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/approvals.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/slack.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/personas.test.ts'",
     "test:live": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/agent/providers/chatgpt.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/agent/providers/claude.test.ts'"
   },
   "dependencies": {
@@ -28,9 +28,12 @@
     "clsx": "^2.1.1",
     "highlight.js": "^11.12.0",
     "hono": "^4.13.11",
+    "imapflow": "2.2.1",
     "katex": "^0.18.9",
     "lucide-react": "^1.48.0",
+    "mailparser": "3.9.33",
     "mermaid": "^12.0.0",
+    "nodemailer": "10.0.13",
     "radix-ui": "^1.6.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -46,6 +49,7 @@
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
+    "@types/mailparser": "3.9.0",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

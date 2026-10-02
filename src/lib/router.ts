@@ -47,7 +47,16 @@ export function conversationIdFromPath(pathname: string): string | null {
 
 export const MASCOTS_PATH = "/mascots";
 
-export type SettingsSection = "general" | "models" | "memory" | "computer" | "github" | "apps" | "slack" | "plugins";
+export type SettingsSection =
+  | "general"
+  | "models"
+  | "memory"
+  | "computer"
+  | "github"
+  | "apps"
+  | "slack"
+  | "personas"
+  | "plugins";
 
 const SETTINGS_SECTION_IDS: readonly SettingsSection[] = [
   "general",
@@ -57,6 +66,7 @@ const SETTINGS_SECTION_IDS: readonly SettingsSection[] = [
   "github",
   "apps",
   "slack",
+  "personas",
   "plugins",
 ];
 

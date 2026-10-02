@@ -19,8 +19,15 @@ import type {
   GitHubRepo,
   GitHubStatus,
   LearnRepoRequest,
+  MailMessage,
+  MailSummary,
   Memory,
   ModelOption,
+  MailboxConnectRequest,
+  Persona,
+  PersonaGitHubConnectRequest,
+  PersonaInput,
+  PersonaPatch,
   Plugin,
   PluginInput,
   ProviderId,
@@ -210,6 +217,32 @@ export const api = {
   setSlackTokens: (tokens: SlackTokens) => request<SlackStatus>("PUT", "/slack/tokens", tokens),
   patchSlack: (patch: SlackPatch) => request<SlackStatus>("PATCH", "/slack", patch),
   disconnectSlack: () => request<SlackStatus>("DELETE", "/slack"),
+
+  /** Personas: identities (name, mailbox, optional GitHub account) agents can work as. */
+  listPersonas: () => request<Persona[]>("GET", "/personas"),
+  createPersona: (input: PersonaInput) => request<Persona>("POST", "/personas", input),
+  updatePersona: (id: string, patch: PersonaPatch) => request<Persona>("PATCH", `/personas/${seg(id)}`, patch),
+  deletePersona: (id: string) => request<Ok>("DELETE", `/personas/${seg(id)}`),
+  /** Signs in over IMAP/SMTP; 400 with the reason when it doesn't work. */
+  connectPersonaMailbox: (id: string, body: MailboxConnectRequest) =>
+    request<Persona>("PUT", `/personas/${seg(id)}/mailbox`, body),
+  disconnectPersonaMailbox: (id: string) => request<Persona>("DELETE", `/personas/${seg(id)}/mailbox`),
+  refreshPersonaMailbox: (id: string) => request<Persona>("POST", `/personas/${seg(id)}/mailbox/refresh`, {}),
+  listPersonaMail: (id: string, opts: { q?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.q) params.set("q", opts.q);
+    if (opts.limit) params.set("limit", String(opts.limit));
+    const qs = params.toString();
+    return request<MailSummary[]>("GET", `/personas/${seg(id)}/mail${qs ? `?${qs}` : ""}`);
+  },
+  /** Fetches one message's full body; the server marks it read. */
+  getPersonaMail: (id: string, mailId: string) => request<MailMessage>("GET", `/personas/${seg(id)}/mail/${seg(mailId)}`),
+  /** Checks the token with GitHub; 400 with the reason when it doesn't work. */
+  connectPersonaGithub: (id: string, body: PersonaGitHubConnectRequest) =>
+    request<Persona>("PUT", `/personas/${seg(id)}/github`, body),
+  setPersonaGithubWrites: (id: string, allowWrites: boolean) =>
+    request<Persona>("PATCH", `/personas/${seg(id)}/github`, { allowWrites }),
+  disconnectPersonaGithub: (id: string) => request<Persona>("DELETE", `/personas/${seg(id)}/github`),
 
   listPlugins: () => request<Plugin[]>("GET", "/plugins"),
   createPlugin: (input: PluginInput) => request<Plugin>("POST", "/plugins", input),

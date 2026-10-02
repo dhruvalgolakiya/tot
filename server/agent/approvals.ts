@@ -4,7 +4,7 @@ import { appEvents } from "../app-events.ts";
 import { messages } from "../data/messages.ts";
 import type { MessageBuilder } from "./message-builder.ts";
 import type { ElicitAnswer, ElicitRequest } from "./providers/types.ts";
-import type { Run } from "./runs.ts";
+import { runRegistry, type Run } from "./runs.ts";
 
 /**
  * Approval requests: when a tool (an MCP server) asks the user something mid-turn
@@ -24,8 +24,13 @@ const UNATTENDED_WAIT_MS = 55_000;
 
 const pending = new Map<string, { runId: string; settle: (answer: ApprovalAnswer | null) => void }>();
 
+type Elicitor = (request: ElicitRequest, signal?: AbortSignal) => Promise<ElicitAnswer>;
+
+/** Each run's elicitor, so TOT's own tools (sending email) can ask on the same cards as MCP servers do. */
+const elicitors = new WeakMap<Run, Elicitor>();
+
 /** Display names for MCP servers that ask. */
-const SOURCE_NAMES: Record<string, string> = { apps: "Apps", tot: "TOT", github: "GitHub" };
+const SOURCE_NAMES: Record<string, string> = { apps: "Apps", tot: "TOT", github: "GitHub", email: "Email" };
 
 type Primitive = { type?: string; title?: string; description?: string; enum?: unknown[]; oneOf?: { const?: unknown }[]; default?: unknown };
 
@@ -71,9 +76,9 @@ export function makeElicitor(opts: {
   unattended: boolean;
   /** Override how long to wait (tests). */
   waitMs?: number;
-}): (request: ElicitRequest, signal?: AbortSignal) => Promise<ElicitAnswer> {
+}): Elicitor {
   const { run, builder, agentId } = opts;
-  return async (request, signal) => {
+  const elicit: Elicitor = async (request, signal) => {
     const fields = request.mode === "url" ? [] : toFields(request.schema);
     // A form TOT can't render: say no rather than guess.
     if (!fields) return { action: "decline" };
@@ -123,6 +128,20 @@ export function makeElicitor(opts: {
     if (answer.decision === "decline") return { action: "decline" };
     return { action: "accept", content: part.kind === "form" ? cleanValues(fields, answer.values ?? {}) : {} };
   };
+  elicitors.set(run, elicit);
+  return elicit;
+}
+
+/**
+ * Asks the user to approve something on a card in the chat's running turn (approve / deny).
+ * True when approved; false when declined or unanswered; null when no turn is running there to ask in.
+ */
+export async function askUser(conversationId: string, source: string, message: string, signal?: AbortSignal): Promise<boolean | null> {
+  const run = runRegistry.activeFor(conversationId);
+  const elicit = run && elicitors.get(run);
+  if (!elicit) return null;
+  const answer = await elicit({ source, message, mode: "form", schema: { type: "object", properties: {} } }, signal);
+  return answer.action === "accept";
 }
 
 /** Keeps only declared fields, with the declared types. */

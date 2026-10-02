@@ -66,7 +66,8 @@ export const MCP_TOKEN = randomBytes(24).toString("hex");
 // Secrets: write-only from the UI, stored in a 0600 file, env vars as fallback.
 // ---------------------------------------------------------------------------
 
-type SecretName = "boatApiKey" | "anthropicApiKey" | "githubToken" | "slackAppToken" | "slackBotToken";
+/** `mailPassword:<personaId>` is a persona's mailbox (app) password. */
+type SecretName = "boatApiKey" | "anthropicApiKey" | "githubToken" | "slackAppToken" | "slackBotToken" | `mailPassword:${string}`;
 
 // No env fallback for the GitHub token: env vars reach the harness processes TOT spawns.
 const ENV_FALLBACK: Partial<Record<SecretName, string>> = {

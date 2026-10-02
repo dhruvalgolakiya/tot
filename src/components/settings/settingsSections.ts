@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Brain, LayoutGrid, Monitor, Plug, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Brain, IdCard, LayoutGrid, Monitor, Plug, SlidersHorizontal, Sparkles } from "lucide-react";
 import type { SettingsSection } from "../../lib/router";
 import { GitHubMark } from "../ui/GitHubMark";
 import { SlackMark } from "../ui/SlackMark";
@@ -63,6 +63,13 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     label: "Slack",
     description: "Message your agents from Slack. Each thread becomes a chat with the thread as context.",
     icon: SlackMark,
+    hasDraft: false,
+  },
+  {
+    id: "personas",
+    label: "Personas",
+    description: "Give an agent its own email and GitHub account, so its work shows up as itself, not you.",
+    icon: IdCard,
     hasDraft: false,
   },
   {

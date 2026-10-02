@@ -27,7 +27,12 @@ const RESYNC_MS = 10 * 60_000;
 
 const synced = new Map<string, { fingerprint: string; at: number }>();
 
-const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+export const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+
+/** How commits are attributed to the connected account (its noreply address keeps the real one private). */
+export function githubAuthor(who: Pick<GitHubIdentity, "id" | "login" | "name">): { name: string; email: string } {
+  return { name: who.name || who.login, email: `${who.id}+${who.login}@users.noreply.github.com` };
+}
 
 function hostsYaml(who: GitHubIdentity): string {
   return `github.com:
@@ -46,7 +51,7 @@ function pushForms(login: string): string[] {
 }
 
 function loginScript(who: GitHubIdentity): string {
-  const email = `${who.id}+${who.login}@users.noreply.github.com`;
+  const author = githubAuthor(who);
   return [
     "set -e",
     "chmod 600 ~/.git-credentials",
@@ -58,8 +63,8 @@ function loginScript(who: GitHubIdentity): string {
     "git config --global --add credential.helper store",
     // Commits are attributed to the connected account; an agent's own choice survives until the account changes.
     `if [ "$(git config --global tot.githubLogin || true)" != ${quote(who.login)} ]; then`,
-    `  git config --global user.name ${quote(who.name || who.login)}`,
-    `  git config --global user.email ${quote(email)}`,
+    `  git config --global user.name ${quote(author.name)}`,
+    `  git config --global user.email ${quote(author.email)}`,
     `  git config --global tot.githubLogin ${quote(who.login)}`,
     "fi",
     `git config --global --unset-all url.${PUSH_BLOCKED_HOST}.pushInsteadOf || true`,

@@ -12,6 +12,9 @@ import type {
   CreateConversationRequest,
   GitHubConnectRequest,
   LearnRepoRequest,
+  MailboxConnectRequest,
+  PersonaInput,
+  PersonaPatch,
   PluginInput,
   ProviderId,
   SendMessageRequest,
@@ -41,13 +44,16 @@ import { screenshotFile } from "./computer/screens.ts";
 import { VERSION } from "./config.ts";
 import { agents, validateAgent } from "./data/agents.ts";
 import { conversations, toPublicConversation } from "./data/conversations.ts";
+import { mail, toMailMessage, toSummary } from "./data/mail.ts";
 import { memories } from "./data/memories.ts";
 import { messages } from "./data/messages.ts";
+import { personas, validatePersona } from "./data/personas.ts";
 import { plugins, validatePlugin } from "./data/plugins.ts";
 import { routines, validateRoutine } from "./data/routines.ts";
 import { settings } from "./data/settings.ts";
 import { MAX_UPLOAD_BYTES, toAttachment, uploads } from "./data/uploads.ts";
 import { wiki, WikiError } from "./data/wiki.ts";
+import { mailboxes } from "./mail/mailbox.ts";
 
 export const api = new Hono();
 
@@ -133,17 +139,23 @@ api.post("/agents", async (c) => {
   if (problem) throw new HttpError(400, problem);
   const agent = agents.create(input);
   appEvents.publish({ type: "agent", agent });
+  appEvents.personaChanged(agent.personaId);
   return c.json(agent, 201);
 });
 
 api.patch("/agents/:id", async (c) => {
   const id = c.req.param("id");
-  found(agents.get(id), "Agent not found.");
+  const before = found(agents.get(id), "Agent not found.");
   const patch = await body<Partial<AgentInput>>(c);
   const problem = validateAgent(patch, false);
   if (problem) throw new HttpError(400, problem);
   const agent = found(agents.update(id, patch));
   appEvents.publish({ type: "agent", agent });
+  // Each persona lists the agents working as it.
+  if (before.personaId !== agent.personaId) {
+    appEvents.personaChanged(before.personaId);
+    appEvents.personaChanged(agent.personaId);
+  }
   return c.json(agent);
 });
 
@@ -153,8 +165,10 @@ api.delete("/agents/:id", async (c) => {
   if (agents.list().length <= 1) throw new HttpError(400, "You need at least one agent.");
   for (const chat of conversations.list(id)) runRegistry.activeFor(chat.id)?.stop();
   await computerManager.destroy(id).catch((err) => console.warn(`[tot] couldn't destroy computer for agent ${id}:`, err));
+  const affected = personas.list().filter((persona) => persona.agentIds.includes(id) || persona.defaultAgentId === id);
   agents.delete(id);
   appEvents.publish({ type: "agent-deleted", agentId: id });
+  for (const persona of affected) appEvents.personaChanged(persona.id);
   return c.json({ ok: true });
 });
 
@@ -596,6 +610,91 @@ api.patch("/slack", async (c) => {
 });
 
 api.delete("/slack", async (c) => c.json(await slack.disconnect()));
+
+// ---------------------------------------------------------------------------
+// Personas and their mailboxes (passwords never leave the server)
+// ---------------------------------------------------------------------------
+
+api.get("/personas", (c) => c.json(personas.list()));
+
+/** One persona per mailbox: two would both answer the same emailed tasks. */
+function addressFree(email: string, exceptId?: string): void {
+  if (personas.list().some((p) => p.email === email.trim().toLowerCase() && p.id !== exceptId)) {
+    throw new HttpError(409, "Another persona already uses that address.");
+  }
+}
+
+api.post("/personas", async (c) => {
+  const input = await body<Partial<PersonaInput>>(c);
+  const problem = validatePersona(input, true);
+  if (problem) throw new HttpError(400, problem);
+  addressFree(input.email!);
+  const persona = personas.create({ name: input.name!, email: input.email! });
+  appEvents.publish({ type: "persona", persona });
+  return c.json(persona, 201);
+});
+
+api.patch("/personas/:id", async (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  const patch = await body<PersonaPatch>(c);
+  const problem = validatePersona(patch, false);
+  if (problem) throw new HttpError(400, problem);
+  const email = patch.email?.trim().toLowerCase();
+  if (email && email !== persona.email && persona.mailbox.state !== "not-connected") {
+    throw new HttpError(400, "Disconnect the mailbox before changing the persona's address.");
+  }
+  if (email) addressFree(email, persona.id);
+  if (patch.defaultAgentId && !agents.get(patch.defaultAgentId)) throw new HttpError(404, "Agent not found.");
+  const updated = found(
+    personas.update(persona.id, {
+      name: patch.name,
+      email,
+      allowedSenders: patch.allowedSenders && [...new Set(patch.allowedSenders.map((sender) => sender.trim().toLowerCase()))],
+      defaultAgentId: patch.defaultAgentId,
+    }),
+  );
+  appEvents.publish({ type: "persona", persona: updated });
+  return c.json(updated);
+});
+
+api.delete("/personas/:id", async (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  await mailboxes.disconnect(persona.id);
+  personas.delete(persona.id);
+  for (const agentId of persona.agentIds) appEvents.agentChanged(agentId);
+  appEvents.publish({ type: "persona-deleted", personaId: persona.id });
+  return c.json({ ok: true });
+});
+
+api.put("/personas/:id/mailbox", async (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  return c.json(await mailboxes.connect(persona.id, await body<Partial<MailboxConnectRequest>>(c)));
+});
+
+api.delete("/personas/:id/mailbox", async (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  await mailboxes.disconnect(persona.id);
+  return c.json(personas.get(persona.id));
+});
+
+api.post("/personas/:id/mailbox/refresh", async (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  await mailboxes.refresh(persona.id);
+  return c.json(personas.get(persona.id));
+});
+
+api.get("/personas/:id/mail", (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  const limit = Number(c.req.query("limit") ?? 50);
+  return c.json(mail.list(persona.id, { q: c.req.query("q"), limit: Number.isFinite(limit) ? limit : 50 }).map(toSummary));
+});
+
+api.get("/personas/:id/mail/:mailId", (c) => {
+  const persona = found(personas.get(c.req.param("id")), "Persona not found.");
+  const stored = found(mail.get(persona.id, c.req.param("mailId")), "Email not found.");
+  mailboxes.markRead(persona.id, stored);
+  return c.json(toMailMessage({ ...stored, unread: false }));
+});
 
 // ---------------------------------------------------------------------------
 // Plugins

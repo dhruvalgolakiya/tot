@@ -7,6 +7,7 @@ import { bus } from "../events.ts";
 import { boatBackend } from "./boat.ts";
 import { forgetGitHubLogin, syncGitHubLogin } from "./github-login.ts";
 import { localBackend } from "./local.ts";
+import { forgetPersonaIdentity, syncPersonaIdentity } from "./persona-identity.ts";
 import { deleteScreenshots, saveScreenshot } from "./screens.ts";
 import type { ComputerBackend, DesktopControl } from "./types.ts";
 
@@ -146,7 +147,7 @@ export const computerManager = {
     return record ? toSummary(record) : null;
   },
 
-  /** Starts (or resumes) the chat's computer and brings its GitHub login up to date. Concurrent callers share one attempt. */
+  /** Starts (or resumes) the chat's computer and brings its GitHub login and git author up to date. Concurrent callers share one attempt. */
   ensure(agentId: string): Promise<ActiveComputer> {
     let pending = inflight.get(agentId);
     if (!pending) {
@@ -157,6 +158,12 @@ export const computerManager = {
           } catch (err) {
             // The computer still works without GitHub; the agent finds out when git asks for a login.
             console.warn("[tot] GitHub login on the agent's computer failed:", errorText(err));
+          }
+          // After the GitHub step, so a persona's name and address win as the commit author.
+          try {
+            await syncPersonaIdentity(agentId, active);
+          } catch (err) {
+            console.warn("[tot] setting the persona's git author failed:", errorText(err));
           }
           return active;
         })
@@ -243,6 +250,7 @@ export const computerManager = {
     if (record.externalId) {
       await backends[record.kind].destroy(record.externalId);
       forgetGitHubLogin(record.externalId);
+      forgetPersonaIdentity(record.externalId);
     }
     computers.delete(agentId);
     deleteScreenshots(agentId);

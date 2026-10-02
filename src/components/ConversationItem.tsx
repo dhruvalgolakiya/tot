@@ -1,7 +1,7 @@
 import { useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
-import { Clock, Ellipsis, Pencil, Pin, PinOff, Trash } from "lucide-react";
+import { Clock, Ellipsis, Mail, Pencil, Pin, PinOff, Trash } from "lucide-react";
 import type { Conversation } from "@shared/types";
 import { conversationTitle } from "../lib/conversations";
 import { conversationPath } from "../lib/router";
@@ -70,10 +70,10 @@ export function ConversationItem({ conversation, active, streaming }: Conversati
         {conversation.routineId && (
           <Clock className="size-3.5 shrink-0 text-fg-muted" aria-label="Scheduled routine" />
         )}
-        {conversation.origin?.kind === "slack" && (
+        {conversation.origin && (
           <Tip content={conversation.origin.label}>
             <span className="shrink-0 text-fg-muted" title={conversation.origin.label}>
-              <SlackMark className="size-3" />
+              {conversation.origin.kind === "slack" ? <SlackMark className="size-3" /> : <Mail className="size-3" />}
             </span>
           </Tip>
         )}

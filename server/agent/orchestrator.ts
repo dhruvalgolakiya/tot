@@ -9,6 +9,7 @@ import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
 import { messageText, messages } from "../data/messages.ts";
+import { personas } from "../data/personas.ts";
 import { plugins } from "../data/plugins.ts";
 import { settings as settingsStore } from "../data/settings.ts";
 import { toAttachment, uploads, type UploadRecord } from "../data/uploads.ts";
@@ -19,7 +20,15 @@ import { prepareAttachments } from "./attachments.ts";
 import { makeElicitor } from "./approvals.ts";
 import { limits } from "./limits.ts";
 import { MessageBuilder } from "./message-builder.ts";
-import { buildSystemPrompt, githubSection, githubStateLine, transcriptPreamble, type WorkspaceContext } from "./prompts.ts";
+import {
+  buildSystemPrompt,
+  githubSection,
+  githubStateLine,
+  personaNote,
+  transcriptPreamble,
+  type PersonaAccess,
+  type WorkspaceContext,
+} from "./prompts.ts";
 import { providerStatuses, providers } from "./providers/index.ts";
 import type { McpServerSpec, TurnInput } from "./providers/types.ts";
 import { CLAUDE_SONNET, parseModelId, resolveRoute, type Complexity, type Route } from "./router.ts";
@@ -297,8 +306,13 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
     conversation.systemPrompt && !conversation.systemPrompt.includes(githubStateLine(access))
       ? `[GitHub changed since this chat started; this replaces your earlier GitHub instructions:\n${githubSection(access, settingsStore.get().computer.mode !== "off")}]`
       : "";
+  // Likewise for the persona the agent works as (added, changed or removed later).
+  const persona = personas.forAgent(conversation.agentId);
+  const personaAccess: PersonaAccess = persona
+    ? { name: persona.name, email: persona.email, mailbox: persona.mailbox.state !== "not-connected" }
+    : null;
   const text =
-    [githubNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
+    [githubNote, personaNote(conversation.systemPrompt, personaAccess), ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
   let systemPrompt = conversation.systemPrompt;
@@ -317,7 +331,7 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
         recentChats: chatSearch.recent(agent.id, { exclude: conversation.id }),
       };
     }
-    systemPrompt = buildSystemPrompt({ settings, workspace, agent, github: access, apps: apps.running });
+    systemPrompt = buildSystemPrompt({ settings, workspace, agent, github: access, apps: apps.running, persona: personaAccess });
     conversations.update(conversation.id, { systemPrompt });
   }
   return { text, images: prepared.images, systemPrompt };

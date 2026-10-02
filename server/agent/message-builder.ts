@@ -50,6 +50,18 @@ export function toolTitle(name: string, input: unknown): string {
       return `Searched memory for “${clip(args.query, 60)}”`;
     case "memory_delete":
       return "Forgot a memory";
+    case "email_inbox":
+      return "Checked email";
+    case "email_search":
+      return args.query ? `Searched email for “${clip(args.query, 60)}”` : "Searched email";
+    case "email_read":
+      return "Read an email";
+    case "email_send":
+      return `Email to ${clip(Array.isArray(args.to) ? args.to.join(", ") : args.to, 60)}`;
+    case "email_reply":
+      return "Email reply";
+    case "email_wait":
+      return "Waited for an email";
     case "web_search":
       return args.query ? `Searched the web for “${clip(args.query, 60)}”` : "Searched the web";
     case "web_fetch":

@@ -340,6 +340,7 @@ function activityOf(part: MessagePart): string | null {
   if (name.startsWith("chat_")) return "looking through past chats";
   if (name.startsWith("wiki_")) return /^wiki_(write|edit|delete)$/.test(name) ? "updating the wiki" : "reading the wiki";
   if (name.startsWith("routine_")) return "setting up a routine";
+  if (name.startsWith("email_")) return /^email_(send|reply)$/.test(name) ? "writing an email" : "checking email";
   if (name.startsWith("github/")) return "checking GitHub";
   if (name.startsWith("apps/")) {
     const code = (part.input as { code?: unknown } | undefined)?.code;

@@ -194,6 +194,88 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS slack_threads_by_conversation ON slack_threads(conversation_id);
 `);
 
+// v6: personas (an identity with a real mailbox that agents work as), their stored mail, and
+// which email thread each emailed task's chat belongs to. Mailbox passwords live in secrets.json.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS personas (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    -- Mailbox settings and state (PersonaMailbox plus the login name), JSON.
+    mailbox TEXT NOT NULL DEFAULT '{}',
+    -- Where mail syncing left off in each folder (UIDVALIDITY and next UID), JSON.
+    mail_sync TEXT,
+    allowed_senders TEXT NOT NULL DEFAULT '[]',
+    default_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS mail_messages (
+    id TEXT PRIMARY KEY,
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+    -- 'inbox' or 'sent'; uid is null for mail TOT sent that the server's Sent folder hasn't shown yet.
+    folder TEXT NOT NULL,
+    uid INTEGER,
+    uid_validity TEXT,
+    message_id TEXT,
+    in_reply_to TEXT,
+    refs TEXT NOT NULL DEFAULT '[]',
+    thread_id TEXT NOT NULL,
+    from_name TEXT,
+    from_address TEXT NOT NULL,
+    to_addresses TEXT NOT NULL DEFAULT '[]',
+    cc_addresses TEXT NOT NULL DEFAULT '[]',
+    subject TEXT NOT NULL,
+    text TEXT NOT NULL,
+    links TEXT NOT NULL DEFAULT '[]',
+    codes TEXT NOT NULL DEFAULT '[]',
+    attachments TEXT NOT NULL DEFAULT '[]',
+    date INTEGER NOT NULL,
+    unread INTEGER NOT NULL,
+    outgoing INTEGER NOT NULL,
+    -- The receiving provider vouched for the sender (DMARC, or DKIM aligned with the From domain).
+    authenticated INTEGER NOT NULL DEFAULT 0,
+    -- An auto-reply, bounce or bulk/list mail.
+    automated INTEGER NOT NULL DEFAULT 0,
+    conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS mail_by_persona ON mail_messages(persona_id, date);
+  CREATE INDEX IF NOT EXISTS mail_by_thread ON mail_messages(persona_id, thread_id, date);
+  CREATE UNIQUE INDEX IF NOT EXISTS mail_unique_uid ON mail_messages(persona_id, folder, uid_validity, uid);
+  CREATE INDEX IF NOT EXISTS mail_by_message_id ON mail_messages(persona_id, message_id);
+  CREATE VIRTUAL TABLE IF NOT EXISTS mail_fts USING fts5(
+    subject, from_name, from_address, text, content='mail_messages', content_rowid='rowid', tokenize='porter unicode61'
+  );
+  CREATE TRIGGER IF NOT EXISTS mail_messages_ai AFTER INSERT ON mail_messages BEGIN
+    INSERT INTO mail_fts(rowid, subject, from_name, from_address, text) VALUES (new.rowid, new.subject, new.from_name, new.from_address, new.text);
+  END;
+  CREATE TRIGGER IF NOT EXISTS mail_messages_ad AFTER DELETE ON mail_messages BEGIN
+    INSERT INTO mail_fts(mail_fts, rowid, subject, from_name, from_address, text) VALUES ('delete', old.rowid, old.subject, old.from_name, old.from_address, old.text);
+  END;
+  CREATE TRIGGER IF NOT EXISTS mail_messages_au AFTER UPDATE OF subject, from_name, from_address, text ON mail_messages BEGIN
+    INSERT INTO mail_fts(mail_fts, rowid, subject, from_name, from_address, text) VALUES ('delete', old.rowid, old.subject, old.from_name, old.from_address, old.text);
+    INSERT INTO mail_fts(rowid, subject, from_name, from_address, text) VALUES (new.rowid, new.subject, new.from_name, new.from_address, new.text);
+  END;
+
+  CREATE TABLE IF NOT EXISTS mail_threads (
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+    thread_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    -- The allowed sender who started it: answers go back to them.
+    sender TEXT NOT NULL,
+    -- Date of the newest email already shown to the agent, so later turns get only what's new.
+    seen_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (persona_id, thread_id)
+  );
+  CREATE INDEX IF NOT EXISTS mail_threads_by_conversation ON mail_threads(conversation_id);
+`);
+if (!hasColumn("agents", "persona_id")) {
+  db.exec(`ALTER TABLE agents ADD COLUMN persona_id TEXT REFERENCES personas(id) ON DELETE SET NULL`);
+}
+
 // Full-text index of what was said in each chat, so agents can search their earlier chats.
 db.exec(`
   CREATE VIRTUAL TABLE IF NOT EXISTS message_search USING fts5(

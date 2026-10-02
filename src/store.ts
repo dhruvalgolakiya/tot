@@ -9,8 +9,10 @@ import type {
   ComputerSummary,
   Conversation,
   GitHubStatus,
+  MailSummary,
   Message,
   ModelOption,
+  Persona,
   ProviderId,
   ProviderStatus,
   RunEvent,
@@ -102,6 +104,11 @@ export interface TotState {
   apps: AppsStatus | null;
   /** TOT's Slack bot: shared across agents; null while still loading. */
   slack: SlackStatus | null;
+  /** Identities agents can work as (own mailbox, optional GitHub). */
+  personas: Persona[];
+  personasState: LoadState;
+  /** Bumped on every `mail` AppEvent; an open inbox watches this to insert the message live. */
+  mailEvent: { personaId: string; mail: MailSummary; at: number } | null;
   /** A browser login is in progress; we poll until the provider reports loggedIn. */
   connectingProvider: ProviderId | null;
   /** Model picked before a conversation exists. */
@@ -173,6 +180,9 @@ export const useStore = create<TotState>()(() => ({
   github: null,
   apps: null,
   slack: null,
+  personas: [],
+  personasState: "loading",
+  mailEvent: null,
   connectingProvider: null,
   draftModelId: null,
 
@@ -277,6 +287,7 @@ export function initApp() {
   void loadGithubStatus();
   void loadAppsStatus();
   void loadSlackStatus();
+  void loadPersonas();
 }
 
 export async function loadAgents() {
@@ -425,6 +436,39 @@ export async function loadSlackStatus() {
 /** Set after a connect/patch/disconnect call, or from the `slack` AppEvent. */
 export function setSlackStatus(status: SlackStatus) {
   set({ slack: status });
+}
+
+/** Loaded at app init and refreshed whenever the Settings dialog opens; also kept live via the `persona`/`persona-deleted` AppEvents. */
+export async function loadPersonas() {
+  const had = get().personas.length > 0;
+  set({ personasState: had ? "ready" : "loading" });
+  try {
+    set({ personas: await api.listPersonas(), personasState: "ready" });
+  } catch (error) {
+    set({ personasState: had ? "ready" : "error" });
+    notifyError(error);
+  }
+}
+
+/** Upsert one persona: after a create/patch/mailbox/GitHub call, or from the `persona` AppEvent. */
+export function setPersona(persona: Persona) {
+  set((s) => ({
+    personas: s.personas.some((p) => p.id === persona.id)
+      ? s.personas.map((p) => (p.id === persona.id ? persona : p))
+      : [...s.personas, persona],
+  }));
+}
+
+/** Forget a persona: after a delete call, or from the `persona-deleted` AppEvent. */
+export function removePersona(id: string) {
+  set((s) => ({ personas: s.personas.filter((p) => p.id !== id) }));
+}
+
+/** A mail message was opened (the server marks it read); reflect that in the persona's unread count right away. */
+export function markPersonaMailRead(personaId: string) {
+  set((s) => ({
+    personas: s.personas.map((p) => (p.id === personaId && p.unread > 0 ? { ...p, unread: p.unread - 1 } : p)),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -1054,6 +1098,19 @@ function handleSlackEvent(status: SlackStatus) {
 }
 
 /**
+ * New mail arrived in a persona's mailbox (incoming or sent). Bumps the
+ * persona's unread count locally — the authoritative count also arrives via
+ * the `persona` event, which just overwrites this — and pings any open inbox
+ * through `mailEvent` so it can insert the message live.
+ */
+function handleMailEvent(personaId: string, mail: MailSummary) {
+  set((s) => ({
+    personas: s.personas.map((p) => (p.id === personaId && mail.unread ? { ...p, unread: p.unread + 1 } : p)),
+    mailEvent: { personaId, mail, at: Date.now() },
+  }));
+}
+
+/**
  * A chat is waiting for the user's approval, or no longer is (answered,
  * expired, or a background routine run moved on). Tracks `pendingApprovals`
  * for the sidebar's attention dot, and nudges with a toast when the
@@ -1105,6 +1162,15 @@ export function handleAppEvent(event: AppEvent) {
     case "slack":
       handleSlackEvent(event.status);
       break;
+    case "persona":
+      setPersona(event.persona);
+      break;
+    case "persona-deleted":
+      removePersona(event.personaId);
+      break;
+    case "mail":
+      handleMailEvent(event.personaId, event.mail);
+      break;
     case "approval":
       handleApprovalEvent(event);
       break;
@@ -1118,6 +1184,7 @@ export function handleAppEvent(event: AppEvent) {
 export function handleAppReconnect() {
   void loadAgents();
   void loadConversations({ quiet: true });
+  void loadPersonas();
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ import {
   goToSettings,
   loadAppsStatus,
   loadGithubStatus,
+  loadPersonas,
   loadSettings,
   loadSlackStatus,
   refreshProviders,
@@ -37,6 +38,7 @@ import { ComputerSettings } from "./ComputerSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { GitHubSettings } from "./GitHubSettings";
 import { ModelsSettings } from "./ModelsSettings";
+import { PersonasSettings } from "./PersonasSettings";
 import { PluginsSettings } from "./PluginsSettings";
 import { SETTINGS_SECTIONS, type SettingsSectionMeta } from "./settingsSections";
 import { SlackSettings } from "./SlackSettings";
@@ -68,6 +70,7 @@ export function SettingsPage() {
     void loadGithubStatus();
     void loadAppsStatus();
     void loadSlackStatus();
+    void loadPersonas();
   }, []);
 
   useEffect(() => {
@@ -229,6 +232,8 @@ function SectionBody({
       return <AppsSettings />;
     case "slack":
       return <SlackSettings />;
+    case "personas":
+      return <PersonasSettings />;
     case "plugins":
       return <PluginsSettings />;
   }

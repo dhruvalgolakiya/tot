@@ -207,6 +207,8 @@ export type ToolStatus = "running" | "done" | "error";
  *  - TOT wiki:      wiki_search, wiki_read, wiki_write, wiki_edit, wiki_delete
  *  - TOT chats:     chat_search, chat_read (earlier chats in the same workspace)
  *  - TOT routines:  routine_create, routine_list, routine_delete
+ *  - TOT email:     email_inbox, email_search, email_read, email_send, email_reply, email_wait
+ *                   (agents working as a persona with a mailbox; sending asks the user first)
  *  - Built-ins:     web_search, web_fetch
  *  - GitHub:        "github/<tool>" (GitHub's MCP server when connected, e.g. "github/search_issues")
  *  - Apps:          "apps/execute" (runs TypeScript calling the user's connected apps; input { code }),

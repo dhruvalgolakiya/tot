@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Agent, AgentInput, MascotSpec } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
+import { personas } from "./personas.ts";
 import { wiki } from "./wiki.ts";
 
 /** Tot, the agent every install starts with. */
@@ -25,6 +26,7 @@ function toAgent(row: Row): Agent {
     instructions: String(row.instructions ?? ""),
     modelId: String(row.model_id),
     computer: getComputerSummary(id),
+    personaId: (row.persona_id as string | null) ?? null,
     counts: {
       chats: count(`SELECT COUNT(*) AS n FROM conversations WHERE agent_id = ?`, id),
       pages: count(`SELECT COUNT(*) AS n FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`, id),
@@ -55,23 +57,34 @@ export const agents = {
     const id = randomUUID();
     const now = Date.now();
     db.prepare(
-      `INSERT INTO agents (id, name, mascot, instructions, model_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, input.name.trim(), JSON.stringify(input.mascot), input.instructions?.trim() ?? "", input.modelId ?? "auto", now, now);
+      `INSERT INTO agents (id, name, mascot, instructions, model_id, persona_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      input.name.trim(),
+      JSON.stringify(input.mascot),
+      input.instructions?.trim() ?? "",
+      input.modelId ?? "auto",
+      input.personaId ?? null,
+      now,
+      now,
+    );
     wiki.overview(id);
     return agents.get(id)!;
   },
 
   update(id: string, patch: Partial<AgentInput>): Agent | null {
-    const columns: Record<string, string | number | undefined> = {
+    const columns: Record<string, string | number | null | undefined> = {
       name: patch.name?.trim(),
       mascot: patch.mascot && JSON.stringify(patch.mascot),
       instructions: patch.instructions?.trim(),
       model_id: patch.modelId,
+      // null: back to working as the user.
+      persona_id: patch.personaId,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);
     if (entries.length) {
       db.prepare(`UPDATE agents SET ${entries.map(([k]) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ?`).run(
-        ...(entries.map(([, v]) => v) as (string | number)[]),
+        ...(entries.map(([, v]) => v) as (string | number | null)[]),
         Date.now(),
         id,
       );
@@ -104,5 +117,8 @@ export function validateAgent(input: Partial<AgentInput>, creating: boolean): st
     if (!/^#[0-9a-f]{6}$/i.test(color)) return "Mascot color must look like #a78bfa.";
   }
   if (input.instructions !== undefined && input.instructions.length > 4000) return "Instructions can be at most 4000 characters.";
+  if (input.personaId !== undefined && input.personaId !== null) {
+    if (typeof input.personaId !== "string" || !personas.exists(input.personaId)) return "That persona doesn't exist.";
+  }
   return null;
 }
