@@ -29,15 +29,15 @@ export function RadioCards<T extends string>({ value, onValueChange, options, la
         <RadioGroup.Item
           key={option.value}
           value={option.value}
-          className="group flex w-full items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-3 text-left transition-colors outline-none hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-[var(--agent-accent-ring)] data-[state=checked]:border-[var(--agent-accent-border)] data-[state=checked]:bg-[var(--agent-accent-08)]"
+          className="group flex w-full items-start gap-3 rounded-xl border border-edge bg-fill-subtle px-3.5 py-3 text-left transition-colors hover:border-edge-strong hover:bg-hover data-[state=checked]:border-accent-edge data-[state=checked]:bg-accent-soft/60"
         >
-          <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-zinc-600 group-data-[state=checked]:border-[var(--agent-accent)]">
-            <RadioGroup.Indicator className="size-2 rounded-full bg-[var(--agent-accent)]" />
+          <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-fg-faint transition-colors group-data-[state=checked]:border-accent">
+            <RadioGroup.Indicator className="size-2 rounded-full bg-accent" />
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-medium text-zinc-100">{option.label}</span>
+            <span className="block text-sm font-medium text-fg">{option.label}</span>
             {option.description && (
-              <span className="mt-0.5 block text-xs leading-relaxed text-zinc-400">{option.description}</span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-fg-muted">{option.description}</span>
             )}
           </span>
         </RadioGroup.Item>

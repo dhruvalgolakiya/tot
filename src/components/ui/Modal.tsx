@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import clsx from "clsx";
 import { Dialog } from "radix-ui";
 import { X } from "lucide-react";
@@ -9,16 +9,20 @@ type ModalProps = {
   onOpenChange: (open: boolean) => void;
   title: ReactNode;
   description?: ReactNode;
+  /** Width (default `max-w-lg`) plus any layout classes, e.g. `flex max-w-md`. */
   className?: string;
   children: ReactNode;
 };
 
-/** Centered dialog shell: overlay, title, optional description, close button. Esc closes. */
+/**
+ * Centered dialog shell: overlay, title, optional description, close button. Esc closes.
+ * Lay out the content with <ModalBody> and <ModalFooter> (both use the header's 20px gutter).
+ */
 export function Modal({ open, onOpenChange, title, description, className, children }: ModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-scrim/75 backdrop-blur-md data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-scrim/60 backdrop-blur-[2px] data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
           <Dialog.Content
             {...(description ? {} : { "aria-describedby": undefined })}
@@ -28,17 +32,15 @@ export function Modal({ open, onOpenChange, title, description, className, child
               if (focused instanceof HTMLElement && focused.closest("[data-escape-cancels]")) event.preventDefault();
             }}
             className={clsx(
-              "surface-raised pointer-events-auto flex max-h-[min(88dvh,820px)] w-full flex-col overflow-hidden rounded-3xl border border-white/[0.08] outline-none data-[state=closed]:animate-pop-out data-[state=open]:animate-pop-in",
+              "pointer-events-auto flex max-h-[min(88dvh,820px)] w-full flex-col overflow-hidden rounded-2xl border border-edge bg-elevated shadow-dialog outline-none data-[state=closed]:animate-pop-out data-[state=open]:animate-pop-in",
               className ?? "max-w-lg",
             )}
           >
             <div className="flex shrink-0 items-start gap-4 px-5 pt-5 pb-3">
               <div className="min-w-0 flex-1">
-                <Dialog.Title className="text-base font-semibold tracking-[-0.02em] text-zinc-50">
-                  {title}
-                </Dialog.Title>
+                <Dialog.Title className="text-heading text-fg-strong">{title}</Dialog.Title>
                 {description && (
-                  <Dialog.Description className="mt-1 text-sm leading-relaxed text-zinc-400">
+                  <Dialog.Description className="mt-1 text-sm leading-relaxed text-fg-muted">
                     {description}
                   </Dialog.Description>
                 )}
@@ -54,5 +56,29 @@ export function Modal({ open, onOpenChange, title, description, className, child
         </div>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/** Scrollable dialog content with the standard gutter. */
+export function ModalBody({ className, ...props }: ComponentProps<"div">) {
+  return <div className={clsx("min-h-0 flex-1 overflow-y-auto px-5 pt-1 pb-5", className)} {...props} />;
+}
+
+type ModalFooterProps = ComponentProps<"div"> & {
+  /** A hairline above the actions. On by default; turn off for short confirm dialogs. */
+  divider?: boolean;
+};
+
+/** Right-aligned dialog actions: secondary/ghost first, the one primary last. */
+export function ModalFooter({ divider = true, className, ...props }: ModalFooterProps) {
+  return (
+    <div
+      className={clsx(
+        "flex shrink-0 items-center justify-end gap-2 px-5",
+        divider ? "border-t border-hairline py-3" : "pt-2 pb-5",
+        className,
+      )}
+      {...props}
+    />
   );
 }

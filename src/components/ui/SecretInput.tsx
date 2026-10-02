@@ -36,31 +36,31 @@ export function SecretInput({ id, value, onChange, saved, cleared, onClearedChan
           type="button"
           onClick={() => setVisible((v) => !v)}
           aria-label={visible ? "Hide key" : "Show key"}
-          className="absolute inset-y-0 right-0 grid w-10 place-items-center text-zinc-500 hover:text-zinc-200"
+          className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-lg text-fg-subtle transition-colors hover:text-fg focus-visible:-outline-offset-2"
         >
           {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
         </button>
       </div>
       {showSaved && (
-        <p className="flex items-center gap-1.5 text-xs text-emerald-400">
+        <p className="flex items-center gap-1.5 text-xs text-success">
           <CircleCheck className="size-3.5" />
           Key saved
           <button
             type="button"
             onClick={() => onClearedChange(true)}
-            className="ml-1 text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
+            className="link-muted ml-1"
           >
             Remove
           </button>
         </p>
       )}
       {saved && cleared && !value && (
-        <p className="flex items-center gap-1.5 text-xs text-amber-300">
+        <p className="flex items-center gap-1.5 text-xs text-warning">
           The saved key will be removed when you save.
           <button
             type="button"
             onClick={() => onClearedChange(false)}
-            className="text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline"
+            className="link-muted"
           >
             Undo
           </button>

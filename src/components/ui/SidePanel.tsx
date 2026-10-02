@@ -47,13 +47,13 @@ export function SidePanel({ label, icon, title, onClose, width = "w-[380px]", ch
           "flex max-w-full shrink-0 animate-slide-in-right flex-col",
           width,
           wide
-            ? "my-2 mr-2 overflow-hidden rounded-lg border border-white/[0.06] bg-canvas"
-            : "fixed inset-y-0 right-0 z-40 h-full border-l border-white/[0.06] bg-panel shadow-2xl shadow-shade/80",
+            ? "my-2 mr-2 overflow-hidden rounded-lg border border-hairline bg-canvas"
+            : "fixed inset-y-0 right-0 z-40 h-full border-l border-hairline bg-panel shadow-dialog",
         )}
       >
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-white/[0.06] pr-2 pl-4">
-          <span className="grid shrink-0 place-items-center text-zinc-400 [&_svg]:size-4">{icon}</span>
-          <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-100">{title}</h2>
+        <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline pr-2 pl-4">
+          <span className="grid shrink-0 place-items-center text-fg-muted [&_svg]:size-4">{icon}</span>
+          <h2 className="min-w-0 truncate text-heading text-fg">{title}</h2>
           <IconButton label={`Close ${label.toLowerCase()} panel`} className="ml-auto" onClick={onClose}>
             <X />
           </IconButton>

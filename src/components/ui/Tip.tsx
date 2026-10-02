@@ -20,7 +20,7 @@ export function Tip({ content, children, side = "top", align = "center" }: TipPr
           align={align}
           sideOffset={6}
           collisionPadding={8}
-          className="dark z-[60] max-w-72 rounded-lg border border-white/10 bg-zinc-800 px-2.5 py-1.5 text-xs leading-relaxed text-zinc-100 shadow-xl shadow-shade/40 data-[state=closed]:animate-fade-out data-[state=delayed-open]:animate-fade-in"
+          className="dark z-[60] max-w-72 rounded-md border border-edge bg-zinc-800 px-2 py-1 text-xs font-medium text-fg shadow-popover data-[state=closed]:animate-fade-out data-[state=delayed-open]:animate-fade-in"
         >
           {content}
         </Tooltip.Content>

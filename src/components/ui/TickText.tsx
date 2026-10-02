@@ -8,7 +8,7 @@ export function TickText({ text }: { text: string }) {
     <>
       {segments.map((segment, index) =>
         index % 2 === 1 ? (
-          <code key={index} className="rounded bg-white/[0.07] px-1 py-px font-mono text-[0.9em] text-zinc-200">
+          <code key={index} className="rounded-sm bg-fill px-1 py-px font-mono text-[0.9em] text-fg">
             {segment}
           </code>
         ) : (

@@ -5,9 +5,34 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  /* Inter is loaded from Google Fonts in index.html (variable, with optical sizes); the system UI font is the
+     fallback while it loads or when offline. Code uses the platform's monospace (SF Mono on macOS). */
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* Type scale (see DESIGN.md). Tailwind's text-xs (12/16) and text-sm (14/20) stay as they are. */
+  --text-2xs: 0.6875rem; /* 11px: badges, kbd, counters, label-caps */
+  --text-2xs--line-height: 1rem;
+  --text-ui: 0.8125rem; /* 13px: dense rows: nav lists, menus' secondary text, tool rows, small buttons */
+  --text-ui--line-height: 1.125rem;
+  --text-chat: 1rem; /* 16px: chat bubbles and the composer (assistant prose is 16/28 via .markdown) */
+  --text-chat--line-height: 1.625rem;
+  --text-heading: 0.9375rem; /* 15px: dialog, panel and card-group titles */
+  --text-heading--line-height: 1.375rem;
+  --text-heading--letter-spacing: -0.01em;
+  --text-heading--font-weight: 600;
+  --text-title: 1.25rem; /* 20px: page titles (Settings sections, wiki empty states) */
+  --text-title--line-height: 1.75rem;
+  --text-title--letter-spacing: -0.015em;
+  --text-title--font-weight: 600;
+  --text-display: 2rem; /* 32px: the agent-home greeting, wiki page titles */
+  --text-display--line-height: 2.5rem;
+  --text-display--letter-spacing: -0.025em;
+  --text-display--font-weight: 600;
+
+  /* Enter/exit easing for popovers, panels, dialogs. Hover transitions use Tailwind's default (150ms). */
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Surfaces and effects that differ per theme (see the theme blocks below). */
   --color-canvas: #08080a;
@@ -56,6 +81,66 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Semantic tokens (DESIGN.md). Prefer these over raw palette steps and
+   `white/[0.0x]` overlays in new code. `inline` makes each utility reference
+   the underlying variable directly, so it resolves per element: a `.dark`
+   island inside a light page picks up the dark values automatically.
+   In hand-written CSS, reference the underlying variables (--fg-subtle,
+   --surface-hover, --line-edge, --focus-ring, --color-zinc-400, …): the
+   `--color-<semantic>` names below only exist on :root.
+   --------------------------------------------------------------------------- */
+@theme inline {
+  /* Text tiers */
+  --color-fg-strong: var(--color-zinc-50); /* titles, emphasis */
+  --color-fg: var(--color-zinc-100); /* primary text */
+  --color-fg-muted: var(--color-zinc-400); /* secondary text, idle icons */
+  --color-fg-subtle: var(--fg-subtle); /* meta, hints, captions, placeholders */
+  --color-fg-faint: var(--color-zinc-600); /* disabled, decorative only (not for text people must read) */
+
+  /* Interactive overlays (transparent, stack on any surface) */
+  --color-hover: var(--surface-hover);
+  --color-selected: var(--surface-selected); /* current row, pressed, open trigger */
+
+  /* Static fills (cards, chips, tiles, skeletons) */
+  --color-fill-subtle: var(--fill-subtle);
+  --color-fill: var(--fill);
+  --color-fill-strong: var(--fill-strong);
+
+  /* Lines */
+  --color-hairline: var(--line-hairline); /* dividers, card and panel edges */
+  --color-edge: var(--line-edge); /* control borders: inputs, secondary buttons, menus, popovers */
+  --color-edge-strong: var(--line-edge-strong); /* hovered control borders */
+  --color-focus: var(--focus-ring);
+
+  /* The active agent's accent (the one saturated color) */
+  --color-accent: var(--agent-accent); /* fills and indicators: send button, switch on, active marker */
+  --color-accent-text: var(--agent-accent-text); /* accent-colored text and links (readable in both themes) */
+  --color-accent-soft: var(--agent-accent-12); /* tinted backgrounds: selected/on states, pills */
+  --color-accent-soft-hover: color-mix(in oklch, var(--agent-accent) 18%, transparent);
+  --color-accent-edge: var(--agent-accent-border);
+
+  /* Status */
+  --color-success: var(--status-success);
+  --color-success-soft: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
+  --color-success-edge: color-mix(in oklab, var(--color-emerald-500) 28%, transparent);
+  --color-warning: var(--color-amber-300);
+  --color-warning-soft: color-mix(in oklab, var(--color-amber-500) 12%, transparent);
+  --color-warning-edge: color-mix(in oklab, var(--color-amber-500) 28%, transparent);
+  --color-danger: var(--color-red-400);
+  --color-danger-soft: color-mix(in oklab, var(--color-red-500) 10%, transparent);
+  --color-danger-edge: color-mix(in oklab, var(--color-red-500) 28%, transparent);
+  --color-danger-solid: oklch(57.7% 0.245 27.325); /* destructive button fill, same in both themes */
+
+  /* Colors that must not flip with the theme (text on solid fills, switch thumbs) */
+  --color-fixed-white: #fff;
+  --color-fixed-black: #09090b;
+
+  /* Elevation: only for things that float above the page */
+  --shadow-popover: var(--elevation-popover); /* menus, tooltips, toasts, dropdowns */
+  --shadow-dialog: var(--elevation-dialog); /* modals, overlay side panels and drawers */
+}
+
 @layer base {
   /* ---------------------------------------------------------------------------
      Themes. TOT's UI is written dark-first: zinc text and white overlays on a
@@ -87,6 +172,21 @@
     --agent-accent-text: color-mix(in oklch, var(--agent-accent) 62%, black);
     --surface-raised-bg: #ffffff;
     --surface-raised-shadow: 0 0 0 1px rgb(9 9 11 / 0.08), 0 1px 2px rgb(9 9 11 / 0.04), 0 16px 36px -20px rgb(9 9 11 / 0.22);
+
+    /* Semantic raw values (mapped to utilities in `@theme inline`). */
+    --fg-subtle: oklch(52% 0.016 286); /* ≥4.5:1 on canvas and panel */
+    --surface-hover: rgb(9 9 11 / 0.045);
+    --surface-selected: rgb(9 9 11 / 0.07);
+    --fill-subtle: rgb(9 9 11 / 0.025);
+    --fill: rgb(9 9 11 / 0.05);
+    --fill-strong: rgb(9 9 11 / 0.08);
+    --line-hairline: rgb(9 9 11 / 0.08);
+    --line-edge: rgb(9 9 11 / 0.12);
+    --line-edge-strong: rgb(9 9 11 / 0.2);
+    --focus-ring: var(--agent-accent-text); /* a pale accent outline is invisible on white */
+    --status-success: var(--color-emerald-300); /* mirrored: emerald-700 */
+    --elevation-popover: 0 1px 2px rgb(9 9 11 / 0.04), 0 4px 12px -2px rgb(9 9 11 / 0.08), 0 16px 32px -12px rgb(9 9 11 / 0.16);
+    --elevation-dialog: 0 2px 6px -2px rgb(9 9 11 / 0.06), 0 32px 64px -24px rgb(9 9 11 / 0.3);
   }
 
   .dark {
@@ -110,6 +210,21 @@
     --agent-accent-text: color-mix(in oklch, var(--agent-accent) 82%, white);
     --surface-raised-bg: color-mix(in oklch, white 3%, #16161a);
     --surface-raised-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.06), 0 20px 40px -24px rgb(0 0 0 / 0.7);
+
+    /* Semantic raw values (mapped to utilities in `@theme inline`). */
+    --fg-subtle: oklch(61% 0.014 286); /* ≥4.5:1 on canvas and panel (zinc-500 is ~4:1) */
+    --surface-hover: rgb(255 255 255 / 0.06);
+    --surface-selected: rgb(255 255 255 / 0.09);
+    --fill-subtle: rgb(255 255 255 / 0.025);
+    --fill: rgb(255 255 255 / 0.06);
+    --fill-strong: rgb(255 255 255 / 0.1);
+    --line-hairline: rgb(255 255 255 / 0.07);
+    --line-edge: rgb(255 255 255 / 0.1);
+    --line-edge-strong: rgb(255 255 255 / 0.16);
+    --focus-ring: color-mix(in oklch, var(--agent-accent) 80%, transparent);
+    --status-success: var(--color-emerald-400);
+    --elevation-popover: inset 0 1px 0 0 rgb(255 255 255 / 0.04), 0 2px 6px -1px rgb(0 0 0 / 0.4), 0 12px 32px -8px rgb(0 0 0 / 0.6);
+    --elevation-dialog: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 32px 80px -16px rgb(0 0 0 / 0.8);
   }
 
   :root {
@@ -137,8 +252,9 @@
   }
 
   body {
-    @apply bg-canvas font-sans text-zinc-100 antialiased;
+    @apply bg-canvas font-sans text-fg antialiased;
     text-rendering: optimizeLegibility;
+    font-optical-sizing: auto;
   }
 
   ::selection {
@@ -150,8 +266,11 @@
     scrollbar-color: color-mix(in oklab, var(--color-zinc-700) 80%, transparent) transparent;
   }
 
+  /* The one focus style: a 2px accent outline, offset 2px (follows border-radius). Rows inside clipped
+     containers use `focus-visible:-outline-offset-2` to draw it inside instead. Don't `outline-none` a
+     focusable element without replacing this. */
   :focus-visible {
-    outline: 2px solid var(--agent-accent-ring);
+    outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
 
@@ -173,41 +292,81 @@
 }
 
 @layer components {
+  /* Dropdown/context menus (Radix DropdownMenu.Content). Items: `.menu-item` (+ `.menu-item-danger`),
+     group titles: `.menu-label`, dividers: `.menu-separator`. Icons inside items: size-4 text-fg-muted. */
   .menu {
-    @apply z-50 min-w-48 overflow-hidden rounded-xl border border-white/10 bg-elevated p-1 text-sm text-zinc-200 shadow-2xl shadow-shade/60;
-    @apply data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out;
+    @apply z-50 min-w-48 overflow-hidden rounded-xl border border-edge bg-elevated p-1 text-sm text-fg shadow-popover;
+    @apply origin-(--radix-popper-transform-origin) data-[state=closed]:animate-pop-out data-[state=open]:animate-pop-in;
   }
 
   .menu-item {
-    @apply flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 outline-none select-none;
-    @apply data-[highlighted]:bg-white/[0.07] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45;
+    @apply flex min-h-8 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 outline-none select-none;
+    @apply data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45 data-[highlighted]:bg-hover;
+  }
+
+  .menu-item-danger {
+    @apply text-danger data-[highlighted]:bg-danger-soft;
   }
 
   .menu-label {
-    @apply px-2.5 pt-2 pb-1 text-xs font-medium text-zinc-500;
+    @apply px-2 pt-2 pb-1 text-xs font-medium text-fg-subtle;
   }
 
   .menu-separator {
-    @apply mx-1 my-1 h-px bg-white/[0.07];
+    @apply -mx-1 my-1 h-px bg-hairline;
   }
 
+  /* Text fields, textareas and selects. 36px tall (matches md buttons); `.input-sm` is 32px. */
   .input {
-    @apply w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-100 transition outline-none placeholder:text-zinc-500;
-    @apply focus:ring-2 disabled:opacity-50;
+    @apply w-full rounded-lg border border-edge bg-fill-subtle px-3 py-[7px] text-sm text-fg outline-none placeholder:text-fg-subtle;
+    @apply transition-[border-color,box-shadow,background-color] duration-150;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+    &:hover:not(:focus, :disabled) {
+      border-color: var(--line-edge-strong);
+    }
     &:focus {
-      border-color: var(--agent-accent-border);
+      border-color: var(--focus-ring);
       box-shadow: 0 0 0 3px var(--agent-accent-16);
     }
+    &[aria-invalid="true"] {
+      border-color: var(--color-danger-edge);
+    }
+    &[aria-invalid="true"]:focus {
+      border-color: var(--color-red-400);
+      box-shadow: 0 0 0 3px var(--color-danger-soft);
+    }
+    &:is(select) {
+      /* The native option list paints with the select's background, so it must be opaque. */
+      background-color: var(--color-elevated);
+    }
+  }
+
+  .input-sm {
+    @apply rounded-md px-2.5 py-[6px] text-ui;
+  }
+
+  /* Inline text links. `.link` for links in body copy, `.link-muted` for quiet secondary actions
+     ("Retry", "Copy manifest", "Manage memories"). */
+  .link {
+    @apply font-medium text-accent-text underline-offset-2 hover:underline;
+  }
+
+  .link-muted {
+    @apply font-medium text-fg-muted underline-offset-2 transition-colors hover:text-fg hover:underline;
   }
 
   .text-gradient {
     @apply bg-linear-to-br from-accent-violet to-accent-cyan bg-clip-text text-transparent;
   }
 
-  /* Tiny uppercase section labels ("Your agents", "Chats", date groups, panel
-     section headers) — quiet by design, per the Grok/Dots reference direction. */
+  /* Group labels above lists ("Today", "Pages", "Your apps", "On this page"): sentence case, quiet. */
+  .group-label {
+    @apply text-xs font-medium text-fg-subtle;
+  }
+
+  /* Legacy: tiny uppercase labels. Prefer `.group-label` in new and migrated code. */
   .label-caps {
-    @apply text-[11px] font-medium tracking-wide text-white/35 uppercase;
+    @apply text-2xs font-medium tracking-[0.06em] text-fg-subtle uppercase;
   }
 
   /* A surface that sits slightly above the canvas: composer, popovers-on-panels,
@@ -336,6 +495,32 @@
   margin-bottom: 0;
 }
 
+/* Reply-sized headings: prose-base's 36px h1 reads as a page title inside a chat message. */
+.markdown :is(h1, h2, h3, h4) {
+  margin-top: 1.6em;
+  margin-bottom: 0.6em;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.markdown h1 {
+  font-size: 1.5em;
+  letter-spacing: -0.02em;
+}
+
+.markdown h2 {
+  font-size: 1.25em;
+}
+
+.markdown h3 {
+  font-size: 1.0625em;
+}
+
+.markdown h4 {
+  font-size: 1em;
+}
+
 .markdown a {
   text-decoration-color: var(--agent-accent-border);
   text-underline-offset: 3px;
@@ -397,4 +582,33 @@
   background: transparent;
   font-family: var(--font-mono);
   overflow: visible;
+}
+
+/* ---------------------------------------------------------------------------
+   Toasts (sonner): TOT's font, radius and elevation. Colors come from the
+   Toaster's `style` in App.tsx. `html` raises specificity above sonner's own
+   injected rules, whatever order the two stylesheets load in.
+   --------------------------------------------------------------------------- */
+
+html [data-sonner-toaster] {
+  --border-radius: 12px;
+  font-family: var(--font-sans);
+}
+
+html [data-sonner-toast][data-styled="true"] {
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 18px;
+  box-shadow: var(--elevation-popover);
+}
+
+html [data-sonner-toast][data-styled="true"] [data-title] {
+  font-weight: 500;
+  line-height: 18px;
+}
+
+html [data-sonner-toast][data-styled="true"] [data-description] {
+  color: var(--color-zinc-400);
+  line-height: 18px;
 }

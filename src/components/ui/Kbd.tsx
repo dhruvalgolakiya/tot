@@ -10,7 +10,7 @@ export function Kbd({ keys }: { keys: string[] }) {
     })
     .join(isMac ? "" : "+");
   return (
-    <kbd className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-px font-sans text-[11px] font-medium tracking-wide text-zinc-500">
+    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-edge bg-fill-subtle px-1 font-sans text-2xs font-medium tracking-wide text-fg-subtle tabular-nums">
       {label}
     </kbd>
   );
