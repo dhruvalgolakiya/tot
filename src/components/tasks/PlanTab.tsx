@@ -8,6 +8,8 @@ import { answeredByLabel, modelLabel } from "../../lib/models";
 import { formatTokens, isOpenTask, repoLabel, taskElapsed, type TaskConversation } from "../../lib/tasks";
 import { useStore } from "../../store";
 import { LazyMarkdown } from "../LazyMarkdown";
+import { HandoffSection } from "../orchestration/HandoffSection";
+import { roleLine } from "../../lib/orchestration";
 import { Callout } from "../ui/Callout";
 
 const NO_MESSAGES: Message[] = [];
@@ -17,11 +19,12 @@ export function PlanTab({ task }: { task: TaskConversation }) {
   const models = useStore((s) => s.models);
   const messages = useStore((s) => s.messages[task.id]) ?? NO_MESSAGES;
   const now = useNow(task.task.status === "running");
-  const { goal, plan, progress, question, summary, status, repo, usage, turns, startedAt } = task.task;
+  const { goal, plan, progress, question, summary, status, repo, usage, turns, startedAt, result, handoff, role, tier } = task.task;
   const lastReply = useMemo(() => messages.findLast((m) => m.role === "assistant" && m.model), [messages]);
   const done = plan.filter((step) => step.done).length;
 
   const details: [string, string][] = [
+    ...(role ? ([["Role", roleLine(role, tier)!]] as [string, string][]) : []),
     ["Model", (lastReply && answeredByLabel(models, lastReply)) ?? modelLabel(models, task.modelId)],
     ...(startedAt ? ([["Started", relativeTime(startedAt, now)]] as [string, string][]) : []),
     ["Working for", taskElapsed(task.task, now) ?? "Not started"],
@@ -81,8 +84,41 @@ export function PlanTab({ task }: { task: TaskConversation }) {
           <div className="text-sm">
             <LazyMarkdown text={summary} muted />
           </div>
+          {result && (result.findings.length > 0 || result.sources.length > 0 || result.openQuestions.length > 0) && (
+            <div className="space-y-2 pt-1">
+              {result.findings.length > 0 && (
+                <ul className="list-disc space-y-0.5 pl-4 text-ui text-fg">
+                  {result.findings.map((finding, index) => (
+                    <li key={index}>{finding}</li>
+                  ))}
+                </ul>
+              )}
+              {result.openQuestions.length > 0 && (
+                <p className="text-xs text-fg-subtle">Open: {result.openQuestions.join(" · ")}</p>
+              )}
+              {result.sources.length > 0 && (
+                <p className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-fg-subtle">
+                  Sources:
+                  {result.sources.map((source) =>
+                    /^https?:\/\//.test(source) ? (
+                      <a key={source} href={source} target="_blank" rel="noopener noreferrer" className="link max-w-full truncate">
+                        {source.replace(/^https?:\/\//, "")}
+                      </a>
+                    ) : (
+                      <span key={source} className="font-mono">
+                        {source}
+                      </span>
+                    ),
+                  )}
+                </p>
+              )}
+              <p className="text-xs text-fg-subtle">Confidence: {result.confidence}</p>
+            </div>
+          )}
         </section>
       )}
+
+      {handoff && <HandoffSection packet={handoff} />}
 
       <section className="space-y-1.5">
         <h3 className="group-label">Details</h3>

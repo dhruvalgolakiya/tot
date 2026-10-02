@@ -15,6 +15,7 @@ import type {
   Attachment,
   ComputerSummary,
   Conversation,
+  ContinueOnRequest,
   ConversationDetail,
   ConvertToTaskRequest,
   CreateConversationRequest,
@@ -184,6 +185,9 @@ export const api = {
   taskToChat: (id: string) => request<Ok>("POST", `/tasks/${seg(id)}/to-chat`, {}),
   patchTask: (id: string, patch: TaskPatch) => request<Conversation>("PATCH", `/tasks/${seg(id)}`, patch),
   taskChanges: (id: string) => request<TaskChanges>("GET", `/tasks/${seg(id)}/changes`),
+  /** Writes a handoff, then carries on in a fresh session on the other provider. */
+  continueTaskOn: (id: string, provider: ContinueOnRequest["provider"]) =>
+    request<Conversation>("POST", `/tasks/${seg(id)}/continue-on`, { provider }),
 
   stopRun: (runId: string) => request<Ok>("POST", `/runs/${seg(runId)}/stop`, {}),
   /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */

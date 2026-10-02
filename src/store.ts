@@ -8,6 +8,7 @@ import type {
   Attachment,
   ComputerSummary,
   Conversation,
+  DispatchMode,
   Brain,
   GitHubStatus,
   MailSummary,
@@ -43,7 +44,7 @@ import {
   wikiFromPath,
   wikiPath,
 } from "./lib/router";
-import { buildSettingsPatch, EMPTY_SECRETS, isValidIdleMinutes, isValidTaskLimit, TASK_LIMITS, type SecretDrafts } from "./lib/settings";
+import { buildSettingsPatch, EMPTY_SECRETS, isValidBudget, isValidIdleMinutes, isValidTaskLimit, TASK_LIMITS, type SecretDrafts } from "./lib/settings";
 import { subscribeToRun } from "./lib/stream";
 import { isTask } from "./lib/tasks";
 
@@ -911,12 +912,14 @@ function scheduleConversationsRefresh() {
 export interface SendMessageOptions {
   thinkHarder?: boolean;
   attachments?: Attachment[];
+  /** Chats: let TOT decide (default), or answer here. ("Task" goes through `startTask`.) */
+  mode?: DispatchMode;
 }
 
 /** Send a message; creates the conversation first on an agent's home screen. */
 export async function sendMessage(
   text: string,
-  { thinkHarder = false, attachments = [] }: SendMessageOptions = {},
+  { thinkHarder = false, attachments = [], mode }: SendMessageOptions = {},
 ): Promise<boolean> {
   const body = text.trim();
   if ((!body && attachments.length === 0) || get().sending) return false;
@@ -970,6 +973,7 @@ export async function sendMessage(
       modelId,
       ...(attachments.length ? { attachments: attachments.map((a) => a.id) } : {}),
       ...(thinkHarder ? { thinkHarder: true } : {}),
+      ...(mode && mode !== "auto" ? { mode } : {}),
     });
 
     set((s) => ({
@@ -979,8 +983,10 @@ export async function sendMessage(
         [id]: (s.messages[id] ?? []).map((m) => (m.id === tempId ? response.userMessage : m)),
       },
     }));
-    // A task that was busy took the message as a note; there's no new turn to follow.
+    // A task that was busy took the message as a note, or TOT passed it to a task or started tasks:
+    // there's no turn to follow, but the chat may have new messages (the cards).
     if (response.runId) attachRun(id, response.runId);
+    else if (response.userMessage.dispatch && response.userMessage.dispatch.mode !== "inline") void loadConversation(id);
     return true;
   } catch (error) {
     if (conversationId) {
@@ -1364,6 +1370,21 @@ export const stopTask = (id: string) => taskAction(() => api.stopTask(id));
 export const runTaskNow = (id: string) => taskAction(() => api.runTaskNow(id));
 export const patchTask = (id: string, patch: TaskPatch) => taskAction(() => api.patchTask(id, patch));
 
+/** "Continue on ChatGPT / Claude": a handoff, then a fresh session there. */
+export async function continueTaskOn(id: string, provider: ProviderId) {
+  const label = PROVIDER_LABELS[provider];
+  const pending = toast.loading(`Writing a handoff for ${label}…`);
+  try {
+    const task = await api.continueTaskOn(id, provider);
+    set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
+    toast.success(`Continuing on ${label}`, { id: pending });
+    if (get().currentId === id) void loadConversation(id);
+  } catch (error) {
+    toast.dismiss(pending);
+    notifyError(error);
+  }
+}
+
 /** Turns the open chat into a task (its transcript stays). */
 export async function convertToTask(conversationId: string, options: { goal?: string } & TaskOptions): Promise<boolean> {
   askForNotifications();
@@ -1556,7 +1577,9 @@ export function selectSettingsValid(s: TotState): boolean {
   return (
     (computer.mode === "off" || isValidIdleMinutes(computer.idleStopMinutes)) &&
     isValidTaskLimit(tasks.perAgentLimit, TASK_LIMITS.perAgent) &&
-    isValidTaskLimit(tasks.globalLimit, TASK_LIMITS.global)
+    isValidTaskLimit(tasks.globalLimit, TASK_LIMITS.global) &&
+    isValidTaskLimit(tasks.maxChildren, TASK_LIMITS.children) &&
+    isValidBudget(tasks.missionTokenBudget)
   );
 }
 

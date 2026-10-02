@@ -2,6 +2,7 @@ import { memo } from "react";
 import clsx from "clsx";
 import { ArrowUpRight, GitBranch, MessageCircleQuestion } from "lucide-react";
 import { useNow } from "../../hooks/useNow";
+import { roleLine } from "../../lib/orchestration";
 import { isOpenTask, isTask, repoLabel, taskElapsed } from "../../lib/tasks";
 import { navigateToConversation, setTaskPanelOpen, useStore } from "../../store";
 import { Button } from "../ui/Button";
@@ -52,6 +53,15 @@ export const TaskCard = memo(function TaskCard({ taskId }: { taskId: string }) {
         </p>
       )}
       {finished && task.summary && <p className="line-clamp-4 text-ui leading-relaxed whitespace-pre-line text-fg-muted">{task.summary}</p>}
+      {finished && task.result && task.result.findings.length > 0 && (
+        <ul className="list-disc space-y-0.5 pl-4 text-ui text-fg-muted">
+          {task.result.findings.slice(0, 3).map((finding, index) => (
+            <li key={index} className="line-clamp-1">
+              {finding}
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="flex items-center gap-2">
         <p className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-fg-subtle">
@@ -63,7 +73,15 @@ export const TaskCard = memo(function TaskCard({ taskId }: { taskId: string }) {
               </span>
             </>
           )}
-          {elapsed && <span className={clsx("shrink-0 tabular-nums", task.repo && "before:mr-1.5 before:content-['·']")}>{elapsed}</span>}
+          {roleLine(task.role, task.tier) && (
+            <span className={clsx("shrink-0", task.repo && "before:mr-1.5 before:content-['·']")}>{roleLine(task.role, task.tier)}</span>
+          )}
+          {finished && task.result && task.result.sources.length > 0 && (
+            <span className="shrink-0 before:mr-1.5 before:content-['·']">
+              {task.result.sources.length} source{task.result.sources.length === 1 ? "" : "s"}
+            </span>
+          )}
+          {elapsed && <span className={clsx("shrink-0 tabular-nums", (task.repo || task.role) && "before:mr-1.5 before:content-['·']")}>{elapsed}</span>}
         </p>
         {finished && task.repo?.headSha && (
           <Button size="sm" variant="ghost" onClick={viewChanges}>

@@ -4,6 +4,7 @@ import type { Message, MessagePart } from "@shared/types";
 import { selectActiveAgent, useStore } from "../store";
 import { MessageMeta } from "./MessageMeta";
 import { MessagePartView } from "./MessagePartView";
+import { TaskGroupCard } from "./orchestration/TaskGroupCard";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { SteerNote } from "./UserMessage";
 
@@ -26,6 +27,23 @@ const isToolCard = (part: MessagePart | undefined) => part?.type === "tool" && !
 function spacing(previous: MessagePart | undefined, part: MessagePart) {
   if (!previous) return undefined;
   return isToolCard(previous) && isToolCard(part) ? "mt-1.5" : "mt-3";
+}
+
+/**
+ * For a run of two or more task cards in a row: the run's task ids at its first part, null at the
+ * others (folded into the group); otherwise [] (render the part as it is).
+ */
+function taskRun(parts: MessagePart[], index: number): string[] | null {
+  const part = parts[index];
+  if (part?.type !== "task") return [];
+  if (parts[index - 1]?.type === "task") {
+    let start = index;
+    while (parts[start - 1]?.type === "task") start--;
+    return taskRun(parts, start)!.length > 1 ? null : [];
+  }
+  const ids: string[] = [];
+  for (let i = index; parts[i]?.type === "task"; i++) ids.push((parts[i] as Extract<MessagePart, { type: "task" }>).taskId);
+  return ids.length > 1 ? ids : [];
 }
 
 /** The tail of a streaming message has nothing animating (e.g. a finished tool). */
@@ -51,21 +69,30 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
       {leading.map((note) => (
         <SteerNote key={note.id} message={note} inline />
       ))}
-      {parts.map((part, index) => (
-        <div key={part.id} className={spacing(parts[index - 1], part)}>
-          <MessagePartView
-            part={part}
-            active={streaming && index === parts.length - 1}
-            live={streaming}
-            conversationId={message.conversationId}
-          />
-          {notesAfter(part.id).map((note) => (
-            <div key={note.id} className="mt-3">
-              <SteerNote message={note} inline />
-            </div>
-          ))}
-        </div>
-      ))}
+      {parts.map((part, index) => {
+        // Tasks started together stack into one group card (at the first of them; the rest are folded in).
+        const group = taskRun(parts, index);
+        if (group === null) return null;
+        return (
+          <div key={part.id} className={spacing(parts[index - 1], part)}>
+            {group.length > 1 ? (
+              <TaskGroupCard taskIds={group} />
+            ) : (
+              <MessagePartView
+                part={part}
+                active={streaming && index === parts.length - 1}
+                live={streaming}
+                conversationId={message.conversationId}
+              />
+            )}
+            {notesAfter(part.id).map((note) => (
+              <div key={note.id} className="mt-3">
+                <SteerNote message={note} inline />
+              </div>
+            ))}
+          </div>
+        );
+      })}
       {trailing.map((note) => (
         <SteerNote key={note.id} message={note} inline />
       ))}

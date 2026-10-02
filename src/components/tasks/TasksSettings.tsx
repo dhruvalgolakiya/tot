@@ -1,5 +1,5 @@
 import type { Settings } from "@shared/types";
-import { TASK_LIMITS, isValidTaskLimit, type SettingsSectionProps } from "../../lib/settings";
+import { TASK_LIMITS, isValidBudget, isValidTaskLimit, type SettingsSectionProps } from "../../lib/settings";
 import { useStore } from "../../store";
 import { SettingRow } from "../settings/SettingRow";
 import { Card } from "../ui/Card";
@@ -57,6 +57,48 @@ export function TasksSettings({ draft, onChange }: SettingsSectionProps) {
             Use whole numbers: 1–{TASK_LIMITS.perAgent} per agent, 1–{TASK_LIMITS.global} in total.
           </p>
         )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-fg">Splitting work</h2>
+        <Card padding="none" className="divide-y divide-hairline">
+          <SettingRow
+            className="px-4"
+            htmlFor="tasks-switch"
+            title="Switch providers when one hits its limit"
+            description="A task that runs into Claude's or ChatGPT's usage limit writes a handoff and carries on with the other. Off: it pauses until the limit resets."
+            control={<Switch id="tasks-switch" checked={tasks.switchProviders} onCheckedChange={(switchProviders) => update({ switchProviders })} />}
+          />
+          <SettingRow
+            className="px-4"
+            htmlFor="tasks-children"
+            title="Tasks one chat or task can start"
+            description="Caps how far TOT fans out a single request."
+            control={<LimitInput id="tasks-children" value={tasks.maxChildren} max={TASK_LIMITS.children} onChange={(maxChildren) => update({ maxChildren })} />}
+          />
+          <SettingRow
+            className="px-4"
+            htmlFor="tasks-budget"
+            title="Token budget per request"
+            description="All the tokens a chat's tasks (and theirs) may use. Past it, no new tasks start and running ones pause. 0 means no limit."
+            control={
+              <div className="flex items-center gap-1.5">
+                <input
+                  id="tasks-budget"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={100}
+                  value={Number.isNaN(tasks.missionTokenBudget) ? "" : Math.round(tasks.missionTokenBudget / 1000)}
+                  onChange={(event) => update({ missionTokenBudget: event.target.valueAsNumber * 1000 })}
+                  aria-invalid={!isValidBudget(tasks.missionTokenBudget)}
+                  className="input input-sm w-24 text-right tabular-nums"
+                />
+                <span className="text-xs text-fg-subtle">k</span>
+              </div>
+            }
+          />
+        </Card>
       </section>
 
       <section className="space-y-3">

@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Check, CircleStop, Copy, Ellipsis, FolderOpen, GitBranch, MessagesSquare, PanelRight, Pause, Pencil, Play, Trash } from "lucide-react";
+import { ArrowLeftRight, Check, CircleStop, Copy, Ellipsis, FolderOpen, GitBranch, MessagesSquare, PanelRight, Pause, Pencil, Play, Trash } from "lucide-react";
 import type { Message } from "@shared/types";
 import { useCopy } from "../../hooks/useCopy";
 import { useNow } from "../../hooks/useNow";
-import { answeredByLabel, modelLabel } from "../../lib/models";
+import { answeredByLabel, modelLabel, PROVIDER_LABELS } from "../../lib/models";
+import { roleLine } from "../../lib/orchestration";
 import { formatTokens, isOpenTask, repoLabel, taskElapsed, type TaskConversation } from "../../lib/tasks";
-import { pauseTask, resumeTask, setComputerPanelOpen, setTaskPanelOpen, stopTask, taskToChat, useStore } from "../../store";
+import { continueTaskOn, pauseTask, resumeTask, setComputerPanelOpen, setTaskPanelOpen, stopTask, taskToChat, useStore } from "../../store";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { Tip } from "../ui/Tip";
@@ -27,7 +28,8 @@ export function TaskHeaderInfo({ task }: { task: TaskConversation }) {
   const model = (lastReply && answeredByLabel(models, lastReply)) ?? modelLabel(models, task.modelId);
   const elapsed = taskElapsed(task.task, now);
   const tokens = usage.inputTokens + usage.outputTokens;
-  const stats = [model, elapsed, tokens ? `${formatTokens(tokens)} tokens` : null].filter(Boolean).join(" · ");
+  // e.g. "Implementer · deep · Opus 5.5 · 14m · 98k tokens".
+  const stats = [roleLine(task.task.role, task.task.tier), model, elapsed, tokens ? `${formatTokens(tokens)} tokens` : null].filter(Boolean).join(" · ");
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1">
@@ -61,6 +63,11 @@ export function TaskHeaderInfo({ task }: { task: TaskConversation }) {
 
 export function TaskHeaderActions({ task }: { task: TaskConversation }) {
   const panelOpen = useStore((s) => s.taskPanelOpen);
+  // The provider it's on (its last reply's, or the one it was moved to), and whether the other is signed in.
+  const lastProvider = useStore((s) => s.messages[task.id]?.findLast((m) => m.role === "assistant" && m.provider)?.provider);
+  const current = task.task.provider ?? lastProvider ?? "claude";
+  const other = current === "claude" ? "chatgpt" : "claude";
+  const otherReady = useStore((s) => Boolean(s.providers.find((p) => p.id === other)?.loggedIn));
   const [dialog, setDialog] = useState<"rename" | "delete" | null>(null);
   const { status, repo } = task.task;
   const { copy } = useCopy();
@@ -126,6 +133,10 @@ export function TaskHeaderActions({ task }: { task: TaskConversation }) {
                 </DropdownMenu.Item>
               </>
             )}
+            <DropdownMenu.Item className="menu-item" disabled={!otherReady} onSelect={() => void continueTaskOn(task.id, other)}>
+              <ArrowLeftRight className="size-4 text-fg-muted" />
+              <span className="flex-1">Continue on {PROVIDER_LABELS[other]}</span>
+            </DropdownMenu.Item>
             {!isOpenTask(status) || status === "paused" || status === "interrupted" ? (
               <DropdownMenu.Item className="menu-item" onSelect={() => void taskToChat(task.id)}>
                 <MessagesSquare className="size-4 text-fg-muted" /> Turn back into a chat
