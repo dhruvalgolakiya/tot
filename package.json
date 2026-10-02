@@ -14,7 +14,7 @@
     "build": "vite build",
     "start": "NODE_ENV=production NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx server/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
-    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/smoke.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/desktop.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/computer/boat.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/auth.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/guard.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/github.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/approvals.test.ts'",
+    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/smoke.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/desktop.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/computer/boat.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/auth.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/guard.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/github.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/approvals.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/slack.test.ts'",
     "test:live": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/agent/providers/chatgpt.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/agent/providers/claude.test.ts'"
   },
   "dependencies": {
@@ -23,6 +23,8 @@
     "@hono/node-server": "^2.1.3",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@openai/codex-sdk": "^0.159.0",
+    "@slack/socket-mode": "^3.1.0",
+    "@slack/web-api": "^8.2.0",
     "clsx": "^2.1.1",
     "highlight.js": "^11.12.0",
     "hono": "^4.13.11",

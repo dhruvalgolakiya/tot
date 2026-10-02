@@ -16,6 +16,7 @@ import type {
   RunEvent,
   Settings,
   SettingsPatch,
+  SlackStatus,
   UpdateConversationRequest,
 } from "@shared/types";
 import { api, ApiError, errorMessage } from "./lib/api";
@@ -99,6 +100,8 @@ export interface TotState {
   github: GitHubStatus | null;
   /** Apps (Executor): shared across agents; null while still loading. */
   apps: AppsStatus | null;
+  /** TOT's Slack bot: shared across agents; null while still loading. */
+  slack: SlackStatus | null;
   /** A browser login is in progress; we poll until the provider reports loggedIn. */
   connectingProvider: ProviderId | null;
   /** Model picked before a conversation exists. */
@@ -169,6 +172,7 @@ export const useStore = create<TotState>()(() => ({
   settingsState: "loading",
   github: null,
   apps: null,
+  slack: null,
   connectingProvider: null,
   draftModelId: null,
 
@@ -272,6 +276,7 @@ export function initApp() {
   void loadSettings();
   void loadGithubStatus();
   void loadAppsStatus();
+  void loadSlackStatus();
 }
 
 export async function loadAgents() {
@@ -406,6 +411,20 @@ export async function loadAppsStatus() {
 /** Set after a setup/stop call, a poll, or from the `apps` AppEvent. */
 export function setAppsStatus(status: AppsStatus) {
   set({ apps: status });
+}
+
+/** Loaded at app init and refreshed whenever the Settings dialog opens; also kept live via the `slack` AppEvent. */
+export async function loadSlackStatus() {
+  try {
+    setSlackStatus(await api.getSlack());
+  } catch (error) {
+    notifyError(error);
+  }
+}
+
+/** Set after a connect/patch/disconnect call, or from the `slack` AppEvent. */
+export function setSlackStatus(status: SlackStatus) {
+  set({ slack: status });
 }
 
 // ---------------------------------------------------------------------------
@@ -1017,6 +1036,24 @@ function handleWikiEvent(agentId: string, conversationId?: string) {
 }
 
 /**
+ * The Slack bot's state or its people changed. Toasts once per newly-seen
+ * request so the user notices someone wants access, with a shortcut into the
+ * Slack settings section to review it.
+ */
+function handleSlackEvent(status: SlackStatus) {
+  const previous = get().slack;
+  setSlackStatus(status);
+  if (!previous) return; // Don't toast for the first status a tab ever sees.
+  const previousIds = new Set(previous.requests.map((r) => r.id));
+  for (const person of status.requests) {
+    if (previousIds.has(person.id)) continue;
+    toast(`${person.name} wants to use TOT in Slack`, {
+      action: { label: "Review", onClick: () => goToSettings("slack") },
+    });
+  }
+}
+
+/**
  * A chat is waiting for the user's approval, or no longer is (answered,
  * expired, or a background routine run moved on). Tracks `pendingApprovals`
  * for the sidebar's attention dot, and nudges with a toast when the
@@ -1064,6 +1101,9 @@ export function handleAppEvent(event: AppEvent) {
       break;
     case "apps":
       setAppsStatus(event.status);
+      break;
+    case "slack":
+      handleSlackEvent(event.status);
       break;
     case "approval":
       handleApprovalEvent(event);

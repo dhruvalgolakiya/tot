@@ -174,6 +174,16 @@ export interface Conversation {
   updatedAt: number;
   /** The agent's computer (the same one across all of that agent's chats). */
   computer: ComputerSummary | null;
+  /** Where the chat was started from outside TOT, e.g. a Slack thread; null for chats started in TOT. */
+  origin: ConversationOrigin | null;
+}
+
+export interface ConversationOrigin {
+  kind: "slack";
+  /** e.g. "#eng" or "DM with Dhruval". */
+  label: string;
+  /** Link to the Slack thread, when known. */
+  url: string | null;
 }
 
 export type MessageRole = "user" | "assistant";
@@ -347,6 +357,8 @@ export type AppEvent =
   | { type: "wiki"; agentId: string; conversationId?: string }
   /** The GitHub connection changed (connected, disconnected, writes toggled). */
   | { type: "github"; status: GitHubStatus }
+  /** The Slack bot's state or its people changed. */
+  | { type: "slack"; status: SlackStatus }
   /** Apps (Executor) changed state or connected apps changed. */
   | { type: "apps"; status: AppsStatus }
   /** A chat is waiting for the user's approval (pending) or no longer is, e.g. a background routine run. */
@@ -614,6 +626,55 @@ export interface AppRule {
 }
 
 // ---------------------------------------------------------------------------
+// Slack: TOT's own Slack bot (a Slack app the user creates from TOT's manifest,
+// connected over Socket Mode, so no public URL is needed). DM it or @mention it
+// and an agent works on the request: each Slack thread becomes a TOT chat (with
+// the thread so far as context), the answer is posted back in the thread, and
+// approval requests become Approve/Deny buttons. Only people the user allowed
+// can use it; others are listed as requests to allow. Pick an agent by starting
+// the message with its name ("Puddin: …"); otherwise the default agent answers.
+// ---------------------------------------------------------------------------
+
+export interface SlackStatus {
+  state: "not-set-up" | "connecting" | "connected" | "error";
+  error: string | null;
+  /** The Slack workspace's name, once connected. */
+  workspace: string | null;
+  /** The bot's name in Slack, e.g. "tot". */
+  botName: string | null;
+  /** The agent that answers when a message doesn't name one; null = the first agent. */
+  defaultAgentId: string | null;
+  /** People who may use TOT in Slack. */
+  allowedUsers: SlackPerson[];
+  /** People who tried and aren't allowed yet (newest first). */
+  requests: SlackPerson[];
+  /** TOT's Slack app manifest (JSON), to paste when creating the app. */
+  manifest: string;
+  /** Opens Slack's "create app" page with the manifest filled in. */
+  createAppUrl: string;
+}
+
+export interface SlackPerson {
+  id: string;
+  name: string;
+}
+
+export interface SlackTokens {
+  /** App-level token (xapp-…, scope connections:write) for Socket Mode. */
+  appToken: string;
+  /** Bot token (xoxb-…) from "Install to workspace". */
+  botToken: string;
+}
+
+export interface SlackPatch {
+  defaultAgentId?: string | null;
+  /** Let a person use TOT (a Slack user id from `requests`). */
+  allow?: string;
+  /** Stop letting a person use TOT. */
+  disallow?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Plugins (MCP servers). TOT's own computer+memory server is built in and not listed.
 // ---------------------------------------------------------------------------
 
@@ -751,6 +812,11 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // DELETE /api/apps/:appId                     -> AppsStatus  (removes the app, its accounts and rules)
 // GET    /api/apps/:appId/rules               -> AppRule[]   (the whole app first, then each action)
 // PUT    /api/apps/:appId/rules               { tool, action: AppRule["action"] | "default" } -> AppRule[]
+//
+// GET    /api/slack                           -> SlackStatus
+// PUT    /api/slack/tokens                    SlackTokens -> SlackStatus  (checks them with Slack and connects; 400 with the reason)
+// PATCH  /api/slack                           SlackPatch -> SlackStatus
+// DELETE /api/slack                           -> SlackStatus  (disconnects and forgets the tokens)
 //
 // GET    /api/plugins                         -> Plugin[]
 // POST   /api/plugins                         PluginInput -> Plugin

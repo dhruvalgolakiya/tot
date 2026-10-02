@@ -14,6 +14,7 @@ import {
   loadAppsStatus,
   loadGithubStatus,
   loadSettings,
+  loadSlackStatus,
   refreshProviders,
   saveSettingsDraft,
   selectSettingsDirty,
@@ -35,6 +36,7 @@ import { GitHubSettings } from "./GitHubSettings";
 import { ModelsSettings } from "./ModelsSettings";
 import { PluginsSettings } from "./PluginsSettings";
 import { SETTINGS_SECTIONS, type SettingsSectionMeta } from "./settingsSections";
+import { SlackSettings } from "./SlackSettings";
 
 /** Escape should go back, unless it would steal focus from a menu, dialog, or a field the user is editing. */
 function escapeShouldGoBack(): boolean {
@@ -62,6 +64,7 @@ export function SettingsPage() {
     void refreshProviders({ quiet: true });
     void loadGithubStatus();
     void loadAppsStatus();
+    void loadSlackStatus();
   }, []);
 
   useEffect(() => {
@@ -224,6 +227,8 @@ function SectionBody({
       return <GitHubSettings />;
     case "apps":
       return <AppsSettings />;
+    case "slack":
+      return <SlackSettings />;
     case "plugins":
       return <PluginsSettings />;
   }

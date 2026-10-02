@@ -29,6 +29,9 @@ import type {
   SendMessageResponse,
   Settings,
   SettingsPatch,
+  SlackPatch,
+  SlackStatus,
+  SlackTokens,
   UpdateConversationRequest,
   WikiPage,
   WikiPageInput,
@@ -201,6 +204,12 @@ export const api = {
   appRules: (appId: string) => request<AppRule[]>("GET", `/apps/${seg(appId)}/rules`),
   setAppRule: (appId: string, body: { tool: string; action: AppRule["action"] | "default" }) =>
     request<AppRule[]>("PUT", `/apps/${seg(appId)}/rules`, body),
+
+  /** Slack: TOT's own bot, connected over Socket Mode. */
+  getSlack: () => request<SlackStatus>("GET", "/slack"),
+  setSlackTokens: (tokens: SlackTokens) => request<SlackStatus>("PUT", "/slack/tokens", tokens),
+  patchSlack: (patch: SlackPatch) => request<SlackStatus>("PATCH", "/slack", patch),
+  disconnectSlack: () => request<SlackStatus>("DELETE", "/slack"),
 
   listPlugins: () => request<Plugin[]>("GET", "/plugins"),
   createPlugin: (input: PluginInput) => request<Plugin>("POST", "/plugins", input),

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { Conversation, ProviderId } from "../../shared/types.ts";
-import { db, type Row } from "../db.ts";
+import type { Conversation, ConversationOrigin, ProviderId } from "../../shared/types.ts";
+import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 
 /** Server-side view of a conversation, including provider session state. */
@@ -23,6 +23,7 @@ function toRecord(row: Row): ConversationRecord {
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
     computer: getComputerSummary(agentId),
+    origin: parseJson<ConversationOrigin | null>(row.origin, null),
     providerSessionId: (row.provider_session_id as string | null) ?? null,
     systemPrompt: (row.system_prompt as string | null) ?? null,
   };
@@ -57,12 +58,27 @@ export const conversations = {
     return row ? toRecord(row) : null;
   },
 
-  create(input: { agentId: string; modelId: string; title?: string; routineId?: string }): ConversationRecord {
+  create(input: {
+    agentId: string;
+    modelId: string;
+    title?: string;
+    routineId?: string;
+    origin?: ConversationOrigin;
+  }): ConversationRecord {
     const id = randomUUID();
     const now = Date.now();
     db.prepare(
-      `INSERT INTO conversations (id, agent_id, routine_id, title, model_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, input.agentId, input.routineId ?? null, input.title ?? "New chat", input.modelId, now, now);
+      `INSERT INTO conversations (id, agent_id, routine_id, title, model_id, origin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      input.agentId,
+      input.routineId ?? null,
+      input.title ?? "New chat",
+      input.modelId,
+      input.origin ? JSON.stringify(input.origin) : null,
+      now,
+      now,
+    );
     return conversations.get(id)!;
   },
 

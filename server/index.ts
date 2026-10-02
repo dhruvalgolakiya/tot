@@ -10,6 +10,7 @@ import { computerManager } from "./computer/manager.ts";
 import { ACCESS_TOKEN, DATA_DIR, HOST, IS_PROD, LAN, PORT, VERSION } from "./config.ts";
 import { isLoopbackBind, lanUrls } from "./net.ts";
 import { tokenProblem } from "./session.ts";
+import { slack } from "./slack.ts";
 
 // Never put TOT on the network without sign-in: it drives paid subscriptions and runs commands.
 const exposed = LAN || !isLoopbackBind(HOST);
@@ -35,6 +36,7 @@ const server = serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) =>
 computerManager.startIdleReaper();
 scheduler.start();
 void apps.resume();
+void slack.resume();
 wikiKeeper.start();
 
 let shuttingDown = false;
@@ -45,7 +47,7 @@ async function shutdown(signal: string) {
   scheduler.stop();
   wikiKeeper.stop();
   runRegistry.stopAll();
-  await Promise.allSettled([computerManager.shutdown(), stopCodex(), apps.stop({ keepEnabled: true })]);
+  await Promise.allSettled([computerManager.shutdown(), stopCodex(), apps.stop({ keepEnabled: true }), slack.stop()]);
   server.close();
   process.exit(0);
 }

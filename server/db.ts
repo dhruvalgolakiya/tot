@@ -177,6 +177,23 @@ if (!hasColumn("conversations", "wiki_synced_at")) {
   db.exec(`UPDATE conversations SET wiki_synced_at = updated_at`);
 }
 
+// v5: chats started outside TOT (a Slack thread), and which Slack thread each belongs to.
+if (!hasColumn("conversations", "origin")) db.exec(`ALTER TABLE conversations ADD COLUMN origin TEXT`);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS slack_threads (
+    channel TEXT NOT NULL,
+    thread_ts TEXT NOT NULL,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    -- The person who started it: the one who may approve its actions from Slack.
+    user_id TEXT NOT NULL,
+    -- The newest Slack message already shown to the agent, so later turns get only what's new.
+    seen_ts TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (channel, thread_ts)
+  );
+  CREATE INDEX IF NOT EXISTS slack_threads_by_conversation ON slack_threads(conversation_id);
+`);
+
 // Full-text index of what was said in each chat, so agents can search their earlier chats.
 db.exec(`
   CREATE VIRTUAL TABLE IF NOT EXISTS message_search USING fts5(

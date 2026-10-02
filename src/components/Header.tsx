@@ -1,6 +1,13 @@
 import clsx from "clsx";
-import { PanelLeft, SquarePen } from "lucide-react";
-import { navigateToAgentHome, selectActiveAgent, selectAgentWorking, setSidebarOpen, useStore } from "../store";
+import { MessageSquare, PanelLeft, SquarePen } from "lucide-react";
+import {
+  navigateToAgentHome,
+  selectActiveAgent,
+  selectAgentWorking,
+  selectCurrentConversation,
+  setSidebarOpen,
+  useStore,
+} from "../store";
 import { ComputerChip } from "./ComputerChip";
 import { Mascot } from "./mascot";
 import { ModelPicker } from "./ModelPicker";
@@ -18,6 +25,10 @@ export function Header() {
   const agent = useStore(selectActiveAgent);
   const working = useStore((s) => (agent ? selectAgentWorking(s, agent.id) : false));
   const scrolled = useStore((s) => s.chatScrolled);
+  const slackUrl = useStore((s) => {
+    const origin = selectCurrentConversation(s)?.origin;
+    return origin?.kind === "slack" ? origin.url : null;
+  });
 
   return (
     <header
@@ -63,6 +74,19 @@ export function Header() {
       )}
       <ModelPicker />
       <div className="ml-auto flex items-center gap-2">
+        {slackUrl && (
+          <Tip content="Open in Slack">
+            <a
+              href={slackUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open in Slack"
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-100"
+            >
+              <MessageSquare className="size-[18px]" />
+            </a>
+          </Tip>
+        )}
         <ComputerChip />
       </div>
     </header>

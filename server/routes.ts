@@ -16,6 +16,8 @@ import type {
   ProviderId,
   SendMessageRequest,
   SettingsPatch,
+  SlackPatch,
+  SlackTokens,
   UpdateConversationRequest,
   WikiPageInput,
   WikiPagePatch,
@@ -27,6 +29,7 @@ import { appsCatalog, AppsError } from "./apps-catalog.ts";
 import { ACCESS_TOKEN } from "./auth.ts";
 import { github, GitHubError } from "./github.ts";
 import { clientAddress, hostnameOf, isLoopbackName, isThisMachine } from "./net.ts";
+import { slack } from "./slack.ts";
 import { modelOptions, providerStatuses, providers } from "./agent/providers/index.ts";
 import { runRegistry } from "./agent/runs.ts";
 import { runRoutine } from "./agent/scheduler.ts";
@@ -568,6 +571,31 @@ api.get("/apps/open", (c) => {
   if (!url) throw new HttpError(400, "Apps aren't running. Set them up in Settings → Connections.");
   return c.redirect(url, 302);
 });
+
+// ---------------------------------------------------------------------------
+// Slack bot (its tokens never leave the server)
+// ---------------------------------------------------------------------------
+
+api.get("/slack", (c) => c.json(slack.status()));
+
+api.put("/slack/tokens", async (c) => {
+  const tokens = await body<Partial<SlackTokens>>(c);
+  return c.json(await slack.connect({ appToken: String(tokens.appToken ?? ""), botToken: String(tokens.botToken ?? "") }));
+});
+
+api.patch("/slack", async (c) => {
+  const patch = await body<SlackPatch>(c);
+  const id = (value: unknown) => (typeof value === "string" && /^[A-Z0-9]+$/.test(value) ? value : undefined);
+  return c.json(
+    slack.patch({
+      ...(patch.defaultAgentId === null || typeof patch.defaultAgentId === "string" ? { defaultAgentId: patch.defaultAgentId } : {}),
+      ...(id(patch.allow) ? { allow: id(patch.allow) } : {}),
+      ...(id(patch.disallow) ? { disallow: id(patch.disallow) } : {}),
+    }),
+  );
+});
+
+api.delete("/slack", async (c) => c.json(await slack.disconnect()));
 
 // ---------------------------------------------------------------------------
 // Plugins
