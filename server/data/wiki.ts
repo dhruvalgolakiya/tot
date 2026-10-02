@@ -1,0 +1,390 @@
+import { randomUUID } from "node:crypto";
+import type {
+  WikiAuthor,
+  WikiPage,
+  WikiPageInput,
+  WikiPagePatch,
+  WikiPageSummary,
+  WikiRevision,
+  WikiSearchHit,
+} from "../../shared/types.ts";
+import { db, type Row } from "../db.ts";
+import { toFtsQuery } from "./memories.ts";
+
+/**
+ * Each agent's workspace wiki: markdown pages that nest, searchable, with a
+ * revision kept before every change. Titles are unique among siblings (so two
+ * repo pages can each have an "Architecture" child); the agent refers to pages
+ * by id, or by title when that's unambiguous. Every workspace has one pinned
+ * Overview page, created on first use. Deleting a page only marks it deleted,
+ * so it and its history can be recovered.
+ */
+
+/** A change the user should see as a validation message (bad title, unknown page…). */
+export class WikiError extends Error {}
+
+export const OVERVIEW_TITLE = "Overview";
+const OVERVIEW_SUMMARY = "What this workspace is for, its projects and where they live, current status and next steps.";
+
+const STOPWORDS = new Set(
+  (
+    "the and for are but not you your yours with this that these those from have has had was were will would can could should " +
+    "about into over under again then than them they their there here what when where which who why how all any both each few " +
+    "more most other some such only own same too very just now also please thanks thank hey hello okay let lets make need want " +
+    "get got use using like know think does did doing done its it's i'm i've we're our ours out off one two new"
+  ).split(" "),
+);
+
+const MAX_TITLE = 120;
+const MAX_SUMMARY = 300;
+export const MAX_PAGE_CHARS = 60_000;
+/** Edits to a page by the same author in the same chat within this window share one revision. */
+const REVISION_COALESCE_MS = 15 * 60_000;
+const MAX_REVISIONS_PER_PAGE = 30;
+
+function toSummary(row: Row): WikiPageSummary {
+  return {
+    id: String(row.id),
+    agentId: String(row.agent_id),
+    parentId: (row.parent_id as string | null) ?? null,
+    title: String(row.title),
+    summary: String(row.summary),
+    pinned: Boolean(row.pinned),
+    position: Number(row.position),
+    updatedBy: row.updated_by as WikiAuthor,
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+function toPage(row: Row): WikiPage {
+  return {
+    ...toSummary(row),
+    content: String(row.content),
+    conversationId: (row.conversation_id as string | null) ?? null,
+    createdAt: Number(row.created_at),
+  };
+}
+
+function toRevision(row: Row): WikiRevision {
+  return {
+    id: String(row.id),
+    pageId: String(row.page_id),
+    title: String(row.title),
+    summary: String(row.summary),
+    content: String(row.content),
+    updatedBy: row.updated_by as WikiAuthor,
+    conversationId: (row.conversation_id as string | null) ?? null,
+    createdAt: Number(row.created_at),
+  };
+}
+
+/** Pinned first, then depth-first through the tree in position order. */
+function treeOrder(pages: WikiPageSummary[]): (WikiPageSummary & { depth: number })[] {
+  const children = new Map<string | null, WikiPageSummary[]>();
+  const ids = new Set(pages.map((p) => p.id));
+  for (const page of pages) {
+    const parent = page.parentId && ids.has(page.parentId) ? page.parentId : null;
+    children.set(parent, [...(children.get(parent) ?? []), page]);
+  }
+  const ordered: (WikiPageSummary & { depth: number })[] = [];
+  const visit = (parent: string | null, depth: number) => {
+    const siblings = (children.get(parent) ?? []).sort(
+      (a, b) => Number(b.pinned) - Number(a.pinned) || a.position - b.position || a.title.localeCompare(b.title),
+    );
+    for (const page of siblings) {
+      ordered.push({ ...page, depth });
+      visit(page.id, depth + 1);
+    }
+  };
+  visit(null, 0);
+  return ordered;
+}
+
+function text(value: unknown, field: string): string {
+  if (value === undefined) return "";
+  if (typeof value !== "string") throw new WikiError(`The ${field} must be text.`);
+  return value;
+}
+
+function cleanTitle(title: unknown): string {
+  const value = text(title, "title").replace(/\s+/g, " ").trim();
+  if (!value || value.length > MAX_TITLE) throw new WikiError(`Page titles need 1–${MAX_TITLE} characters.`);
+  return value;
+}
+
+function cleanSummary(summary: unknown): string {
+  const value = text(summary, "summary").replace(/\s+/g, " ").trim();
+  if (value.length > MAX_SUMMARY) throw new WikiError(`Keep the summary under ${MAX_SUMMARY} characters (it's one line).`);
+  return value;
+}
+
+function cleanContent(content: unknown): string {
+  const value = text(content, "content").replace(/\r\n/g, "\n").trim();
+  if (value.length > MAX_PAGE_CHARS) {
+    throw new WikiError(`Pages are limited to ${MAX_PAGE_CHARS.toLocaleString("en-US")} characters; split this into smaller pages.`);
+  }
+  return value;
+}
+
+/** Case-insensitive across scripts (SQLite's lower() only folds ASCII). */
+const sameTitle = (a: string, b: string) => a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+
+export const wiki = {
+  /** The workspace's pinned Overview, created on first use. */
+  overview(agentId: string): WikiPage {
+    const row = db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND pinned = 1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`).get(agentId) as
+      | Row
+      | undefined;
+    if (row) return toPage(row);
+    const id = randomUUID();
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO wiki_pages (id, agent_id, title, summary, content, pinned, position, updated_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, '', 1, 0, 'agent', ?, ?)`,
+    ).run(id, agentId, OVERVIEW_TITLE, OVERVIEW_SUMMARY, now, now);
+    return wiki.get(id)!;
+  },
+
+  /** Every page of a workspace, Overview first, then in tree order. */
+  list(agentId: string): WikiPageSummary[] {
+    wiki.overview(agentId);
+    const rows = db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`).all(agentId) as Row[];
+    return treeOrder(rows.map(toSummary)).map(({ depth: _depth, ...page }) => page);
+  },
+
+  /** The page index as the agent sees it: titles indented by depth. */
+  outline(agentId: string): (WikiPageSummary & { depth: number })[] {
+    wiki.overview(agentId);
+    const rows = db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`).all(agentId) as Row[];
+    return treeOrder(rows.map(toSummary));
+  },
+
+  count(agentId: string): number {
+    return Number((db.prepare(`SELECT COUNT(*) AS n FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`).get(agentId) as Row).n);
+  },
+
+  search(agentId: string, query: string, limit = 10): WikiSearchHit[] {
+    const fts = toFtsQuery(query);
+    if (!fts) return [];
+    const rows = db
+      .prepare(
+        `SELECT p.*, snippet(wiki_fts, -1, '«', '»', ' … ', 16) AS snippet
+         FROM wiki_fts f JOIN wiki_pages p ON p.rowid = f.rowid
+         WHERE wiki_fts MATCH ? AND p.agent_id = ? AND p.deleted_at IS NULL
+         ORDER BY bm25(wiki_fts, 8.0, 3.0, 1.0) LIMIT ?`,
+      )
+      .all(fts, agentId, limit) as Row[];
+    return rows.map((row) => ({ ...toSummary(row), snippet: String(row.snippet) }));
+  },
+
+  /** Full pages ranked by relevance to some text, e.g. the first message of a chat. */
+  relevant(agentId: string, text: string, limit: number): WikiPage[] {
+    // Only meaningful words, so "can you fix the bug" doesn't match every page.
+    const words = text.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}_-]{2,}/gu)?.filter((word) => !STOPWORDS.has(word)) ?? [];
+    const fts = toFtsQuery(words.join(" "));
+    if (!fts) return [];
+    const rows = db
+      .prepare(
+        `SELECT p.* FROM wiki_fts f JOIN wiki_pages p ON p.rowid = f.rowid
+         WHERE wiki_fts MATCH ? AND p.agent_id = ? AND p.pinned = 0 AND p.deleted_at IS NULL
+         ORDER BY bm25(wiki_fts, 8.0, 3.0, 1.0) LIMIT ?`,
+      )
+      .all(fts, agentId, limit) as Row[];
+    return rows.map(toPage);
+  },
+
+  get(id: string): WikiPage | null {
+    const row = db.prepare(`SELECT * FROM wiki_pages WHERE id = ? AND deleted_at IS NULL`).get(id) as Row | undefined;
+    return row ? toPage(row) : null;
+  },
+
+  /** A page in this workspace by id or (case-insensitive) title; throws when several pages share the title. */
+  find(agentId: string, ref: string): WikiPage | null {
+    const key = ref.trim();
+    const byId = db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND id = ? AND deleted_at IS NULL`).get(agentId, key) as
+      | Row
+      | undefined;
+    if (byId) return toPage(byId);
+    const matches = wiki.withTitle(agentId, key);
+    if (matches.length > 1) {
+      const options = matches.map((page) => `${page.id}${page.parentId ? ` (under “${wiki.get(page.parentId)?.title}”)` : ""}`);
+      throw new WikiError(`Several pages are called “${key}”; use the id: ${options.join(", ")}.`);
+    }
+    return matches[0] ?? null;
+  },
+
+  /** Pages with this title (case-insensitive), optionally only under one parent (null = top level). */
+  withTitle(agentId: string, title: string, parentId?: string | null): WikiPage[] {
+    const rows =
+      parentId === undefined
+        ? db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND deleted_at IS NULL`).all(agentId)
+        : db.prepare(`SELECT * FROM wiki_pages WHERE agent_id = ? AND parent_id IS ? AND deleted_at IS NULL`).all(agentId, parentId);
+    return (rows as Row[]).map(toPage).filter((page) => sameTitle(page.title, title));
+  },
+
+  create(agentId: string, input: WikiPageInput, author: WikiAuthor, conversationId: string | null = null): WikiPage {
+    const title = cleanTitle(input.title);
+    const summary = cleanSummary(input.summary);
+    const content = cleanContent(input.content);
+    const parentId = input.parentId ? wiki.checkParent(agentId, input.parentId, null) : null;
+    if (wiki.withTitle(agentId, title, parentId).length) throw new WikiError(`There's already a page called “${title}” here.`);
+    const position = Number(
+      (
+        db
+          .prepare(
+            `SELECT COALESCE(MAX(position), 0) + 1 AS next FROM wiki_pages WHERE agent_id = ? AND parent_id IS ? AND deleted_at IS NULL`,
+          )
+          .get(agentId, parentId) as Row
+      ).next,
+    );
+    const id = randomUUID();
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO wiki_pages (id, agent_id, parent_id, title, summary, content, pinned, position, updated_by, conversation_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+    ).run(id, agentId, parentId, title, summary, content, position, author, conversationId, now, now);
+    return wiki.get(id)!;
+  },
+
+  update(id: string, patch: WikiPagePatch, author: WikiAuthor, conversationId: string | null = null): WikiPage {
+    const page = wiki.get(id);
+    if (!page) throw new WikiError("Page not found.");
+    const title = patch.title === undefined ? page.title : cleanTitle(patch.title);
+    const summary = patch.summary === undefined ? page.summary : cleanSummary(patch.summary);
+    const content = patch.content === undefined ? page.content : cleanContent(patch.content);
+    if (page.pinned && title !== page.title) throw new WikiError(`The ${page.title} page can't be renamed.`);
+    let parentId = page.parentId;
+    if (patch.parentId !== undefined) {
+      if (page.pinned && patch.parentId) throw new WikiError(`The ${page.title} page stays at the top.`);
+      parentId = patch.parentId ? wiki.checkParent(page.agentId, patch.parentId, page.id) : null;
+    }
+    // Only a rename or a move can create a clash; re-checking otherwise would lock out pages that already clash.
+    const renamedOrMoved = !sameTitle(title, page.title) || parentId !== page.parentId;
+    if (renamedOrMoved && wiki.withTitle(page.agentId, title, parentId).some((other) => other.id !== page.id)) {
+      throw new WikiError(`There's already a page called “${title}” here.`);
+    }
+    const position = patch.position ?? page.position;
+
+    if (title === page.title && summary === page.summary && content === page.content) {
+      // Nothing to read changed (a move or reorder): keep who wrote it and when.
+      db.prepare(`UPDATE wiki_pages SET parent_id = ?, position = ? WHERE id = ?`).run(parentId, position, id);
+      return wiki.get(id)!;
+    }
+    wiki.snapshot(page, author, conversationId);
+    db.prepare(
+      `UPDATE wiki_pages SET title = ?, summary = ?, content = ?, parent_id = ?, position = ?, updated_by = ?, conversation_id = ?, updated_at = ?
+       WHERE id = ?`,
+    ).run(title, summary, content, parentId, position, author, conversationId, Date.now(), id);
+    return wiki.get(id)!;
+  },
+
+  /**
+   * Deletes a page (kept, marked deleted); its children move up a level, renamed
+   * if a sibling there already has their title. The pinned Overview can't be deleted.
+   */
+  delete(id: string): WikiPage {
+    const page = wiki.get(id);
+    if (!page) throw new WikiError("Page not found.");
+    if (page.pinned) throw new WikiError(`The ${page.title} page can't be deleted.`);
+    for (const child of db.prepare(`SELECT * FROM wiki_pages WHERE parent_id = ? AND deleted_at IS NULL`).all(id) as Row[]) {
+      const { id: childId, title } = toSummary(child);
+      let free = title;
+      for (let n = 1; wiki.withTitle(page.agentId, free, page.parentId).length; n++) {
+        free = n === 1 ? `${title} (${page.title})` : `${title} (${page.title} ${n})`;
+      }
+      db.prepare(`UPDATE wiki_pages SET parent_id = ?, title = ? WHERE id = ?`).run(page.parentId, free, childId);
+    }
+    db.prepare(`UPDATE wiki_pages SET deleted_at = ? WHERE id = ?`).run(Date.now(), id);
+    return page;
+  },
+
+  revisions(pageId: string): WikiRevision[] {
+    return (db.prepare(`SELECT * FROM wiki_revisions WHERE page_id = ? ORDER BY created_at DESC`).all(pageId) as Row[]).map(
+      toRevision,
+    );
+  },
+
+  restore(pageId: string, revisionId: string, author: WikiAuthor): WikiPage {
+    const row = db.prepare(`SELECT * FROM wiki_revisions WHERE id = ? AND page_id = ?`).get(revisionId, pageId) as Row | undefined;
+    if (!row) throw new WikiError("That version no longer exists.");
+    const revision = toRevision(row);
+    const page = wiki.get(pageId);
+    if (!page) throw new WikiError("Page not found.");
+    // The old title comes back unless it's pinned or a sibling took it meanwhile.
+    const titleFree =
+      !page.pinned && !wiki.withTitle(page.agentId, revision.title, page.parentId).some((other) => other.id !== page.id);
+    // Restoring always records the current state, so a restore can itself be undone.
+    wiki.snapshot(page, author, null, true);
+    db.prepare(`UPDATE wiki_pages SET title = ?, summary = ?, content = ?, updated_by = ?, conversation_id = NULL, updated_at = ? WHERE id = ?`).run(
+      titleFree ? revision.title : page.title,
+      revision.summary,
+      revision.content,
+      author,
+      Date.now(),
+      pageId,
+    );
+    return wiki.get(pageId)!;
+  },
+
+  /** Records a page's current state before a change, merging rapid edits from the same chat. */
+  snapshot(page: WikiPage, author: WikiAuthor, conversationId: string | null, force = false): void {
+    const now = Date.now();
+    // Same author, same chat, still editing: the revision from the start of this burst covers it.
+    const sameBurst =
+      !force &&
+      page.updatedBy === author &&
+      page.conversationId === conversationId &&
+      now - page.updatedAt < REVISION_COALESCE_MS &&
+      db.prepare(`SELECT 1 FROM wiki_revisions WHERE page_id = ? AND created_at >= ?`).get(page.id, now - REVISION_COALESCE_MS) !==
+        undefined;
+    // A page that was never edited and is still empty has nothing worth restoring.
+    const pristine = !page.content && page.updatedAt === page.createdAt;
+    if (sameBurst || pristine) return;
+    db.prepare(
+      `INSERT INTO wiki_revisions (id, page_id, title, summary, content, updated_by, conversation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(randomUUID(), page.id, page.title, page.summary, page.content, page.updatedBy, page.conversationId, now);
+    db.prepare(
+      `DELETE FROM wiki_revisions WHERE page_id = ? AND id NOT IN
+         (SELECT id FROM wiki_revisions WHERE page_id = ? ORDER BY created_at DESC LIMIT ?)`,
+    ).run(page.id, page.id, MAX_REVISIONS_PER_PAGE);
+  },
+
+  /** Validates a parent reference (id or title) and returns its id; refuses cycles. */
+  checkParent(agentId: string, ref: unknown, childId: string | null): string {
+    if (typeof ref !== "string") throw new WikiError("The parent must be a page id or title.");
+    const parent = wiki.find(agentId, ref);
+    if (!parent) throw new WikiError(`No parent page “${ref}” in this wiki.`);
+    for (let at: WikiPage | null = parent; at; at = at.parentId ? wiki.get(at.parentId) : null) {
+      if (at.id === childId) throw new WikiError("A page can't be nested inside itself.");
+    }
+    return parent.id;
+  },
+};
+
+// Every workspace has its Overview from the start.
+for (const row of db.prepare(`SELECT id FROM agents`).all() as Row[]) wiki.overview(String(row.id));
+
+// Notes saved per workspace before the wiki existed move into a "Notes" page, all
+// or nothing, and never in a way that could stop the server from starting.
+const workspaceNotes = db
+  .prepare(`SELECT agent_id, content FROM memories WHERE agent_id IS NOT NULL ORDER BY created_at`)
+  .all() as Row[];
+if (workspaceNotes.length) {
+  const byAgent = new Map<string, string[]>();
+  for (const row of workspaceNotes) byAgent.set(String(row.agent_id), [...(byAgent.get(String(row.agent_id)) ?? []), String(row.content)]);
+  db.exec("BEGIN");
+  try {
+    for (const [agentId, notes] of byAgent) {
+      wiki.overview(agentId);
+      let title = "Notes";
+      for (let n = 2; wiki.withTitle(agentId, title, null).length; n++) title = `Notes ${n}`;
+      const content = notes.map((note) => `- ${note}`).join("\n").slice(0, MAX_PAGE_CHARS);
+      wiki.create(agentId, { title, summary: "Notes saved before the wiki existed", content }, "agent");
+    }
+    db.prepare(`DELETE FROM memories WHERE agent_id IS NOT NULL`).run();
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    console.warn("[tot] couldn't move workspace notes into the wiki:", err instanceof Error ? err.message : err);
+  }
+}

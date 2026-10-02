@@ -1,0 +1,501 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { getConnInfo } from "@hono/node-server/conninfo";
+import { Hono, type Context } from "hono";
+import { z } from "zod";
+import { computerManager, type ActiveComputer, type Screenshot } from "../computer/manager.ts";
+import { MCP_TOKEN, VERSION } from "../config.ts";
+import { appEvents } from "../app-events.ts";
+import { chatSearch } from "../data/chat-search.ts";
+import { conversations } from "../data/conversations.ts";
+import { memories } from "../data/memories.ts";
+import { describeSchedule, routines, validateRoutine } from "../data/routines.ts";
+import { settings } from "../data/settings.ts";
+import { redactGitHubTokens } from "../github.ts";
+import { isThisMachine } from "../net.ts";
+import { clip, guarded, isoDay, reply } from "./results.ts";
+import { registerWikiTools } from "./wiki-tools.ts";
+
+/**
+ * TOT's built-in MCP server: the agent's computer and long-term memory, shared
+ * by every provider. Served statelessly at /mcp/<conversationId> — the path
+ * scopes tools to one chat (and through it, its agent's computer), and a
+ * per-boot bearer token keeps it private to the harness processes TOT spawns.
+ */
+
+const EXEC_OUTPUT_LIMIT = 16_000;
+const FILE_OUTPUT_LIMIT = 50_000;
+const DEFAULT_TIMEOUT_SECONDS = 120;
+const MAX_TIMEOUT_SECONDS = 600;
+
+
+/** Tells the agent when this call had to start or wake the computer. */
+function startNote(active: ActiveComputer): string {
+  if (active.event === "created") {
+    return `[Started a new computer: ${active.summary.label}. Home folder: ${active.backend.home(active.externalId)}]\n`;
+  }
+  if (active.event === "resumed") {
+    return "[Woke the computer up: files are intact, but servers that were running have stopped — restart any you need.]\n";
+  }
+  return "";
+}
+
+/** A screenshot as a tool result: the image for the model, plus a line the UI turns into a picture. */
+function screenshotReply(shot: Screenshot, what: string): CallToolResult {
+  const note = shot.event === "created" ? "[Started a new computer.]\n" : shot.event === "resumed" ? "[Woke the computer up.]\n" : "";
+  return {
+    content: [
+      {
+        type: "text",
+        text: `${note}${what}\nScreen is ${shot.width}×${shot.height}; use these pixel coordinates for clicks.\nscreenshot: ${shot.url}`,
+      },
+      { type: "image", data: shot.png.toString("base64"), mimeType: "image/png" },
+    ],
+  };
+}
+
+function registerDesktopTools(server: McpServer, agentId: string): void {
+  const point = {
+    x: z.number().int().min(0).describe("X in the latest screenshot's pixels"),
+    y: z.number().int().min(0).describe("Y in the latest screenshot's pixels"),
+  };
+
+  server.registerTool(
+    "computer_screenshot",
+    {
+      title: "Look at the screen",
+      description:
+        "Take a screenshot of your computer's desktop. Do this before clicking or typing so you know what's on screen. Coordinates for the other desktop tools are pixels in this image.",
+      inputSchema: {},
+    },
+    () => guarded(async () => screenshotReply(await computerManager.screenshot(agentId), "Here's the screen.")),
+  );
+
+  server.registerTool(
+    "computer_click",
+    {
+      title: "Click",
+      description: "Click at a point on the desktop (pixels of the latest screenshot). Returns a new screenshot.",
+      inputSchema: {
+        ...point,
+        button: z.enum(["left", "right", "middle"]).optional().describe("Mouse button (default left)"),
+        double: z.boolean().optional().describe("Double-click"),
+      },
+    },
+    ({ x, y, button, double }) =>
+      guarded(async () =>
+        screenshotReply(
+          await computerManager.act(agentId, (desktop, id, toScreen) =>
+            desktop.click(id, toScreen(x), toScreen(y), { button: button ?? "left", double: Boolean(double) }),
+          ),
+          `${double ? "Double-clicked" : "Clicked"} at (${x}, ${y}).`,
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "computer_type",
+    {
+      title: "Type text",
+      description: "Type text into whatever has keyboard focus (click the field first). Returns a new screenshot.",
+      inputSchema: { text: z.string().min(1).max(5000).describe("Text to type") },
+    },
+    ({ text }) =>
+      guarded(async () =>
+        screenshotReply(await computerManager.act(agentId, (desktop, id) => desktop.type(id, text)), `Typed ${text.length} characters.`),
+      ),
+  );
+
+  server.registerTool(
+    "computer_key",
+    {
+      title: "Press keys",
+      description:
+        'Press a key or shortcut, xdotool-style: "Return", "Tab", "Escape", "BackSpace", "ctrl+l", "ctrl+shift+t", "Page_Down". Separate several presses with spaces. Returns a new screenshot.',
+      inputSchema: { keys: z.string().min(1).max(200).describe('Keys, e.g. "ctrl+l" or "Return"') },
+    },
+    ({ keys }) =>
+      guarded(async () =>
+        screenshotReply(await computerManager.act(agentId, (desktop, id) => desktop.key(id, keys)), `Pressed ${keys}.`),
+      ),
+  );
+
+  server.registerTool(
+    "computer_scroll",
+    {
+      title: "Scroll",
+      description: "Scroll at a point on the desktop (pixels of the latest screenshot). Returns a new screenshot.",
+      inputSchema: {
+        ...point,
+        direction: z.enum(["up", "down", "left", "right"]),
+        amount: z.number().int().min(1).max(30).optional().describe("Wheel steps (default 5)"),
+      },
+    },
+    ({ x, y, direction, amount }) =>
+      guarded(async () =>
+        screenshotReply(
+          await computerManager.act(agentId, (desktop, id, toScreen) =>
+            desktop.scroll(id, toScreen(x), toScreen(y), direction, amount ?? 5),
+          ),
+          `Scrolled ${direction}.`,
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "computer_open_url",
+    {
+      title: "Open a web page",
+      description:
+        "Open a URL in Chrome on your desktop — use this for sites that need a real browser (logins, forms, heavy JavaScript). Returns a screenshot once the page has had a moment to load.",
+      inputSchema: { url: z.string().url().describe("The page to open, e.g. https://example.com") },
+    },
+    ({ url }) =>
+      guarded(async () => {
+        if (!/^https?:\/\//i.test(url)) return reply("Only http(s) URLs can be opened.", true);
+        return screenshotReply(await computerManager.act(agentId, (desktop, id) => desktop.openUrl(id, url)), `Opened ${url}.`);
+      }),
+  );
+}
+
+function buildServer(conversationId: string, agentId: string): McpServer {
+  const server = new McpServer(
+    { name: "tot", version: VERSION },
+    { instructions: "TOT's tools: your own computer for this chat (computer_*) and long-term memory about the user (memory_*)." },
+  );
+  const { computer, memory } = settings.get();
+
+  if (computer.mode !== "off") {
+    server.registerTool(
+      "computer_exec",
+      {
+        title: "Run a shell command",
+        description:
+          "Run a bash command on your computer and get its exit code, stdout and stderr. Commands run non-interactively (no TTY), so pass flags like -y. Every call starts in the home folder unless `cwd` is set; `cd` and exported variables don't carry over between calls. Run long-lived processes such as dev servers in the background with output redirected, e.g. `nohup npm run dev > dev.log 2>&1 &`, then check them with curl.",
+        inputSchema: {
+          command: z.string().min(1).describe("Bash command, e.g. `ls -la` or `npm test 2>&1 | tail -30`"),
+          cwd: z.string().optional().describe("Working directory, relative to the home folder"),
+          timeout_seconds: z
+            .number()
+            .int()
+            .min(1)
+            .max(MAX_TIMEOUT_SECONDS)
+            .optional()
+            .describe(`Stop the command after this many seconds (default ${DEFAULT_TIMEOUT_SECONDS})`),
+        },
+      },
+      ({ command, cwd, timeout_seconds }) =>
+        guarded(async () => {
+          const active = await computerManager.ensure(agentId);
+          const result = await active.backend.exec(active.externalId, command, {
+            cwd,
+            timeoutMs: (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
+          });
+          computerManager.touch(agentId);
+          const sections = [
+            `${startNote(active)}exit code ${result.exitCode}${result.timedOut ? " (timed out)" : ""} · ${(result.durationMs / 1000).toFixed(1)}s`,
+          ];
+          // Output goes into the chat and the model's context: never let a GitHub token through.
+          if (result.stdout.trim()) sections.push(`--- stdout ---\n${clip(redactGitHubTokens(result.stdout), EXEC_OUTPUT_LIMIT)}`);
+          if (result.stderr.trim()) sections.push(`--- stderr ---\n${clip(redactGitHubTokens(result.stderr), EXEC_OUTPUT_LIMIT / 2)}`);
+          if (!result.stdout.trim() && !result.stderr.trim()) sections.push("(no output)");
+          return reply(sections.join("\n"));
+        }),
+    );
+
+    server.registerTool(
+      "computer_read_file",
+      {
+        title: "Read a file",
+        description: "Read a text file from your computer. Relative paths are resolved from the home folder.",
+        inputSchema: { path: z.string().min(1).describe("File path, e.g. `app/src/index.ts`") },
+      },
+      ({ path }) =>
+        guarded(async () => {
+          const active = await computerManager.ensure(agentId);
+          const content = await active.backend.readFile(active.externalId, path);
+          computerManager.touch(agentId);
+          return reply(`${startNote(active)}${clip(redactGitHubTokens(content), FILE_OUTPUT_LIMIT)}`);
+        }),
+    );
+
+    server.registerTool(
+      "computer_write_file",
+      {
+        title: "Write a file",
+        description:
+          "Create or overwrite a text file on your computer with the given content. Parent folders are created as needed. Relative paths are resolved from the home folder.",
+        inputSchema: {
+          path: z.string().min(1).describe("File path, e.g. `app/index.html`"),
+          content: z.string().describe("The complete file content"),
+        },
+      },
+      ({ path, content }) =>
+        guarded(async () => {
+          const active = await computerManager.ensure(agentId);
+          await active.backend.writeFile(active.externalId, path, content);
+          computerManager.touch(agentId);
+          return reply(`${startNote(active)}Wrote ${Buffer.byteLength(content)} bytes to ${path}.`);
+        }),
+    );
+
+    server.registerTool(
+      "computer_expose_port",
+      {
+        title: "Share a web server",
+        description:
+          "Give the user a URL for a web server running on your computer. Start the server first (in the background) and make sure it listens on 0.0.0.0, then call this and share the returned link.",
+        inputSchema: { port: z.number().int().min(1).max(65535).describe("Port the server listens on") },
+      },
+      ({ port }) =>
+        guarded(async () => {
+          const url = await computerManager.exposePort(agentId, port);
+          return reply(`Port ${port} is available at ${url}\nShare this link with the user.`);
+        }),
+    );
+
+    server.registerTool(
+      "computer_info",
+      {
+        title: "Describe the computer",
+        description: "Describe your computer: kind, home folder, operating system, shared URLs, and whether it has a desktop.",
+        inputSchema: {},
+      },
+      () =>
+        guarded(async () => {
+          const active = await computerManager.ensure(agentId);
+          const os = await active.backend.exec(active.externalId, "uname -srm", { timeoutMs: 15_000 });
+          const { summary } = active;
+          const lines = [
+            `Computer: ${summary.label} (${summary.kind}, ${summary.state})`,
+            `Home folder: ${active.backend.home(active.externalId)}`,
+            `OS: ${os.stdout.trim() || "unknown"}`,
+            summary.desktopUrl ? "Virtual desktop: available (the user can open it from the computer panel)." : "Virtual desktop: none",
+            summary.exposedUrls.length
+              ? `Shared URLs:\n${summary.exposedUrls.map((entry) => `- port ${entry.port}: ${entry.url}`).join("\n")}`
+              : "Shared URLs: none",
+          ];
+          return reply(`${startNote(active)}${lines.join("\n")}`);
+        }),
+    );
+  }
+
+  if (computer.mode !== "off" && computerManager.hasDesktop(agentId)) registerDesktopTools(server, agentId);
+
+  if (memory.enabled) {
+    server.registerTool(
+      "memory_save",
+      {
+        title: "Remember something",
+        description:
+          'Save a durable fact about the user to long-term memory (preferences, personal details, goals), shared with all of their agents — or anything they ask you to remember about them. One short sentence written about the user, e.g. "Prefers TypeScript over Python". Knowledge about the work itself belongs in the wiki instead. Never save secrets or passwords.',
+        inputSchema: { content: z.string().min(3).max(500).describe("The fact to remember, as one short sentence") },
+      },
+      ({ content }) =>
+        guarded(async () => {
+          const text = redactGitHubTokens(content);
+          const existing = memories.findDuplicate(text);
+          if (existing) return reply(`Already remembered (${existing.id}): ${existing.content}`);
+          const saved = memories.create({ content: text, source: "agent", conversationId });
+          return reply(`Saved to memory (${saved.id}): ${saved.content}`);
+        }),
+    );
+
+    server.registerTool(
+      "memory_search",
+      {
+        title: "Search memory",
+        description: "Search long-term memory for facts about the user. Returns matching memories with their ids.",
+        inputSchema: {
+          query: z.string().min(1).describe("What to look for, e.g. `favorite programming language`"),
+          limit: z.number().int().min(1).max(50).optional().describe("Maximum results (default 10)"),
+        },
+      },
+      ({ query, limit }) =>
+        guarded(async () => {
+          const found = memories.search(query, limit ?? 10);
+          return reply(found.length ? found.map((m) => `- (${m.id}) ${m.content}`).join("\n") : "No matching memories.");
+        }),
+    );
+
+    server.registerTool(
+      "memory_update",
+      {
+        title: "Update memory",
+        description: "Rewrite a memory about the user by id when it's out of date. Use memory_search first to find it.",
+        inputSchema: {
+          id: z.string().min(1).describe("The memory id from memory_search"),
+          content: z.string().min(3).max(500).describe("The new text, as one short sentence"),
+        },
+      },
+      ({ id, content }) =>
+        guarded(async () => {
+          const updated = memories.get(id) && memories.update(id, content);
+          if (!updated) return reply(`No memory with id ${id}.`, true);
+          return reply(`Updated memory (${updated.id}): ${updated.content}`);
+        }),
+    );
+
+    server.registerTool(
+      "memory_delete",
+      {
+        title: "Forget something",
+        description: "Delete a memory by id (use memory_search first to find it). Do this whenever the user asks you to forget something.",
+        inputSchema: { id: z.string().min(1).describe("The memory id from memory_search") },
+      },
+      ({ id }) =>
+        guarded(async () => (memories.delete(id) ? reply(`Forgot memory ${id}.`) : reply(`No memory with id ${id}.`, true))),
+    );
+
+    registerWikiTools(server, agentId, conversationId);
+
+    server.registerTool(
+      "chat_search",
+      {
+        title: "Search earlier chats",
+        description:
+          "Full-text search over your earlier chats in this workspace (not this one). Returns the best-matching chats with a snippet; read one with chat_read.",
+        inputSchema: {
+          query: z.string().min(1).describe("Words to look for, e.g. `landing page pricing section`"),
+          limit: z.number().int().min(1).max(20).optional().describe("Maximum chats (default 8)"),
+        },
+      },
+      ({ query, limit }) =>
+        guarded(async () => {
+          const hits = chatSearch.search(agentId, query, { exclude: conversationId, limit: limit ?? 8 });
+          if (!hits.length) return reply("No earlier chats match.");
+          return reply(
+            hits.map((hit) => `- ${hit.conversationId} · “${hit.title}” (${isoDay(hit.updatedAt)})\n  ${hit.snippet}`).join("\n"),
+          );
+        }),
+    );
+
+    server.registerTool(
+      "chat_read",
+      {
+        title: "Read an earlier chat",
+        description: "Read the transcript of one of your earlier chats in this workspace, by the id from chat_search or your recent-chats list.",
+        inputSchema: { chatId: z.string().min(1).describe("The chat id") },
+      },
+      ({ chatId }) =>
+        guarded(async () => {
+          const chat = chatId === conversationId ? null : chatSearch.transcript(agentId, chatId);
+          if (!chat) return reply(`No earlier chat with id ${chatId} in this workspace.`, true);
+          return reply(`“${chat.title}”\n\n${chat.text || "(no messages)"}`);
+        }),
+    );
+  }
+
+  registerRoutineTools(server, agentId);
+  return server;
+}
+
+const localTime = (time: number | null) =>
+  time ? new Date(time).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "never";
+
+function registerRoutineTools(server: McpServer, agentId: string): void {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  server.registerTool(
+    "routine_create",
+    {
+      title: "Schedule a routine",
+      description: `Schedule a recurring task that you will run on your own, e.g. a daily briefing or a regular check. Each run starts a new chat where you do the task and summarize the result. Times are in the user's time zone (${zone}). Use this when the user asks for something to happen regularly or at a set time every day.`,
+      inputSchema: {
+        name: z.string().min(1).max(80).describe('Short name, e.g. "Morning AI news"'),
+        prompt: z.string().min(1).max(4000).describe("Exactly what to do on each run, written as instructions to yourself"),
+        schedule: z.enum(["daily", "interval"]).describe('"daily" at a time of day, or "interval" every N minutes'),
+        time: z.string().optional().describe('For daily: 24h "HH:MM", e.g. "08:30"'),
+        days: z.array(z.number().int().min(0).max(6)).optional().describe("For daily: 0=Sun … 6=Sat; omit for every day"),
+        every_minutes: z.number().int().optional().describe("For interval: minutes between runs (15 or more)"),
+      },
+    },
+    ({ name, prompt, schedule, time, days, every_minutes }) =>
+      guarded(async () => {
+        const input = {
+          name,
+          prompt,
+          schedule:
+            schedule === "interval"
+              ? { kind: "interval" as const, everyMinutes: every_minutes ?? 0 }
+              : { kind: "daily" as const, time: time ?? "", ...(days?.length ? { days } : {}) },
+        };
+        const problem = validateRoutine(input, true);
+        if (problem) return reply(problem, true);
+        const routine = routines.create(agentId, input);
+        appEvents.agentChanged(agentId);
+        return reply(
+          `Scheduled "${routine.name}" (${routine.id}) ${describeSchedule(routine.schedule)}. Next run: ${localTime(routine.nextRunAt)}.`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "routine_list",
+    {
+      title: "List routines",
+      description: "List your scheduled routines with their ids, schedules and next run times.",
+      inputSchema: {},
+    },
+    () =>
+      guarded(async () => {
+        const list = routines.list(agentId);
+        if (!list.length) return reply("You have no routines yet.");
+        return reply(
+          list
+            .map(
+              (r) =>
+                `- (${r.id}) ${r.name}: ${describeSchedule(r.schedule)}${r.enabled ? `, next ${localTime(r.nextRunAt)}` : " (paused)"} — ${r.prompt.slice(0, 120)}`,
+            )
+            .join("\n"),
+        );
+      }),
+  );
+
+  server.registerTool(
+    "routine_delete",
+    {
+      title: "Delete a routine",
+      description: "Delete one of your routines by id (see routine_list). Do this when the user asks to stop a recurring task.",
+      inputSchema: { id: z.string().min(1) },
+    },
+    ({ id }) =>
+      guarded(async () => {
+        const routine = routines.get(id);
+        if (!routine || routine.agentId !== agentId) return reply(`No routine with id ${id}.`, true);
+        routines.delete(id);
+        appEvents.agentChanged(agentId);
+        return reply(`Deleted "${routine.name}".`);
+      }),
+  );
+}
+
+export const mcpRoutes = new Hono();
+
+/** Only the harness processes TOT spawns on this machine may use these tools, even when TOT is on the network. */
+function fromThisMachine(c: Context): boolean {
+  try {
+    return isThisMachine(getConnInfo(c).remote.address);
+  } catch {
+    return false;
+  }
+}
+
+mcpRoutes.all("/:conversationId", async (c) => {
+  if (!fromThisMachine(c)) return c.json({ error: "Forbidden" }, 403);
+  if (c.req.header("authorization") !== `Bearer ${MCP_TOKEN}`) return c.json({ error: "Unauthorized" }, 401);
+  const conversationId = c.req.param("conversationId");
+  const conversation = conversations.get(conversationId);
+  if (!conversation) return c.json({ error: "Unknown chat" }, 404);
+
+  // Stateless: a fresh server + transport per request, answered with plain JSON.
+  const server = buildServer(conversationId, conversation.agentId);
+  const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+  await server.connect(transport);
+  try {
+    return await transport.handleRequest(c.req.raw);
+  } finally {
+    void server.close();
+  }
+});

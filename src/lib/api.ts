@@ -1,0 +1,231 @@
+import type {
+  Agent,
+  AgentInput,
+  AppCatalogItem,
+  AppConnectPoll,
+  AppConnectRequest,
+  AppConnectStep,
+  ApprovalAnswer,
+  AppRule,
+  AppsStatus,
+  Attachment,
+  ComputerSummary,
+  Conversation,
+  ConversationDetail,
+  CreateConversationRequest,
+  GitHubConnectRequest,
+  GitHubDevicePoll,
+  GitHubDeviceStart,
+  GitHubRepo,
+  GitHubStatus,
+  LearnRepoRequest,
+  Memory,
+  ModelOption,
+  Plugin,
+  PluginInput,
+  ProviderId,
+  ProviderStatus,
+  SendMessageRequest,
+  SendMessageResponse,
+  Settings,
+  SettingsPatch,
+  UpdateConversationRequest,
+  WikiPage,
+  WikiPageInput,
+  WikiPagePatch,
+  WikiPageSummary,
+  WikiRevision,
+  WikiSearchHit,
+} from "@shared/types";
+
+/** A failed API call. `status` is 0 when the server couldn't be reached at all. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+const UNREACHABLE = "Can't reach the TOT server. Is it running?";
+
+/**
+ * The server wants sign-in (an access token is set and this browser has no valid
+ * session, e.g. it expired): go to its login page and come back here afterwards.
+ */
+export function redirectToSignIn(): void {
+  if (window.location.pathname === "/login") return;
+  window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+}
+
+type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+type Ok = { ok: true };
+
+async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, {
+      method,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(UNREACHABLE, 0);
+  }
+
+  if (response.status === 401) redirectToSignIn();
+  const data = parseBody(await response.text());
+  if (!response.ok) throw new ApiError(serverError(data, response.status), response.status);
+  return data as T;
+}
+
+function parseBody(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function serverError(data: unknown, status: number): string {
+  if (data && typeof data === "object" && "error" in data && typeof data.error === "string" && data.error) {
+    return data.error;
+  }
+  // The dev proxy answers with an empty 5xx when the backend is down.
+  if (status >= 500 && !data) return UNREACHABLE;
+  return `Request failed (${status})`;
+}
+
+/** Human-readable message for anything thrown by an API call. */
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return "Something went wrong.";
+}
+
+const seg = encodeURIComponent;
+
+export const api = {
+  health: () => request<{ ok: true; version: string }>("GET", "/health"),
+  /** `refresh` asks the server to re-check login state instead of using its cache. */
+  listProviders: ({ refresh = false } = {}) =>
+    request<ProviderStatus[]>("GET", refresh ? "/providers?refresh=1" : "/providers"),
+  /** Starts a browser login (ChatGPT only for now); open the returned URL in a new tab. */
+  loginProvider: (id: ProviderId) => request<{ url: string }>("POST", `/providers/${seg(id)}/login`, {}),
+  listModels: () => request<ModelOption[]>("GET", "/models"),
+
+  listAgents: () => request<Agent[]>("GET", "/agents"),
+  createAgent: (input: AgentInput) => request<Agent>("POST", "/agents", input),
+  updateAgent: (id: string, input: Partial<AgentInput>) =>
+    request<Agent>("PATCH", `/agents/${seg(id)}`, input),
+  deleteAgent: (id: string) => request<Ok>("DELETE", `/agents/${seg(id)}`),
+  stopAgentComputer: (id: string) =>
+    request<ComputerSummary | null>("POST", `/agents/${seg(id)}/computer/stop`, {}),
+  /** Opens (302s) to a fresh desktop-stream URL; call this to get a same-origin link to open in a new tab. */
+  agentDesktopUrl: (id: string) => `/api/agents/${seg(id)}/computer/desktop`,
+
+  listConversations: (agentId?: string) =>
+    request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}` : "/conversations"),
+  createConversation: (body: CreateConversationRequest) =>
+    request<Conversation>("POST", "/conversations", body),
+  getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${seg(id)}`),
+  updateConversation: (id: string, body: UpdateConversationRequest) =>
+    request<Conversation>("PATCH", `/conversations/${seg(id)}`, body),
+  deleteConversation: (id: string) => request<Ok>("DELETE", `/conversations/${seg(id)}`),
+  sendMessage: (id: string, body: SendMessageRequest) =>
+    request<SendMessageResponse>("POST", `/conversations/${seg(id)}/messages`, body),
+  stopComputer: (id: string) =>
+    request<ComputerSummary | null>("POST", `/conversations/${seg(id)}/computer/stop`, {}),
+
+  stopRun: (runId: string) => request<Ok>("POST", `/runs/${seg(runId)}/stop`, {}),
+  /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */
+  answerApproval: (runId: string, partId: string, answer: ApprovalAnswer) =>
+    request<Ok>("POST", `/runs/${seg(runId)}/approvals/${seg(partId)}`, answer),
+
+  /** An agent's workspace wiki: a page tree the agent reads/writes with tools and the user can browse/edit. */
+  listWikiPages: (agentId: string) => request<WikiPageSummary[]>("GET", `/agents/${seg(agentId)}/wiki`),
+  searchWiki: (agentId: string, q: string) =>
+    request<WikiSearchHit[]>("GET", `/agents/${seg(agentId)}/wiki?q=${encodeURIComponent(q)}`),
+  createWikiPage: (agentId: string, input: WikiPageInput) =>
+    request<WikiPage>("POST", `/agents/${seg(agentId)}/wiki`, input),
+  /** Asks the agent to study a repo and write it up; returns the chat to watch it happen. */
+  learnRepo: (agentId: string, body: LearnRepoRequest) =>
+    request<{ conversationId: string; runId: string }>("POST", `/agents/${seg(agentId)}/wiki/learn`, body),
+  getWikiPage: (pageId: string) => request<WikiPage>("GET", `/wiki/${seg(pageId)}`),
+  updateWikiPage: (pageId: string, patch: WikiPagePatch) =>
+    request<WikiPage>("PATCH", `/wiki/${seg(pageId)}`, patch),
+  deleteWikiPage: (pageId: string) => request<Ok>("DELETE", `/wiki/${seg(pageId)}`),
+  listWikiRevisions: (pageId: string) => request<WikiRevision[]>("GET", `/wiki/${seg(pageId)}/revisions`),
+  restoreWikiRevision: (pageId: string, revisionId: string) =>
+    request<WikiPage>("POST", `/wiki/${seg(pageId)}/revisions/${seg(revisionId)}/restore`, {}),
+
+  /** Memory: short facts about the user, shared by every agent. */
+  listMemories: (opts: { q?: string } = {}) =>
+    request<Memory[]>("GET", opts.q ? `/memories?q=${encodeURIComponent(opts.q)}` : "/memories"),
+  createMemory: (content: string) => request<Memory>("POST", "/memories", { content }),
+  updateMemory: (id: string, content: string) =>
+    request<Memory>("PATCH", `/memories/${seg(id)}`, { content }),
+  deleteMemory: (id: string) => request<Ok>("DELETE", `/memories/${seg(id)}`),
+
+  /** GitHub: one account connected for the whole app (issues/PRs/code search tools + git/gh login). */
+  getGithubStatus: () => request<GitHubStatus>("GET", "/github"),
+  connectGithub: (body: GitHubConnectRequest) => request<GitHubStatus>("POST", "/github/connect", body),
+  /** Browser sign-in: show the returned code, then poll pollGithubDevice until it's no longer "pending". */
+  startGithubDevice: () => request<GitHubDeviceStart>("POST", "/github/device", {}),
+  pollGithubDevice: () => request<GitHubDevicePoll>("GET", "/github/device"),
+  setGithubWrites: (allowWrites: boolean) => request<GitHubStatus>("PATCH", "/github", { allowWrites }),
+  disconnectGithub: () => request<GitHubStatus>("DELETE", "/github"),
+  listGithubRepos: (q?: string) =>
+    request<GitHubRepo[]>("GET", q ? `/github/repos?q=${encodeURIComponent(q)}` : "/github/repos"),
+
+  /** Apps (Executor): Gmail, Linear, Notion… connected once and shared by every agent. */
+  getApps: () => request<AppsStatus>("GET", "/apps"),
+  /** Whether this browser runs on the machine TOT runs on (only there can apps be added). */
+  getAppsAccess: () => request<{ onThisMachine: boolean }>("GET", "/apps/access"),
+  /** Installs Executor if needed, then starts it; follow the "apps" AppEvent for progress. */
+  setupApps: () => request<AppsStatus>("POST", "/apps/setup", {}),
+  stopApps: () => request<AppsStatus>("POST", "/apps/stop", {}),
+  /** The catalog of apps TOT knows about (added ones first when `q` is empty). */
+  appsCatalog: (q?: string) => request<AppCatalogItem[]>("GET", q ? `/apps/catalog?q=${encodeURIComponent(q)}` : "/apps/catalog"),
+  /** Kicks off (or continues) connecting an app; follow the returned step. */
+  connectApp: (body: AppConnectRequest) => request<AppConnectStep>("POST", "/apps/connect", body),
+  pollAppConnect: (flowId: string) => request<AppConnectPoll>("GET", `/apps/connect/${seg(flowId)}`),
+  /** Cancels a sign-in flow still waiting for the pop-up. */
+  cancelAppConnect: (flowId: string) => request<Ok>("DELETE", `/apps/connect/${seg(flowId)}`),
+  saveAppOAuthClient: (body: { appId: string; clientId: string; clientSecret: string }) =>
+    request<Ok>("POST", "/apps/oauth-client", body),
+  /** Removes the app, its accounts and its rules. */
+  removeApp: (appId: string) => request<AppsStatus>("DELETE", `/apps/${seg(appId)}`),
+  appRules: (appId: string) => request<AppRule[]>("GET", `/apps/${seg(appId)}/rules`),
+  setAppRule: (appId: string, body: { tool: string; action: AppRule["action"] | "default" }) =>
+    request<AppRule[]>("PUT", `/apps/${seg(appId)}/rules`, body),
+
+  listPlugins: () => request<Plugin[]>("GET", "/plugins"),
+  createPlugin: (input: PluginInput) => request<Plugin>("POST", "/plugins", input),
+  updatePlugin: (id: string, input: Partial<PluginInput>) =>
+    request<Plugin>("PATCH", `/plugins/${seg(id)}`, input),
+  deletePlugin: (id: string) => request<Ok>("DELETE", `/plugins/${seg(id)}`),
+
+  getSettings: () => request<Settings>("GET", "/settings"),
+  updateSettings: (patch: SettingsPatch) => request<Settings>("PATCH", "/settings", patch),
+
+  uploadFile: (file: File) => uploadFile(file),
+};
+
+/** Multipart upload; bypasses the JSON `request()` helper since the body isn't JSON. */
+async function uploadFile(file: File): Promise<Attachment> {
+  const form = new FormData();
+  form.append("file", file);
+  let response: Response;
+  try {
+    response = await fetch("/api/uploads", { method: "POST", body: form });
+  } catch {
+    throw new ApiError(UNREACHABLE, 0);
+  }
+  if (response.status === 401) redirectToSignIn();
+  const data = parseBody(await response.text());
+  if (!response.ok) throw new ApiError(serverError(data, response.status), response.status);
+  return data as Attachment;
+}

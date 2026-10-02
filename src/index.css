@@ -1,0 +1,400 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* `dark:` follows TOT's theme (the `dark` class), not just the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* Surfaces and effects that differ per theme (see the theme blocks below). */
+  --color-canvas: #08080a;
+  --color-panel: #111114;
+  --color-elevated: #16161a;
+  --color-bubble: #1a1a1f;
+  --color-sunken: rgb(0 0 0 / 0.35);
+  --color-scrim: #000;
+  --color-shade: #000;
+  --color-accent-violet: #a78bfa;
+  --color-accent-cyan: #22d3ee;
+
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-fade-out: fade-out 120ms ease-in;
+  --animate-pop-in: pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-pop-out: pop-out 120ms ease-in;
+  --animate-slide-in-right: slide-in-right 220ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+  @keyframes pop-out {
+    to {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(24px);
+      opacity: 0;
+    }
+  }
+}
+
+@layer base {
+  /* ---------------------------------------------------------------------------
+     Themes. TOT's UI is written dark-first: zinc text and white overlays on a
+     near-black canvas. Light mode mirrors the neutral and status palettes
+     (50↔950, 100↔900, …), so every class keeps its meaning in both themes:
+     `text-zinc-100` is the strongest text, `bg-white/5` a faint overlay,
+     `text-red-300` readable error text. The theme is the `dark` class on
+     <html> (see src/lib/theme.ts); `dark` on any element makes an always-dark
+     island inside a light page (code blocks, tooltips).
+     --------------------------------------------------------------------------- */
+  :root:not(.dark) {
+    color-scheme: light;
+    --color-white: oklch(14.1% 0.005 285.823);
+    --color-zinc-50: oklch(14.1% 0.005 285.823); --color-zinc-100: oklch(21% 0.006 285.885); --color-zinc-200: oklch(27.4% 0.006 286.033); --color-zinc-300: oklch(37% 0.013 285.805); --color-zinc-400: oklch(44.2% 0.017 285.786); --color-zinc-500: oklch(55.2% 0.016 285.938); --color-zinc-600: oklch(70.5% 0.015 286.067); --color-zinc-700: oklch(87.1% 0.006 286.286); --color-zinc-800: oklch(92% 0.004 286.32); --color-zinc-900: oklch(96.7% 0.001 286.375); --color-zinc-950: oklch(98.5% 0 none);
+    --color-red-50: oklch(25.8% 0.092 26.042); --color-red-100: oklch(39.6% 0.141 25.723); --color-red-200: oklch(44.4% 0.177 26.899); --color-red-300: oklch(50.5% 0.213 27.518); --color-red-400: oklch(57.7% 0.245 27.325); --color-red-500: oklch(63.7% 0.237 25.331); --color-red-600: oklch(70.4% 0.191 22.216); --color-red-700: oklch(80.8% 0.114 19.571); --color-red-800: oklch(88.5% 0.062 18.334); --color-red-900: oklch(93.6% 0.032 17.717); --color-red-950: oklch(97.1% 0.013 17.38);
+    --color-emerald-50: oklch(26.2% 0.051 172.552); --color-emerald-100: oklch(37.8% 0.077 168.94); --color-emerald-200: oklch(43.2% 0.095 166.913); --color-emerald-300: oklch(50.8% 0.118 165.612); --color-emerald-400: oklch(59.6% 0.145 163.225); --color-emerald-500: oklch(69.6% 0.17 162.48); --color-emerald-600: oklch(76.5% 0.177 163.223); --color-emerald-700: oklch(84.5% 0.143 164.978); --color-emerald-800: oklch(90.5% 0.093 164.15); --color-emerald-900: oklch(95% 0.052 163.051); --color-emerald-950: oklch(97.9% 0.021 166.113);
+    --color-amber-50: oklch(27.9% 0.077 45.635); --color-amber-100: oklch(41.4% 0.112 45.904); --color-amber-200: oklch(47.3% 0.137 46.201); --color-amber-300: oklch(55.5% 0.163 48.998); --color-amber-400: oklch(66.6% 0.179 58.318); --color-amber-500: oklch(76.9% 0.188 70.08); --color-amber-600: oklch(82.8% 0.189 84.429); --color-amber-700: oklch(87.9% 0.169 91.605); --color-amber-800: oklch(92.4% 0.12 95.746); --color-amber-900: oklch(96.2% 0.059 95.617); --color-amber-950: oklch(98.7% 0.022 95.277);
+    --color-violet-50: oklch(28.3% 0.141 291.089); --color-violet-100: oklch(38% 0.189 293.745); --color-violet-200: oklch(43.2% 0.232 292.759); --color-violet-300: oklch(49.1% 0.27 292.581); --color-violet-400: oklch(54.1% 0.281 293.009); --color-violet-500: oklch(60.6% 0.25 292.717); --color-violet-600: oklch(70.2% 0.183 293.541); --color-violet-700: oklch(81.1% 0.111 293.571); --color-violet-800: oklch(89.4% 0.057 293.283); --color-violet-900: oklch(94.3% 0.029 294.588); --color-violet-950: oklch(96.9% 0.016 293.756);
+    --color-cyan-50: oklch(30.2% 0.056 229.695); --color-cyan-100: oklch(39.8% 0.07 227.392); --color-cyan-200: oklch(45% 0.085 224.283); --color-cyan-300: oklch(52% 0.105 223.128); --color-cyan-400: oklch(60.9% 0.126 221.723); --color-cyan-500: oklch(71.5% 0.143 215.221); --color-cyan-600: oklch(78.9% 0.154 211.53); --color-cyan-700: oklch(86.5% 0.127 207.078); --color-cyan-800: oklch(91.7% 0.08 205.041); --color-cyan-900: oklch(95.6% 0.045 203.388); --color-cyan-950: oklch(98.4% 0.019 200.873);
+    --color-canvas: #ffffff;
+    --color-panel: #f1f1f3;
+    --color-elevated: #ffffff;
+    --color-bubble: #f0f0f2;
+    --color-sunken: rgb(9 9 11 / 0.045);
+    --color-scrim: rgb(9 9 11 / 0.5);
+    --color-shade: rgb(9 9 11 / 0.3);
+    --color-accent-violet: #7c3aed;
+    --color-accent-cyan: #0891b2;
+    --agent-accent-text: color-mix(in oklch, var(--agent-accent) 62%, black);
+    --surface-raised-bg: #ffffff;
+    --surface-raised-shadow: 0 0 0 1px rgb(9 9 11 / 0.08), 0 1px 2px rgb(9 9 11 / 0.04), 0 16px 36px -20px rgb(9 9 11 / 0.22);
+  }
+
+  .dark {
+    color-scheme: dark;
+    --color-white: #fff;
+    --color-zinc-50: oklch(98.5% 0 none); --color-zinc-100: oklch(96.7% 0.001 286.375); --color-zinc-200: oklch(92% 0.004 286.32); --color-zinc-300: oklch(87.1% 0.006 286.286); --color-zinc-400: oklch(70.5% 0.015 286.067); --color-zinc-500: oklch(55.2% 0.016 285.938); --color-zinc-600: oklch(44.2% 0.017 285.786); --color-zinc-700: oklch(37% 0.013 285.805); --color-zinc-800: oklch(27.4% 0.006 286.033); --color-zinc-900: oklch(21% 0.006 285.885); --color-zinc-950: oklch(14.1% 0.005 285.823);
+    --color-red-50: oklch(97.1% 0.013 17.38); --color-red-100: oklch(93.6% 0.032 17.717); --color-red-200: oklch(88.5% 0.062 18.334); --color-red-300: oklch(80.8% 0.114 19.571); --color-red-400: oklch(70.4% 0.191 22.216); --color-red-500: oklch(63.7% 0.237 25.331); --color-red-600: oklch(57.7% 0.245 27.325); --color-red-700: oklch(50.5% 0.213 27.518); --color-red-800: oklch(44.4% 0.177 26.899); --color-red-900: oklch(39.6% 0.141 25.723); --color-red-950: oklch(25.8% 0.092 26.042);
+    --color-emerald-50: oklch(97.9% 0.021 166.113); --color-emerald-100: oklch(95% 0.052 163.051); --color-emerald-200: oklch(90.5% 0.093 164.15); --color-emerald-300: oklch(84.5% 0.143 164.978); --color-emerald-400: oklch(76.5% 0.177 163.223); --color-emerald-500: oklch(69.6% 0.17 162.48); --color-emerald-600: oklch(59.6% 0.145 163.225); --color-emerald-700: oklch(50.8% 0.118 165.612); --color-emerald-800: oklch(43.2% 0.095 166.913); --color-emerald-900: oklch(37.8% 0.077 168.94); --color-emerald-950: oklch(26.2% 0.051 172.552);
+    --color-amber-50: oklch(98.7% 0.022 95.277); --color-amber-100: oklch(96.2% 0.059 95.617); --color-amber-200: oklch(92.4% 0.12 95.746); --color-amber-300: oklch(87.9% 0.169 91.605); --color-amber-400: oklch(82.8% 0.189 84.429); --color-amber-500: oklch(76.9% 0.188 70.08); --color-amber-600: oklch(66.6% 0.179 58.318); --color-amber-700: oklch(55.5% 0.163 48.998); --color-amber-800: oklch(47.3% 0.137 46.201); --color-amber-900: oklch(41.4% 0.112 45.904); --color-amber-950: oklch(27.9% 0.077 45.635);
+    --color-violet-50: oklch(96.9% 0.016 293.756); --color-violet-100: oklch(94.3% 0.029 294.588); --color-violet-200: oklch(89.4% 0.057 293.283); --color-violet-300: oklch(81.1% 0.111 293.571); --color-violet-400: oklch(70.2% 0.183 293.541); --color-violet-500: oklch(60.6% 0.25 292.717); --color-violet-600: oklch(54.1% 0.281 293.009); --color-violet-700: oklch(49.1% 0.27 292.581); --color-violet-800: oklch(43.2% 0.232 292.759); --color-violet-900: oklch(38% 0.189 293.745); --color-violet-950: oklch(28.3% 0.141 291.089);
+    --color-cyan-50: oklch(98.4% 0.019 200.873); --color-cyan-100: oklch(95.6% 0.045 203.388); --color-cyan-200: oklch(91.7% 0.08 205.041); --color-cyan-300: oklch(86.5% 0.127 207.078); --color-cyan-400: oklch(78.9% 0.154 211.53); --color-cyan-500: oklch(71.5% 0.143 215.221); --color-cyan-600: oklch(60.9% 0.126 221.723); --color-cyan-700: oklch(52% 0.105 223.128); --color-cyan-800: oklch(45% 0.085 224.283); --color-cyan-900: oklch(39.8% 0.07 227.392); --color-cyan-950: oklch(30.2% 0.056 229.695);
+    --color-canvas: #08080a;
+    --color-panel: #111114;
+    --color-elevated: #16161a;
+    --color-bubble: #1a1a1f;
+    --color-sunken: rgb(0 0 0 / 0.35);
+    --color-scrim: #000;
+    --color-shade: #000;
+    --color-accent-violet: #a78bfa;
+    --color-accent-cyan: #22d3ee;
+    --agent-accent-text: color-mix(in oklch, var(--agent-accent) 82%, white);
+    --surface-raised-bg: color-mix(in oklch, white 3%, #16161a);
+    --surface-raised-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.06), 0 20px 40px -24px rgb(0 0 0 / 0.7);
+  }
+
+  :root {
+    -webkit-tap-highlight-color: transparent;
+
+    /* The one saturated color in the app: the active agent's mascot color.
+       Kept as a plain hex custom property on the root and updated in JS
+       (see useAgentAccent) whenever the selected agent changes; every derived
+       tint below rides on top of it via color-mix() so nothing needs to
+       duplicate the mascot's own palette math. */
+    --agent-accent: #a78bfa;
+    --agent-accent-08: color-mix(in oklch, var(--agent-accent) 8%, transparent);
+    --agent-accent-12: color-mix(in oklch, var(--agent-accent) 12%, transparent);
+    --agent-accent-16: color-mix(in oklch, var(--agent-accent) 16%, transparent);
+    --agent-accent-24: color-mix(in oklch, var(--agent-accent) 24%, transparent);
+    --agent-accent-border: color-mix(in oklch, var(--agent-accent) 45%, transparent);
+    --agent-accent-ring: color-mix(in oklch, var(--agent-accent) 55%, transparent);
+    --agent-accent-glow: color-mix(in oklch, var(--agent-accent) 55%, transparent);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-zinc-100 antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--agent-accent-24);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--color-zinc-700) 80%, transparent) transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--agent-accent-ring);
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .menu {
+    @apply z-50 min-w-48 overflow-hidden rounded-xl border border-white/10 bg-elevated p-1 text-sm text-zinc-200 shadow-2xl shadow-shade/60;
+    @apply data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out;
+  }
+
+  .menu-item {
+    @apply flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 outline-none select-none;
+    @apply data-[highlighted]:bg-white/[0.07] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45;
+  }
+
+  .menu-label {
+    @apply px-2.5 pt-2 pb-1 text-xs font-medium text-zinc-500;
+  }
+
+  .menu-separator {
+    @apply mx-1 my-1 h-px bg-white/[0.07];
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-100 transition outline-none placeholder:text-zinc-500;
+    @apply focus:ring-2 disabled:opacity-50;
+    &:focus {
+      border-color: var(--agent-accent-border);
+      box-shadow: 0 0 0 3px var(--agent-accent-16);
+    }
+  }
+
+  .text-gradient {
+    @apply bg-linear-to-br from-accent-violet to-accent-cyan bg-clip-text text-transparent;
+  }
+
+  /* Tiny uppercase section labels ("Your agents", "Chats", date groups, panel
+     section headers) — quiet by design, per the Grok/Dots reference direction. */
+  .label-caps {
+    @apply text-[11px] font-medium tracking-wide text-white/35 uppercase;
+  }
+
+  /* A surface that sits slightly above the canvas: composer, popovers-on-panels,
+     empty-state cards. A 1px inner highlight along the top edge stands in for a
+     hard border so the raise reads as light, not as a boxed-in outline. */
+  .surface-raised {
+    background: var(--surface-raised-bg);
+    box-shadow: var(--surface-raised-shadow);
+  }
+
+  /* Composer-style surfaces additionally glow with the agent accent while
+     focused, instead of a plain focus ring — Tailwind's `ring-*` utilities
+     would otherwise clobber `.surface-raised`'s own box-shadow (utilities
+     always win over `@layer components` regardless of source order). */
+  .accent-focus {
+    transition: box-shadow 200ms ease;
+  }
+  .accent-focus:focus-within {
+    box-shadow:
+      var(--surface-raised-shadow),
+      0 0 0 3px var(--agent-accent-ring),
+      0 0 32px 0 var(--agent-accent-16);
+  }
+}
+
+/* iOS Safari zooms the page into any focused field under 16px, so touch devices get
+   16px fields. Unlayered so it wins over the text-size utilities. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* "Thinking…" shimmer: a highlight sweeps across muted text. */
+.shimmer-text {
+  background: linear-gradient(
+      90deg,
+      var(--color-zinc-500) 0%,
+      var(--color-zinc-500) 40%,
+      var(--color-zinc-100) 50%,
+      var(--color-zinc-500) 60%,
+      var(--color-zinc-500) 100%
+    )
+    0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+/* Blinking caret at the end of streaming text. */
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.caret,
+.streaming-caret > :is(p, h1, h2, h3, h4, h5, h6, blockquote):last-child::after,
+.streaming-caret > :is(ul, ol):last-child > li:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.17em;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--agent-accent), var(--agent-accent-text));
+  animation: caret-blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text {
+    animation: none;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: var(--color-zinc-300);
+  }
+
+  .caret,
+  .streaming-caret > :is(p, h1, h2, h3, h4, h5, h6, blockquote):last-child::after,
+  .streaming-caret > :is(ul, ol):last-child > li:last-child::after {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Markdown (assistant messages)
+   --------------------------------------------------------------------------- */
+
+.markdown {
+  --tw-prose-invert-body: var(--color-zinc-200);
+  --tw-prose-invert-headings: var(--color-zinc-50);
+  --tw-prose-invert-lead: var(--color-zinc-300);
+  --tw-prose-invert-links: var(--agent-accent-text);
+  --tw-prose-invert-bold: var(--color-zinc-50);
+  --tw-prose-invert-counters: var(--color-zinc-400);
+  --tw-prose-invert-bullets: var(--color-zinc-500);
+  --tw-prose-invert-hr: color-mix(in oklab, var(--color-white) 8%, transparent);
+  --tw-prose-invert-quotes: var(--color-zinc-300);
+  --tw-prose-invert-quote-borders: var(--color-zinc-700);
+  --tw-prose-invert-code: var(--color-zinc-100);
+  --tw-prose-invert-th-borders: var(--color-zinc-700);
+  --tw-prose-invert-td-borders: color-mix(in oklab, var(--color-white) 7%, transparent);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown a {
+  text-decoration-color: var(--agent-accent-border);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms;
+}
+
+.markdown a:hover {
+  text-decoration-color: var(--agent-accent-text);
+}
+
+.markdown code::before,
+.markdown code::after {
+  content: none;
+}
+
+.markdown :not(pre) > code {
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--color-white) 7%, transparent);
+  padding: 0.15em 0.4em;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.markdown .table-wrap {
+  margin: 1.5em 0;
+  overflow-x: auto;
+}
+
+.markdown .table-wrap table {
+  margin: 0;
+}
+
+.markdown .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+}
+
+.markdown-muted {
+  --tw-prose-invert-body: var(--color-zinc-400);
+  --tw-prose-invert-bold: var(--color-zinc-300);
+  --tw-prose-invert-headings: var(--color-zinc-300);
+}
+
+/* Fenced code blocks (rendered outside of prose styles). */
+.code-block pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 0.9rem 1rem 1rem;
+  font-size: 13px;
+  line-height: 1.6;
+  background: transparent;
+}
+
+.code-block pre code,
+.code-block pre code.hljs {
+  display: block;
+  padding: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  overflow: visible;
+}

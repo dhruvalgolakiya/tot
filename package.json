@@ -1,0 +1,57 @@
+{
+  "name": "tot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TOT — an agent that runs on your own ChatGPT and Claude subscriptions, with a cloud computer per agent, long-term memory, and plugins.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c magenta,cyan \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx watch --clear-screen=false server/index.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "NODE_ENV=production NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx server/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/smoke.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/desktop.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/computer/boat.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/auth.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/guard.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/github.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/approvals.test.ts'",
+    "test:live": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/agent/providers/chatgpt.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/agent/providers/claude.test.ts'"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.284",
+    "@boatdev/sdk": "^1.2.0",
+    "@hono/node-server": "^2.1.3",
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@openai/codex-sdk": "^0.159.0",
+    "clsx": "^2.1.1",
+    "highlight.js": "^11.12.0",
+    "hono": "^4.13.11",
+    "katex": "^0.18.9",
+    "lucide-react": "^1.48.0",
+    "mermaid": "^12.0.0",
+    "radix-ui": "^1.6.7",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "sonner": "^2.0.8",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  }
+}
