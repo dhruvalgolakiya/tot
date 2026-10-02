@@ -19,9 +19,8 @@ import { Tip } from "./ui/Tip";
  * Discord/Slack-style workspace rail: TOT mark, one mascot per agent (the
  * workspace switcher), "add agent", then app-wide settings and theme at
  * the bottom. Always visible on desktop — collapsing the sidebar only hides
- * the chats panel next to it. Shares `bg-panel` with that panel (painted by
- * the shared wrapper in App.tsx) and has no divider against it, so rail +
- * panel read as one flat sidebar, ChatGPT-style.
+ * the chats panel next to it. A hairline (plus a slightly darker `bg-rail` in
+ * light mode) separates it from that panel.
  */
 export function AgentRail({ className }: { className?: string }) {
   const agents = useStore((s) => s.agents);
@@ -29,7 +28,7 @@ export function AgentRail({ className }: { className?: string }) {
   const settingsActive = useStore((s) => s.page === "settings");
 
   return (
-    <nav aria-label="Agents" className={clsx("flex h-full w-16 shrink-0 flex-col items-center py-3", className)}>
+    <nav aria-label="Agents" className={clsx("flex h-full w-16 shrink-0 flex-col items-center border-r border-hairline bg-rail py-3", className)}>
       <Logo className="mb-3 size-7 shrink-0" />
 
       <ul className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto">
@@ -94,7 +93,7 @@ function RailAgentButton({ agent, active }: RailAgentButtonProps) {
           <Mascot spec={agent.mascot} size={32} state={mascotState} title={agent.name} />
           {working && (
             <span
-              className="absolute right-0.5 bottom-0.5 size-2.5 animate-pulse rounded-full bg-accent ring-2 ring-panel"
+              className="absolute right-0.5 bottom-0.5 size-2.5 animate-pulse rounded-full bg-accent ring-2 ring-rail"
               aria-hidden="true"
             />
           )}

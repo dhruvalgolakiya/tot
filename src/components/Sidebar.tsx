@@ -37,13 +37,14 @@ export function Sidebar() {
   if (desktop) {
     return (
       <>
-        <AgentRail />
+        {/* Above the panel, which slides underneath it when the sidebar collapses. */}
+        <AgentRail className="relative z-50" />
         <aside
           aria-label={onSettings ? "Settings" : "Chats"}
           inert={!open}
           style={{ width: PANEL_WIDTH }}
           className={clsx(
-            "relative z-40 flex h-full shrink-0 flex-col transition-[margin] duration-200 ease-out",
+            "relative z-40 flex h-full shrink-0 flex-col border-r border-hairline transition-[margin] duration-200 ease-out",
             // Tailwind needs the literal class string in source to generate it; keep in sync with PANEL_WIDTH.
             open ? "ml-0" : "-ml-[260px]",
           )}

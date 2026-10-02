@@ -37,6 +37,7 @@
   /* Surfaces and effects that differ per theme (see the theme blocks below). */
   --color-canvas: #212121;
   --color-panel: #181818;
+  --color-rail: #181818;
   --color-elevated: #2b2b2b;
   --color-bubble: #303030;
   --color-sunken: rgb(0 0 0 / 0.35);
@@ -163,6 +164,7 @@
     --color-cyan-50: oklch(30.2% 0.056 229.695); --color-cyan-100: oklch(39.8% 0.07 227.392); --color-cyan-200: oklch(45% 0.085 224.283); --color-cyan-300: oklch(52% 0.105 223.128); --color-cyan-400: oklch(60.9% 0.126 221.723); --color-cyan-500: oklch(71.5% 0.143 215.221); --color-cyan-600: oklch(78.9% 0.154 211.53); --color-cyan-700: oklch(86.5% 0.127 207.078); --color-cyan-800: oklch(91.7% 0.08 205.041); --color-cyan-900: oklch(95.6% 0.045 203.388); --color-cyan-950: oklch(98.4% 0.019 200.873);
     --color-canvas: #ffffff;
     --color-panel: #f9f9f9;
+    --color-rail: #f1f1f1; /* a shade darker than the chats panel so the two read as separate columns */
     --color-elevated: #ffffff;
     --color-bubble: #f4f4f4;
     --color-sunken: rgb(9 9 11 / 0.045);
@@ -202,6 +204,7 @@
     --color-cyan-50: oklch(98.4% 0.019 200.873); --color-cyan-100: oklch(95.6% 0.045 203.388); --color-cyan-200: oklch(91.7% 0.08 205.041); --color-cyan-300: oklch(86.5% 0.127 207.078); --color-cyan-400: oklch(78.9% 0.154 211.53); --color-cyan-500: oklch(71.5% 0.143 215.221); --color-cyan-600: oklch(60.9% 0.126 221.723); --color-cyan-700: oklch(52% 0.105 223.128); --color-cyan-800: oklch(45% 0.085 224.283); --color-cyan-900: oklch(39.8% 0.07 227.392); --color-cyan-950: oklch(30.2% 0.056 229.695);
     --color-canvas: #212121;
     --color-panel: #181818;
+    --color-rail: #181818;
     --color-elevated: #2b2b2b;
     --color-bubble: #303030;
     --color-sunken: rgb(0 0 0 / 0.35);
