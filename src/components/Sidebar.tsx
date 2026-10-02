@@ -15,9 +15,10 @@ import { ConversationList } from "./ConversationList";
 import { SettingsNav } from "./settings/SettingsNav";
 import { IconButton } from "./ui/IconButton";
 import { Kbd } from "./ui/Kbd";
+import { listRowClass } from "./ui/ListRow";
 import { Tip } from "./ui/Tip";
 
-const PANEL_WIDTH = 250;
+const PANEL_WIDTH = 256;
 
 /**
  * Slack/Discord-style workspace layout: a narrow agent rail (workspace
@@ -45,7 +46,7 @@ export function Sidebar() {
           className={clsx(
             "relative z-40 flex h-full shrink-0 flex-col transition-[margin] duration-200 ease-out",
             // Tailwind needs the literal class string in source to generate it; keep in sync with PANEL_WIDTH.
-            open ? "ml-0" : "-ml-[250px]",
+            open ? "ml-0" : "-ml-64",
           )}
         >
           {onSettings ? <SettingsNav /> : panel}
@@ -96,17 +97,17 @@ function SidebarPanel({ agent, query, onQueryChange }: SidebarPanelProps) {
         <button
           type="button"
           onClick={() => agent && navigateToAgentHome(agent.id)}
-          className="group flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-zinc-100 transition-colors hover:bg-white/[0.06]"
+          className={listRowClass()}
         >
-          <SquarePen className="size-4 text-zinc-300" />
-          New chat
-          <span className="ml-auto hidden opacity-0 transition-opacity group-hover:opacity-100 md:inline">
+          <SquarePen className="size-4 shrink-0 text-fg-subtle transition-colors group-hover/row:text-fg-muted" />
+          <span className="min-w-0 flex-1 truncate">New chat</span>
+          <span className="ml-auto hidden shrink-0 items-center opacity-0 transition-opacity group-hover/row:opacity-100 md:flex">
             <Kbd keys={["mod", "shift", "O"]} />
           </span>
         </button>
 
         <div className="group relative">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-zinc-300" />
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-subtle" />
           <input
             id="chat-search"
             type="text"
@@ -121,7 +122,7 @@ function SidebarPanel({ agent, query, onQueryChange }: SidebarPanelProps) {
             placeholder="Search chats"
             aria-label="Search chats"
             autoComplete="off"
-            className="peer h-9 w-full rounded-lg bg-transparent pr-14 pl-9 text-sm font-medium text-zinc-100 transition-colors outline-none placeholder:text-zinc-100 hover:bg-white/[0.06] focus:bg-white/[0.06] focus:font-normal focus:placeholder:text-zinc-500"
+            className="peer h-9 w-full rounded-lg bg-transparent pr-14 pl-9 text-ui font-medium text-fg transition-colors placeholder:text-fg hover:bg-hover focus:bg-hover focus:font-normal focus:placeholder:text-fg-subtle focus-visible:-outline-offset-2"
           />
           {!query && (
             <span className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 peer-focus:opacity-0 md:inline">

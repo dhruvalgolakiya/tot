@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import clsx from "clsx";
-import { Check, ChevronDown, Copy, ExternalLink, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, Copy, ExternalLink } from "lucide-react";
 import type { GitHubDeviceStart } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { useCopy } from "../../hooks/useCopy";
@@ -8,9 +8,12 @@ import { notifyError, setGithubStatus, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
 import { buttonClass } from "../ui/buttonStyles";
+import { Callout } from "../ui/Callout";
+import { cardClass } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { IconButton } from "../ui/IconButton";
 import { SecretInput } from "../ui/SecretInput";
+import { Skeleton } from "../ui/Skeleton";
 import { Switch } from "../ui/Switch";
 import { Tip } from "../ui/Tip";
 import { SettingRow } from "./SettingRow";
@@ -141,48 +144,49 @@ export function GitHubSettings() {
   }
 
   if (!github) {
-    return <div className="h-28 animate-pulse rounded-xl bg-white/[0.03]" aria-label="Loading GitHub status" />;
+    return (
+      <div aria-busy="true" aria-label="Loading GitHub status">
+        <Skeleton className="h-28 w-full rounded-xl" />
+      </div>
+    );
   }
 
   // Connected: avatar, who it's connected as, the writes switch, and a quiet Disconnect.
   if (github.connection && !reconnecting) {
     const { connection, problem, allowWrites } = github;
     return (
-      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+      <div className={cardClass()}>
         <div className="flex items-center gap-3">
           <img src={connection.avatarUrl} alt="" className="size-10 shrink-0 rounded-full" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-zinc-100">{connection.name ?? connection.login}</p>
-            <p className="truncate text-xs text-zinc-500">@{connection.login}</p>
+            <p className="truncate text-sm font-medium text-fg">{connection.name ?? connection.login}</p>
+            <p className="truncate text-xs text-fg-subtle">@{connection.login}</p>
           </div>
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3">
-          <p className="text-xs text-zinc-500">Connected with {SOURCE_LABELS[connection.source]}</p>
-          <button
-            type="button"
-            onClick={() => setConfirmOpen(true)}
-            className="shrink-0 text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
-          >
+          <p className="text-xs text-fg-subtle">Connected with {SOURCE_LABELS[connection.source]}</p>
+          <button type="button" onClick={() => setConfirmOpen(true)} className="link-muted shrink-0 text-xs">
             Disconnect
           </button>
         </div>
 
         {problem && (
-          <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-500/[0.08] px-3 py-2 text-xs text-amber-300">
-            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-            <span className="flex-1">{problem}</span>
-            <button
-              type="button"
-              onClick={() => setReconnecting(true)}
-              className="shrink-0 font-medium underline-offset-2 hover:underline"
+          <div className="mt-3">
+            <Callout
+              tone="warning"
+              action={
+                <button type="button" onClick={() => setReconnecting(true)} className="link-muted">
+                  Reconnect
+                </button>
+              }
             >
-              Reconnect
-            </button>
-          </p>
+              {problem}
+            </Callout>
+          </div>
         )}
 
-        <div className="mt-4 border-t border-white/[0.06] pt-4">
+        <div className="mt-4 border-t border-hairline pt-1">
           <SettingRow
             htmlFor="github-allow-writes"
             title="Agents can push and open pull requests"
@@ -217,7 +221,7 @@ export function GitHubSettings() {
   const hasOthers = oauthIsOther || tokenIsOther;
 
   return (
-    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+    <div className={cardClass()}>
       {mode === "token" && (
         <form onSubmit={(event) => void submitToken(event)} className="space-y-3">
           <Field
@@ -225,12 +229,7 @@ export function GitHubSettings() {
             htmlFor="github-token"
             hint={
               <>
-                <a
-                  href={TOKEN_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--agent-accent-text)] underline-offset-2 hover:underline"
-                >
+                <a href={TOKEN_URL} target="_blank" rel="noopener noreferrer" className="link">
                   Create a classic token
                 </a>{" "}
                 with these scopes, or paste a fine-grained token.
@@ -250,7 +249,7 @@ export function GitHubSettings() {
               placeholder="ghp_… or github_pat_…"
             />
           </Field>
-          {tokenError && <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-xs text-red-300">{tokenError}</p>}
+          {tokenError && <Callout tone="danger">{tokenError}</Callout>}
           <div className="flex items-center gap-2">
             <Button type="submit" variant="primary" size="sm" disabled={!tokenValue.trim() || busy}>
               {busy ? "Connecting…" : "Connect"}
@@ -266,9 +265,9 @@ export function GitHubSettings() {
         <div className="space-y-3">
           {device ? (
             <>
-              <p className="text-xs text-zinc-500">Enter this code at GitHub to connect your account:</p>
+              <p className="text-xs text-fg-subtle">Enter this code at GitHub to connect your account:</p>
               <div className="flex items-center gap-2">
-                <span className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-zinc-100">
+                <span className="flex-1 rounded-lg border border-edge bg-fill-subtle px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-fg">
                   {device.userCode}
                 </span>
                 <Tip content={copied ? "Copied" : "Copy code"}>
@@ -285,11 +284,11 @@ export function GitHubSettings() {
                   Cancel
                 </Button>
               </div>
-              <p className="text-xs text-zinc-500">Waiting for you to approve…</p>
+              <p className="text-xs text-fg-subtle">Waiting for you to approve…</p>
             </>
           ) : (
             <>
-              {deviceMessage && <p className="text-xs text-amber-300">{deviceMessage}</p>}
+              {deviceMessage && <Callout tone="warning">{deviceMessage}</Callout>}
               <div className="flex items-center gap-2">
                 <Button type="button" variant="secondary" size="sm" onClick={() => void startDevice()} disabled={busy}>
                   Try again
@@ -330,28 +329,19 @@ export function GitHubSettings() {
 
           {hasOthers && (
             <div>
-              <button
-                type="button"
-                onClick={() => setShowOptions((value) => !value)}
-                className="flex items-center gap-1 text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-300"
-              >
+              <button type="button" onClick={() => setShowOptions((value) => !value)} className="link-muted flex items-center gap-1 text-xs">
                 <ChevronDown className={clsx("size-3.5 transition-transform", showOptions && "rotate-180")} />
                 Other ways to connect
               </button>
               {showOptions && (
-                <div className="mt-2 flex flex-col items-start gap-1.5 border-l border-white/[0.07] pl-3">
+                <div className="mt-2 flex flex-col items-start gap-1.5 border-l border-hairline pl-3">
                   {oauthIsOther && (
-                    <button
-                      type="button"
-                      onClick={() => void startDevice()}
-                      disabled={busy}
-                      className="text-xs text-zinc-400 hover:text-zinc-200"
-                    >
+                    <button type="button" onClick={() => void startDevice()} disabled={busy} className="link-muted text-xs">
                       Sign in with GitHub
                     </button>
                   )}
                   {tokenIsOther && (
-                    <button type="button" onClick={() => setMode("token")} className="text-xs text-zinc-400 hover:text-zinc-200">
+                    <button type="button" onClick={() => setMode("token")} className="link-muted text-xs">
                       Use a token
                     </button>
                   )}

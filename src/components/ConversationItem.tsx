@@ -7,6 +7,8 @@ import { conversationTitle } from "../lib/conversations";
 import { conversationPath } from "../lib/router";
 import { deleteConversation, navigateToConversation, renameConversation, togglePinned, useStore } from "../store";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { IconButton } from "./ui/IconButton";
+import { listRowClass } from "./ui/ListRow";
 import { SlackMark } from "./ui/SlackMark";
 import { StatusDot } from "./ui/StatusDot";
 import { Tip } from "./ui/Tip";
@@ -50,25 +52,20 @@ export function ConversationItem({ conversation, active, streaming }: Conversati
           if (event.key === "Enter") finish(event.currentTarget.value);
           if (event.key === "Escape") finish(null);
         }}
-        className="h-9 w-full rounded-lg border bg-white/[0.06] px-2.5 text-sm text-zinc-100 outline-none"
+        className="h-9 w-full rounded-lg border bg-fill px-2.5 text-sm text-fg focus-visible:-outline-offset-2"
         style={{ borderColor: "var(--agent-accent-border)" }}
       />
     );
   }
 
   return (
-    <div
-      className={clsx(
-        "group relative flex h-9 items-center rounded-lg transition-colors",
-        active ? "bg-white/[0.08] text-zinc-50" : "text-white/70 hover:bg-white/[0.04] hover:text-zinc-100",
-      )}
-    >
+    <div className="group relative">
       <a
         href={conversationPath(conversation.id)}
         onClick={open}
         aria-current={active ? "page" : undefined}
         title={title}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pr-8 pl-2.5 text-[13px] outline-none"
+        className={listRowClass({ selected: active, className: "pr-8" })}
       >
         {streaming && (
           <span
@@ -77,11 +74,11 @@ export function ConversationItem({ conversation, active, streaming }: Conversati
           />
         )}
         {conversation.routineId && (
-          <Clock className="size-3.5 shrink-0 text-zinc-500" aria-label="Scheduled routine" />
+          <Clock className="size-3.5 shrink-0 text-fg-subtle" aria-label="Scheduled routine" />
         )}
         {conversation.origin?.kind === "slack" && (
           <Tip content={conversation.origin.label}>
-            <span className="shrink-0 text-zinc-500" title={conversation.origin.label}>
+            <span className="shrink-0 text-fg-subtle" title={conversation.origin.label}>
               <SlackMark className="size-3" />
             </span>
           </Tip>
@@ -96,16 +93,18 @@ export function ConversationItem({ conversation, active, streaming }: Conversati
 
       <DropdownMenu.Root modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            aria-label={`Options for ${title}`}
+          <IconButton
+            label={`Options for ${title}`}
+            size="sm"
             className={clsx(
-              "absolute right-1 grid size-7 place-items-center rounded-md text-zinc-400 transition hover:bg-white/10 hover:text-zinc-100 focus-visible:opacity-100",
-              menuOpen || active ? "opacity-100" : "opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100",
+              "absolute top-1/2 right-1 -translate-y-1/2",
+              menuOpen || active
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100",
             )}
           >
-            <Ellipsis className="size-4" />
-          </button>
+            <Ellipsis />
+          </IconButton>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content
@@ -124,22 +123,22 @@ export function ConversationItem({ conversation, active, streaming }: Conversati
             <DropdownMenu.Item className="menu-item" onSelect={() => {
                 pendingAction.current = "rename";
               }}>
-              <Pencil className="size-4 text-zinc-400" /> Rename
+              <Pencil className="size-4 text-fg-muted" /> Rename
             </DropdownMenu.Item>
             <DropdownMenu.Item className="menu-item" onSelect={() => togglePinned(conversation.id)}>
               {conversation.pinned ? (
                 <>
-                  <PinOff className="size-4 text-zinc-400" /> Unpin
+                  <PinOff className="size-4 text-fg-muted" /> Unpin
                 </>
               ) : (
                 <>
-                  <Pin className="size-4 text-zinc-400" /> Pin
+                  <Pin className="size-4 text-fg-muted" /> Pin
                 </>
               )}
             </DropdownMenu.Item>
             <DropdownMenu.Separator className="menu-separator" />
             <DropdownMenu.Item
-              className="menu-item text-red-400 data-[highlighted]:bg-red-500/10"
+              className="menu-item menu-item-danger"
               onSelect={() => {
                 pendingAction.current = "delete";
               }}
@@ -156,7 +155,7 @@ export function ConversationItem({ conversation, active, streaming }: Conversati
         title="Delete chat?"
         description={
           <>
-            This deletes <span className="font-medium text-zinc-200">{title}</span>. This can't be undone.
+            This deletes <span className="font-medium text-fg">{title}</span>. This can't be undone.
           </>
         }
         confirmLabel="Delete"

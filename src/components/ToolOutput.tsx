@@ -10,7 +10,7 @@ type ToolOutputProps = {
 export function ToolOutput({ label, text, error = false }: ToolOutputProps) {
   return (
     <div>
-      <div className={clsx("mb-1 text-[11px] font-medium tracking-wide uppercase", error ? "text-red-400/80" : "text-zinc-500")}>
+      <div className={clsx("mb-1 text-2xs font-medium tracking-wide uppercase", error ? "text-danger" : "text-fg-subtle")}>
         {label}
       </div>
       <pre

@@ -23,10 +23,10 @@ export function AgentMenu({ agent }: { agent: Agent }) {
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="flex min-w-0 items-center gap-1 rounded-lg px-2 py-1.5 text-left transition-colors outline-none hover:bg-white/[0.05] data-[state=open]:bg-white/[0.07]"
+          className="flex min-w-0 items-center gap-1 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-hover data-[state=open]:bg-selected"
         >
-          <span className="truncate text-[15px] font-semibold tracking-[-0.01em] text-white/92">{agent.name}</span>
-          <ChevronDown className="size-4 shrink-0 text-zinc-500" />
+          <span className="truncate text-heading text-fg-strong">{agent.name}</span>
+          <ChevronDown className="size-4 shrink-0 text-fg-subtle" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -72,9 +72,11 @@ function MenuItem({
 }) {
   return (
     <DropdownMenu.Item className="menu-item" onSelect={onSelect}>
-      <span className="text-zinc-400 [&_svg]:size-4">{icon}</span>
+      <span className="text-fg-muted [&_svg]:size-4">{icon}</span>
       {children}
-      {detail !== undefined && <span className="ml-auto flex items-center gap-1.5 text-xs text-zinc-500">{detail}</span>}
+      {detail !== undefined && (
+        <span className="ml-auto flex items-center gap-1.5 text-xs text-fg-subtle tabular-nums">{detail}</span>
+      )}
     </DropdownMenu.Item>
   );
 }

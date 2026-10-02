@@ -63,6 +63,10 @@ function loginPage(error = "", next = "/"): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ffffff">
+<!-- Inter (variable weight + optical size), same link as index.html. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
 <script>
   // Same saved theme as the app (src/lib/theme.ts): localStorage, falling back to the device setting.
   (function () {
@@ -75,25 +79,45 @@ function loginPage(error = "", next = "/"): string {
 </script>
 <title>Sign in · TOT</title><link rel="icon" href="/tot.svg">
 <style>
-  :root { color-scheme: light; --bg: #f7f7f8; --card: #ffffff; --text: #09090b; --muted: rgb(9 9 11 / 0.55);
-    --field: #ffffff; --line: rgb(9 9 11 / 0.12); --lift: 0 0 0 1px rgb(9 9 11 / 0.06), 0 24px 60px -28px rgb(9 9 11 / 0.3);
-    --error: #b91c1c; }
-  :root.dark { color-scheme: dark; --bg: #08080a; --card: #111114; --text: #f4f4f5; --muted: rgb(255 255 255 / 0.55);
-    --field: #0b0b0e; --line: rgb(255 255 255 / 0.08); --lift: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 30px 80px rgb(0 0 0 / 0.5);
-    --error: #fca5a5; }
+  /* Hand-mirrors DESIGN.md's tokens (src/index.css) since this page is plain server-rendered HTML/CSS,
+     not Tailwind — same surfaces, text tiers, radii and focus ring as the app's Modal. */
+  :root { --accent: #a78bfa; --accent-glow: color-mix(in oklch, var(--accent) 16%, transparent); }
+  :root:not(.dark) {
+    color-scheme: light;
+    --bg: #f1f1f3; --card: #ffffff; --line: rgb(9 9 11 / 0.12);
+    --text: oklch(14.1% 0.005 285.823); --muted: oklch(44.2% 0.017 285.786);
+    --field: rgb(9 9 11 / 0.025); --focus: color-mix(in oklch, var(--accent) 62%, black);
+    --primary-bg: oklch(21% 0.006 285.885); --primary-fg: #ffffff;
+    --error: oklch(57.7% 0.245 27.325);
+    --shadow: 0 2px 6px -2px rgb(9 9 11 / 0.06), 0 32px 64px -24px rgb(9 9 11 / 0.3);
+  }
+  :root.dark {
+    color-scheme: dark;
+    --bg: #111114; --card: #16161a; --line: rgb(255 255 255 / 0.1);
+    --text: oklch(98.5% 0 none); --muted: oklch(70.5% 0.015 286.067);
+    --field: rgb(255 255 255 / 0.025); --focus: color-mix(in oklch, var(--accent) 80%, transparent);
+    --primary-bg: oklch(96.7% 0.001 286.375); --primary-fg: #08080a;
+    --error: oklch(70.4% 0.191 22.216);
+    --shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 32px 80px -16px rgb(0 0 0 / 0.8);
+  }
   *, *::before, *::after { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text);
-    font: 16px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
-  form { width: min(360px, 88vw); display: grid; gap: 14px; padding: 32px; border-radius: 24px; background: var(--card);
-    box-shadow: var(--lift); }
-  h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.02em; }
-  p { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
-  input { padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--field);
-    color: inherit; font: inherit; outline: none; }
-  input:focus { border-color: #a78bfa; box-shadow: 0 0 0 3px rgb(167 139 250 / 0.25); }
-  button { padding: 12px; border: 0; border-radius: 14px; background: #a78bfa; color: #0b0b0f; font: inherit;
-    font-weight: 600; cursor: pointer; }
-  .error { color: var(--error); font-size: 13px; margin: 0; }
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    font-size: 16px; line-height: 1.5; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  form { width: min(360px, 88vw); display: grid; gap: 16px; padding: 32px; border-radius: 16px;
+    border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow); }
+  h1 { margin: 0 0 4px; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em; }
+  p { margin: 0 0 8px; color: var(--muted); font-size: 14px; line-height: 1.625; }
+  input { height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--field);
+    color: inherit; font: inherit; font-size: 14px; outline: none; }
+  input:focus { border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-glow); }
+  button { height: 36px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--primary-bg);
+    color: var(--primary-fg); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: opacity 150ms; }
+  button:hover { opacity: 0.9; }
+  .error { color: var(--error); font-size: 12px; line-height: 1.5; margin: 0; }
   img { width: 40px; height: 40px; }
 </style></head>
 <body><form method="post" action="/login">

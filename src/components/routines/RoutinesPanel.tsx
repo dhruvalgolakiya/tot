@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import type { Routine } from "@shared/types";
 import { Button } from "../ui/Button";
-import { Modal } from "../ui/Modal";
+import { Callout } from "../ui/Callout";
+import { EmptyState } from "../ui/EmptyState";
+import { Modal, ModalBody } from "../ui/Modal";
+import { Skeleton } from "../ui/Skeleton";
 import { RoutineForm } from "./RoutineForm";
 import { RoutineRow } from "./RoutineRow";
 import type { RoutineFormValues } from "./formValues";
@@ -97,37 +100,38 @@ export function RoutinesPanel({ agentId, agentName, onOpenConversation }: Routin
   return (
     <div className="space-y-4">
       {loadError && (
-        <p className="rounded-lg border border-white/[0.07] px-3 py-4 text-center text-sm text-zinc-500">
-          {loadError}{" "}
-          <button type="button" onClick={load} className="font-medium text-zinc-300 hover:underline">
-            Retry
-          </button>
-        </p>
+        <Callout tone="danger" action={<button type="button" onClick={load} className="link-muted">Retry</button>}>
+          {loadError}
+        </Callout>
       )}
 
       {!routines && !loadError && (
-        <div className="h-20 animate-pulse rounded-xl bg-white/[0.03]" aria-label="Loading routines" />
+        <div className="space-y-2" aria-busy="true" aria-label="Loading routines">
+          <Skeleton className="h-16 rounded-xl" />
+          <Skeleton className="h-16 rounded-xl" />
+        </div>
       )}
 
       {routines && routines.length === 0 && (
-        <div className="space-y-4 rounded-2xl border border-dashed border-white/10 px-5 py-6 text-center">
-          <p className="text-sm leading-relaxed text-zinc-400">
-            Routines let {agentName} do things on a schedule without you asking — like a morning news brief or a
-            weekly recap. Each run starts a new chat you can check anytime.
-          </p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {EXAMPLES.map((example) => (
-              <button
-                key={example.label}
-                type="button"
-                onClick={() => openCreate(example.values)}
-                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-white/20 hover:bg-white/[0.07] hover:text-zinc-100"
-              >
-                {example.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <EmptyState
+          variant="dashed"
+          size="sm"
+          description={`Routines let ${agentName} do things on a schedule without you asking — like a morning news brief or a weekly recap. Each run starts a new chat you can check anytime.`}
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              {EXAMPLES.map((example) => (
+                <button
+                  key={example.label}
+                  type="button"
+                  onClick={() => openCreate(example.values)}
+                  className="rounded-full border border-edge bg-fill-subtle px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:bg-hover hover:text-fg"
+                >
+                  {example.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
       )}
 
       {routines && routines.length > 0 && (
@@ -146,7 +150,7 @@ export function RoutinesPanel({ agentId, agentName, onOpenConversation }: Routin
       )}
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs leading-relaxed text-zinc-500">
+        <p className="text-xs leading-relaxed text-fg-subtle">
           You can also just ask {agentName} in chat, e.g. “every weekday at 9, send me…”
         </p>
         <Button size="sm" onClick={() => openCreate()} disabled={!routines} className="shrink-0">
@@ -155,7 +159,7 @@ export function RoutinesPanel({ agentId, agentName, onOpenConversation }: Routin
       </div>
 
       <Modal open={formOpen} onOpenChange={setFormOpen} title={editing ? "Edit routine" : "New routine"} className="max-w-lg">
-        <div className="max-h-[65vh] overflow-y-auto px-5 pb-5">
+        <ModalBody className="max-h-[65vh]">
           <RoutineForm
             agentId={agentId}
             routine={editing ?? undefined}
@@ -166,7 +170,7 @@ export function RoutinesPanel({ agentId, agentName, onOpenConversation }: Routin
             }}
             onCancel={() => setFormOpen(false)}
           />
-        </div>
+        </ModalBody>
       </Modal>
     </div>
   );

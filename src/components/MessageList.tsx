@@ -8,6 +8,8 @@ import { AssistantAvatar } from "./AssistantAvatar";
 import { AssistantMessage } from "./AssistantMessage";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { UserMessage } from "./UserMessage";
+import { Callout } from "./ui/Callout";
+import { Skeleton } from "./ui/Skeleton";
 
 const NO_MESSAGES: Message[] = [];
 
@@ -51,23 +53,25 @@ export function MessageList({ conversationId }: { conversationId: string }) {
       <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain">
         <div ref={contentRef} className="mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 pt-20 pb-10 sm:px-6">
           {messages.length === 0 && loadState === "loading" && (
-            <div className="space-y-4 pt-6" aria-label="Loading chat">
-              <div className="ml-auto h-10 w-2/5 animate-pulse rounded-3xl bg-white/[0.05]" />
-              <div className="h-4 w-4/5 animate-pulse rounded bg-white/[0.05]" />
-              <div className="h-4 w-3/5 animate-pulse rounded bg-white/[0.05]" />
+            <div className="space-y-4 pt-6" aria-busy="true" aria-label="Loading chat">
+              <Skeleton className="ml-auto h-10 w-2/5 rounded-3xl" />
+              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="h-4 w-3/5" />
             </div>
           )}
 
           {messages.length === 0 && loadState === "error" && (
-            <div className="pt-16 text-center text-sm text-zinc-400">
-              Couldn't load this chat.{" "}
-              <button
-                type="button"
-                onClick={() => retryConversation(conversationId)}
-                className="font-medium text-zinc-200 hover:underline"
+            <div className="mx-auto max-w-sm pt-16">
+              <Callout
+                tone="danger"
+                action={
+                  <button type="button" onClick={() => retryConversation(conversationId)} className="link-muted">
+                    Try again
+                  </button>
+                }
               >
-                Try again
-              </button>
+                Couldn't load this chat.
+              </Callout>
             </div>
           )}
 
@@ -103,7 +107,7 @@ export function MessageList({ conversationId }: { conversationId: string }) {
           type="button"
           onClick={() => scrollToBottom("smooth")}
           aria-label="Jump to latest"
-          className="absolute bottom-3 left-1/2 grid size-9 -translate-x-1/2 animate-fade-in place-items-center rounded-full border border-white/10 bg-zinc-900/90 text-zinc-300 shadow-lg shadow-shade/40 backdrop-blur transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+          className="absolute bottom-3 left-1/2 grid size-9 -translate-x-1/2 animate-fade-in place-items-center rounded-full border border-edge bg-elevated text-fg-muted shadow-popover transition-colors hover:bg-hover hover:text-fg"
         >
           <ArrowDown className="size-4" />
         </button>

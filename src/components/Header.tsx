@@ -36,7 +36,7 @@ export function Header() {
       className={clsx(
         "absolute inset-x-0 top-0 z-10 flex h-14 shrink-0 items-center gap-1 border-b px-2 transition-all duration-200 sm:px-3",
         scrolled
-          ? "border-white/[0.06] bg-canvas/80 backdrop-blur-xl"
+          ? "border-hairline bg-canvas/80 backdrop-blur-xl"
           : "border-transparent bg-transparent backdrop-blur-none",
       )}
     >
@@ -66,11 +66,11 @@ export function Header() {
         <button
           type="button"
           onClick={() => navigateToAgentHome(agent.id)}
-          className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-zinc-200 transition hover:bg-white/5 md:hidden"
+          className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-heading text-fg transition-colors hover:bg-hover md:hidden"
         >
           <Mascot spec={agent.mascot} size={24} state={working ? "working" : "idle"} title={agent.name} />
           {/* Phones show just the mascot so the model picker has room. */}
-          <span className="hidden truncate tracking-tight sm:inline">{agent.name}</span>
+          <span className="hidden truncate sm:inline">{agent.name}</span>
         </button>
       )}
       <ModelPicker />
@@ -82,7 +82,7 @@ export function Header() {
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Open in Slack"
-              className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-100"
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-hover hover:text-fg"
             >
               <SlackMark className="size-4" />
             </a>

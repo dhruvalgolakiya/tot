@@ -33,7 +33,7 @@ export function NoticePart({ part }: { part: Notice }) {
       <button
         type="button"
         onClick={openWiki}
-        className="flex items-start gap-2 text-xs leading-5 text-zinc-500 transition-colors hover:text-zinc-300"
+        className="flex items-start gap-2 text-xs leading-5 text-fg-subtle transition-colors hover:text-fg-muted"
       >
         {content}
       </button>
@@ -44,7 +44,7 @@ export function NoticePart({ part }: { part: Notice }) {
     <div
       className={clsx(
         "flex items-start gap-2 text-xs leading-5",
-        part.kind === "warning" ? "text-amber-300/90" : "text-zinc-500",
+        part.kind === "warning" ? "text-warning" : "text-fg-subtle",
       )}
     >
       {content}

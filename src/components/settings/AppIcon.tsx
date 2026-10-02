@@ -18,7 +18,7 @@ export function AppIcon({ name, iconUrl, size = "size-8", className }: AppIconPr
     return (
       <div
         aria-hidden="true"
-        className={clsx(size, "grid shrink-0 place-items-center rounded-lg bg-white/[0.08] text-xs font-semibold text-zinc-300", className)}
+        className={clsx(size, "grid shrink-0 place-items-center rounded-lg bg-fill text-xs font-semibold text-fg-muted", className)}
       >
         {letter}
       </div>
@@ -29,7 +29,7 @@ export function AppIcon({ name, iconUrl, size = "size-8", className }: AppIconPr
     <img
       src={iconUrl}
       alt=""
-      className={clsx(size, "shrink-0 rounded-lg bg-white/[0.08] object-cover", className)}
+      className={clsx(size, "shrink-0 rounded-lg bg-fill object-cover", className)}
       onError={() => setFailed(true)}
     />
   );

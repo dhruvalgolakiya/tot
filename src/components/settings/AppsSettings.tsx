@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Ellipsis, LoaderCircle, Power, Search } from "lucide-react";
+import { Ellipsis, LoaderCircle, Power } from "lucide-react";
 import type { AppCatalogItem } from "@shared/types";
 import { useAppConnect } from "../../hooks/useAppConnect";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
@@ -8,7 +8,12 @@ import { api, errorMessage } from "../../lib/api";
 import { notifyError, setAppsStatus, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
+import { cardClass } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
 import { IconButton } from "../ui/IconButton";
+import { SearchInput } from "../ui/SearchInput";
+import { Skeleton } from "../ui/Skeleton";
 import { AppCatalogCard } from "./AppCatalogCard";
 import { AppConnectModal } from "./AppConnectModal";
 import { AppPanel } from "./AppPanel";
@@ -88,19 +93,23 @@ export function AppsSettings() {
   }
 
   const footnote = (
-    <p className="mt-4 border-t border-white/[0.06] pt-3 text-xs text-zinc-500">
-      <a href={EXECUTOR_URL} target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300 hover:underline">
+    <p className="mt-4 border-t border-hairline pt-3 text-xs text-fg-subtle">
+      <a href={EXECUTOR_URL} target="_blank" rel="noopener noreferrer" className="link-muted">
         Powered by Executor
       </a>
     </p>
   );
 
   if (!apps) {
-    return <div className="h-28 animate-pulse rounded-xl bg-white/[0.03]" aria-label="Loading Apps status" />;
+    return (
+      <div aria-busy="true" aria-label="Loading Apps status">
+        <Skeleton className="h-28 w-full rounded-xl" />
+      </div>
+    );
   }
 
   return (
-    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+    <div className={cardClass()}>
       {(apps.state === "not-installed" || apps.state === "stopped") && (
         <div className="space-y-1.5">
           <Button variant="primary" size="sm" onClick={() => void setup()} disabled={busy}>
@@ -108,21 +117,21 @@ export function AppsSettings() {
             {apps.state === "stopped" ? "Turn on" : "Set up"}
           </Button>
           {apps.state === "not-installed" && (
-            <p className="text-xs text-zinc-500">Installs Executor (open source, ~90 MB) on this Mac</p>
+            <p className="text-xs text-fg-subtle">Installs Executor (open source, ~90 MB) on this Mac</p>
           )}
         </div>
       )}
 
       {(apps.state === "installing" || apps.state === "starting") && (
-        <div className="flex items-center gap-2 text-sm text-zinc-400">
-          <LoaderCircle className="size-4 animate-spin text-[var(--agent-accent)]" />
+        <div className="flex items-center gap-2 text-sm text-fg-muted">
+          <LoaderCircle className="size-4 animate-spin text-accent" />
           {apps.state === "installing" ? "Installing Executor…" : "Starting…"}
         </div>
       )}
 
       {apps.state === "error" && (
         <div className="space-y-2">
-          <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-xs text-red-300">{apps.error}</p>
+          <Callout tone="danger">{apps.error}</Callout>
           <Button variant="secondary" size="sm" onClick={() => void setup()} disabled={busy}>
             {busy ? "Trying again…" : "Try again"}
           </Button>
@@ -132,9 +141,9 @@ export function AppsSettings() {
       {apps.state === "running" && (
         <div className="space-y-5">
           <section>
-            <h3 className="label-caps mb-2">Your apps</h3>
+            <h3 className="group-label mb-2">Your apps</h3>
             {apps.apps.length === 0 ? (
-              <p className="text-sm text-zinc-500">Add an app below to let agents use it.</p>
+              <p className="text-sm text-fg-subtle">Add an app below to let agents use it.</p>
             ) : (
               <ul className="space-y-1.5">
                 {apps.apps.map((connection) => (
@@ -150,34 +159,24 @@ export function AppsSettings() {
           </section>
 
           <section>
-            <h3 className="label-caps mb-2">Add apps</h3>
-            <div className="relative mb-2.5">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-500" />
-              <input
-                type="text"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search apps"
-                aria-label="Search apps"
-                className="input pl-9"
-              />
-            </div>
+            <h3 className="group-label mb-2">Add apps</h3>
+            <SearchInput
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search apps"
+              aria-label="Search apps"
+              containerClassName="mb-2.5"
+            />
 
-            {catalogError && (
-              <p className="rounded-lg border border-white/[0.07] px-3 py-4 text-center text-sm text-zinc-500">{catalogError}</p>
-            )}
+            {catalogError && <Callout tone="danger">{catalogError}</Callout>}
             {!catalog && !catalogError && (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Loading apps">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-busy="true" aria-label="Loading apps">
                 {[0, 1, 2, 3].map((key) => (
-                  <div key={key} className="h-[52px] animate-pulse rounded-xl bg-white/[0.03]" />
+                  <Skeleton key={key} className="h-14 rounded-xl" />
                 ))}
               </div>
             )}
-            {catalog && catalog.length === 0 && (
-              <p className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-zinc-500">
-                No apps match “{debouncedQuery}”.
-              </p>
-            )}
+            {catalog && catalog.length === 0 && <EmptyState variant="dashed" size="sm" title={`No apps match “${debouncedQuery}”.`} />}
             {catalog && catalog.length > 0 && (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {catalog.map((item) => (
@@ -187,7 +186,7 @@ export function AppsSettings() {
             )}
           </section>
 
-          <div className="flex justify-end border-t border-white/[0.06] pt-3">
+          <div className="flex justify-end border-t border-hairline pt-3">
             <DropdownMenu.Root modal={false}>
               <DropdownMenu.Trigger asChild>
                 <IconButton label="More Apps options" size="sm">
@@ -196,10 +195,7 @@ export function AppsSettings() {
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content align="end" sideOffset={4} className="menu w-44">
-                  <DropdownMenu.Item
-                    className="menu-item text-red-400 data-[highlighted]:bg-red-500/10"
-                    onSelect={() => setConfirmOpen(true)}
-                  >
+                  <DropdownMenu.Item className="menu-item menu-item-danger" onSelect={() => setConfirmOpen(true)}>
                     <Power className="size-4" /> Turn off
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>

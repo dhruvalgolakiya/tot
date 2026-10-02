@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Pencil, Play, Trash } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
+import { Ellipsis, Pencil, Play, Trash } from "lucide-react";
 import type { Routine } from "@shared/types";
 import { notifyError } from "../../store";
+import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { cardClass } from "../ui/Card";
 import { IconButton } from "../ui/IconButton";
 import { Switch } from "../ui/Switch";
-import { Tip } from "../ui/Tip";
 import { formatRelative, formatSchedule } from "./format";
 import { routinesApi } from "./routinesApi";
 
@@ -64,19 +66,15 @@ export function RoutineRow({ routine, onChanged, onDeleted, onEdit, onOpenConver
   const lastConversationId = routine.lastConversationId;
 
   return (
-    <li className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5">
+    <li className={cardClass({ padding: "sm" })}>
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-sm font-medium text-zinc-100">{routine.name}</span>
-            {!routine.enabled && (
-              <span className="rounded-md bg-white/[0.06] px-1.5 py-px text-[11px] font-medium text-zinc-400">
-                Paused
-              </span>
-            )}
+            <span className="text-sm font-medium text-fg">{routine.name}</span>
+            {!routine.enabled && <Badge>Paused</Badge>}
           </div>
-          <p className="mt-1 text-xs text-zinc-400">{formatSchedule(routine.schedule)}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-fg-muted">{formatSchedule(routine.schedule)}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-fg-subtle">
             <span>
               {routine.enabled && routine.nextRunAt ? `Next run ${formatRelative(routine.nextRunAt)}` : "Not scheduled"}
             </span>
@@ -86,7 +84,7 @@ export function RoutineRow({ routine, onChanged, onDeleted, onEdit, onOpenConver
                 <button
                   type="button"
                   onClick={() => onOpenConversation?.(lastConversationId)}
-                  className="text-zinc-400 underline decoration-dotted underline-offset-2 hover:text-zinc-200"
+                  className="link-muted"
                 >
                   Last run{routine.lastRunAt ? ` ${formatRelative(routine.lastRunAt)}` : ""}
                 </button>
@@ -95,39 +93,38 @@ export function RoutineRow({ routine, onChanged, onDeleted, onEdit, onOpenConver
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Tip content="Run now">
-            <IconButton
-              label={`Run ${routine.name} now`}
-              size="sm"
-              onClick={() => void runNow()}
-              disabled={busy || running}
-            >
-              <Play />
-            </IconButton>
-          </Tip>
           <Switch
             checked={routine.enabled}
             onCheckedChange={(enabled) => void setEnabled(enabled)}
             disabled={busy}
             label={`${routine.enabled ? "Pause" : "Enable"} ${routine.name}`}
           />
-          <Tip content="Edit">
-            <IconButton label={`Edit ${routine.name}`} size="sm" onClick={() => onEdit(routine)} disabled={busy}>
-              <Pencil />
-            </IconButton>
-          </Tip>
-          {!confirming && (
-            <Tip content="Delete">
-              <IconButton label={`Delete ${routine.name}`} size="sm" onClick={() => setConfirming(true)} disabled={busy}>
-                <Trash />
+          <DropdownMenu.Root modal={false}>
+            <DropdownMenu.Trigger asChild>
+              <IconButton label={`Actions for ${routine.name}`} size="sm" disabled={busy}>
+                <Ellipsis />
               </IconButton>
-            </Tip>
-          )}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content align="end" sideOffset={4} className="menu w-44">
+                <DropdownMenu.Item className="menu-item" onSelect={() => void runNow()} disabled={running}>
+                  <Play className="size-4 text-fg-muted" /> Run now
+                </DropdownMenu.Item>
+                <DropdownMenu.Item className="menu-item" onSelect={() => onEdit(routine)}>
+                  <Pencil className="size-4 text-fg-muted" /> Edit
+                </DropdownMenu.Item>
+                <DropdownMenu.Separator className="menu-separator" />
+                <DropdownMenu.Item className="menu-item menu-item-danger" onSelect={() => setConfirming(true)}>
+                  <Trash className="size-4" /> Delete
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </div>
       </div>
       {confirming && (
-        <div className="mt-3 flex items-center justify-end gap-2 border-t border-white/[0.06] pt-3">
-          <span className="mr-auto text-xs text-zinc-400">Delete this routine?</span>
+        <div className="mt-3 flex items-center justify-end gap-2 border-t border-hairline pt-3">
+          <span className="mr-auto text-xs text-fg-muted">Delete this routine?</span>
           <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
             Cancel
           </Button>

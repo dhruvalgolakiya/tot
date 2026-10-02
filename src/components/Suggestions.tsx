@@ -22,11 +22,11 @@ export function Suggestions() {
           disabled={sending}
           onClick={() => void sendMessage(text)}
           className={clsx(
-            "flex min-w-0 items-start gap-3 rounded-2xl bg-white/[0.025] px-4 py-3 text-left text-sm leading-snug text-zinc-400 transition-all hover:-translate-y-0.5 hover:bg-white/[0.06] hover:text-zinc-100 disabled:pointer-events-none disabled:opacity-50",
+            "flex min-w-0 items-start gap-3 rounded-xl bg-fill-subtle px-4 py-3 text-left text-sm leading-snug text-fg-muted transition-colors hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-50",
             index >= 2 && "hidden sm:flex",
           )}
         >
-          <Icon className="mt-px size-4 shrink-0 text-zinc-500" />
+          <Icon className="mt-px size-4 shrink-0 text-fg-subtle" />
           <span className="min-w-0">{text}</span>
         </button>
       ))}

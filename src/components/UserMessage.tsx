@@ -15,7 +15,7 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
       href={attachment.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="block max-w-56 overflow-hidden rounded-2xl border border-white/10 transition-opacity hover:opacity-90"
+      className="block max-w-56 overflow-hidden rounded-xl border border-hairline transition-opacity hover:opacity-90"
       title={`Open ${attachment.name}`}
     >
       <img src={attachment.url} alt={attachment.name} className="block max-h-72 w-full object-cover" />
@@ -30,16 +30,16 @@ function FileAttachment({ attachment }: { attachment: Attachment }) {
       href={attachment.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex max-w-72 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.03] py-2 pr-3 pl-2.5 transition-colors hover:bg-white/[0.06]"
+      className="flex max-w-72 items-center gap-2.5 rounded-xl border border-hairline bg-fill-subtle py-2 pr-3 pl-2.5 transition-colors hover:bg-hover"
     >
-      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/[0.06]">
-        <Icon className="size-4 text-zinc-400" />
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-fill">
+        <Icon className="size-4 text-fg-muted" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-zinc-200">{attachment.name}</span>
-        <span className="block text-[11px] text-zinc-500">{formatBytes(attachment.size)}</span>
+        <span className="block truncate text-ui font-medium text-fg">{attachment.name}</span>
+        <span className="block text-2xs text-fg-subtle tabular-nums">{formatBytes(attachment.size)}</span>
       </span>
-      <Download className="size-3.5 shrink-0 text-zinc-500" />
+      <Download className="size-3.5 shrink-0 text-fg-subtle" />
     </a>
   );
 }
@@ -68,7 +68,7 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
       {text && (
         <div
           className={clsx(
-            "max-w-[80%] rounded-3xl bg-bubble px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-white/92 [overflow-wrap:anywhere] transition-opacity sm:max-w-[70%]",
+            "max-w-[80%] rounded-3xl bg-bubble px-4 py-2.5 text-chat whitespace-pre-wrap text-fg [overflow-wrap:anywhere] transition-opacity sm:max-w-[70%]",
             pending && "opacity-70",
           )}
         >

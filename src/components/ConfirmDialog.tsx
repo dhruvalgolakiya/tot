@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Modal } from "./ui/Modal";
+import { Modal, ModalFooter } from "./ui/Modal";
 import { Button } from "./ui/Button";
 
 type ConfirmDialogProps = {
@@ -15,7 +15,7 @@ type ConfirmDialogProps = {
 export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, onConfirm }: ConfirmDialogProps) {
   return (
     <Modal open={open} onOpenChange={onOpenChange} title={title} description={description} className="max-w-sm">
-      <div className="flex justify-end gap-2 px-5 pt-2 pb-5">
+      <ModalFooter divider={false}>
         <Button variant="ghost" onClick={() => onOpenChange(false)}>
           Cancel
         </Button>
@@ -29,7 +29,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
         >
           {confirmLabel}
         </Button>
-      </div>
+      </ModalFooter>
     </Modal>
   );
 }

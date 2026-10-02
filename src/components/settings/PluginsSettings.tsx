@@ -3,6 +3,9 @@ import { Plus } from "lucide-react";
 import type { Plugin } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
+import { EmptyState } from "../ui/EmptyState";
+import { Skeleton } from "../ui/Skeleton";
 import { PluginForm } from "./PluginForm";
 import { PluginRow } from "./PluginRow";
 
@@ -24,25 +27,31 @@ export function PluginsSettings() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm leading-relaxed text-zinc-400">
+      <p className="text-sm leading-relaxed text-fg-muted">
         TOT's computer, memory and GitHub tools are built in. Add other MCP servers here for more tools, like Linear or your own APIs.
       </p>
 
       {loadError && (
-        <p className="rounded-lg border border-white/[0.07] px-3 py-4 text-center text-sm text-zinc-500">
-          {loadError}{" "}
-          <button type="button" onClick={load} className="font-medium text-zinc-300 hover:underline">
-            Retry
-          </button>
-        </p>
+        <Callout
+          tone="danger"
+          action={
+            <button type="button" onClick={load} className="link-muted">
+              Retry
+            </button>
+          }
+        >
+          {loadError}
+        </Callout>
       )}
 
-      {!plugins && !loadError && <div className="h-20 animate-pulse rounded-xl bg-white/[0.03]" aria-label="Loading plugins" />}
+      {!plugins && !loadError && (
+        <div aria-busy="true" aria-label="Loading plugins">
+          <Skeleton className="h-20 w-full rounded-xl" />
+        </div>
+      )}
 
       {plugins && plugins.length === 0 && !adding && (
-        <p className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-zinc-500">
-          No plugins yet. Add an MCP server to give TOT new tools.
-        </p>
+        <EmptyState variant="dashed" title="No plugins yet" description="Add an MCP server to give TOT new tools." />
       )}
 
       {plugins && plugins.length > 0 && (

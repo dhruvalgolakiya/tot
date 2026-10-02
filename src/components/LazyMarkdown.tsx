@@ -17,8 +17,8 @@ export function LazyMarkdown(props: LazyMarkdownProps) {
       fallback={
         <div
           className={clsx(
-            "animate-[fade-in_200ms_ease-out_500ms_both] leading-7 whitespace-pre-wrap [overflow-wrap:anywhere]",
-            props.muted ? "text-sm text-zinc-400" : "text-zinc-200",
+            "animate-[fade-in_200ms_ease-out_500ms_both] whitespace-pre-wrap [overflow-wrap:anywhere]",
+            props.muted ? "text-sm text-fg-muted" : "text-chat text-fg",
           )}
         >
           {props.text}

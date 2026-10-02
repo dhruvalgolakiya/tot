@@ -1,10 +1,10 @@
 import { useState } from "react";
-import clsx from "clsx";
 import { Pencil, Trash } from "lucide-react";
 import type { Memory } from "@shared/types";
 import { api } from "../lib/api";
 import { relativeTime } from "../lib/format";
 import { notifyError } from "../store";
+import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 import { Tip } from "./ui/Tip";
@@ -51,7 +51,7 @@ export function MemoryItem({ memory, onUpdated, onDeleted }: MemoryItemProps) {
 
   if (editing) {
     return (
-      <li className="rounded-xl border border-[var(--agent-accent-border)] bg-white/[0.03] p-3">
+      <li className="rounded-xl border border-accent-edge bg-fill-subtle p-3">
         <textarea
           autoFocus
           rows={3}
@@ -81,19 +81,12 @@ export function MemoryItem({ memory, onUpdated, onDeleted }: MemoryItemProps) {
   }
 
   return (
-    <li className="group rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3 transition-colors hover:border-white/10">
-      <p className="text-sm leading-relaxed whitespace-pre-wrap text-zinc-200 [overflow-wrap:anywhere]">{memory.content}</p>
-      <div className="mt-2 flex h-7 items-center gap-2 text-xs text-zinc-500">
-        <span
-          className={clsx(
-            "rounded-md px-1.5 py-0.5 font-medium",
-            memory.source === "agent"
-              ? "bg-[var(--agent-accent-08)] text-[var(--agent-accent-text)]"
-              : "bg-cyan-400/10 text-cyan-300",
-          )}
-        >
+    <li className="group rounded-xl border border-hairline bg-fill-subtle px-3.5 py-3 transition-colors hover:border-edge">
+      <p className="text-sm leading-relaxed whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">{memory.content}</p>
+      <div className="mt-2 flex h-7 items-center gap-2 text-xs text-fg-subtle">
+        <Badge tone={memory.source === "agent" ? "accent" : "neutral"}>
           {memory.source === "agent" ? "Saved by TOT" : "Added by you"}
-        </span>
+        </Badge>
         <span>{relativeTime(memory.updatedAt)}</span>
         <div className="ml-auto flex items-center gap-1">
           {confirming ? (

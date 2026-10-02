@@ -1,6 +1,7 @@
 import { displayLabel, groupModels, modelLabel } from "../../lib/models";
 import type { SettingsSectionProps } from "../../lib/settings";
 import { goToSettings, useStore } from "../../store";
+import { Card } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { Switch } from "../ui/Switch";
 import { SettingRow } from "./SettingRow";
@@ -80,11 +81,12 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
         </select>
       </Field>
 
-      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+      <Card padding="none">
         <SettingRow
           htmlFor="settings-memory"
           title="Memory"
           description="Let TOT save useful facts and recall them in future chats."
+          className="px-4"
           control={
             <Switch
               id="settings-memory"
@@ -93,14 +95,12 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
             />
           }
         />
-        <button
-          type="button"
-          onClick={() => goToSettings("memory")}
-          className="mt-3 text-xs font-medium text-zinc-400 transition-colors hover:text-zinc-200"
-        >
-          Manage memories →
-        </button>
-      </div>
+        <div className="border-t border-hairline px-4 py-3">
+          <button type="button" onClick={() => goToSettings("memory")} className="link-muted text-xs">
+            Manage memories →
+          </button>
+        </div>
+      </Card>
     </div>
   );
 }

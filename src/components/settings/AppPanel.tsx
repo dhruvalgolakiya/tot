@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
 import type { AppRule } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { humanizeAppTool } from "../../lib/apps";
 import { notifyError, setAppsStatus, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { Callout } from "../ui/Callout";
+import { EmptyState } from "../ui/EmptyState";
+import { Modal } from "../ui/Modal";
+import { SearchInput } from "../ui/SearchInput";
+import { Skeleton } from "../ui/Skeleton";
 import { AppIcon } from "./AppIcon";
 import { AppRuleRow } from "./AppRuleRow";
-import { Modal } from "../ui/Modal";
 
 const PAGE_SIZE = 50;
 
@@ -88,53 +91,50 @@ export function AppPanel({ appId, onClose }: AppPanelProps) {
     >
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
-          {loadError && <p className="rounded-lg border border-white/[0.07] px-3 py-4 text-center text-sm text-zinc-500">{loadError}</p>}
-          {!rules && !loadError && <div className="h-40 animate-pulse rounded-xl bg-white/[0.03]" aria-label="Loading approval rules" />}
+          {loadError && <Callout tone="danger">{loadError}</Callout>}
+          {!rules && !loadError && (
+            <div aria-busy="true" aria-label="Loading approval rules">
+              <Skeleton className="h-40 w-full rounded-xl" />
+            </div>
+          )}
 
           {appId && rules && (
             <div className="space-y-3">
-              <p className="label-caps">Approval rules</p>
+              <p className="group-label">Approval rules</p>
 
               {appRule && (
-                <ul className="rounded-xl border border-white/[0.07]">
+                <ul className="rounded-xl border border-hairline">
                   <AppRuleRow rule={appRule} appId={appId} onChanged={setRules} />
                 </ul>
               )}
 
               {actionRules.length > 0 && (
-                <div className="relative">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-500" />
-                  <input
-                    type="text"
-                    value={query}
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      setVisible(PAGE_SIZE);
-                    }}
-                    placeholder="Search actions"
-                    aria-label="Search actions"
-                    className="input pl-9"
-                  />
-                </div>
+                <SearchInput
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setVisible(PAGE_SIZE);
+                  }}
+                  placeholder="Search actions"
+                  aria-label="Search actions"
+                />
               )}
 
               {actionRules.length > 0 && (
-                <ul className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.07]">
+                <ul className="divide-y divide-hairline rounded-xl border border-hairline">
                   {shown.map((rule) => (
                     <AppRuleRow key={rule.tool} rule={rule} appId={appId} onChanged={setRules} />
                   ))}
                   {shown.length === 0 && (
-                    <li className="px-3.5 py-6 text-center text-sm text-zinc-500">No actions match “{query}”.</li>
+                    <li>
+                      <EmptyState size="sm" title={`No actions match “${query}”.`} />
+                    </li>
                   )}
                 </ul>
               )}
 
               {filtered.length > shown.length && (
-                <button
-                  type="button"
-                  onClick={() => setVisible((v) => v + PAGE_SIZE)}
-                  className="text-xs font-medium text-zinc-400 hover:text-zinc-200"
-                >
+                <button type="button" onClick={() => setVisible((v) => v + PAGE_SIZE)} className="link-muted text-xs">
                   Show more ({filtered.length - shown.length} more)
                 </button>
               )}
@@ -142,12 +142,12 @@ export function AppPanel({ appId, onClose }: AppPanelProps) {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center justify-end border-t border-white/[0.06] px-5 py-3.5">
+        <div className="flex shrink-0 items-center justify-end border-t border-hairline px-5 py-3.5">
           <button
             type="button"
             onClick={() => setConfirmOpen(true)}
             disabled={disconnecting}
-            className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline disabled:pointer-events-none disabled:opacity-50"
+            className="link-muted text-xs disabled:pointer-events-none disabled:opacity-50"
           >
             {disconnecting ? "Disconnecting…" : "Disconnect"}
           </button>

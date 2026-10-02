@@ -123,10 +123,10 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
         onKeyDown={onKeyDown}
         onPaste={onPaste}
         placeholder={`Ask ${agentName} anything…`}
-        className="block max-h-[200px] w-full resize-none overflow-y-auto bg-transparent px-5 pt-4 pb-1 text-[15px] leading-6 text-white/92 outline-none placeholder:text-white/35"
+        className="block max-h-[200px] w-full resize-none overflow-y-auto bg-transparent px-5 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
       />
       {interim.trim() && (
-        <p aria-live="polite" className="truncate px-5 pb-1 text-[13px] text-white/35 italic">
+        <p aria-live="polite" className="truncate px-5 pb-1 text-ui text-fg-subtle italic">
           {interim}
         </p>
       )}
@@ -136,7 +136,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             aria-label="Attach files"
-            className="flex size-9 items-center justify-center rounded-full text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/90"
+            className="flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-hover hover:text-fg"
           >
             <Paperclip className="size-4" />
           </button>
@@ -147,11 +147,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
             type="button"
             aria-pressed={thinkHarder}
             onClick={() => setThinkHarder((value) => !value)}
-            style={thinkHarder ? { background: "var(--agent-accent-16)", color: "var(--agent-accent-text)" } : undefined}
-            className={clsx(
-              "flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition-colors",
-              !thinkHarder && "text-white/55 hover:bg-white/[0.06] hover:text-white/90",
-            )}
+            className="flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-accent-soft aria-pressed:text-accent-text"
           >
             <Lightbulb className="size-3.5" />
             Think harder
@@ -166,7 +162,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
                 onClick={() => void stopRun(currentId)}
                 disabled={run.stopping}
                 aria-label="Stop"
-                className="grid size-9 place-items-center rounded-full bg-white/90 text-zinc-950 transition-colors hover:bg-white disabled:opacity-50"
+                className="grid size-9 place-items-center rounded-full bg-fg text-canvas transition-colors hover:bg-fg/90 disabled:opacity-50"
               >
                 <Square className="size-3.5 fill-current" />
               </button>
@@ -177,7 +173,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
               disabled={!canSend}
               aria-label="Send"
               style={canSend ? { background: "var(--agent-accent)", color: sendForeground } : undefined}
-              className={clsx("grid size-9 place-items-center rounded-full transition-colors", !canSend && "bg-white/10 text-white/35")}
+              className={clsx("grid size-9 place-items-center rounded-full transition-colors", !canSend && "bg-fill-strong text-fg-faint")}
             >
               {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
             </button>

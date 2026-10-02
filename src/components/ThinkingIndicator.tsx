@@ -15,7 +15,7 @@ interface ThinkingIndicatorProps {
 export function ThinkingIndicator({ agentName, message, live = false }: ThinkingIndicatorProps) {
   return (
     <div className="flex h-7 items-center" role="status">
-      <span className="shimmer-text text-[15px] font-medium">{statusLabel(agentName, message, live)}</span>
+      <span className="shimmer-text text-chat font-medium">{statusLabel(agentName, message, live)}</span>
     </div>
   );
 }

@@ -7,9 +7,12 @@ import { useCopy } from "../../hooks/useCopy";
 import { notifyError, setSlackStatus, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
+import { cardClass } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { IconButton } from "../ui/IconButton";
 import { SecretInput } from "../ui/SecretInput";
+import { Skeleton } from "../ui/Skeleton";
 import { StatusDot } from "../ui/StatusDot";
 import { Tip } from "../ui/Tip";
 
@@ -23,14 +26,18 @@ export function SlackSettings() {
   const slack = useStore((s) => s.slack);
 
   if (!slack) {
-    return <div className="h-28 animate-pulse rounded-xl bg-white/[0.03]" aria-label="Loading Slack status" />;
+    return (
+      <div aria-busy="true" aria-label="Loading Slack status">
+        <Skeleton className="h-28 w-full rounded-xl" />
+      </div>
+    );
   }
 
   return (
-    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+    <div className={cardClass()}>
       {slack.state === "connecting" && (
-        <div className="flex items-center gap-2 text-sm text-zinc-400">
-          <LoaderCircle className="size-4 animate-spin text-[var(--agent-accent)]" />
+        <div className="flex items-center gap-2 text-sm text-fg-muted">
+          <LoaderCircle className="size-4 animate-spin text-accent" />
           Connecting to Slack…
         </div>
       )}
@@ -42,7 +49,7 @@ export function SlackSettings() {
 
 function StepBadge({ children }: { children: ReactNode }) {
   return (
-    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[11px] font-medium text-zinc-400">
+    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-fill text-2xs font-medium text-fg-muted">
       {children}
     </span>
   );
@@ -76,15 +83,13 @@ function SetupGuide({ status }: { status: SlackStatus }) {
 
   return (
     <div className="space-y-4">
-      {status.state === "error" && status.error && (
-        <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-xs text-red-300">{status.error}</p>
-      )}
+      {status.state === "error" && status.error && <Callout tone="danger">{status.error}</Callout>}
 
       <ol className="space-y-4">
         <li className="flex gap-3">
           <StepBadge>1</StepBadge>
           <div className="flex-1 space-y-2">
-            <p className="text-sm text-zinc-300">Create a Slack app from TOT's manifest.</p>
+            <p className="text-sm text-fg-muted">Create a Slack app from TOT's manifest.</p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
               <Button
                 variant="primary"
@@ -93,11 +98,7 @@ function SetupGuide({ status }: { status: SlackStatus }) {
               >
                 Create the Slack app
               </Button>
-              <button
-                type="button"
-                onClick={() => void copy(status.manifest)}
-                className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
-              >
+              <button type="button" onClick={() => void copy(status.manifest)} className="link-muted text-xs">
                 {copied ? "Copied" : "Copy manifest"}
               </button>
             </div>
@@ -106,16 +107,16 @@ function SetupGuide({ status }: { status: SlackStatus }) {
 
         <li className="flex gap-3">
           <StepBadge>2</StepBadge>
-          <p className="flex-1 text-sm text-zinc-300">
-            In the app's <strong className="font-medium text-zinc-200">Basic Information</strong>, create an App-Level Token
-            with the <code className="rounded bg-white/[0.06] px-1 py-0.5 text-xs">connections:write</code> scope.
+          <p className="flex-1 text-sm text-fg-muted">
+            In the app's <strong className="font-medium text-fg">Basic Information</strong>, create an App-Level Token
+            with the <code className="rounded bg-fill px-1 py-0.5 text-xs">connections:write</code> scope.
           </p>
         </li>
 
         <li className="flex gap-3">
           <StepBadge>3</StepBadge>
-          <p className="flex-1 text-sm text-zinc-300">
-            <strong className="font-medium text-zinc-200">Install to Workspace</strong>, then copy the Bot User OAuth Token.
+          <p className="flex-1 text-sm text-fg-muted">
+            <strong className="font-medium text-fg">Install to Workspace</strong>, then copy the Bot User OAuth Token.
           </p>
         </li>
 
@@ -150,7 +151,7 @@ function SetupGuide({ status }: { status: SlackStatus }) {
                 placeholder="xoxb-…"
               />
             </Field>
-            {error && <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-xs text-red-300">{error}</p>}
+            {error && <Callout tone="danger">{error}</Callout>}
             <Button type="submit" variant="primary" size="sm" disabled={!appToken.trim() || !botToken.trim() || busy}>
               {busy ? "Connecting…" : "Connect"}
             </Button>
@@ -208,7 +209,7 @@ function ConnectedView({ status }: { status: SlackStatus }) {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm text-zinc-200">
+        <div className="flex items-center gap-2 text-sm text-fg">
           <StatusDot tone="green" />
           Connected to {status.workspace} as @{status.botName}
         </div>
@@ -220,10 +221,7 @@ function ConnectedView({ status }: { status: SlackStatus }) {
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
             <DropdownMenu.Content align="end" sideOffset={4} className="menu w-44">
-              <DropdownMenu.Item
-                className="menu-item text-red-400 data-[highlighted]:bg-red-500/10"
-                onSelect={() => setConfirmOpen(true)}
-              >
+              <DropdownMenu.Item className="menu-item menu-item-danger" onSelect={() => setConfirmOpen(true)}>
                 <Unplug className="size-4" /> Disconnect
               </DropdownMenu.Item>
             </DropdownMenu.Content>
@@ -255,17 +253,14 @@ function ConnectedView({ status }: { status: SlackStatus }) {
       )}
 
       <div>
-        <h3 className="label-caps mb-2">People who can use TOT</h3>
+        <h3 className="group-label mb-2">People who can use TOT</h3>
         {status.allowedUsers.length === 0 ? (
-          <p className="text-sm text-zinc-500">Nobody yet — when someone messages the bot, they'll show up here to allow.</p>
+          <p className="text-sm text-fg-subtle">Nobody yet — when someone messages the bot, they'll show up here to allow.</p>
         ) : (
           <ul className="space-y-px">
             {status.allowedUsers.map((person) => (
-              <li
-                key={person.id}
-                className="group flex h-9 items-center justify-between gap-2 rounded-lg px-2.5 hover:bg-white/[0.03]"
-              >
-                <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">{person.name}</span>
+              <li key={person.id} className="group flex h-9 items-center justify-between gap-2 rounded-lg px-2.5 hover:bg-hover">
+                <span className="min-w-0 flex-1 truncate text-sm text-fg">{person.name}</span>
                 <Tip content="Remove">
                   <IconButton
                     label={`Remove ${person.name}`}
@@ -285,14 +280,11 @@ function ConnectedView({ status }: { status: SlackStatus }) {
 
       {status.requests.length > 0 && (
         <div>
-          <h3 className="label-caps mb-2">Requests</h3>
+          <h3 className="group-label mb-2">Requests</h3>
           <ul className="space-y-1.5">
             {status.requests.map((person) => (
-              <li
-                key={person.id}
-                className="flex items-center justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2"
-              >
-                <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">{person.name}</span>
+              <li key={person.id} className="flex items-center justify-between gap-3 rounded-lg bg-fill-subtle px-3 py-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-fg">{person.name}</span>
                 <Button size="sm" variant="secondary" onClick={() => void allow(person.id)} disabled={busyPersonId === person.id}>
                   Allow
                 </Button>
@@ -302,7 +294,7 @@ function ConnectedView({ status }: { status: SlackStatus }) {
         </div>
       )}
 
-      <p className="border-t border-white/[0.06] pt-3 text-xs leading-relaxed text-zinc-500">
+      <p className="border-t border-hairline pt-3 text-xs leading-relaxed text-fg-subtle">
         DM the bot, or @mention it in a channel. Start with an agent's name to pick one, e.g. “Puddin: summarize this thread”.
       </p>
 

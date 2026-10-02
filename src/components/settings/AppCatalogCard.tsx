@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import type { AppCatalogItem } from "@shared/types";
 import { connectHint } from "../../lib/apps";
+import { cardClass } from "../ui/Card";
 import { AppIcon } from "./AppIcon";
 
 type AppCatalogCardProps = {
@@ -17,18 +18,18 @@ export function AppCatalogCard({ item, onConnect }: AppCatalogCardProps) {
     <button
       type="button"
       onClick={onConnect}
-      className="flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-left transition-colors hover:border-white/[0.14] hover:bg-white/[0.05]"
+      className={cardClass({ padding: "sm", interactive: true, className: "flex items-start gap-3" })}
     >
       <AppIcon name={item.name} iconUrl={item.iconUrl} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-100">{item.name}</p>
-        {item.description && <p className="mt-0.5 line-clamp-1 text-xs text-zinc-500">{item.description}</p>}
+        <p className="truncate text-sm font-medium text-fg">{item.name}</p>
+        {item.description && <p className="mt-0.5 line-clamp-1 text-xs text-fg-subtle">{item.description}</p>}
       </div>
       <span className="mt-0.5 shrink-0">
         {connected ? (
-          <Check className="size-4 text-emerald-400" aria-label="Connected" />
+          <Check className="size-4 text-success" aria-label="Connected" />
         ) : (
-          hint && <span className="text-[11px] font-medium text-zinc-500">{hint}</span>
+          hint && <span className="text-2xs font-medium text-fg-subtle">{hint}</span>
         )}
       </span>
     </button>

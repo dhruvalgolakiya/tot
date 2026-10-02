@@ -5,7 +5,9 @@ import { api } from "../../lib/api";
 import { PROVIDER_LABELS } from "../../lib/models";
 import { pluginTarget } from "../../lib/plugins";
 import { notifyError } from "../../store";
+import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { cardClass } from "../ui/Card";
 import { IconButton } from "../ui/IconButton";
 import { Switch } from "../ui/Switch";
 import { Tip } from "../ui/Tip";
@@ -15,8 +17,6 @@ type PluginRowProps = {
   onChanged: (plugin: Plugin) => void;
   onDeleted: (id: string) => void;
 };
-
-const badge = "rounded-md bg-white/[0.06] px-1.5 py-px text-[11px] font-medium text-zinc-400";
 
 export function PluginRow({ plugin, onChanged, onDeleted }: PluginRowProps) {
   const [busy, setBusy] = useState(false);
@@ -48,21 +48,19 @@ export function PluginRow({ plugin, onChanged, onDeleted }: PluginRowProps) {
   }
 
   return (
-    <li className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5">
+    <li className={cardClass({ padding: "sm" })}>
       <div className="flex items-start gap-3">
-        <Puzzle className="mt-0.5 size-4 shrink-0 text-zinc-500" />
+        <Puzzle className="mt-0.5 size-4 shrink-0 text-fg-subtle" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-mono text-sm text-zinc-100">{plugin.name}</span>
-            <span className={badge}>{plugin.config.type}</span>
+            <span className="font-mono text-sm text-fg">{plugin.name}</span>
+            <Badge>{plugin.config.type}</Badge>
             {plugin.providers.map((provider) => (
-              <span key={provider} className={badge}>
-                {PROVIDER_LABELS[provider]}
-              </span>
+              <Badge key={provider}>{PROVIDER_LABELS[provider]}</Badge>
             ))}
           </div>
-          {plugin.description && <p className="mt-1 text-xs text-zinc-400">{plugin.description}</p>}
-          <p className="mt-1 truncate font-mono text-xs text-zinc-500" title={target}>
+          {plugin.description && <p className="mt-1 text-xs text-fg-muted">{plugin.description}</p>}
+          <p className="mt-1 truncate font-mono text-xs text-fg-subtle" title={target}>
             {target}
           </p>
         </div>
@@ -83,8 +81,8 @@ export function PluginRow({ plugin, onChanged, onDeleted }: PluginRowProps) {
         </div>
       </div>
       {confirming && (
-        <div className="mt-3 flex items-center justify-end gap-2 border-t border-white/[0.06] pt-3">
-          <span className="mr-auto text-xs text-zinc-400">Remove this plugin?</span>
+        <div className="mt-3 flex items-center justify-end gap-2 border-t border-hairline pt-3">
+          <span className="mr-auto text-xs text-fg-muted">Remove this plugin?</span>
           <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
             Cancel
           </Button>

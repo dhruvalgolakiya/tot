@@ -20,15 +20,15 @@ export function AttachmentChip({ item, onRemove }: AttachmentChipProps) {
 
   return (
     <div
-      className="group/attachment relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]"
+      className="group/attachment relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-hairline bg-fill-subtle"
       title={name}
     >
       {thumbnail ? (
         <img src={thumbnail} alt={name} className="size-full object-cover" />
       ) : (
         <div className="flex flex-col items-center gap-1 px-1">
-          <Icon className="size-5 text-zinc-400" />
-          <span className="max-w-14 truncate text-[9px] leading-tight text-zinc-500">{name}</span>
+          <Icon className="size-5 text-fg-muted" />
+          <span className="max-w-14 truncate text-2xs leading-tight text-fg-subtle">{name}</span>
         </div>
       )}
 
@@ -38,19 +38,21 @@ export function AttachmentChip({ item, onRemove }: AttachmentChipProps) {
         </div>
       )}
       {status === "error" && (
-        <div className="absolute inset-0 grid place-items-center bg-red-950/70" title="Upload failed">
-          <AlertCircle className="size-5 text-red-300" />
+        <div className="absolute inset-0 grid place-items-center bg-danger-solid/70" title="Upload failed">
+          <AlertCircle className="size-5 text-fixed-white" />
         </div>
       )}
       {status === "done" && !thumbnail && size > 0 && (
-        <span className="dark absolute right-1 bottom-1 rounded bg-black/60 px-1 text-[8px] text-zinc-400">{formatBytes(size)}</span>
+        <span className="dark absolute right-1 bottom-1 rounded bg-black/60 px-1 text-[8px] text-zinc-400 tabular-nums">
+          {formatBytes(size)}
+        </span>
       )}
 
       <IconButton
         label={`Remove ${name}`}
         size="sm"
         onClick={() => onRemove(item.localId)}
-        className="absolute -top-1.5 -right-1.5 size-5 border border-white/10 bg-zinc-900 text-zinc-300 opacity-0 shadow-sm transition-opacity group-hover/attachment:opacity-100 pointer-coarse:opacity-100 hover:bg-zinc-800 hover:text-zinc-100 focus-visible:opacity-100 [&_svg]:size-3"
+        className="absolute -top-1.5 -right-1.5 size-5 border border-edge bg-elevated text-fg-muted opacity-0 shadow-popover transition-opacity group-hover/attachment:opacity-100 pointer-coarse:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100 [&_svg]:size-3"
       >
         <X />
       </IconButton>

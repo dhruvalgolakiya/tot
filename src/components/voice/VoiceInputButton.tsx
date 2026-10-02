@@ -74,17 +74,17 @@ export function VoiceInputButton({ onTranscript, disabled, className }: VoiceInp
       onClick={() => (listening ? stop() : start())}
       className={clsx(
         "relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors disabled:pointer-events-none disabled:opacity-40",
-        listening ? "text-violet-300" : "text-zinc-400 hover:bg-white/[0.07] hover:text-zinc-100",
+        listening ? "text-accent-text" : "text-fg-muted hover:bg-hover hover:text-fg",
         className,
       )}
     >
       {listening && (
         <>
-          <span className="absolute inset-1 animate-ping rounded-full bg-violet-400/40" />
-          <span className="absolute inset-1.5 rounded-full bg-violet-400/20" />
+          <span className="absolute inset-1 animate-ping rounded-full bg-accent-soft-hover" />
+          <span className="absolute inset-1.5 rounded-full bg-accent-soft" />
         </>
       )}
-      {disabled ? <MicOff className="relative size-[18px]" /> : <Mic className="relative size-[18px]" />}
+      {disabled ? <MicOff className="relative size-4.5" /> : <Mic className="relative size-4.5" />}
     </button>
   );
 }

@@ -37,8 +37,8 @@ const PROVIDER_RECHECK_MS = 15_000;
 // Sonner reads its colors from these variables; they follow the theme palette.
 const TOAST_THEME = {
   "--normal-bg": "var(--color-elevated)",
-  "--normal-border": "color-mix(in oklab, var(--color-white) 10%, transparent)",
-  "--normal-text": "var(--color-zinc-100)",
+  "--normal-border": "var(--color-edge)",
+  "--normal-text": "var(--color-fg)",
 } as CSSProperties;
 
 export default function App() {
@@ -113,12 +113,12 @@ export default function App() {
 
   return (
     <Tooltip.Provider delayDuration={350} skipDelayDuration={150}>
-      <div className="flex h-dvh overflow-hidden bg-canvas text-zinc-100 md:bg-panel">
+      <div className="flex h-dvh overflow-hidden bg-canvas text-fg md:bg-panel">
         <Sidebar />
         {/* Inset layout: from tablet width up, the chat is a rounded card floating on the page background. */}
         <main
           className={clsx(
-            "relative flex min-w-0 flex-1 flex-col md:my-2 md:mr-2 md:overflow-hidden md:rounded-lg md:border md:border-white/[0.06] md:bg-canvas",
+            "relative flex min-w-0 flex-1 flex-col md:my-2 md:mr-2 md:overflow-hidden md:rounded-lg md:border md:border-hairline md:bg-canvas",
             !sidebarOpen && "md:ml-2",
           )}
         >

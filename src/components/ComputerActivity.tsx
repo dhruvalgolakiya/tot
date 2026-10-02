@@ -25,9 +25,9 @@ export function ComputerActivity({ agentId }: { agentId: string }) {
 
   return (
     <section>
-      <h3 className="label-caps mb-2">Activity</h3>
+      <h3 className="group-label mb-2">Activity</h3>
       {entries.length === 0 ? (
-        <p className="text-sm text-zinc-500">Commands and file changes will show up here as TOT works.</p>
+        <p className="text-sm text-fg-subtle">Commands and file changes will show up here as TOT works.</p>
       ) : (
         <ol className="space-y-1.5">
           {entries.map((part) => (

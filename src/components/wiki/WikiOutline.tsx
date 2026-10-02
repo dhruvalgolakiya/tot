@@ -10,8 +10,8 @@ type WikiOutlineProps = {
 export function WikiOutline({ headings, onSelect }: WikiOutlineProps) {
   if (headings.length === 0) return null;
   return (
-    <nav aria-label="On this page" className="w-56 shrink-0 overflow-y-auto border-l border-white/[0.06] px-4 py-6">
-      <p className="label-caps mb-2 px-1">On this page</p>
+    <nav aria-label="On this page" className="w-56 shrink-0 overflow-y-auto border-l border-hairline px-4 py-6">
+      <p className="group-label mb-2 px-1">On this page</p>
       <ul className="space-y-0.5">
         {headings.map((heading, index) => (
           <li key={index}>
@@ -19,7 +19,7 @@ export function WikiOutline({ headings, onSelect }: WikiOutlineProps) {
               type="button"
               onClick={() => onSelect(heading.text)}
               className={clsx(
-                "block w-full truncate rounded-md px-2 py-1 text-left text-xs text-zinc-500 transition-colors hover:text-zinc-200",
+                "block w-full truncate rounded-md px-2 py-1 text-left text-xs text-fg-subtle transition-colors hover:text-fg",
                 heading.level === 3 && "pl-4",
               )}
             >

@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { WikiPage } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
 import { Field } from "../ui/Field";
 
 type WikiPageEditorProps = {
@@ -72,10 +73,10 @@ export function WikiPageEditor({ page, onSaved, onCancel }: WikiPageEditorProps)
           value={content}
           onChange={(event) => setContent(event.target.value)}
           placeholder="Markdown…"
-          className="input min-h-[260px] resize-none font-mono text-[13px] leading-relaxed"
+          className="input min-h-[260px] resize-none font-mono text-ui leading-relaxed"
         />
       </Field>
-      {error && <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <Callout tone="danger">{error}</Callout>}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel} disabled={saving}>
           Cancel

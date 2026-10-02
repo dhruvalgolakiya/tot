@@ -19,13 +19,11 @@ export function ComputerChip() {
       onClick={() => setComputerPanelOpen(!panelOpen)}
       aria-pressed={panelOpen}
       className={clsx(
-        "flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors",
-        panelOpen
-          ? "border-white/15 bg-white/[0.08] text-zinc-100"
-          : "border-white/10 text-zinc-300 hover:bg-white/[0.05] hover:text-zinc-100",
+        "flex h-8 items-center gap-2 rounded-full border border-edge px-3 text-xs font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg active:bg-selected",
+        panelOpen && "border-edge-strong bg-selected text-fg",
       )}
     >
-      <Monitor className="size-3.5 text-zinc-400" />
+      <Monitor className="size-3.5" />
       <span className="hidden sm:inline">Computer ·</span>
       <StatusDot tone={tone} pulse={pulse} />
       <span>{computer ? computer.state : "not started"}</span>

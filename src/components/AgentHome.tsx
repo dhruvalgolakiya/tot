@@ -30,20 +30,20 @@ export function AgentHome() {
   return (
     <div className="flex flex-1 flex-col items-center justify-end px-4 pt-14 pb-8">
       <MascotStage spec={agent?.mascot ?? defaultMascot} size={200} title={name} />
-      <h1 className="mt-6 text-center text-[32px] font-semibold tracking-[-0.02em] text-white/92 sm:text-[40px]">
-        Hi, I'm {name}
-      </h1>
-      <p className="mt-2 max-w-md text-center text-[15px] text-white/55">
+      <h1 className="mt-6 text-center text-display text-fg-strong">Hi, I'm {name}</h1>
+      <p className="mt-2 max-w-md text-center text-sm leading-relaxed text-fg-muted">
         Ask me anything, or hand me a task — I can browse the web, use a computer, and remember what matters to you.
       </p>
       {agent && routineCount > 0 && (
         <button
           type="button"
           onClick={() => openAgentSettings(agent.id, "routines")}
-          className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-medium text-white/55 transition-colors hover:border-white/20 hover:bg-white/[0.06] hover:text-white/85"
+          className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-edge bg-fill-subtle px-3 py-1 text-xs font-medium text-fg-muted transition-colors hover:border-edge-strong hover:bg-hover hover:text-fg"
         >
           <Clock className="size-3.5" />
-          {routineCount} routine{routineCount === 1 ? "" : "s"}
+          <span className="tabular-nums">
+            {routineCount} routine{routineCount === 1 ? "" : "s"}
+          </span>
         </button>
       )}
     </div>

@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import clsx from "clsx";
 import type { Routine } from "@shared/types";
 import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
+import { cardClass } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { formatSchedule } from "./format";
 import {
@@ -96,7 +98,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
         <div
           role="radiogroup"
           aria-label="Schedule type"
-          className="inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5"
+          className="inline-flex rounded-lg border border-edge bg-fill-subtle p-0.5"
         >
           {SCHEDULE_KINDS.map((option) => (
             <button
@@ -107,9 +109,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
               onClick={() => set({ scheduleKind: option.value })}
               className={clsx(
                 "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
-                values.scheduleKind === option.value
-                  ? "bg-white/[0.1] text-zinc-100"
-                  : "text-zinc-400 hover:text-zinc-200",
+                values.scheduleKind === option.value ? "bg-accent-soft text-accent-text" : "text-fg-muted hover:text-fg",
               )}
             >
               {option.label}
@@ -118,7 +118,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
         </div>
 
         {values.scheduleKind === "daily" ? (
-          <div className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5">
+          <div className={cardClass({ padding: "sm", className: "space-y-3" })}>
             <Field label="Time" htmlFor="routine-time">
               <input
                 id="routine-time"
@@ -130,19 +130,19 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
             </Field>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-zinc-200">Days</span>
+                <span className="text-sm font-medium text-fg">Days</span>
                 <div className="flex gap-3 text-xs">
                   <button
                     type="button"
                     onClick={() => set({ days: [] })}
-                    className={clsx("font-medium hover:underline", isEveryDay ? "text-violet-300" : "text-zinc-400")}
+                    className={clsx("font-medium hover:underline", isEveryDay ? "text-accent-text" : "text-fg-muted")}
                   >
                     Every day
                   </button>
                   <button
                     type="button"
                     onClick={() => set({ days: WEEKDAYS })}
-                    className={clsx("font-medium hover:underline", isWeekdays ? "text-violet-300" : "text-zinc-400")}
+                    className={clsx("font-medium hover:underline", isWeekdays ? "text-accent-text" : "text-fg-muted")}
                   >
                     Weekdays
                   </button>
@@ -162,9 +162,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
                       onClick={() => set({ days: toggleDay(values.days, index) })}
                       className={clsx(
                         "flex size-8 items-center justify-center rounded-full text-xs font-semibold transition-colors",
-                        active
-                          ? "bg-violet-500 text-white"
-                          : "bg-white/[0.04] text-zinc-500 hover:bg-white/[0.08] hover:text-zinc-300",
+                        active ? "bg-accent-soft text-accent-text" : "bg-fill text-fg-subtle hover:bg-fill-strong hover:text-fg-muted",
                       )}
                     >
                       {letter}
@@ -175,7 +173,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
             </div>
           </div>
         ) : (
-          <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5">
+          <div className={cardClass({ padding: "sm" })}>
             <Field label="Every" htmlFor="routine-interval-value" hint="Minimum 15 minutes.">
               <div className="flex gap-2">
                 <input
@@ -202,10 +200,10 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
           </div>
         )}
 
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-fg-subtle">
           {schedule ? (
             <>
-              Preview: <span className="text-zinc-300">{formatSchedule(schedule)}</span>
+              Preview: <span className="text-fg">{formatSchedule(schedule)}</span>
             </>
           ) : (
             "Set a valid schedule above."
@@ -213,7 +211,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
         </p>
       </div>
 
-      {error && <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <Callout tone="danger">{error}</Callout>}
 
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel} disabled={saving}>

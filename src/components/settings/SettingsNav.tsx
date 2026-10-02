@@ -1,7 +1,7 @@
-import clsx from "clsx";
 import { ArrowLeft, PanelLeftClose } from "lucide-react";
 import { exitSettings, goToSettings, setSidebarOpen, useStore } from "../../store";
 import { IconButton } from "../ui/IconButton";
+import { ListRow } from "../ui/ListRow";
 import { Tip } from "../ui/Tip";
 import { SETTINGS_SECTIONS } from "./settingsSections";
 
@@ -19,7 +19,7 @@ export function SettingsNav() {
         <IconButton label="Back" onClick={exitSettings}>
           <ArrowLeft />
         </IconButton>
-        <span className="text-sm font-semibold text-zinc-100">Settings</span>
+        <span className="text-sm font-semibold text-fg">Settings</span>
         <Tip content="Close sidebar" side="bottom">
           <IconButton
             label="Close sidebar"
@@ -38,18 +38,9 @@ export function SettingsNav() {
             const active = id === section;
             return (
               <li key={id}>
-                <button
-                  type="button"
-                  onClick={() => goToSettings(id)}
-                  aria-current={active ? "page" : undefined}
-                  className={clsx(
-                    "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] transition-colors",
-                    active ? "bg-white/[0.08] text-zinc-50" : "text-white/70 hover:bg-white/[0.04] hover:text-zinc-100",
-                  )}
-                >
-                  <Icon className="size-4 shrink-0" />
+                <ListRow icon={<Icon />} selected={active} aria-current={active ? "page" : undefined} onClick={() => goToSettings(id)}>
                   {label}
-                </button>
+                </ListRow>
               </li>
             );
           })}

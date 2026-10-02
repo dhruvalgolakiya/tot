@@ -15,10 +15,10 @@ export function ModelPicker() {
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="flex h-9 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-[15px] font-medium text-zinc-100 transition-colors outline-none hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[var(--agent-accent-ring)] data-[state=open]:bg-white/[0.06]"
+          className="flex h-9 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-fg transition-colors hover:bg-hover data-[state=open]:bg-selected"
         >
           <span className="truncate">{modelLabel(models, currentModelId)}</span>
-          <ChevronDown className="size-4 shrink-0 text-zinc-500" />
+          <ChevronDown className="size-4 shrink-0 text-fg-subtle" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -29,7 +29,7 @@ export function ModelPicker() {
           className="menu max-h-[var(--radix-dropdown-menu-content-available-height)] w-80 max-w-[calc(100vw-16px)] overflow-y-auto"
         >
           {models.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-zinc-500">Models aren't available yet. Is the TOT server running?</div>
+            <div className="px-3 py-3 text-sm text-fg-subtle">Models aren't available yet. Is the TOT server running?</div>
           ) : (
             <DropdownMenu.RadioGroup value={currentModelId} onValueChange={(id) => void setModel(id)}>
               {groups.auto.map((model) => (

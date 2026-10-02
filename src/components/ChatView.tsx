@@ -66,20 +66,20 @@ export function ChatView() {
       </div>
 
       {currentId ? (
-        <p className="shrink-0 px-4 pb-2.5 text-center text-xs text-zinc-600">{CAPTION}</p>
+        <p className="shrink-0 px-4 pb-2.5 text-center text-xs text-fg-faint">{CAPTION}</p>
       ) : (
         <div className="flex flex-1 flex-col pt-3">
           <Suggestions />
-          <p className="mt-auto px-4 pt-6 pb-3 text-center text-xs text-zinc-600">{CAPTION}</p>
+          <p className="mt-auto px-4 pt-6 pb-3 text-center text-xs text-fg-faint">{CAPTION}</p>
         </div>
       )}
 
       {dragging && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-3 z-10 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-[var(--agent-accent-border)] bg-canvas/90 text-zinc-300 backdrop-blur-sm"
+          className="pointer-events-none absolute inset-3 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-accent-edge bg-canvas/90 text-fg-muted backdrop-blur-sm"
         >
-          <Paperclip className="size-6 text-[var(--agent-accent-text)]" />
+          <Paperclip className="size-6 text-accent-text" />
           <p className="text-sm font-medium">Drop to attach</p>
         </div>
       )}

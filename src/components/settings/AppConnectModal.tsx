@@ -5,6 +5,7 @@ import type { ConnectFlowState } from "../../hooks/useAppConnect";
 import { useCopy } from "../../hooks/useCopy";
 import { Button } from "../ui/Button";
 import { buttonClass } from "../ui/buttonStyles";
+import { Callout } from "../ui/Callout";
 import { Field } from "../ui/Field";
 import { IconButton } from "../ui/IconButton";
 import { Modal } from "../ui/Modal";
@@ -50,8 +51,8 @@ export function AppConnectModal({ flow, onCancel, onRetry, onSubmitKey, onSubmit
 
 function LoadingStep() {
   return (
-    <div className="flex items-center gap-2 py-2 text-sm text-zinc-400">
-      <LoaderCircle className="size-4 animate-spin text-[var(--agent-accent)]" />
+    <div className="flex items-center gap-2 py-2 text-sm text-fg-muted">
+      <LoaderCircle className="size-4 animate-spin text-accent" />
       Connecting…
     </div>
   );
@@ -60,7 +61,7 @@ function LoadingStep() {
 function RemoteStep({ name, onClose }: { name: string; onClose: () => void }) {
   return (
     <div className="space-y-3">
-      <p className="text-sm leading-relaxed text-zinc-400">
+      <p className="text-sm leading-relaxed text-fg-muted">
         Signing in finishes on the Mac that runs TOT. Open TOT there to connect {name}; once connected it works on every device.
       </p>
       <Button variant="secondary" size="sm" onClick={onClose}>
@@ -73,8 +74,8 @@ function RemoteStep({ name, onClose }: { name: string; onClose: () => void }) {
 function WaitingStep({ fallbackUrl, onCancel }: { fallbackUrl: string | null; onCancel: () => void }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-sm text-zinc-400">
-        <LoaderCircle className="size-4 animate-spin text-[var(--agent-accent)]" />
+      <div className="flex items-center gap-2 text-sm text-fg-muted">
+        <LoaderCircle className="size-4 animate-spin text-accent" />
         Waiting for you to approve in the pop-up…
       </div>
       {fallbackUrl && (
@@ -92,7 +93,7 @@ function WaitingStep({ fallbackUrl, onCancel }: { fallbackUrl: string | null; on
 function ErrorStep({ message, onCancel, onRetry }: { message: string; onCancel: () => void; onRetry: () => void }) {
   return (
     <div className="space-y-3">
-      <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">{message}</p>
+      <Callout tone="danger">{message}</Callout>
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={onRetry}>
           Try again
@@ -151,16 +152,11 @@ function KeyStep({ fields, help, onCancel, onSubmit }: KeyStepProps) {
         </Field>
       ))}
       {help && (
-        <a
-          href={help.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-block text-xs text-[var(--agent-accent-text)] underline-offset-2 hover:underline"
-        >
+        <a href={help.url} target="_blank" rel="noopener noreferrer" className="link inline-block text-xs">
           {help.label}
         </a>
       )}
-      {error && <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <Callout tone="danger">{error}</Callout>}
       <div className="flex items-center gap-2">
         <Button type="submit" variant="primary" size="sm" disabled={!canSubmit || submitting}>
           {submitting ? "Connecting…" : "Connect"}
@@ -205,26 +201,21 @@ function ClientStep({ provider, redirectUri, consoleUrl, onCancel, onSubmit }: C
         if (clientId.trim() && clientSecret.trim() && !submitting) void submit();
       }}
     >
-      <ol className="space-y-3.5 text-sm text-zinc-300">
+      <ol className="space-y-3.5 text-sm text-fg-muted">
         <li className="flex gap-2.5">
-          <span className="text-zinc-500">1.</span>
+          <span className="text-fg-subtle">1.</span>
           <span className="min-w-0 flex-1">
             Create an OAuth app in {provider}&rsquo;s console
             {consoleUrl && (
               <>
                 {" — "}
-                <a
-                  href={consoleUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--agent-accent-text)] underline-offset-2 hover:underline"
-                >
+                <a href={consoleUrl} target="_blank" rel="noopener noreferrer" className="link">
                   open console
                 </a>
               </>
             )}
             {isGoogle && (
-              <span className="mt-1 block text-xs leading-relaxed text-zinc-500">
+              <span className="mt-1 block text-xs leading-relaxed text-fg-subtle">
                 Create a “Web application” OAuth client, enable the API (e.g. Gmail API), and publish the consent screen (“In
                 production”) so sign-ins don&rsquo;t expire weekly. This client is reused for other Google apps.
               </span>
@@ -232,11 +223,11 @@ function ClientStep({ provider, redirectUri, consoleUrl, onCancel, onSubmit }: C
           </span>
         </li>
         <li className="flex gap-2.5">
-          <span className="text-zinc-500">2.</span>
+          <span className="text-fg-subtle">2.</span>
           <span className="min-w-0 flex-1">
             Add this redirect URL
             <div className="mt-1.5 flex items-center gap-1.5">
-              <code className="min-w-0 flex-1 truncate rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs text-zinc-300">
+              <code className="min-w-0 flex-1 truncate rounded-lg border border-edge bg-fill-subtle px-2.5 py-1.5 text-xs text-fg-muted">
                 {redirectUri}
               </code>
               <Tip content={copied ? "Copied" : "Copy"}>
@@ -248,7 +239,7 @@ function ClientStep({ provider, redirectUri, consoleUrl, onCancel, onSubmit }: C
           </span>
         </li>
         <li className="flex gap-2.5">
-          <span className="text-zinc-500">3.</span>
+          <span className="text-fg-subtle">3.</span>
           <span className="min-w-0 flex-1 space-y-3">
             <Field label="Client ID" htmlFor="app-client-id">
               <input
@@ -280,7 +271,7 @@ function ClientStep({ provider, redirectUri, consoleUrl, onCancel, onSubmit }: C
           </span>
         </li>
       </ol>
-      {error && <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <Callout tone="danger">{error}</Callout>}
       <div className="flex items-center gap-2">
         <Button type="submit" variant="primary" size="sm" disabled={!clientId.trim() || !clientSecret.trim() || submitting}>
           {submitting ? "Saving…" : "Save & continue"}

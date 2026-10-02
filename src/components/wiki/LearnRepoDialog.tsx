@@ -5,8 +5,9 @@ import { api, errorMessage } from "../../lib/api";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { goToSettings, navigateToConversation, useStore } from "../../store";
 import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
 import { Field } from "../ui/Field";
-import { Modal } from "../ui/Modal";
+import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 
 type LearnRepoDialogProps = {
   agent: Agent;
@@ -78,7 +79,7 @@ export function LearnRepoDialog({ agent, open, onOpenChange }: LearnRepoDialogPr
   return (
     <Modal open={open} onOpenChange={onOpenChange} title="Learn a repo">
       <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 space-y-3 px-5 py-4">
+        <ModalBody className="space-y-3">
           <Field
             label={`GitHub URL or folder on ${agent.name}'s computer`}
             htmlFor="learn-repo-source"
@@ -96,17 +97,17 @@ export function LearnRepoDialog({ agent, open, onOpenChange }: LearnRepoDialogPr
           </Field>
 
           {connected && repos && repos.length > 0 && (
-            <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-lg border border-white/[0.07] p-1">
+            <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-lg border border-hairline p-1">
               {repos.map((repo) => (
                 <li key={repo.fullName}>
                   <button
                     type="button"
                     onClick={() => setSource(repo.url)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-ui text-fg-muted transition-colors hover:bg-hover hover:text-fg"
                   >
-                    {repo.private && <Lock className="size-3 shrink-0 text-zinc-500" aria-label="Private" />}
+                    {repo.private && <Lock className="size-3 shrink-0 text-fg-subtle" aria-label="Private" />}
                     <span className="shrink-0 font-medium">{repo.fullName}</span>
-                    {repo.description && <span className="min-w-0 truncate text-zinc-500">{repo.description}</span>}
+                    {repo.description && <span className="min-w-0 truncate text-fg-subtle">{repo.description}</span>}
                   </button>
                 </li>
               ))}
@@ -114,7 +115,7 @@ export function LearnRepoDialog({ agent, open, onOpenChange }: LearnRepoDialogPr
           )}
 
           {!connected && (
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-fg-subtle">
               Private repos need GitHub —{" "}
               <button
                 type="button"
@@ -122,7 +123,7 @@ export function LearnRepoDialog({ agent, open, onOpenChange }: LearnRepoDialogPr
                   onOpenChange(false);
                   goToSettings("github");
                 }}
-                className="font-medium underline-offset-2 hover:underline"
+                className="link-muted"
               >
                 Connect in Settings
               </button>
@@ -130,32 +131,29 @@ export function LearnRepoDialog({ agent, open, onOpenChange }: LearnRepoDialogPr
           )}
 
           {error && (
-            <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">
-              {error}
-              {error.includes("Settings → Computer") && (
-                <>
-                  {" "}
-                  <button
-                    type="button"
-                    onClick={openComputerSettings}
-                    className="font-medium underline underline-offset-2 hover:text-red-200"
-                  >
+            <Callout
+              tone="danger"
+              action={
+                error.includes("Settings → Computer") ? (
+                  <button type="button" onClick={openComputerSettings} className="link-muted">
                     Open Settings
                   </button>
-                </>
-              )}
-            </p>
+                ) : undefined
+              }
+            >
+              {error}
+            </Callout>
           )}
-        </div>
+        </ModalBody>
 
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-white/[0.06] px-5 py-4">
+        <ModalFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button type="submit" variant="primary" disabled={!source.trim() || submitting}>
             {submitting ? "Starting…" : "Learn repo"}
           </Button>
-        </div>
+        </ModalFooter>
       </form>
     </Modal>
   );

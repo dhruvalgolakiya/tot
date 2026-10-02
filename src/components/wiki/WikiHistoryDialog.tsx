@@ -8,7 +8,11 @@ import { relativeTime } from "../../lib/format";
 import { selectActiveAgent, useStore } from "../../store";
 import { LazyMarkdown } from "../LazyMarkdown";
 import { Button } from "../ui/Button";
-import { Modal } from "../ui/Modal";
+import { Callout } from "../ui/Callout";
+import { cardClass } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
+import { Modal, ModalBody } from "../ui/Modal";
+import { Skeleton } from "../ui/Skeleton";
 
 type WikiHistoryDialogProps = {
   page: WikiPage;
@@ -44,21 +48,22 @@ export function WikiHistoryDialog({ page, open, onOpenChange, onRestored }: Wiki
 
   return (
     <Modal open={open} onOpenChange={onOpenChange} title="History" description={page.title}>
-      <div className="max-h-[65vh] min-h-24 overflow-y-auto px-5 pb-5">
+      <ModalBody className="max-h-[65vh] min-h-24">
         {loadError && (
-          <p className="rounded-lg border border-white/[0.07] px-3 py-4 text-center text-sm text-zinc-500">
-            {loadError}{" "}
-            <button type="button" onClick={load} className="font-medium text-zinc-300 hover:underline">
-              Retry
-            </button>
-          </p>
+          <Callout tone="danger" action={<button type="button" onClick={load} className="link-muted">Retry</button>}>
+            {loadError}
+          </Callout>
         )}
 
-        {!revisions && !loadError && <p className="px-1 py-8 text-center text-sm text-zinc-500">Loading…</p>}
-
-        {revisions && revisions.length === 0 && (
-          <p className="px-1 py-8 text-center text-sm text-zinc-500">No earlier versions yet.</p>
+        {!revisions && !loadError && (
+          <div className="space-y-2" aria-busy="true" aria-label="Loading history">
+            <Skeleton className="h-14 rounded-xl" />
+            <Skeleton className="h-14 rounded-xl" />
+            <Skeleton className="h-14 rounded-xl" />
+          </div>
         )}
+
+        {revisions && revisions.length === 0 && <EmptyState size="sm" title="No earlier versions yet." />}
 
         {revisions && revisions.length > 0 && (
           <ul className="space-y-2">
@@ -67,7 +72,7 @@ export function WikiHistoryDialog({ page, open, onOpenChange, onRestored }: Wiki
             ))}
           </ul>
         )}
-      </div>
+      </ModalBody>
     </Modal>
   );
 }
@@ -106,18 +111,18 @@ function RevisionRow({ pageId, revision, agentName, onRestored }: RevisionRowPro
   }
 
   return (
-    <li className="rounded-xl border border-white/[0.06] bg-white/[0.02]">
+    <li className={cardClass({ padding: "none" })}>
       <div className="flex items-center gap-2 px-3.5 py-2.5">
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left text-sm text-zinc-300 transition-colors hover:text-zinc-100"
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left text-sm text-fg-muted transition-colors hover:text-fg"
         >
           <ChevronRight className={clsx("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
           <span className="truncate">
-            <span className="font-medium text-zinc-200">{authorLabel(revision.updatedBy, agentName)}</span>
-            <span className="text-zinc-500"> · {relativeTime(revision.createdAt)}</span>
+            <span className="font-medium text-fg">{authorLabel(revision.updatedBy, agentName)}</span>
+            <span className="text-fg-subtle"> · {relativeTime(revision.createdAt)}</span>
           </span>
         </button>
 
@@ -138,12 +143,12 @@ function RevisionRow({ pageId, revision, agentName, onRestored }: RevisionRowPro
       </div>
 
       {open && (
-        <div className="border-t border-white/[0.06] px-3.5 py-3">
+        <div className="border-t border-hairline px-3.5 py-3">
           <LazyMarkdown text={revision.content || "*Empty page.*"} muted />
         </div>
       )}
 
-      {error && <p className="px-3.5 pb-3 text-xs text-red-300">{error}</p>}
+      {error && <p className="px-3.5 pb-3 text-xs text-danger">{error}</p>}
     </li>
   );
 }

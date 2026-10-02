@@ -13,7 +13,7 @@ export function WikiEmptyState({ agentName, mascot, onLearnRepo }: WikiEmptyStat
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-4 pb-12 text-center">
       <MascotStage spec={mascot} size={120} title={agentName} />
-      <p className="mt-5 max-w-sm text-[15px] text-zinc-400">
+      <p className="mt-5 max-w-sm text-sm text-fg-muted">
         {agentName}'s wiki fills in as you work together — or teach it a codebase.
       </p>
       <Button variant="primary" className="mt-5" onClick={onLearnRepo}>

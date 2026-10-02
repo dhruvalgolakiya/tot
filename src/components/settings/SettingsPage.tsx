@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import clsx from "clsx";
 import { ArrowLeft, ChevronRight, PanelLeft } from "lucide-react";
 import type { Settings } from "@shared/types";
 import { DESKTOP_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
@@ -27,7 +26,11 @@ import {
 import { ConfirmDialog } from "../ConfirmDialog";
 import { MemoryBrowser } from "../MemoryBrowser";
 import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
 import { IconButton } from "../ui/IconButton";
+import { ListRow } from "../ui/ListRow";
+import { PageHeader } from "../ui/SectionHeader";
+import { Skeleton } from "../ui/Skeleton";
 import { Tip } from "../ui/Tip";
 import { AppsSettings } from "./AppsSettings";
 import { ComputerSettings } from "./ComputerSettings";
@@ -97,25 +100,19 @@ export function SettingsPage() {
 function MobileSectionList() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-white/[0.06] px-2">
+      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-hairline px-2">
         <IconButton label="Back" onClick={exitSettings}>
           <ArrowLeft />
         </IconButton>
-        <span className="text-base font-semibold text-zinc-50">Settings</span>
+        <span className="text-heading text-fg-strong">Settings</span>
       </div>
       <nav aria-label="Settings sections" className="min-h-0 flex-1 overflow-y-auto p-2">
         <ul className="space-y-px">
           {SETTINGS_SECTIONS.map(({ id, label, icon: Icon }) => (
             <li key={id}>
-              <button
-                type="button"
-                onClick={() => goToSettings(id)}
-                className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-zinc-100 transition-colors hover:bg-white/[0.06]"
-              >
-                <Icon className="size-4 shrink-0 text-zinc-400" />
-                <span className="flex-1 text-left">{label}</span>
-                <ChevronRight className="size-4 text-zinc-600" />
-              </button>
+              <ListRow icon={<Icon />} trailing={<ChevronRight />} onClick={() => goToSettings(id)}>
+                {label}
+              </ListRow>
             </li>
           ))}
         </ul>
@@ -144,11 +141,11 @@ function SectionContent({ section, desktop }: { section: SettingsSectionMeta["id
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {!desktop ? (
-        <div className="flex h-14 shrink-0 items-center gap-1 border-b border-white/[0.06] px-2">
+        <div className="flex h-14 shrink-0 items-center gap-1 border-b border-hairline px-2">
           <IconButton label="Back to settings" onClick={backToSettingsList}>
             <ArrowLeft />
           </IconButton>
-          <span className="text-base font-semibold text-zinc-50">{meta.label}</span>
+          <span className="text-heading text-fg-strong">{meta.label}</span>
         </div>
       ) : (
         !sidebarOpen && (
@@ -164,24 +161,27 @@ function SectionContent({ section, desktop }: { section: SettingsSectionMeta["id
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[640px] px-6 py-8">
-          <div className="mb-6">
-            {desktop && <h1 className="text-lg font-semibold text-zinc-50">{meta.label}</h1>}
-            <p className={clsx("text-sm text-zinc-500", desktop && "mt-1")}>{meta.description}</p>
-          </div>
+          <PageHeader title={desktop ? meta.label : undefined} description={meta.description} className="mb-8" />
 
           {!settings ? (
-            <div className="flex flex-col items-center gap-3 py-16 text-center text-sm text-zinc-500">
-              {settingsState === "loading" ? (
-                "Loading settings…"
-              ) : (
-                <>
-                  Couldn't load settings.
-                  <button type="button" onClick={() => void loadSettings()} className="font-medium text-zinc-200 hover:underline">
+            settingsState === "loading" ? (
+              <div className="space-y-6" aria-busy="true" aria-label="Loading settings">
+                <Skeleton className="h-9 w-2/3 rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-xl" />
+                <Skeleton className="h-9 w-full rounded-lg" />
+              </div>
+            ) : (
+              <Callout
+                tone="danger"
+                action={
+                  <button type="button" onClick={() => void loadSettings()} className="link-muted">
                     Try again
                   </button>
-                </>
-              )}
-            </div>
+                }
+              >
+                Couldn't load settings.
+              </Callout>
+            )
           ) : (
             <SectionBody section={section} draft={draft ?? settings} secrets={secrets} />
           )}
@@ -189,9 +189,9 @@ function SectionContent({ section, desktop }: { section: SettingsSectionMeta["id
       </div>
 
       {meta.hasDraft && dirty && (
-        <div className="shrink-0 border-t border-white/[0.06] px-6 py-3">
+        <div className="shrink-0 border-t border-hairline px-6 py-3">
           <div className="mx-auto flex max-w-[640px] items-center justify-end gap-2">
-            <span className="mr-auto text-xs text-zinc-500">Unsaved changes</span>
+            <span className="mr-auto text-xs text-fg-subtle">Unsaved changes</span>
             <Button variant="ghost" disabled={saving} onClick={discardSettingsDraft}>
               Discard
             </Button>

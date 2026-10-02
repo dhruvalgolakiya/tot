@@ -7,7 +7,9 @@ import { api, errorMessage } from "../../lib/api";
 import { extractHeadings } from "../../lib/wiki";
 import { openWikiPage, selectActiveAgent, useStore } from "../../store";
 import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
 import { Modal } from "../ui/Modal";
+import { Skeleton } from "../ui/Skeleton";
 import { LearnRepoDialog } from "./LearnRepoDialog";
 import { WikiEmptyState } from "./WikiEmptyState";
 import { WikiOutline } from "./WikiOutline";
@@ -137,7 +139,23 @@ export function WikiView() {
   const headings = useMemo(() => (page ? extractHeadings(page.content) : []), [page]);
 
   if (!agent) {
-    return <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">Loading…</div>;
+    return (
+      <div className="flex min-h-0 flex-1 overflow-hidden pt-14" aria-busy="true" aria-label="Loading wiki">
+        {desktop && (
+          <div className="flex h-full w-60 shrink-0 flex-col gap-2 border-r border-hairline p-3">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-5/6" />
+            <Skeleton className="h-8 w-4/6" />
+          </div>
+        )}
+        <div className="mx-auto w-full max-w-3xl space-y-3 px-4 py-8 sm:px-8">
+          <Skeleton className="h-9 w-2/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-4/6" />
+        </div>
+      </div>
+    );
   }
 
   function handleSelect(pageId: string) {
@@ -201,14 +219,14 @@ export function WikiView() {
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 overflow-hidden pt-14">
         {desktop && (
-          <aside aria-label="Wiki pages" className="flex h-full w-60 shrink-0 flex-col border-r border-white/[0.06]">
+          <aside aria-label="Wiki pages" className="flex h-full w-60 shrink-0 flex-col border-r border-hairline">
             <WikiTree {...treeProps} onSelect={handleSelect} />
           </aside>
         )}
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {!desktop && (
-            <div className="flex shrink-0 items-center border-b border-white/[0.06] px-2 py-1.5">
+            <div className="flex shrink-0 items-center border-b border-hairline px-2 py-1.5">
               <Button size="sm" variant="ghost" onClick={() => setMobileTreeOpen(true)}>
                 <PanelLeft /> Pages
               </Button>
@@ -216,14 +234,31 @@ export function WikiView() {
           )}
 
           {pagesError ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-sm text-zinc-500">
-              {pagesError}
-              <button type="button" onClick={() => loadPages(agent.id)} className="font-medium text-zinc-200 hover:underline">
-                Try again
-              </button>
+            <div className="flex flex-1 items-center justify-center p-6">
+              <Callout
+                tone="danger"
+                action={
+                  <button type="button" onClick={() => loadPages(agent.id)} className="link-muted">
+                    Try again
+                  </button>
+                }
+              >
+                {pagesError}
+              </Callout>
             </div>
           ) : pages === null || (activePageId !== null && page === null && !pageError) ? (
-            <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">Loading…</div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div
+                className="mx-auto w-full max-w-3xl space-y-3 px-4 py-8 sm:px-8"
+                aria-busy="true"
+                aria-label="Loading page"
+              >
+                <Skeleton className="h-9 w-2/3" />
+                <Skeleton className="h-4 w-11/12" />
+                <Skeleton className="h-4 w-5/6" />
+                <Skeleton className="h-4 w-4/6" />
+              </div>
+            </div>
           ) : isEmptyWorkspace ? (
             <WikiEmptyState agentName={agent.name} mascot={agent.mascot} onLearnRepo={() => setLearnOpen(true)} />
           ) : page ? (
@@ -236,17 +271,19 @@ export function WikiView() {
               contentRef={contentRef}
             />
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-sm text-zinc-500">
-              {pageError}
-              {activePageId && (
-                <button
-                  type="button"
-                  onClick={() => refetchActivePage(activePageId)}
-                  className="font-medium text-zinc-200 hover:underline"
-                >
-                  Try again
-                </button>
-              )}
+            <div className="flex flex-1 items-center justify-center p-6">
+              <Callout
+                tone="danger"
+                action={
+                  activePageId ? (
+                    <button type="button" onClick={() => refetchActivePage(activePageId)} className="link-muted">
+                      Try again
+                    </button>
+                  ) : undefined
+                }
+              >
+                {pageError}
+              </Callout>
             </div>
           )}
         </div>

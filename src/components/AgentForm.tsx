@@ -7,6 +7,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { MascotPicker, randomMascot, suggestName } from "./mascot";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
+import { ModalBody, ModalFooter } from "./ui/Modal";
 
 /** Profile fields for a new agent (in the New agent dialog) or an existing one (in its settings panel). */
 export function AgentForm({ target, canDelete }: { target: Agent | null; canDelete: boolean }) {
@@ -44,7 +45,7 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
 
   return (
     <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+      <ModalBody className="space-y-5">
         <Field label="Name" htmlFor="agent-name">
           <input
             id="agent-name"
@@ -110,14 +111,14 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
             )}
           </select>
         </Field>
-      </div>
+      </ModalBody>
 
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-white/[0.06] px-5 py-4">
+      <ModalFooter>
         {target && (
           <Button
             type="button"
-            variant="ghost"
-            className="mr-auto text-red-300 hover:bg-red-500/10 hover:text-red-200"
+            variant="ghost-danger"
+            className="mr-auto"
             disabled={!canDelete || deleting}
             title={canDelete ? undefined : "You need at least one agent"}
             onClick={() => setConfirmingDelete(true)}
@@ -133,7 +134,7 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
         <Button type="submit" variant="primary" disabled={!trimmedName || saving}>
           {saving ? "Saving…" : target ? "Save changes" : "Create agent"}
         </Button>
-      </div>
+      </ModalFooter>
 
       {target && (
         <ConfirmDialog
@@ -142,7 +143,7 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
           title="Delete agent"
           description={
             <>
-              This deletes <span className="font-medium text-zinc-200">{target.name}</span> and all of its chats. This
+              This deletes <span className="font-medium text-fg">{target.name}</span> and all of its chats. This
               can't be undone.
             </>
           }

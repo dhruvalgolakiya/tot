@@ -4,6 +4,7 @@ import { ComputerActivity } from "./ComputerActivity";
 import { ComputerDetails } from "./ComputerDetails";
 import { Mascot } from "./mascot";
 import { Button } from "./ui/Button";
+import { EmptyState } from "./ui/EmptyState";
 import { SidePanel } from "./ui/SidePanel";
 
 /** Right-hand panel for the active agent's computer. */
@@ -21,15 +22,17 @@ export function ComputerPanel() {
     <SidePanel label="Computer" icon={<Monitor />} title="Computer" onClose={() => setComputerPanelOpen(false)}>
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
         {needsBoatKey ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-white/10 px-4 py-8 text-center">
-            <Mascot spec={agent.mascot} size={56} state="sleeping" title={agent.name} />
-            <p className="text-sm text-zinc-300">
-              Add a Boat API key to give {agent.name} a cloud computer to work in.
-            </p>
-            <Button size="sm" variant="primary" onClick={() => goToSettings("computer")}>
-              Open Settings → Computer
-            </Button>
-          </div>
+          <EmptyState
+            variant="dashed"
+            size="sm"
+            media={<Mascot spec={agent.mascot} size={56} state="sleeping" title={agent.name} />}
+            title={`Add a Boat API key to give ${agent.name} a cloud computer to work in.`}
+            action={
+              <Button size="sm" variant="primary" onClick={() => goToSettings("computer")}>
+                Open Settings → Computer
+              </Button>
+            }
+          />
         ) : agent.computer ? (
           <ComputerDetails
             agentId={agent.id}
@@ -38,12 +41,13 @@ export function ComputerPanel() {
             computer={agent.computer}
           />
         ) : (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-white/10 px-4 py-8 text-center">
-            <Mascot spec={agent.mascot} size={56} state="sleeping" title={agent.name} />
-            <p className="text-sm text-zinc-500">
-              No computer yet. {agent.name} starts one the first time it needs to run something.
-            </p>
-          </div>
+          <EmptyState
+            variant="dashed"
+            size="sm"
+            media={<Mascot spec={agent.mascot} size={56} state="sleeping" title={agent.name} />}
+            title="No computer yet"
+            description={`${agent.name} starts one the first time it needs to run something.`}
+          />
         )}
         <ComputerActivity agentId={agent.id} />
       </div>

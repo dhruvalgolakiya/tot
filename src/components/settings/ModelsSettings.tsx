@@ -27,7 +27,7 @@ export function ModelsSettings({ draft, onChange, secrets, onSecretsChange }: Se
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
-        <p className="text-sm leading-relaxed text-zinc-400">
+        <p className="text-sm leading-relaxed text-fg-muted">
           TOT runs on the subscriptions you already have. Connect one or both.
         </p>
         <Button size="sm" variant="ghost" onClick={() => void refresh()} disabled={refreshing}>

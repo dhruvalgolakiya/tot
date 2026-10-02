@@ -45,12 +45,7 @@ export function ComputerSettings({ draft, onChange, secrets, onSecretsChange }: 
             hint={
               <>
                 Create one in your{" "}
-                <a
-                  href="https://boat.dev/dashboard"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--agent-accent-text)] underline-offset-2 hover:underline"
-                >
+                <a href="https://boat.dev/dashboard" target="_blank" rel="noopener noreferrer" className="link">
                   boat.dev dashboard
                 </a>
                 .
@@ -89,15 +84,8 @@ export function ComputerSettings({ draft, onChange, secrets, onSecretsChange }: 
         <Field
           label="Stop idle computers after"
           htmlFor="idle-minutes"
-          hint={
-            idleValid ? (
-              "Idle computers are stopped and snapshotted, then start again when TOT needs them."
-            ) : (
-              <span className="text-red-300">
-                Enter whole minutes between {IDLE_MINUTES.min} and {IDLE_MINUTES.max}.
-              </span>
-            )
-          }
+          hint="Idle computers are stopped and snapshotted, then start again when TOT needs them."
+          error={!idleValid ? `Enter whole minutes between ${IDLE_MINUTES.min} and ${IDLE_MINUTES.max}.` : undefined}
         >
           <div className="flex items-center gap-2">
             <input
@@ -111,7 +99,7 @@ export function ComputerSettings({ draft, onChange, secrets, onSecretsChange }: 
               aria-invalid={!idleValid}
               className="input w-28"
             />
-            <span className="text-sm text-zinc-400">minutes</span>
+            <span className="text-sm text-fg-muted">minutes</span>
           </div>
         </Field>
       )}

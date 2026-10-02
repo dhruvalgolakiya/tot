@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { Memory } from "@shared/types";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { api, errorMessage } from "../lib/api";
 import { toMs } from "../lib/format";
 import { goToSettings, notifyError, useStore } from "../store";
 import { Button } from "./ui/Button";
+import { Callout } from "./ui/Callout";
+import { EmptyState } from "./ui/EmptyState";
 import { Kbd } from "./ui/Kbd";
+import { SearchInput } from "./ui/SearchInput";
+import { Skeleton } from "./ui/Skeleton";
 import { MemoryItem } from "./MemoryItem";
 
 const newestFirst = (list: Memory[]) => [...list].sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt));
@@ -61,20 +65,22 @@ export function MemoryBrowser() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!memoryEnabled && (
-        <div className="mx-5 mb-3 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 text-xs text-amber-200">
-          Memory is off, so TOT won't save or recall anything.{" "}
-          <button
-            type="button"
-            className="font-medium underline-offset-2 hover:underline"
-            onClick={() => goToSettings("general")}
+        <div className="mb-3">
+          <Callout
+            tone="warning"
+            action={
+              <button type="button" className="link-muted" onClick={() => goToSettings("general")}>
+                Turn it on in Settings
+              </button>
+            }
           >
-            Turn it on in Settings
-          </button>
+            Memory is off, so TOT won't save or recall anything.
+          </Callout>
         </div>
       )}
 
       <form
-        className="shrink-0 px-5 pb-3"
+        className="shrink-0 pb-3"
         onSubmit={(event) => {
           event.preventDefault();
           void add();
@@ -95,7 +101,7 @@ export function MemoryBrowser() {
           className="input resize-none leading-relaxed"
         />
         <div className="mt-2 flex items-center justify-end gap-3">
-          <span className="hidden text-xs text-zinc-600 sm:inline">
+          <span className="hidden text-xs text-fg-faint sm:inline">
             <Kbd keys={["mod", "↵"]} /> to add
           </span>
           <Button type="submit" size="sm" variant="primary" disabled={adding || !draft.trim()}>
@@ -104,33 +110,29 @@ export function MemoryBrowser() {
         </div>
       </form>
 
-      <div className="shrink-0 px-5 pb-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-500" />
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search memories"
-            aria-label="Search memories"
-            className="input pl-9"
-          />
-        </div>
+      <div className="shrink-0 pb-3">
+        <SearchInput
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search memories"
+          aria-label="Search memories"
+        />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
-        {loadError && !memories && <p className="py-8 text-center text-sm text-zinc-500">{loadError}</p>}
+      <div className="min-h-0 flex-1 overflow-y-auto pb-5">
+        {loadError && !memories && <Callout tone="danger">{loadError}</Callout>}
         {!loadError && !memories && (
-          <div className="space-y-2" aria-label="Loading memories">
+          <div className="space-y-2" aria-busy="true" aria-label="Loading memories">
             {[0, 1, 2].map((key) => (
-              <div key={key} className="h-16 animate-pulse rounded-xl bg-white/[0.03]" />
+              <Skeleton key={key} className="h-16 rounded-xl" />
             ))}
           </div>
         )}
         {memories && memories.length === 0 && (
-          <p className="py-8 text-center text-sm text-zinc-500">
-            {search ? `No memories match “${search}”.` : "Nothing yet. Tell TOT to remember something, or add it here."}
-          </p>
+          <EmptyState
+            title={search ? `No memories match “${search}”.` : "Nothing yet"}
+            description={search ? undefined : "Tell TOT to remember something, or add it here."}
+          />
         )}
         {memories && memories.length > 0 && (
           <ul className="space-y-2">

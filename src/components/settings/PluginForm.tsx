@@ -4,6 +4,8 @@ import { api, errorMessage } from "../../lib/api";
 import { PROVIDER_LABELS } from "../../lib/models";
 import { EMPTY_PLUGIN_FORM, toPluginInput, type PluginFormValues } from "../../lib/plugins";
 import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
+import { cardClass } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { RadioCards } from "../ui/RadioCards";
 
@@ -46,8 +48,8 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
     set({ providers: on ? [...new Set([...values.providers, id])] : values.providers.filter((p) => p !== id) });
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-      <h3 className="text-sm font-semibold text-zinc-100">Add plugin</h3>
+    <form onSubmit={(event) => void submit(event)} className={cardClass({ className: "space-y-4" })}>
+      <h3 className="text-sm font-semibold text-fg">Add plugin</h3>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name" htmlFor="plugin-name" hint="Lowercase slug, e.g. “github”.">
@@ -148,15 +150,15 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
       )}
 
       <fieldset>
-        <legend className="mb-2 text-sm font-medium text-zinc-200">Available to</legend>
+        <legend className="mb-2 text-sm font-medium text-fg">Available to</legend>
         <div className="flex gap-5">
           {PROVIDERS.map((id) => (
-            <label key={id} className="flex items-center gap-2 text-sm text-zinc-300">
+            <label key={id} className="flex items-center gap-2 text-sm text-fg-muted">
               <input
                 type="checkbox"
                 checked={values.providers.includes(id)}
                 onChange={(event) => toggleProvider(id, event.target.checked)}
-                className="size-4 accent-[var(--agent-accent)]"
+                className="size-4 accent-accent"
               />
               {PROVIDER_LABELS[id]}
             </label>
@@ -164,7 +166,7 @@ export function PluginForm({ existingNames, onCreated, onCancel }: PluginFormPro
         </div>
       </fieldset>
 
-      {error && <p className="rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <Callout tone="danger">{error}</Callout>}
 
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel} disabled={saving}>

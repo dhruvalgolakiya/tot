@@ -11,6 +11,7 @@ import {
   useStore,
 } from "../store";
 import { Mascot } from "./mascot";
+import { IconButton } from "./ui/IconButton";
 import { Logo } from "./ui/Logo";
 import { Tip } from "./ui/Tip";
 
@@ -28,7 +29,7 @@ export function AgentRail({ className }: { className?: string }) {
   return (
     <nav
       aria-label="Agents"
-      className={clsx("flex h-full w-16 shrink-0 flex-col items-center border-r border-white/[0.04] py-3", className)}
+      className={clsx("flex h-full w-16 shrink-0 flex-col items-center border-r border-hairline py-3", className)}
     >
       <Logo className="mb-3 size-7 shrink-0" />
 
@@ -43,26 +44,22 @@ export function AgentRail({ className }: { className?: string }) {
           type="button"
           aria-label="New agent"
           onClick={() => setNewAgentDialogOpen(true)}
-          className="mt-1.5 grid size-10 shrink-0 place-items-center rounded-full border border-dashed border-white/15 text-zinc-500 transition-colors hover:border-white/25 hover:bg-white/[0.05] hover:text-zinc-300"
+          className="mt-1.5 grid size-10 shrink-0 place-items-center rounded-full border border-dashed border-edge text-fg-subtle transition-colors hover:border-edge-strong hover:bg-hover hover:text-fg-muted"
         >
           <Plus className="size-4" />
         </button>
       </Tip>
 
-      <div className="mt-2 flex w-full shrink-0 flex-col items-center gap-1 border-t border-white/[0.06] pt-2.5">
+      <div className="mt-2 flex w-full shrink-0 flex-col items-center gap-1 border-t border-hairline pt-2.5">
         <Tip content="Settings" side="right">
-          <button
-            type="button"
-            aria-label="Settings"
+          <IconButton
+            label="Settings"
             aria-current={settingsActive ? "page" : undefined}
             onClick={() => goToSettings()}
-            className={clsx(
-              "grid size-9 place-items-center rounded-lg transition-colors hover:bg-white/[0.07] hover:text-zinc-100",
-              settingsActive ? "bg-white/[0.07] text-zinc-100" : "text-zinc-400",
-            )}
+            className={settingsActive ? "bg-selected text-fg" : undefined}
           >
-            <Settings className="size-[18px]" />
-          </button>
+            <Settings />
+          </IconButton>
         </Tip>
         <RailThemeToggle />
       </div>
@@ -85,10 +82,9 @@ function RailAgentButton({ agent, active }: RailAgentButtonProps) {
       <span
         aria-hidden="true"
         className={clsx(
-          "absolute left-0 h-6 w-1 rounded-r-full transition-opacity",
+          "absolute left-0 h-6 w-1 rounded-r-full bg-accent transition-opacity",
           active ? "opacity-100" : "opacity-0",
         )}
-        style={{ background: "var(--agent-accent)" }}
       />
       <Tip content={agent.name} side="right">
         <button
@@ -96,14 +92,15 @@ function RailAgentButton({ agent, active }: RailAgentButtonProps) {
           aria-label={agent.name}
           aria-current={active ? "page" : undefined}
           onClick={() => navigateToAgentHome(agent.id)}
-          style={active ? { background: "var(--agent-accent-16)" } : undefined}
-          className="relative grid size-11 shrink-0 place-items-center rounded-2xl transition-colors hover:bg-white/[0.07]"
+          className={clsx(
+            "relative grid size-11 shrink-0 place-items-center rounded-2xl transition-colors hover:bg-hover",
+            active && "bg-accent-soft",
+          )}
         >
           <Mascot spec={agent.mascot} size={32} state={mascotState} title={agent.name} />
           {working && (
             <span
-              className="absolute right-0.5 bottom-0.5 size-2.5 animate-pulse rounded-full ring-2 ring-[var(--color-panel)]"
-              style={{ background: "var(--agent-accent)" }}
+              className="absolute right-0.5 bottom-0.5 size-2.5 animate-pulse rounded-full bg-accent ring-2 ring-panel"
               aria-hidden="true"
             />
           )}
@@ -119,14 +116,9 @@ function RailThemeToggle() {
   const next = theme === "dark" ? "light" : "dark";
   return (
     <Tip content={theme === "dark" ? "Light mode" : "Dark mode"} side="right">
-      <button
-        type="button"
-        aria-label={`Switch to ${next} mode`}
-        onClick={() => setThemePreference(next)}
-        className="grid size-9 shrink-0 place-items-center rounded-lg text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-100"
-      >
-        {theme === "dark" ? <Sun className="size-[18px]" /> : <Moon className="size-[18px]" />}
-      </button>
+      <IconButton label={`Switch to ${next} mode`} onClick={() => setThemePreference(next)}>
+        {theme === "dark" ? <Sun /> : <Moon />}
+      </IconButton>
     </Tip>
   );
 }

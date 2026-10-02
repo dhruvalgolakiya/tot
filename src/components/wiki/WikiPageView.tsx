@@ -62,7 +62,7 @@ export function WikiPageView({ page, editing, onEditingChange, onChanged, onDele
           ) : (
             <>
               <div className="flex items-start justify-between gap-3">
-                <h1 className="min-w-0 text-2xl font-semibold tracking-[-0.01em] text-zinc-50 sm:text-[28px]">
+                <h1 className="min-w-0 text-2xl font-semibold tracking-[-0.01em] text-fg-strong sm:text-display">
                   {page.title}
                 </h1>
                 <DropdownMenu.Root modal={false}>
@@ -86,7 +86,7 @@ export function WikiPageView({ page, editing, onEditingChange, onChanged, onDele
                       }}
                     >
                       <DropdownMenu.Item className="menu-item" onSelect={() => onEditingChange(true)}>
-                        <Pencil className="size-4 text-zinc-400" /> Edit
+                        <Pencil className="size-4 text-fg-muted" /> Edit
                       </DropdownMenu.Item>
                       <DropdownMenu.Item
                         className="menu-item"
@@ -94,13 +94,13 @@ export function WikiPageView({ page, editing, onEditingChange, onChanged, onDele
                           pendingAction.current = "history";
                         }}
                       >
-                        <History className="size-4 text-zinc-400" /> History
+                        <History className="size-4 text-fg-muted" /> History
                       </DropdownMenu.Item>
                       {!page.pinned && (
                         <>
                           <DropdownMenu.Separator className="menu-separator" />
                           <DropdownMenu.Item
-                            className="menu-item text-red-400 data-[highlighted]:bg-red-500/10"
+                            className="menu-item menu-item-danger"
                             onSelect={() => {
                               pendingAction.current = "delete";
                             }}
@@ -114,7 +114,7 @@ export function WikiPageView({ page, editing, onEditingChange, onChanged, onDele
                 </DropdownMenu.Root>
               </div>
 
-              {page.summary && <p className="mt-1.5 text-[15px] text-zinc-400">{page.summary}</p>}
+              {page.summary && <p className="mt-1.5 text-sm text-fg-muted">{page.summary}</p>}
               <PageMeta page={page} agentName={agentName} />
 
               <div ref={contentRef} className="mt-6">
@@ -145,7 +145,7 @@ export function WikiPageView({ page, editing, onEditingChange, onChanged, onDele
         title="Delete page?"
         description={
           <>
-            This deletes <span className="font-medium text-zinc-200">{page.title}</span>. Its sub-pages move up a
+            This deletes <span className="font-medium text-fg">{page.title}</span>. Its sub-pages move up a
             level. This can't be undone.
           </>
         }
@@ -159,7 +159,7 @@ export function WikiPageView({ page, editing, onEditingChange, onChanged, onDele
 function PageMeta({ page, agentName }: { page: WikiPage; agentName: string }) {
   const when = relativeTime(page.updatedAt);
   return (
-    <p className="mt-3 text-xs text-zinc-500">
+    <p className="mt-3 text-xs text-fg-subtle">
       Updated {when}{" "}
       {page.updatedBy === "user" ? (
         "by you"
@@ -169,7 +169,7 @@ function PageMeta({ page, agentName }: { page: WikiPage; agentName: string }) {
         <button
           type="button"
           onClick={() => navigateToConversation(page.conversationId!)}
-          className="underline decoration-dotted underline-offset-2 transition-colors hover:text-zinc-300"
+          className="underline decoration-dotted underline-offset-2 transition-colors hover:text-fg-muted"
         >
           after a chat
         </button>
@@ -211,14 +211,14 @@ function AskBox({ agentName, pageTitle }: { agentName: string; pageTitle: string
         onChange={(event) => setText(event.target.value)}
         placeholder={`Ask ${agentName} about this…`}
         aria-label={`Ask ${agentName} about this page`}
-        className="h-8 min-w-0 flex-1 bg-transparent text-[14px] text-white/92 outline-none placeholder:text-white/35"
+        className="h-8 min-w-0 flex-1 bg-transparent text-chat text-fg outline-none placeholder:text-fg-subtle"
       />
       <button
         type="submit"
         disabled={!canSend}
         aria-label="Ask"
         style={canSend ? { background: "var(--agent-accent)", color: sendForeground } : undefined}
-        className={clsx("grid size-8 shrink-0 place-items-center rounded-full transition-colors", !canSend && "bg-white/10 text-white/35")}
+        className={clsx("grid size-8 shrink-0 place-items-center rounded-full transition-colors", !canSend && "bg-fill-strong text-fg-subtle")}
       >
         {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" strokeWidth={2.25} />}
       </button>

@@ -19,18 +19,15 @@ export interface MascotPickerProps {
 const PREVIEW_STATES: readonly MascotState[] = ["idle", "thinking", "working", "speaking", "happy", "error", "sleeping"];
 
 const chip =
-  "inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-white/60 " +
-  "transition-colors hover:bg-white/[0.07] hover:text-white/85 focus-visible:outline-none focus-visible:ring-2 " +
-  "focus-visible:ring-violet-400/50";
+  "inline-flex items-center justify-center rounded-lg border border-edge bg-fill-subtle px-2.5 py-1 text-xs text-fg-muted " +
+  "transition-colors hover:bg-hover hover:text-fg";
 
-const tile =
-  "group relative flex items-center justify-center rounded-xl border p-2 transition-colors focus-visible:outline-none " +
-  "focus-visible:ring-2 focus-visible:ring-violet-400/50";
+const tile = "group relative flex items-center justify-center rounded-xl border p-2 transition-colors";
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[11px] font-medium uppercase tracking-wide text-white/35">{label}</span>
+      <span className="label-caps">{label}</span>
       {children}
     </div>
   );
@@ -44,7 +41,7 @@ export function MascotPicker({ value, onChange, className }: MascotPickerProps) 
 
   return (
     <div className={clsx("flex flex-col gap-5", className)}>
-      <div className="flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+      <div className="flex flex-col items-center gap-4 rounded-xl border border-hairline bg-fill-subtle p-6">
         <div className="relative grid place-items-center">
           <div
             className="absolute inset-0 -z-10 rounded-full blur-3xl"
@@ -64,14 +61,14 @@ export function MascotPicker({ value, onChange, className }: MascotPickerProps) 
               onMouseLeave={() => setHovered(null)}
               onFocus={() => setHovered(s)}
               onBlur={() => setHovered(null)}
-              className={clsx(chip, "capitalize", pinned === s && "border-violet-400/40 bg-violet-400/10 text-white")}
+              className={clsx(chip, "capitalize", pinned === s && "border-accent-edge bg-accent-soft text-accent-text")}
             >
               {s}
             </button>
           ))}
         </div>
-        <p className="text-xs text-white/40">
-          <span className="text-white/70">{suggestName(value)}</span> the {mascotLabel(value)}
+        <p className="text-xs text-fg-subtle">
+          <span className="text-fg-muted">{suggestName(value)}</span> the {mascotLabel(value)}
         </p>
       </div>
 
@@ -86,7 +83,7 @@ export function MascotPicker({ value, onChange, className }: MascotPickerProps) 
                 title={shape}
                 aria-pressed={active}
                 onClick={() => onChange({ ...value, shape })}
-                className={clsx(tile, active ? "border-violet-400/50 bg-violet-400/10" : "border-white/10 bg-white/[0.02] hover:bg-white/[0.06]")}
+                className={clsx(tile, active ? "border-accent-edge bg-accent-soft" : "border-edge bg-fill-subtle hover:bg-hover")}
               >
                 <Mascot spec={{ ...value, shape }} size={36} />
               </button>
@@ -107,7 +104,7 @@ export function MascotPicker({ value, onChange, className }: MascotPickerProps) 
                 title={c}
                 aria-pressed={active}
                 onClick={() => onChange({ ...value, color: c })}
-                className="grid size-8 place-items-center rounded-full ring-1 ring-white/15 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60"
+                className="grid size-8 place-items-center rounded-full ring-1 ring-edge transition-shadow hover:ring-edge-strong"
                 style={{ backgroundColor: c }}
               >
                 {active && <Check size={14} strokeWidth={3} color={checkColor} />}
@@ -115,7 +112,7 @@ export function MascotPicker({ value, onChange, className }: MascotPickerProps) 
             );
           })}
           <label
-            className="relative grid size-8 cursor-pointer place-items-center rounded-full ring-1 ring-dashed ring-white/25 text-white/50 hover:text-white/80"
+            className="relative grid size-8 cursor-pointer place-items-center rounded-full ring-1 ring-dashed ring-edge-strong text-fg-subtle hover:text-fg"
             title="Custom color"
           >
             <span aria-hidden="true" className="text-sm leading-none">
@@ -143,7 +140,7 @@ export function MascotPicker({ value, onChange, className }: MascotPickerProps) 
                 title={eyes}
                 aria-pressed={active}
                 onClick={() => onChange({ ...value, eyes })}
-                className={clsx(tile, active ? "border-violet-400/50 bg-violet-400/10" : "border-white/10 bg-white/[0.02] hover:bg-white/[0.06]")}
+                className={clsx(tile, active ? "border-accent-edge bg-accent-soft" : "border-edge bg-fill-subtle hover:bg-hover")}
               >
                 <Mascot spec={{ ...value, eyes }} size={36} />
               </button>
@@ -163,7 +160,7 @@ export function MascotPicker({ value, onChange, className }: MascotPickerProps) 
                 title={accessory}
                 aria-pressed={active}
                 onClick={() => onChange({ ...value, accessory })}
-                className={clsx(tile, active ? "border-violet-400/50 bg-violet-400/10" : "border-white/10 bg-white/[0.02] hover:bg-white/[0.06]")}
+                className={clsx(tile, active ? "border-accent-edge bg-accent-soft" : "border-edge bg-fill-subtle hover:bg-hover")}
               >
                 <Mascot spec={{ ...value, accessory }} size={36} />
               </button>
@@ -175,9 +172,9 @@ export function MascotPicker({ value, onChange, className }: MascotPickerProps) 
       <button
         type="button"
         onClick={() => onChange(randomMascot())}
-        className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-sm text-white/75 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
+        className="inline-flex items-center justify-center gap-2 self-start rounded-lg border border-edge bg-fill-subtle px-3.5 py-2 text-sm text-fg-muted transition-colors hover:bg-hover hover:text-fg"
       >
-        <Shuffle size={15} />
+        <Shuffle size={16} />
         Surprise me
       </button>
     </div>

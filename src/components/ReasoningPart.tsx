@@ -35,15 +35,15 @@ export function ReasoningPart({ part, active }: ReasoningPartProps) {
           type="button"
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
-          className="flex h-7 items-center gap-1.5 text-sm text-zinc-400 transition-colors hover:text-zinc-200"
+          className="flex h-7 items-center gap-1.5 text-sm text-fg-muted transition-colors hover:text-fg"
         >
           {row}
         </button>
       ) : (
-        <div className="flex h-7 items-center gap-1.5 text-sm text-zinc-400">{row}</div>
+        <div className="flex h-7 items-center gap-1.5 text-sm text-fg-muted">{row}</div>
       )}
       {open && hasText && (
-        <div className="mt-1.5 mb-1 border-l-2 border-white/10 pl-4">
+        <div className="mt-1.5 mb-1 border-l-2 border-hairline pl-4">
           <LazyMarkdown text={part.text} muted />
         </div>
       )}

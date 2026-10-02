@@ -8,6 +8,7 @@ import { api, ApiError } from "../lib/api";
 import { toMs, truncate } from "../lib/format";
 import { notifyError, useStore } from "../store";
 import { Button } from "./ui/Button";
+import { cardClass } from "./ui/Card";
 import { Field } from "./ui/Field";
 import { Switch } from "./ui/Switch";
 
@@ -135,10 +136,10 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
   if (!actionable) {
     const Icon = STATUS_ICON[status];
     return (
-      <div className="flex max-w-md min-w-0 items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-2.5 text-xs">
-        <Icon className={clsx("size-4 shrink-0", status === "accepted" ? "text-emerald-400" : "text-zinc-500")} />
-        <span className="min-w-0 truncate text-zinc-500">
-          <span className="font-medium text-zinc-400">{STATUS_LABEL[status]}</span>
+      <div className={clsx(cardClass({ padding: "sm" }), "flex max-w-md min-w-0 items-center gap-2 text-xs")}>
+        <Icon className={clsx("size-4 shrink-0", status === "accepted" ? "text-success" : "text-fg-subtle")} />
+        <span className="min-w-0 truncate text-fg-subtle">
+          <span className="font-medium text-fg-muted">{STATUS_LABEL[status]}</span>
           {" · "}
           {truncate(part.message, 140)}
         </span>
@@ -168,8 +169,8 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
   }
 
   return (
-    <div className="max-w-md space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-3">
-      <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+    <div className={clsx(cardClass({ padding: "none" }), "max-w-md space-y-3 px-3.5 py-3")}>
+      <div className="flex items-center gap-1.5 text-xs text-fg-subtle">
         <Icon className="size-3.5 shrink-0" />
         <span className="truncate font-medium">{part.source}</span>
       </div>
@@ -177,7 +178,7 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
       <div>
         <p
           className={clsx(
-            "text-sm leading-relaxed whitespace-pre-wrap text-zinc-200 [overflow-wrap:anywhere]",
+            "text-sm leading-relaxed whitespace-pre-wrap text-fg [overflow-wrap:anywhere]",
             !expanded && isLong && "line-clamp-6",
           )}
         >
@@ -187,7 +188,7 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
           <button
             type="button"
             onClick={() => setExpanded((value) => !value)}
-            className="mt-1 text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-300"
+            className="mt-1 text-xs font-medium text-fg-subtle transition-colors hover:text-fg-muted"
           >
             {expanded ? "Show less" : "Show more"}
           </button>
@@ -195,7 +196,7 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
       </div>
 
       {part.kind === "url" && part.url && (
-        <div className="truncate rounded-lg bg-white/[0.03] px-2.5 py-1.5 text-xs text-zinc-400">
+        <div className="truncate rounded-lg bg-fill px-2.5 py-1.5 text-xs text-fg-muted">
           {hostnameOf(part.url)}
         </div>
       )}
@@ -260,7 +261,7 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
         )}
       </div>
 
-      <p className="text-xs text-zinc-500">Waiting for you · {formatCountdown(part.expiresAt, now)}</p>
+      <p className="text-xs text-fg-subtle tabular-nums">Waiting for you · {formatCountdown(part.expiresAt, now)}</p>
     </div>
   );
 }
@@ -278,7 +279,7 @@ function ApprovalFieldInput({ field, value, disabled, onChange }: ApprovalFieldI
     <>
       {field.label}
       {field.required && (
-        <span className="ml-0.5 text-zinc-500" aria-hidden="true">
+        <span className="ml-0.5 text-fg-subtle" aria-hidden="true">
           *
         </span>
       )}
@@ -289,10 +290,10 @@ function ApprovalFieldInput({ field, value, disabled, onChange }: ApprovalFieldI
     return (
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <label htmlFor={id} className="block text-sm font-medium text-zinc-200">
+          <label htmlFor={id} className="block text-sm font-medium text-fg">
             {label}
           </label>
-          {field.description && <p className="text-xs leading-relaxed text-zinc-500">{field.description}</p>}
+          {field.description && <p className="text-xs leading-relaxed text-fg-subtle">{field.description}</p>}
         </div>
         <Switch id={id} checked={Boolean(value)} onCheckedChange={onChange} disabled={disabled} label={field.label} />
       </div>

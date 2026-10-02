@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Brain, ChevronDown, LoaderCircle } from "lucide-react";
 import { memoryTextOf, toolDisplayStatus, type ToolPart } from "../lib/tools";
 import { goToSettings } from "../store";
+import { cardClass } from "./ui/Card";
 
 /** `memory_save` renders as a small pill; expanding shows what was saved. */
 export function MemoryPill({ part, live }: { part: ToolPart; live: boolean }) {
@@ -20,10 +21,10 @@ export function MemoryPill({ part, live }: { part: ToolPart; live: boolean }) {
         disabled={!text}
         aria-expanded={text ? open : undefined}
         className={clsx(
-          "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors disabled:cursor-default",
+          "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-ui font-medium transition-colors disabled:cursor-default",
           status === "error"
-            ? "border-red-400/20 bg-red-400/[0.08] text-red-300"
-            : "border-[var(--agent-accent-border)] bg-[var(--agent-accent-08)] text-[var(--agent-accent-text)] hover:bg-[var(--agent-accent-16)]",
+            ? "border-danger-edge bg-danger-soft text-danger"
+            : "border-accent-edge bg-accent-soft text-accent-text hover:bg-accent-soft-hover",
         )}
       >
         {status === "running" ? <LoaderCircle className="size-3.5 animate-spin" /> : <Brain className="size-3.5" />}
@@ -32,13 +33,9 @@ export function MemoryPill({ part, live }: { part: ToolPart; live: boolean }) {
       </button>
 
       {open && text && (
-        <div className="mt-2 max-w-xl rounded-xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-2.5">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap text-zinc-300">{text}</p>
-          <button
-            type="button"
-            onClick={() => goToSettings("memory")}
-            className="mt-2 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-          >
+        <div className={clsx(cardClass({ padding: "none" }), "mt-2 max-w-xl px-3.5 py-2.5")}>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap text-fg-muted">{text}</p>
+          <button type="button" onClick={() => goToSettings("memory")} className="link-muted mt-2 inline-block text-xs">
             Manage memories →
           </button>
         </div>
