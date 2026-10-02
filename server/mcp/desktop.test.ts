@@ -1,5 +1,6 @@
 // Desktop tools end to end: MCP client → TOT's MCP server → computer manager → Boat backend → mock Boat API.
 // Run: TOT_DATA_DIR=/tmp/tot-desktop-test npx tsx server/mcp/desktop.test.ts
+import "../test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";

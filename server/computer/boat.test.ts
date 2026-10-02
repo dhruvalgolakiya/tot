@@ -1,6 +1,7 @@
 // Exercises the Boat backend end-to-end against a local mock of Boat's REST API
 // (shapes from docs.boat.dev), so the real SDK calls are checked without a key or VM.
 // Run: TOT_DATA_DIR=/tmp/tot-boat-test npx tsx server/computer/boat.test.ts
+import "../test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { startBoatMock } from "./boat-mock.ts";
 
 const PORT = 8797;

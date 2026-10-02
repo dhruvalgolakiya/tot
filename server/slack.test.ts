@@ -1,5 +1,6 @@
 // The Slack bot against a fake Slack (Web API + Socket Mode) and a fake model turn.
 // Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/slack.test.ts
+import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { Message, SendMessageRequest, SendMessageResponse } from "../shared/types.ts";
@@ -124,7 +125,7 @@ check("Puddin handles it", chat?.agentId === puddin.id && sent[0]!.text === "sum
 check("chat remembers it came from Slack", chat?.origin?.kind === "slack" && chat.origin.label === "DM with Alice" && chat.origin.url?.includes("archives/DALICE") === true);
 check("preamble says where it's from", /came from Slack \(DM with Alice\), from Alice/.test(sent[0]!.preamble));
 check("answer posted in the thread", posted[0]?.thread_ts === "1790000002.000100" && posted[0]?.blocks?.[0]?.type === "markdown" && posted[0]?.blocks?.[0]?.text.includes("Done: summarize"));
-check("with an Open in TOT link", JSON.stringify(posted[0]?.blocks).includes(`/c/${chat.id}|Open in TOT`));
+check("with a link to the chat in TOT", JSON.stringify(posted[0]?.blocks).includes(`/c/${chat.id}|TOT ↗`));
 check("eyes then check", reactions.join(",") === "+eyes,-eyes,+white_check_mark", reactions.join(","));
 
 // --- Mentioned inside an existing channel thread: the thread is context -------

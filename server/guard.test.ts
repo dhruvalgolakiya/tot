@@ -1,5 +1,6 @@
 // The local-only guard (no access token): only this machine may use the API, and no website can drive it.
 // Run: TOT_DATA_DIR=/tmp/tot-guard-test npx tsx server/guard.test.ts
+import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 
 export {};
 

@@ -1,5 +1,6 @@
 // GitHub connection against a fake GitHub (API, device sign-in) and a fake `gh` CLI; agent computers are local.
 // Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/github.test.ts
+import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { serve } from "@hono/node-server";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

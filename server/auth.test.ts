@@ -1,5 +1,6 @@
 // Remote-access sign-in, exercised in-process against the real app.
 // Run: TOT_DATA_DIR=/tmp/tot-auth-test npx tsx server/auth.test.ts
+import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { sessionValue } from "./session.ts";
 
 process.env.TOT_ACCESS_TOKEN = "Test-Token-1234";

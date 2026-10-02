@@ -153,11 +153,14 @@ function changed(): void {
 
 const allowed = (userId: string) => readStored().allowedUsers.some((person) => person.id === userId);
 
-/** Where TOT's web app is reachable, for "Open in TOT" links (the Wi-Fi address when shared on the LAN). */
+/** Where TOT's web app is reachable, for "open in TOT" links (the Wi-Fi address when shared on the LAN). */
 function webUrl(path: string): string {
   const port = IS_PROD ? PORT : 5173;
   return `${(LAN && lanUrls(port)[0]) || `http://localhost:${port}`}${path}`;
 }
+
+/** A short "TOT ↗" link to a chat in TOT. */
+const chatLink = (conversationId: string | undefined) => `<${webUrl(`/c/${conversationId}`)}|TOT ↗>`;
 
 async function personName(userId: string): Promise<string> {
   const cached = names.get(userId);
@@ -308,7 +311,7 @@ async function showApproval(runId: string, channel: string, threadTs: string, pa
   if (part.status === "pending") {
     if (shown) return;
     if (part.kind === "form") {
-      await post(channel, threadTs, `*Needs your answer in TOT:* ${part.message}\n<${webUrl(`/c/${runRegistry.get(runId)?.conversationId}`)}|Open in TOT>`);
+      await post(channel, threadTs, `*Needs your answer in TOT:* ${part.message}\n${chatLink(runRegistry.get(runId)?.conversationId)}`);
       return;
     }
     const res = await api!.chat.postMessage({ channel, thread_ts: threadTs, text: `Needs your OK: ${text}`.slice(0, 300), blocks: approvalBlocks(runId, part.id, text) });
@@ -402,7 +405,7 @@ async function handle(message: SlackMessage): Promise<void> {
   const reply = end ? messageText(end.message) : "";
   const failed = !end || end.status === "error";
   const body = failed ? `Sorry, that didn't work: ${end?.message.error ?? "the run ended unexpectedly."}` : reply || "(done, nothing to say)";
-  const footer = [{ type: "context", elements: [{ type: "mrkdwn", text: `<${webUrl(`/c/${conversation.id}`)}|Open in TOT>` }] }];
+  const footer = [{ type: "context", elements: [{ type: "mrkdwn", text: chatLink(conversation.id) }] }];
   // Messages written while the agent worked stay unseen, so its next turn gets them (its own replies are skipped).
   await post(channel, threadTs, body, footer);
   await react(channel, ts, "eyes", false);
