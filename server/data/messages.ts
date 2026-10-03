@@ -85,6 +85,16 @@ export const messages = {
     return row ? toMessage(row) : null;
   },
 
+  /** A reply's place in its provider session (the session, and the provider's ref for the turn), for forks. */
+  setProviderRef(id: string, ref: { session: string; ref: string }): void {
+    db.prepare(`UPDATE messages SET provider_ref = ? WHERE id = ?`).run(JSON.stringify(ref), id);
+  },
+
+  providerRef(id: string): { session: string; ref: string } | null {
+    const row = db.prepare(`SELECT provider_ref FROM messages WHERE id = ?`).get(id) as Row | undefined;
+    return parseJson<{ session: string; ref: string } | null>(row?.provider_ref, null);
+  },
+
   /** Overwrites the mutable fields of an assistant message as it streams. */
   save(message: Message): void {
     const { changes } = db.prepare(

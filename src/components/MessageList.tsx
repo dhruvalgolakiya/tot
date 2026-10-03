@@ -4,6 +4,7 @@ import type { Message } from "@shared/types";
 import { useStickToBottom } from "../hooks/useStickToBottom";
 import { retryConversation, selectActiveAgent, setChatScrolled, useStore } from "../store";
 import { AssistantMessage } from "./AssistantMessage";
+import { ForkedFrom } from "./ForkedFrom";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { UserMessage } from "./UserMessage";
 import { Callout } from "./ui/Callout";
@@ -84,6 +85,8 @@ export function MessageList({ conversationId }: { conversationId: string }) {
               </Callout>
             </div>
           )}
+
+          {messages.length > 0 && <ForkedFrom conversationId={conversationId} />}
 
           {shown.map((message) =>
             message.role === "user" ? (

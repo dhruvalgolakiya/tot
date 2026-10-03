@@ -16,6 +16,8 @@ const { HttpError, sendMessage } = await import("./agent/orchestrator.ts");
 const { limits } = await import("./agent/limits.ts");
 const { lastExchange, selectContext, tokens, SWITCH_BUDGET } = await import("./agent/context-select.ts");
 const { providers } = await import("./agent/providers/index.ts");
+const { resumeOptions } = await import("./agent/providers/claude.ts");
+const { newThreadRequest } = await import("./agent/providers/chatgpt.ts");
 const { MessageBuilder } = await import("./agent/message-builder.ts");
 const { runRegistry } = await import("./agent/runs.ts");
 const { MCP_TOKEN } = await import("./config.ts");
@@ -62,6 +64,9 @@ settings.patch({ computer: { mode: "local" }, tasks: { perAgentLimit: 6, globalL
 
 // --- Fake providers behind the real turn pipeline (agent/orchestrator.ts), recording each turn's input ---
 const providerTurns: { provider: "claude" | "chatgpt"; input: TurnInput }[] = [];
+/** When set, the fake providers fail to fork (a session that's gone), as a real one would. */
+let failForks = false;
+let refs = 0;
 function fakeProvider(id: "claude" | "chatgpt", label: string, models: string[]): AgentProvider {
   return {
     id,
@@ -69,8 +74,13 @@ function fakeProvider(id: "claude" | "chatgpt", label: string, models: string[])
     status: async () => ({ id, label, installed: true, loggedIn: true, models: models.map((model) => ({ id: `${id}:${model}`, provider: id, model, label: model, available: true })) }),
     async *runTurn(input) {
       providerTurns.push({ provider: id, input });
-      yield { type: "session", sessionId: input.sessionId ?? `${id}-session-${randomUUID().slice(0, 8)}` };
+      if (input.fork && failForks) {
+        yield { type: "error", message: `No session ${input.fork.sessionId} to fork.` };
+        return;
+      }
+      yield { type: "session", sessionId: input.sessionId ?? `${id}-${input.fork ? "fork" : "session"}-${randomUUID().slice(0, 8)}` };
       yield { type: "text-delta", blockId: "b1", delta: `Reply from ${label}.` };
+      yield { type: "ref", ref: `${id}-ref-${++refs}` };
       yield { type: "usage", usage: { inputTokens: 10, outputTokens: 5 } };
     },
     complete: async () => "A title",
@@ -85,9 +95,8 @@ async function realTurn(chatId: string, body: SendMessageRequest): Promise<TurnI
   return providerTurns.at(-1)!.input;
 }
 /** Adds `n` alternating user / assistant messages to a chat, oldest first. */
-function seed(chatId: string, n: number, text: (i: number) => string): Message[] {
+function seed(chatId: string, n: number, text: (i: number) => string, at = Date.now() - n * 1000): Message[] {
   const added: Message[] = [];
-  const at = Date.now() - n * 1000;
   for (let i = 0; i < n; i++) {
     const message: Message = { id: randomUUID(), conversationId: chatId, role: i % 2 ? "assistant" : "user", parts: [{ type: "text", id: randomUUID(), text: text(i) }], status: "complete", createdAt: at + i * 10 };
     messages.insert(message);
@@ -719,6 +728,123 @@ const crawl = conversations.tasks({ parentId: stopWait.id })[0]!;
 check("…and the task keeps running", status(crawl.id) === "running");
 await request("POST", `/tasks/${crawl.id}/stop`);
 await stopClient.close();
+
+// =============================================================================
+// M6: fork and merge back
+// =============================================================================
+const OPUS = "claude:claude-opus-5-5";
+const SOL = "chatgpt:gpt-6.1-sol";
+const replies = (chatId: string) => messages.listByConversation(chatId).filter((m) => m.role === "assistant");
+
+// A chat on Claude with three exchanges; fork it at the second reply.
+const source = chatWith("Launch plan");
+for (const text of ["Plan A: the beta", "Plan B: the pricing", "Plan C: the press"]) await realTurn(source.id, { text, modelId: OPUS });
+// The first turn gave it a generated title; name it back for the checks below.
+conversations.update(source.id, { title: "Launch plan" });
+const [, secondReply, thirdReply] = replies(source.id);
+check("each reply keeps its place in the provider session", Boolean(messages.providerRef(secondReply!.id)?.ref) && messages.providerRef(secondReply!.id)!.session === conversations.get(source.id)!.providerSessionId);
+let res = await request("POST", `/conversations/${source.id}/fork`, { messageId: secondReply!.id });
+const fork = res.data;
+const forkTexts = messages.listByConversation(fork.id).map((m) => m.parts.map((p) => (p.type === "text" ? p.text : "")).join(""));
+check(
+  "fork: a new chat with the history up to that reply",
+  res.status === 201 && fork.title === "Fork of Launch plan" && fork.forkedFrom?.conversationId === source.id && fork.forkedFrom.messageId === secondReply!.id && forkTexts.length === 4 && forkTexts[2] === "Plan B: the pricing" && !forkTexts.some((t) => t.includes("Plan C")),
+  JSON.stringify(forkTexts),
+);
+check("…and no provider session yet", conversations.get(fork.id)!.providerSessionId === null && conversations.get(fork.id)!.systemPrompt === conversations.get(source.id)!.systemPrompt);
+
+// Its first turn on Claude continues natively: a copy of the session cut after that reply, not the last one.
+input = await realTurn(fork.id, { text: "Go on with plan B", modelId: OPUS });
+const cutAt = messages.providerRef(secondReply!.id)!;
+check(
+  "native fork on Claude: the source's session, cut after the reply it was forked at",
+  input.fork?.sessionId === cutAt.session && input.fork.at === cutAt.ref && input.fork.at !== messages.providerRef(thirdReply!.id)!.ref && !input.sessionId && !input.prompt.includes("<conversation>"),
+  JSON.stringify(input.fork),
+);
+const claudeShape = resumeOptions(input);
+check("…which the Agent SDK gets as resume + forkSession + resumeSessionAt", claudeShape.resume === cutAt.session && claudeShape.forkSession === true && claudeShape.resumeSessionAt === cutAt.ref, JSON.stringify(claudeShape));
+check("…and resumeOptions is a plain resume otherwise", JSON.stringify(resumeOptions({ sessionId: "s1" })) === '{"resume":"s1"}');
+input = await realTurn(fork.id, { text: "And the timeline?", modelId: OPUS });
+check("…then the fork resumes its own session", input.sessionId === conversations.get(fork.id)!.providerSessionId && input.sessionId!.startsWith("claude-fork-") && !input.fork);
+
+// The same on ChatGPT, through thread/fork.
+const onChatgpt = chatWith("ChatGPT plan");
+for (const text of ["Draft the email", "Make it shorter"]) await realTurn(onChatgpt.id, { text, modelId: SOL });
+const firstGptReply = replies(onChatgpt.id)[0]!;
+const gptFork = (await request("POST", `/conversations/${onChatgpt.id}/fork`, { messageId: firstGptReply.id })).data;
+input = await realTurn(gptFork.id, { text: "Make it friendlier instead", modelId: SOL });
+const gptCut = messages.providerRef(firstGptReply.id)!;
+const codexShape = newThreadRequest(input, { model: "gpt-6.1-sol", cwd: "/tmp" });
+check(
+  "native fork on ChatGPT: thread/fork with lastTurnId",
+  input.fork?.sessionId === gptCut.session && codexShape.method === "thread/fork" && codexShape.params.threadId === gptCut.session && codexShape.params.lastTurnId === gptCut.ref && codexShape.params.model === "gpt-6.1-sol",
+  JSON.stringify(codexShape),
+);
+check("…and thread/start otherwise", newThreadRequest({}, { model: "m" }).method === "thread/start");
+
+// A fork whose first turn runs on the other provider gets the context selection instead.
+const crossFork = (await request("POST", `/conversations/${source.id}/fork`, { messageId: secondReply!.id })).data;
+input = await realTurn(crossFork.id, { text: "Continue on ChatGPT", modelId: SOL });
+check(
+  "a fork on the other provider: context selection of the copied messages",
+  !input.fork && !input.sessionId && input.prompt.startsWith("This chat is a fork of another one") && input.prompt.includes("Plan B: the pricing") && !input.prompt.includes("Plan C"),
+  input.prompt.slice(0, 160),
+);
+// A native fork that fails (the session is gone) falls back to the same, once.
+failForks = true;
+const lostFork = (await request("POST", `/conversations/${source.id}/fork`, {})).data;
+input = await realTurn(lostFork.id, { text: "Pick it up", modelId: OPUS });
+failForks = false;
+check("a fork that can't fork natively falls back to context", providerTurns.at(-2)!.input.fork !== undefined && !input.fork && input.prompt.includes("Plan C: the press") && replies(lostFork.id).at(-1)!.status === "complete");
+
+// Refusals.
+const busyChat = chatWith("Busy chat");
+const holdBusy = gate();
+scripts.set(busyChat.id, async () => void (await holdBusy.wait));
+await fakeSend(busyChat.id, { text: "something long" });
+check("forking a chat mid-reply (whole) is refused", (await request("POST", `/conversations/${busyChat.id}/fork`, {})).status === 409);
+holdBusy.open();
+check("tasks can't be forked", (await request("POST", `/conversations/${retries.id}/fork`, {})).status === 404 || (await request("POST", `/conversations/${conversations.tasks({ parentId: retries.id })[0]!.id}/fork`, {})).status === 400);
+check("merge-back needs a fork", (await request("POST", `/conversations/${source.id}/merge-back`)).status === 400);
+
+// Merge back: a notice in the source, and the fork's summary on its next turn (a newer one replaces a pending one).
+res = await request("POST", `/conversations/${fork.id}/merge-back`);
+const noticeText = () => messages.listByConversation(source.id).flatMap((m) => m.parts).filter((p) => p.type === "notice").map((p) => (p.type === "notice" ? p.text : ""));
+check("merge-back: a notice in the source chat", res.status === 200 && res.data.id === source.id && noticeText().at(-1) === "Brought back from “Fork of Launch plan”: 4 new messages, for the next reply here.", JSON.stringify(noticeText()));
+await realTurn(fork.id, { text: "One more idea: a waitlist", modelId: OPUS });
+await request("POST", `/conversations/${fork.id}/merge-back`);
+check("…a newer merge-back replaces the pending one", conversations.get(source.id)!.mergeNotes.length === 1 && conversations.get(source.id)!.mergeNotes[0]!.note.includes("a waitlist"));
+input = await realTurn(source.id, { text: "Where did we land?", modelId: OPUS });
+check(
+  "…and the source's next turn gets the fork's summary",
+  input.prompt.includes("[The user brought back what happened in the fork “Fork of Launch plan”") &&
+    input.prompt.includes("- User: Go on with plan B") &&
+    input.prompt.includes("<fork_reply>\nReply from Claude.\n</fork_reply>") &&
+    input.prompt.includes(`chat_read { chatId: "${fork.id}" }`) &&
+    input.prompt.includes("Where did we land?"),
+  input.prompt.slice(0, 400),
+);
+input = await realTurn(source.id, { text: "Thanks", modelId: OPUS });
+check("…once", !input.prompt.includes("brought back") && conversations.get(source.id)!.mergeNotes.length === 0);
+
+// A long fork's note stays within its budget.
+const bigFork = (await request("POST", `/conversations/${source.id}/fork`, {})).data;
+seed(bigFork.id, 400, (i) => `Fork message ${i}: ${"words ".repeat(80)}`, Date.now() + 1);
+await request("POST", `/conversations/${bigFork.id}/merge-back`);
+const bigNote = conversations.get(source.id)!.mergeNotes[0]!.note;
+check("a long fork's note stays within 8k tokens, one line a message", tokens(bigNote) <= 8000 && bigNote.includes("earlier messages not shown") && /- User: Fork message \d+: words/.test(bigNote) && !bigNote.split("\n").some((line) => line.startsWith("- ") && line.length > 260), String(tokens(bigNote)));
+conversations.update(source.id, { mergeNotes: [] });
+
+// With memory off, chat_read still reads a fork's source and a chat's forks, and nothing else.
+settings.patch({ memory: { enabled: false } });
+const { client: forkClient, call: forkCall } = await mcp(fork.id);
+check("memory off: a fork reads the chat it came from", !(await forkCall("chat_read", { chatId: source.id })).isError);
+check("…but not other chats", (await forkCall("chat_read", { chatId: onChatgpt.id })).isError);
+await forkClient.close();
+const { client: sourceClient, call: sourceCall } = await mcp(source.id);
+check("…and a chat reads its forks", !(await sourceCall("chat_read", { chatId: fork.id })).isError);
+await sourceClient.close();
+settings.patch({ memory: { enabled: true } });
 
 server.close();
 chatWakes.stop();

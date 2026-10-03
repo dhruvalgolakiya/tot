@@ -158,13 +158,14 @@ Read [README.md](README.md) first.
     - A timed-out wait returns "still running", and one wake follows when the task finishes.
     - Stopping the parent turn ends the wait.
   - *Shipped:* `server/tasks/wait.ts` (`waitForTasks`: until every task is done, failed, stopped, paused, cut off or asking the user; the timeout; or the turn's abort signal / the call's own cancel). `task_start` and `task_spawn_many` take `wait` and `wait_minutes` (1–10, default 5); results come back inline and are marked read, and wakes hold back from tasks being waited on, so nothing is told twice. `wait` with `then: "synthesize"` is refused. The chat's task instructions now say results come back on their own, and when to wait.
-- [ ] **M6 · Fork and merge back.**
+- [x] **M6 · Fork and merge back.**
   - What to build: `fork.ts`, the `provider_ref` and `forkedFrom` columns, native forks on both providers, the `selectContext` fallback, merge-back, the menu items.
   - *Accept:*
     - Forking at an earlier Claude reply continues natively: the fork knows what came before that reply, and not what came after.
     - The same works on ChatGPT through `thread/fork`.
     - A fork switched to the other provider gets the context selection.
     - Merge-back gives the source chat a notice and the fork's summary on its next turn.
+  - *Shipped:* `server/chats/fork.ts` + `server/chats/routes.ts`. Providers emit a `ref` event (Claude: each top-level assistant message's uuid; Codex: the turn id), stored with its session in `messages.provider_ref`. `TurnInput.fork` makes a fork's first turn copy that session: `resumeOptions` → `resume` + `forkSession` + `resumeSessionAt`, `newThreadRequest` → `thread/fork` with `lastTurnId` (checked against the app-server 0.159 schema). A fork on the other provider, or a native fork that fails, gets `selectContext` of the copied messages. Merge-back notes live in `conversations.merge_notes` (one per fork, replaced) and open the source's next turn once. `chat_read` reads a fork's source and a chat's forks with memory off. UI: "Fork chat" and "Bring back to X" in the chat's "…" menu, "Fork from here" in a reply's "…" menu, "Forked from X" at the top of a fork.
 - [ ] **M7 · Attach a chat as context.**
   - What to build: `contextChats` meta, the preamble, the `@` picker and chips, drag from the sidebar.
   - *Accept:*

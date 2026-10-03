@@ -64,6 +64,7 @@ import { dispatcher } from "./orchestration/dispatch.ts";
 import { orchestrationRoutes } from "./orchestration/routes.ts";
 import { taskQueue } from "./tasks/queue.ts";
 import { taskRoutes } from "./tasks/routes.ts";
+import { chatRoutes } from "./chats/routes.ts";
 import { isTask } from "./tasks/store.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { trustRoutes } from "./trust/routes.ts";
@@ -315,6 +316,7 @@ api.post("/conversations/:id/computer/stop", async (c) => {
 });
 
 api.route("/", taskRoutes);
+api.route("/", chatRoutes);
 api.route("/", orchestrationRoutes);
 
 // ---------------------------------------------------------------------------

@@ -1377,6 +1377,28 @@ export const stopTask = (id: string) => taskAction(() => api.stopTask(id));
 export const runTaskNow = (id: string) => taskAction(() => api.runTaskNow(id));
 export const patchTask = (id: string, patch: TaskPatch) => taskAction(() => api.patchTask(id, patch));
 
+/** "Fork chat" / "Fork from here": a new chat with the history so far, which opens. */
+export async function forkChat(conversationId: string, messageId?: string) {
+  try {
+    const fork = await api.forkChat(conversationId, messageId ? { messageId } : {});
+    set((s) => ({ conversations: upsertConversation(s.conversations, fork) }));
+    navigateToConversation(fork.id);
+  } catch (error) {
+    notifyError(error);
+  }
+}
+
+/** "Bring back to …": the fork's new messages go to the chat it came from, for its next reply. */
+export async function mergeBack(forkId: string) {
+  try {
+    const source = await api.mergeBack(forkId);
+    set((s) => ({ conversations: upsertConversation(s.conversations, source) }));
+    toast.success(`Brought back to “${source.title}”`, { action: { label: "Open", onClick: () => navigateToConversation(source.id) } });
+  } catch (error) {
+    notifyError(error);
+  }
+}
+
 /** "Resume" on a paused queue: its tasks start again. */
 export async function resumeQueue(agentId: string) {
   try {

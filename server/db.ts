@@ -445,6 +445,11 @@ db.exec(`
 // count toward its mission's token budget.
 if (!hasColumn("conversations", "wake_pending")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_pending INTEGER NOT NULL DEFAULT 0`);
 if (!hasColumn("conversations", "wake_tokens")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_tokens INTEGER NOT NULL DEFAULT 0`);
+// Forks (server/chats/fork.ts): where a chat was forked from, notes brought back from its forks for its
+// next turn, and each reply's place in its provider session (so a fork can start there natively).
+if (!hasColumn("conversations", "forked_from")) db.exec(`ALTER TABLE conversations ADD COLUMN forked_from TEXT`);
+if (!hasColumn("conversations", "merge_notes")) db.exec(`ALTER TABLE conversations ADD COLUMN merge_notes TEXT NOT NULL DEFAULT '[]'`);
+if (!hasColumn("messages", "provider_ref")) db.exec(`ALTER TABLE messages ADD COLUMN provider_ref TEXT`);
 // Retry-safe starts (server/tasks/requests.ts): the tasks each request id started from a chat, in order.
 // They go with the chat; a deleted task keeps its row, so a retry still doesn't start it again.
 db.exec(`

@@ -8,6 +8,7 @@ import { brainHints } from "../agent/brain-hints.ts";
 import { computerManager, type ActiveComputer, type Screenshot } from "../computer/manager.ts";
 import { MCP_TOKEN, VERSION } from "../config.ts";
 import { appEvents } from "../app-events.ts";
+import { forks } from "../chats/fork.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
@@ -390,8 +391,8 @@ function buildServer(conversation: ConversationRecord): McpServer {
     );
   }
 
-  // chat_read always works on this chat (context selection points models at what it left out); on the
-  // workspace's other chats only with memory on.
+  // chat_read always works on this chat (context selection points models at what it left out) and on the
+  // chats linked to it (the one it was forked from, its forks); on the workspace's other chats only with memory on.
   server.registerTool(
     "chat_read",
     {
@@ -406,7 +407,8 @@ function buildServer(conversation: ConversationRecord): McpServer {
     },
     ({ chatId, before, limit }) =>
       guarded(async () => {
-        const chat = memory.enabled || chatId === conversationId ? chatSearch.transcript(agentId, chatId, { before, limit }) : null;
+        const readable = memory.enabled || chatId === conversationId || forks.linked(conversation).has(chatId);
+        const chat = readable ? chatSearch.transcript(agentId, chatId, { before, limit }) : null;
         if (!chat) return reply(before ? `No message ${before} in chat ${chatId} in this workspace.` : `No chat with id ${chatId} in this workspace.`, true);
         if (!chat.messages.length) return reply(`“${chat.title}”\n\n(no messages${before ? " before that one" : ""})`);
         const lines = chat.messages.map((m) => `${m.role === "user" ? "User" : "You"}: ${m.text}`);

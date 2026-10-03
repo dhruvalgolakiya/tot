@@ -121,6 +121,7 @@ export class MessageBuilder {
         this.emit({ type: "usage", usage: this.message.usage as Usage });
         break;
       case "session":
+      case "ref":
       case "error":
         break;
     }

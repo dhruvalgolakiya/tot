@@ -290,9 +290,9 @@ Your name is ${name}. Under the hood, TOT sends each message to a model from the
  * Carries a conversation over when the provider changes mid-chat: the earlier messages picked to fit
  * (agent/context-select.ts), as a <conversation> block, then the user's new message.
  */
-export function transcriptPreamble(conversation: string, nextMessage: string): string {
+export function transcriptPreamble(conversation: string, nextMessage: string, opening = "This chat started with another model."): string {
   if (!conversation) return nextMessage;
-  return `This chat started with another model. Here is the conversation so far, for context:
+  return `${opening} Here is the conversation so far, for context:
 ${conversation}
 
 Continue the conversation. The user's new message:

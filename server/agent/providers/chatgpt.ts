@@ -888,14 +888,22 @@ async function openThread(
     runtime.threads.set(threadId, { signature, lastUsed: Date.now(), busy: false });
     return threadId;
   }
-  const started = await server.request<{ thread: { id: string } }>(
-    "thread/start",
-    { ...common, serviceName: "tot" },
-    { timeoutMs: RPC_TIMEOUT_MS },
-  );
+  const { method, params } = newThreadRequest(input, common);
+  const started = await server.request<{ thread: { id: string } }>(method, params, { timeoutMs: RPC_TIMEOUT_MS });
   const threadId = started.thread.id;
   runtime.threads.set(threadId, { signature, lastUsed: Date.now(), busy: false });
   return threadId;
+}
+
+/** A turn without a thread to resume: a new thread, or for a fork's first turn a fork of another thread through turn `at`. */
+export function newThreadRequest(
+  input: Pick<TurnInput, "fork">,
+  common: Record<string, unknown>,
+): { method: "thread/start" | "thread/fork"; params: Record<string, unknown> } {
+  if (input.fork) {
+    return { method: "thread/fork", params: { threadId: input.fork.sessionId, ...(input.fork.at ? { lastTurnId: input.fork.at } : {}), ...common, excludeTurns: true } };
+  }
+  return { method: "thread/start", params: { ...common, serviceName: "tot" } };
 }
 
 /** Buffers notifications so the async generator can pull them in order. */
@@ -982,6 +990,8 @@ async function* runTurn(input: TurnInput): AsyncGenerator<ProviderEvent> {
         { timeoutMs: RPC_TIMEOUT_MS },
       );
       turnId = res.turn.id;
+      // Where a fork from this reply would stop (thread/fork's lastTurnId).
+      yield { type: "ref", ref: turnId };
     } catch (err) {
       finished = true;
       if (!input.signal.aborted) yield failure(err);

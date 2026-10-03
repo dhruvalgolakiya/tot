@@ -189,6 +189,8 @@ export interface Conversation {
   parentId: string | null;
   /** Set for tasks: goal, status, plan, branch…; null for chats. */
   task: TaskInfo | null;
+  /** A fork (module 05): the chat and the message it was forked at; null otherwise. */
+  forkedFrom: ForkOrigin | null;
 }
 
 export type ConversationKind = "chat" | "task";
@@ -999,6 +1001,10 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //                                              in a fresh session on that provider; a finished task does so on its next message)
 // PATCH  /api/tasks/:id                       TaskPatch -> Conversation  (rename, goal, position in the queue)
 // POST   /api/agents/:id/queue/resume         -> Agent  (module 05: clears agent.queueHold; queued tasks start again)
+// POST   /api/conversations/:id/fork          ForkRequest -> Conversation  (module 05: "Fork of …", its messages copied up to
+//                                              messageId; its first turn continues the source's provider session natively when it can)
+// POST   /api/conversations/:id/merge-back    -> Conversation  (module 05: a fork brings its new messages back to its source chat: a
+//                                              notice there, and a note for its next turn; returns the source)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
 // DELETE /api/conversations/:id?deleteBranch=1  (a task: also removes its worktree; its branch only with deleteBranch, and only if never pushed)
 //
@@ -1568,4 +1574,16 @@ export interface QueueHold {
   /** Its last error. */
   reason: string;
   createdAt: number;
+}
+
+/** Where a forked chat came from: its messages up to `messageId` were copied at `at`. */
+export interface ForkOrigin {
+  conversationId: string;
+  messageId: string;
+  at: number;
+}
+
+/** POST /api/conversations/:id/fork; without a message, the whole chat. */
+export interface ForkRequest {
+  messageId?: string;
 }
