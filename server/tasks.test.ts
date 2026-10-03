@@ -306,6 +306,9 @@ const flaky = tasks.create({ agentId: ana.id, goal: "Hit errors" });
 scripts.set(flaky.id, async () => "error");
 await until(() => status(flaky.id) === "failed");
 check("repeated errors → failed", /repeated errors: Claude is overloaded/.test(taskStore.get(flaky.id)!.task.summary ?? ""), taskStore.get(flaky.id)?.task.summary ?? "");
+// Module 05: that pauses the agent's queue (the next task would fail the same way) until it's resumed.
+check("…and pauses the agent's queue", agents.get(ana.id)!.queueHold?.reason === "Claude is overloaded right now.", JSON.stringify(agents.get(ana.id)!.queueHold));
+await request("POST", `/agents/${ana.id}/queue/resume`);
 
 // A question: the task waits, and the user's reply picks it up again.
 const asker = tasks.create({ agentId: ana.id, goal: "Pick a database" });

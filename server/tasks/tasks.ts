@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+  Agent,
   ConversationOrigin,
   ConvertToTaskRequest,
   Message,
@@ -24,6 +25,7 @@ import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { messages } from "../data/messages.ts";
+import { queueHolds } from "../data/queue-holds.ts";
 import { settings } from "../data/settings.ts";
 import { checkSpawn, childDepth } from "../orchestration/budget.ts";
 import { otherProvider, ROLE_NAMES, ROLES } from "../orchestration/roles.ts";
@@ -145,14 +147,28 @@ export function showCards(parentId: string, taskIds: string[], opts: { userText?
   publishConversation(parentId, true);
 }
 
-/** A finished task's result goes back to the chat that started it: a note there, and its model hears on its next turn (or a wake-up). */
-function reportToParent(task: TaskRecord): void {
-  const parent = task.parentId ? conversations.get(task.parentId) : null;
-  if (!parent) return;
-  conversations.update(parent.id, { childResults: [...new Set([...parent.childResults, task.id])] });
+/** Tasks being deleted: their ending isn't news to the chat that started them. */
+const removing = new Set<string>();
+
+/** How a task's ending reads in the chat that started it. */
+function endingNotice(task: TaskRecord): string {
+  const { status } = task.task;
+  if (status === "stopped") return `“${task.title}” was stopped.`;
+  if (status === "interrupted") return `“${task.title}” was cut off when TOT restarted and is waiting for you to resume it.`;
   const summary = (task.task.summary ?? "").replace(/\s+/g, " ").trim();
   const excerpt = summary.length > 180 ? `${summary.slice(0, 179).trimEnd()}…` : summary;
-  const text = `${task.task.status === "done" ? `“${task.title}” is done` : `“${task.title}” failed`}${excerpt ? `: ${excerpt}` : "."}`;
+  return `${status === "done" ? `“${task.title}” is done` : `“${task.title}” failed`}${excerpt ? `: ${excerpt}` : "."}`;
+}
+
+/**
+ * Every ending of a task (done, failed, stopped, or cut off by a restart without resuming) goes back
+ * to the chat that started it: a note there, and its model hears on its next turn (or a wake-up).
+ */
+function reportToParent(task: TaskRecord): void {
+  const parent = task.parentId ? conversations.get(task.parentId) : null;
+  if (!parent || removing.has(task.id)) return;
+  conversations.update(parent.id, { childResults: [...new Set([...parent.childResults, task.id])] });
+  const text = endingNotice(task);
   messages.insert({
     id: randomUUID(),
     conversationId: parent.id,
@@ -274,9 +290,18 @@ export const tasks = {
     return taskStore.get(taskId)!;
   },
 
-  /** To the front of its queue; it starts right away if its agent has a free slot. */
+  /** A paused queue (a provider kept failing) starts tasks again. */
+  resumeQueue(agentId: string): Agent {
+    if (!agents.get(agentId)) throw new HttpError(404, "Agent not found.");
+    if (queueHolds.clear(agentId)) appEvents.agentChanged(agentId);
+    taskQueue.pump();
+    return agents.get(agentId)!;
+  },
+
+  /** To the front of its queue; it starts right away if its agent has a free slot (resuming a paused queue: the user asked). */
   runNow(taskId: string): TaskRecord {
     const task = taskStore.require(taskId);
+    if (queueHolds.clear(task.agentId)) appEvents.agentChanged(task.agentId);
     if (task.task.status === "queued") {
       taskQueue.move(taskId, 1);
       taskQueue.pump();
@@ -358,6 +383,7 @@ export const tasks = {
   /** Deletes a task with its worktree; its branch too when asked and it was never pushed. */
   async remove(taskId: string, { deleteBranch = false } = {}): Promise<void> {
     const task = taskStore.require(taskId);
+    removing.add(taskId);
     if (!FINISHED.has(task.task.status)) taskStore.transition(taskId, "stopped");
     runRegistry.activeFor(taskId)?.stop();
     await runLoop.settled(taskId);
@@ -367,6 +393,7 @@ export const tasks = {
       });
     }
     conversations.delete(taskId);
+    removing.delete(taskId);
     appEvents.publish({ type: "conversation-deleted", conversationId: taskId });
     appEvents.agentChanged(task.agentId);
   },
@@ -389,7 +416,7 @@ export const tasks = {
     if (unsubscribe) return;
     taskQueue.start();
     const offChange = taskStore.onChange((task) => {
-      if (task.task.status === "done" || task.task.status === "failed") reportToParent(task);
+      if (FINISHED.has(task.task.status)) reportToParent(task);
     });
     const offApprovals = appEvents.subscribe((event) => {
       if (event.type !== "approval") return;
@@ -413,6 +440,9 @@ export const tasks = {
       if (resume) {
         runLoop.markRestarted(task.id);
         taskQueue.enqueue(task.id, { front: true });
+      } else {
+        // It won't resume by itself: the chat that started it hears so.
+        reportToParent(taskStore.get(task.id)!);
       }
     }
     taskQueue.pump();

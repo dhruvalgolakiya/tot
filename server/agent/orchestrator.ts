@@ -6,6 +6,7 @@ import { apps } from "../apps.ts";
 import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.ts";
 import { agents } from "../data/agents.ts";
 import { brains } from "../data/brains.ts";
+import { CUT_OFF_BY_RESTART } from "../db.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
@@ -367,8 +368,14 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
   const brainNote = ctx.text ? brainHints(conversation.agentId, conversation.id, ctx.text) : "";
   // Results of tasks this chat started that finished since its model last heard.
   const tasksNote = childResultsNote(conversation);
+  // A chat's last reply cut off by a restart: said once, on the next turn (tasks hear it from their loop).
+  const lastReply = ctx.history.findLast((m) => m.role === "assistant");
+  const restartNote =
+    conversation.kind !== "task" && lastReply?.status === "stopped" && lastReply.error === CUT_OFF_BY_RESTART
+      ? "[TOT restarted during your last reply, so it was cut off. Check where things stand before you carry on.]"
+      : "";
   const text =
-    [githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
+    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
   let systemPrompt = conversation.systemPrompt;

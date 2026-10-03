@@ -81,6 +81,11 @@ export function continuationPreamble(
 /** One finished task's result as structured data for a model: its summary plus findings, files and sources. */
 export function resultBlock(child: ConversationRecord): string {
   const task = child.task!;
+  // Stopped, or cut off by a restart: how it ended, and no result.
+  if (task.status === "stopped" || task.status === "interrupted") {
+    const note = task.status === "stopped" ? "Stopped before it finished: there's no result." : "Cut off when TOT restarted; it waits for the user to resume it. No result yet.";
+    return JSON.stringify({ id: child.id, title: child.title, role: task.role, status: task.status, note, ...(task.repo ? { branch: task.repo.branch } : {}) }, null, 1);
+  }
   const result = task.result;
   return JSON.stringify(
     {

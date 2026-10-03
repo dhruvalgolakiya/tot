@@ -1377,6 +1377,15 @@ export const stopTask = (id: string) => taskAction(() => api.stopTask(id));
 export const runTaskNow = (id: string) => taskAction(() => api.runTaskNow(id));
 export const patchTask = (id: string, patch: TaskPatch) => taskAction(() => api.patchTask(id, patch));
 
+/** "Resume" on a paused queue: its tasks start again. */
+export async function resumeQueue(agentId: string) {
+  try {
+    handleAgentEvent(await api.resumeQueue(agentId));
+  } catch (error) {
+    notifyError(error);
+  }
+}
+
 /** "Continue on ChatGPT / Claude": a handoff, then a fresh session there. */
 export async function continueTaskOn(id: string, provider: ProviderId) {
   const label = PROVIDER_LABELS[provider];

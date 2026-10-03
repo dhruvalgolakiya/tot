@@ -4,6 +4,7 @@ import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 import { brains } from "./brains.ts";
 import { personas } from "./personas.ts";
+import { queueHolds } from "./queue-holds.ts";
 import { wiki } from "./wiki.ts";
 
 /** Tot, the agent every install starts with. */
@@ -33,6 +34,7 @@ function toAgent(row: Row): Agent {
       pages: wiki.count(brains.forAgent(id).map((brain) => brain.id)),
       routines: count(`SELECT COUNT(*) AS n FROM routines WHERE agent_id = ?`, id),
     },
+    queueHold: queueHolds.get(id),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
   };

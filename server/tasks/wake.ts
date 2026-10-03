@@ -42,15 +42,24 @@ export function wakes(task: TaskRecord): boolean {
   return conversations.get(task.parentId)?.kind === "chat";
 }
 
-/** The chat's unread results a wake covers: not those of a group still to be combined (fan-in hands them over). */
+/** The chat's unread results a wake covers: tasks that still exist, not in a group still to be combined (fan-in hands those over). */
 function unread(chat: ConversationRecord): string[] {
-  return chat.childResults.filter((id) => taskStore.get(id)?.task.then !== "synthesize");
+  return chat.childResults.filter((id) => {
+    const task = taskStore.get(id);
+    return task !== null && task.task.then !== "synthesize";
+  });
 }
 
 /** The wake's own message, shown as a quiet divider: `2 tasks finished: “Fix checkout”, “Update docs”.` */
 export function wakeText(ids: string[]): string {
-  const titles = ids.map((id) => `“${conversations.get(id)?.title ?? "A task"}”`);
-  return titles.length === 1 ? `${titles[0]} finished.` : `${titles.length} tasks finished: ${titles.join(", ")}.`;
+  const ended = ids.map((id) => taskStore.get(id)).filter((task): task is TaskRecord => task !== null);
+  const titles = ended.map((task) => `“${task.title}”`);
+  if (ended.length === 1) {
+    const { status } = ended[0]!.task;
+    return `${titles[0]} ${status === "stopped" ? "was stopped" : status === "interrupted" ? "was cut off by a restart" : "finished"}.`;
+  }
+  const allFinished = ended.every((task) => task.task.status === "done" || task.task.status === "failed");
+  return `${titles.length} tasks ${allFinished ? "finished" : "ended"}: ${titles.join(", ")}.`;
 }
 
 function settle(chatId: string): void {

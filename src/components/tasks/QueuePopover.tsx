@@ -2,15 +2,18 @@ import { useState, type DragEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import { Popover } from "radix-ui";
 import { GripVertical } from "lucide-react";
+import type { QueueHold } from "../../../shared/types";
 import type { TaskConversation } from "../../lib/tasks";
 import { navigateToConversation, patchTask, runTaskNow } from "../../store";
 import { Button } from "../ui/Button";
+import { QueueHoldLine } from "./QueueHold";
 
 /**
  * "Queue · 3" in the Tasks header: the agent's queued tasks in order. Drag a row (or focus it
- * and press Alt+↑/↓) to reorder; Run now puts a task first and starts it if there's a free slot.
+ * and press Alt+↑/↓) to reorder; Run now puts a task first and starts it if there's a free slot
+ * (resuming a paused queue).
  */
-export function QueuePopover({ queued }: { queued: TaskConversation[] }) {
+export function QueuePopover({ queued, hold }: { queued: TaskConversation[]; hold: QueueHold | null }) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<number | null>(null);
 
@@ -42,6 +45,7 @@ export function QueuePopover({ queued }: { queued: TaskConversation[] }) {
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="end" sideOffset={4} collisionPadding={8} className="menu w-72 p-1">
+          {hold && <QueueHoldLine agentId={queued[0]!.agentId} hold={hold} focusable={false} className="px-2" />}
           <p className="menu-label">Up next · drag to reorder</p>
           <ol aria-label="Queued tasks">
             {queued.map((task, index) => (

@@ -182,6 +182,8 @@ export const api = {
   resumeTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/resume`, {}),
   stopTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/stop`, {}),
   runTaskNow: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/run-now`, {}),
+  /** A paused task queue (a provider kept failing) starts tasks again. */
+  resumeQueue: (agentId: string) => request<Agent>("POST", `/agents/${seg(agentId)}/queue/resume`, {}),
   taskToChat: (id: string) => request<Ok>("POST", `/tasks/${seg(id)}/to-chat`, {}),
   patchTask: (id: string, patch: TaskPatch) => request<Conversation>("PATCH", `/tasks/${seg(id)}`, patch),
   taskChanges: (id: string) => request<TaskChanges>("GET", `/tasks/${seg(id)}/changes`),

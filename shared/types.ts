@@ -112,6 +112,8 @@ export interface Agent {
   personaId: string | null;
   /** What's in the workspace, for the sidebar. */
   counts: { chats: number; pages: number; routines: number };
+  /** Its task queue is paused: a task failed on repeated provider errors (module 05). */
+  queueHold: QueueHold | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -996,6 +998,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/tasks/:id/continue-on           ContinueOnRequest -> Conversation  (module 02: writes a handoff, then carries on
 //                                              in a fresh session on that provider; a finished task does so on its next message)
 // PATCH  /api/tasks/:id                       TaskPatch -> Conversation  (rename, goal, position in the queue)
+// POST   /api/agents/:id/queue/resume         -> Agent  (module 05: clears agent.queueHold; queued tasks start again)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
 // DELETE /api/conversations/:id?deleteBranch=1  (a task: also removes its worktree; its branch only with deleteBranch, and only if never pushed)
 //
@@ -1549,4 +1552,20 @@ export interface TrustReviewRequest {
   plan?: string;
   /** Who wrote the code; the reviewer is the other provider unless Settings → Workflows picks one. */
   implementedBy?: ProviderId;
+}
+
+// ---------------------------------------------------------------------------
+// Coordination (roadmap module 05). A chat is woken when its tasks finish;
+// a provider switch carries only the context that fits; task starts are
+// retry-safe; nothing ends silently (a provider that keeps failing pauses
+// its agent's queue); chats can be forked, merged back and attached.
+// ---------------------------------------------------------------------------
+
+/** A paused task queue: the next queued task waits until the user resumes it. */
+export interface QueueHold {
+  /** The provider that kept failing, when known. */
+  provider: ProviderId | null;
+  /** Its last error. */
+  reason: string;
+  createdAt: number;
 }

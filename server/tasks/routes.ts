@@ -65,6 +65,7 @@ taskRoutes.post("/conversations/:id/steer", async (c) => {
   return c.json(steer(c.req.param("id"), text));
 });
 
+taskRoutes.post("/agents/:id/queue/resume", (c) => c.json(tasks.resumeQueue(c.req.param("id"))));
 taskRoutes.post("/tasks/:id/pause", (c) => c.json(toPublic(tasks.pause(c.req.param("id")))));
 taskRoutes.post("/tasks/:id/resume", (c) => c.json(toPublic(tasks.resume(c.req.param("id")))));
 taskRoutes.post("/tasks/:id/stop", (c) => c.json(toPublic(tasks.stop(c.req.param("id")))));

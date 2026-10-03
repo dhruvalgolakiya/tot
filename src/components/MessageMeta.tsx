@@ -48,7 +48,7 @@ export function MessageMeta({ message, isLatest = false }: { message: Message; i
             </span>
           </Tip>
         )}
-        {message.status === "stopped" && <span className="px-1 text-fg-muted">· Stopped</span>}
+        {message.status === "stopped" && <span className="px-1 text-fg-muted">· {message.error ? message.error.replace(/\.$/, "") : "Stopped"}</span>}
         {message.status === "streaming" && <span className="px-1">· Interrupted</span>}
       </div>
     </div>

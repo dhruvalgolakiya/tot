@@ -48,12 +48,13 @@ void slack.resume();
 emailTasks.start();
 mailboxes.resume();
 wikiKeeper.start();
+// Before tasks: tasks cut off by the restart (and not resuming) wake the chats that started them.
+chatWakes.start();
 tasks.start();
 taskNotifications.start();
 fanIn.start();
 taskFailover.start();
 handoffs.start();
-chatWakes.start();
 
 let shuttingDown = false;
 async function shutdown(signal: string) {

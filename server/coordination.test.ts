@@ -13,6 +13,7 @@ process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this 
 const PORT = 8791;
 
 const { HttpError, sendMessage } = await import("./agent/orchestrator.ts");
+const { limits } = await import("./agent/limits.ts");
 const { lastExchange, selectContext, tokens, SWITCH_BUDGET } = await import("./agent/context-select.ts");
 const { providers } = await import("./agent/providers/index.ts");
 const { MessageBuilder } = await import("./agent/message-builder.ts");
@@ -22,6 +23,7 @@ const { agents } = await import("./data/agents.ts");
 const { conversations, toPublicConversation } = await import("./data/conversations.ts");
 const { messages } = await import("./data/messages.ts");
 const { settings } = await import("./data/settings.ts");
+const { CUT_OFF_BY_RESTART } = await import("./db.ts");
 const { createApp } = await import("./app.ts");
 const { missionUsage } = await import("./orchestration/budget.ts");
 const { fanIn } = await import("./orchestration/fanin.ts");
@@ -101,6 +103,10 @@ interface Turn {
   options: TurnOptions;
   run: Run;
   say: (text: string) => void;
+  /** Ends the turn as a provider error. */
+  fail: (error: string) => void;
+  /** Resolves when the turn is stopped. */
+  stopped: Promise<void>;
 }
 type Script = (turn: Turn) => Promise<void>;
 const scripts = new Map<string, Script>();
@@ -132,6 +138,7 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
     builder.add(part);
     messages.save(builder.message);
   };
+  let failed: string | null = null;
   const turn: Turn = {
     id: conversationId,
     text: request.text,
@@ -139,6 +146,8 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
     options,
     run,
     say: (text) => builder.apply({ type: "text-delta", blockId: randomUUID(), delta: text }),
+    fail: (error) => void (failed = error),
+    stopped: new Promise<void>((resolve) => run.controller.signal.addEventListener("abort", () => resolve(), { once: true })),
   };
   void (async () => {
     // Lets a test register a task's script right after creating it.
@@ -150,9 +159,9 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
     } catch (err) {
       console.error("script failed:", err);
     }
-    const end = run.controller.signal.aborted ? "stopped" : "complete";
+    const end = run.controller.signal.aborted ? "stopped" : failed ? "error" : "complete";
     builder.apply({ type: "usage", usage: { inputTokens: 1000, outputTokens: 200 } });
-    const final = builder.finish(end);
+    const final = builder.finish(end, failed ?? undefined);
     messages.save(final);
     run.push({ type: "run-end", status: end, message: final });
     runRegistry.finish(run);
@@ -546,6 +555,101 @@ check(
   `${c1.status} ${c2.status}`,
 );
 check("…and only one request shows in the chat", messages.listByConversation(clicks.id).filter((m) => m.role === "user" && !m.auto).length === 1);
+
+// =============================================================================
+// M4: nothing ends silently
+// =============================================================================
+
+// A provider that keeps erroring: the task fails, and the agent's queue pauses instead of failing the next one too.
+settings.patch({ tasks: { perAgentLimit: 1 } });
+const cy = agents.create({ name: "Cy", mascot });
+byGoal.push([/^Keeps erroring/, async (t) => t.fail("Claude Code crashed: socket hang up")], [/^Waits in line/, finishAfter(10)]);
+const erroring = tasks.create({ agentId: cy.id, goal: "Keeps erroring on every turn" });
+const waitingInLine = tasks.create({ agentId: cy.id, goal: "Waits in line behind it" });
+await until(() => status(erroring.id) === "failed");
+await sleep(300);
+check("repeated errors: the task fails", taskStore.get(erroring.id)!.task.summary?.startsWith("Stopped after repeated errors: Claude Code crashed") === true, taskStore.get(erroring.id)!.task.summary ?? "");
+check("…the next task stays queued", status(waitingInLine.id) === "queued" && sentTo(waitingInLine.id).length === 0);
+const held = agents.get(cy.id)!.queueHold;
+check("…and the queue shows paused, with the provider and the error", held?.provider === "claude" && held.reason === "Claude Code crashed: socket hang up", JSON.stringify(held));
+const resumed = await request("POST", `/agents/${cy.id}/queue/resume`);
+check("Resume clears the hold", resumed.status === 200 && resumed.data.queueHold === null && agents.get(cy.id)!.queueHold === null);
+await until(() => status(waitingInLine.id) === "done");
+check("…and starts the next task", status(waitingInLine.id) === "done");
+
+// A usage limit never holds the queue (failover switches provider or waits for the reset).
+const dee = agents.create({ name: "Dee", mascot });
+limits.mark("claude", "You've hit your Claude limit · resets 7:30am (UTC)");
+byGoal.push([/^Hits the limit/, async (t) => t.fail("You've hit your usage limit.")], [/^After the limit/, finishAfter(10)]);
+const limited = tasks.create({ agentId: dee.id, goal: "Hits the limit every turn" });
+const afterLimit = tasks.create({ agentId: dee.id, goal: "After the limit, still runs" });
+await until(() => status(afterLimit.id) === "done");
+check("a usage limit doesn't hold the queue", status(limited.id) === "failed" && status(afterLimit.id) === "done" && agents.get(dee.id)!.queueHold === null);
+limits.clear("claude");
+settings.patch({ tasks: { perAgentLimit: 6 } });
+
+// A stopped task: its chat gets a notice, and the stop is in the next turn's results (here, the wake).
+const stopChat = chatWith("Stopping");
+byGoal.push([/^Runs until stopped/, async (t) => void (await t.stopped)]);
+const longRunning = start(stopChat.id, "Runs until stopped");
+await until(() => runRegistry.activeFor(longRunning.id) !== undefined);
+await request("POST", `/tasks/${longRunning.id}/stop`);
+await until(() => sentTo(stopChat.id).length === 1);
+await until(() => !runRegistry.activeFor(stopChat.id));
+const stopNotice = messages.listByConversation(stopChat.id).flatMap((m) => m.parts).find((p) => p.type === "notice");
+check("stopped: the chat gets a notice", stopNotice?.type === "notice" && stopNotice.text === "“Runs until stopped” was stopped." && stopNotice.kind === "warning", JSON.stringify(stopNotice));
+const stopWake = sentTo(stopChat.id)[0]!;
+check("…and its next turn hears it, with no result", stopWake.options.preamble!.includes('"status": "stopped"') && stopWake.options.preamble!.includes("there's no result") && !stopWake.options.preamble!.includes("summary"), stopWake.options.preamble);
+
+// Deleting a task isn't news to its chat.
+const deleteChat = chatWith("Deleting");
+const doomed = start(deleteChat.id, "Runs until stopped, then deleted");
+await until(() => runRegistry.activeFor(doomed.id) !== undefined);
+await request("DELETE", `/conversations/${doomed.id}`);
+await sleep(400);
+check("a deleted task: no notice, no wake", !messages.listByConversation(deleteChat.id).some((m) => m.parts.some((p) => p.type === "notice")) && sentTo(deleteChat.id).length === 0);
+
+// Cut off by a restart, with auto-resume off: the chat hears it's waiting to be resumed.
+settings.patch({ tasks: { resumeInterrupted: false } });
+const cutChat = chatWith("Restart cut-off");
+const cut = start(cutChat.id, "Runs until stopped across a restart");
+await until(() => runRegistry.activeFor(cut.id) !== undefined);
+// What index.ts does on SIGTERM, then a fresh boot.
+tasks.shutdown();
+chatWakes.stop();
+runRegistry.stopAll();
+await runLoop.settled(cut.id);
+runLoop.reset();
+tasks.stopListening();
+chatWakes.start();
+tasks.start();
+await until(() => sentTo(cutChat.id).length === 1);
+await until(() => !runRegistry.activeFor(cutChat.id));
+const cutNotice = messages.listByConversation(cutChat.id).flatMap((m) => m.parts).find((p) => p.type === "notice");
+check(
+  "interrupted, not resuming: the chat gets a notice",
+  status(cut.id) === "interrupted" && cutNotice?.type === "notice" && cutNotice.text === "“Runs until stopped across a restart” was cut off when TOT restarted and is waiting for you to resume it.",
+  JSON.stringify(cutNotice),
+);
+check("…and its next turn hears it", sentTo(cutChat.id)[0]!.options.preamble!.includes('"status": "interrupted"'));
+settings.patch({ tasks: { resumeInterrupted: true } });
+await request("POST", `/tasks/${cut.id}/stop`);
+
+// A chat's reply cut off by a restart: marked so on startup, and its next turn hears it once.
+await until(() => runLoop.count() === 0 && !runRegistry.activeFor(cutChat.id) && !runRegistry.activeFor(stopChat.id));
+await sleep(400);
+const cutReply = chatWith("Reply cut off");
+seed(cutReply.id, 1, () => "Write me a long report");
+const streaming: Message = { id: randomUUID(), conversationId: cutReply.id, role: "assistant", parts: [{ type: "text", id: randomUUID(), text: "Here's the first half of the rep" }], status: "streaming", createdAt: Date.now() };
+messages.insert(streaming);
+// Opening the database again is what a restart does to a reply that was still streaming.
+execFileSync(process.execPath, ["--import", "tsx", "--disable-warning=ExperimentalWarning", "-e", `await import("./server/db.ts");`], { env: process.env });
+const marked = messages.get(streaming.id)!;
+check("startup marks a cut-off reply, saying why", marked.status === "stopped" && marked.error === CUT_OFF_BY_RESTART, `${marked.status} ${marked.error}`);
+input = await realTurn(cutReply.id, { text: "where were we?" });
+check("…the chat's next turn is told once", input.prompt.startsWith("[TOT restarted during your last reply, so it was cut off. Check where things stand before you carry on.]"), input.prompt.slice(0, 120));
+input = await realTurn(cutReply.id, { text: "and now?" });
+check("…and not again", !input.prompt.includes("TOT restarted"));
 
 server.close();
 chatWakes.stop();

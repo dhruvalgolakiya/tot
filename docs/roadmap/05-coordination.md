@@ -143,13 +143,14 @@ Read [README.md](README.md) first.
     - The same `request_id` twice gives one task, even across a restart.
     - Different ids give two. `task_spawn_many` returns the same set on a repeat.
   - *Shipped:* `server/tasks/requests.ts` (`taskRequests.once`, synchronous so two calls can't both start) behind `task_start`, `task_spawn_many` (`request_id`, ≤ 100 characters; a repeat answers "Already started…" with the original tasks) and `POST /api/conversations/:id/tasks` (`requestId`; 201, then 200 with the same task). Rows go with their chat but not with a deleted task, so a retry never restarts deleted work. "Run as task" sends a `requestId`. The restart case is tested from a second process on the same database.
-- [ ] **M4 · Nothing ends silently.**
+- [x] **M4 · Nothing ends silently.**
   - What to build: notices for stopped/interrupted tasks, the cut-off-reply note for chats, the queue hold and its Resume.
   - *Accept:*
     - With a fake provider that keeps erroring, the first task fails and the next queued task stays queued, with the queue shown paused. Resume starts it.
     - A usage-limit error doesn't hold the queue.
     - A stopped task's chat gets a notice, and the stop is in its next turn's results.
     - A chat reply cut off by a restart is mentioned once on the chat's next turn.
+  - *Shipped:* `reportToParent` covers every ending (a stopped task, and an interrupted one when auto-resume is off), with the notices above; deleting a task isn't reported. `resultBlock` gives those a status and a note, no result. Startup marks a still-streaming reply `stopped` with `error: "Cut off when TOT restarted."` (shown under the reply), and a chat's next turn opens with the one-line note. `queue_holds` + `server/data/queue-holds.ts`: `run-loop` holds the agent's queue on "Stopped after repeated errors" unless the provider is at its usage limit, `pump()` skips held agents, `agent.queueHold` drives "Queue paused: Claude kept failing. Resume" in the sidebar's Tasks section and the queue popover (the error on hover), and `POST /api/agents/:id/queue/resume` (or Run now) clears it. Wakes start before tasks at boot, so a task cut off by the restart wakes its chat.
 - [ ] **M5 · Wait for a task.**
   - What to build: `wait` / `wait_minutes` on both tools.
   - *Accept:*

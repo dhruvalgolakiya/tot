@@ -384,8 +384,10 @@ db.exec(`
   );
 `);
 
-// Messages that were streaming when the server last stopped can never finish.
-db.exec(`UPDATE messages SET status = 'stopped' WHERE status = 'streaming'`);
+// Messages that were streaming when the server last stopped can never finish. The error says why, and a
+// chat's next turn tells its model (module 05).
+export const CUT_OFF_BY_RESTART = "Cut off when TOT restarted.";
+db.prepare(`UPDATE messages SET status = 'stopped', error = ? WHERE status = 'streaming'`).run(CUT_OFF_BY_RESTART);
 
 // Module 01 (tasks): a conversation is a chat or a task (TaskInfo as JSON), started from a parent chat or not.
 // child_results lists a chat's finished tasks its model hasn't been told about yet. Messages get a JSON
@@ -453,6 +455,14 @@ db.exec(`
     task_id TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     PRIMARY KEY (parent_id, request_id, idx)
+  );
+
+  -- An agent's paused task queue (server/data/queue-holds.ts): a task failed on repeated provider errors.
+  CREATE TABLE IF NOT EXISTS queue_holds (
+    agent_id TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+    provider TEXT,
+    reason TEXT NOT NULL,
+    created_at INTEGER NOT NULL
   );
 `);
 
