@@ -119,6 +119,12 @@ The task prompt section (in `prompts.ts`) tells the agent:
   - **Fallback for both:** `interrupt` at the next tool boundary, then start a new turn with "The user added: <note>. Continue the task with this in mind."
 
   Write down which path each provider uses in this doc when you know.
+
+  **Delivery paths (as built):**
+  - **Claude:** native. Steerable turns keep the Agent SDK's prompt stream open (an async-iterable prompt); a note is pushed as a user message with `priority: "next"` and a uuid. Claude Code folds it into the running turn at its next step and reports it in `user_message_uuids`; if the turn ends first, Claude Code runs it as one more turn, which TOT reads as part of the same turn. If neither happens within 5 s of the turn ending, the deliverer answers `false` and TOT falls back. (`server/agent/providers/claude.ts`, `PromptStream`.)
+  - **ChatGPT:** native. Codex's app-server has `turn/steer { threadId, expectedTurnId, input }`; TOT calls it for the turn in flight and falls back when it fails (e.g. the turn already ended). (`server/agent/providers/chatgpt.ts`.)
+  - **Fallback (both, and anything else):** the run is stopped as soon as its current tool call finishes (`run.stop("steer")`, so the reply is saved as complete, not stopped), and the task's next turn starts with "The user added: …". Notes sent between turns or while queued go with the next turn the same way. (`server/tasks/steer.ts`.)
+  - Not yet verified against the live providers (that costs plan usage); the fallback is covered by `server/tasks.test.ts`.
 - **Pause** = interrupt plus status `paused`. **Resume** = a continuation turn. **Stop** = interrupt plus `stopped`; the worktree is kept.
 - **Persistence.** Runs are in memory (`server/agent/runs.ts`). Tasks must not depend on that: everything needed to continue is stored in the conversation, its `task` JSON and the provider session id. A restarted server resumes from there.
 - **Notifications** (`notify.ts`). On `done`, `failed` or `needs-input`:
@@ -175,18 +181,18 @@ The task prompt section (in `prompts.ts`) tells the agent:
 
 Tick these as you ship, adding a one-line note.
 
-- [ ] **M1 · Tasks without git.**
+- [x] **M1 · Tasks without git.** Shipped: `kind`/`parentId`/`task` on conversations, `server/tasks/` (store, run loop, tools, prompt), task cards, the sidebar Tasks group, the task header and panel, "Run as task" in the composer.
   - The data model and migration; task sessions; `task_start` / `task_update` / `task_finish` / `task_list` / `task_status`; start from a chat (tool and composer); task cards; the sidebar Tasks group; the task header; the long-running loop with stall detection.
   - *Accept:* in a chat, "research X and Y in parallel" makes the agent start two tasks whose cards update live and post summaries back; closing the tab doesn't stop them.
-- [ ] **M2 · Repo, branch and worktree.**
+- [x] **M2 · Repo, branch and worktree.** Shipped: `server/tasks/worktree.ts` (clone, fetch, `git worktree add`, diff, remove, never push), repo picker, the worktree as default `cwd` for the task's computer tools, Changes tab.
   - Repo picker; worktree lifecycle on the agent's computer; the task prompt names the worktree; Changes tab with the diff.
   - *Accept:* two coding tasks on the same repo run at once on different branches without touching each other or `main`; the diff shows only each task's changes.
-- [ ] **M3 · Queue and restarts.**
+- [x] **M3 · Queue and restarts.** Shipped: `server/tasks/queue.ts` (per-agent and global limits, reorder, Run now), interrupted + auto-resume on boot, Settings → Tasks, the queue popover.
   - Per-agent and global limits, reordering, Run now; `interrupted` and auto-resume on boot; Settings → Tasks.
   - *Accept:* with a limit of 1, a second task waits as `queued` and starts by itself when the first finishes; restarting the server mid-task resumes it.
-- [ ] **M4 · Steer, pause, resume, stop**, for both providers, with the delivery path written down here for each.
+- [x] **M4 · Steer, pause, resume, stop**, for both providers, with the delivery path written down here for each. Shipped: native mid-turn delivery for Claude and ChatGPT plus the tool-boundary fallback (paths above), steer notes shown where they landed, Pause/Resume/Stop in the header.
   - *Accept:* a note sent mid-run changes what the agent does next, without losing work.
-- [ ] **M5 · Notifications and intake.**
+- [x] **M5 · Notifications and intake.** Shipped: toasts and browser notifications from the `task` event, Slack thread / email thread / Slack DM notices (`server/tasks/notify.ts`), and `server/tasks/intake.ts` turning work requests from Slack and email into queued tasks.
   - Toasts and browser notifications; Slack and email replies for tasks started there; Slack/email requests that are work land in the queue as tasks.
   - *Accept:* `@TOT fix the flaky test in tot` in Slack starts a queued coding task, and the thread gets the result when it finishes.
 
@@ -211,4 +217,15 @@ Tick these as you ship, adding a one-line note.
 ## Open questions (decide while building, write the answer here)
 
 - Should a converted chat keep its old transcript in context, or start fresh with a summary? Proposal: keep the transcript; the run loop moves to fresh sessions with a summary when it gets long.
+  **Answer:** as proposed. The provider session carries on; the system prompt is rewritten with the task section on the next turn; a turn whose context passed ~150k tokens is followed by a fresh session carrying the goal, plan, progress and the last reply.
 - Should non-coding tasks show a sidebar row, or only a card in the chat? Proposal: a row too, without the branch line.
+  **Answer:** as proposed.
+
+## Notes from building
+
+- `TaskInfo` has no `origin`: the conversation's own `origin` (Slack, email) and `parentId` (a chat) already say where a task came from. It gained `question` (what a task asked the user) and `turns`.
+- Extra routes beyond the list above: `POST /api/tasks` (a top-level task, e.g. "Run as task" on an agent's home screen), `POST /api/tasks/:id/run-now` and `POST /api/tasks/:id/to-chat` ("Turn back into a chat").
+- A reply to a task that's waiting on the user (or paused, finished…) starts right away rather than waiting in the queue: the user is right there.
+- Tasks with Auto use the strongest model (`heavy: "task"`); 02 replaces this with tiers.
+- A chat's model hears about its finished tasks on its next turn (`child_results`), besides the note and the live card in the chat.
+- Messages gained a `meta` column: `steered`, `steeredInto` (where in a reply a mid-turn note landed) and `auto` (TOT's own "Continue the task" turns, shown as a divider).

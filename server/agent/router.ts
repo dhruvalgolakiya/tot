@@ -1,7 +1,7 @@
-import type { Effort, ProviderId, ProviderStatus } from "../../shared/types.ts";
+import type { Effort, ProviderId, ProviderStatus, Tier } from "../../shared/types.ts";
+import { pickTier, tierModel } from "../orchestration/tiers.ts";
 
-export const CLAUDE_OPUS = "claude-opus-5-5";
-export const CLAUDE_SONNET = "claude-sonnet-5-5";
+export { CLAUDE_OPUS, CLAUDE_SONNET } from "../orchestration/tiers.ts";
 
 export interface Route {
   provider: ProviderId;
@@ -50,6 +50,10 @@ export interface RouteOptions {
   limited: ReadonlySet<ProviderId>;
   /** Overrides the text-based guess, e.g. for work TOT itself started (studying a repo). */
   complexity?: Complexity;
+  /** Auto only: the model tier to use, whatever the text looks like (a task's role, a dispatch decision). */
+  tier?: Tier;
+  /** Auto only: run on this provider when it's connected and not at its limit (e.g. a reviewer on the other provider). */
+  prefer?: ProviderId | null;
 }
 
 function modelLabel(statuses: ProviderStatus[], provider: ProviderId, model: string): string {
@@ -58,10 +62,10 @@ function modelLabel(statuses: ProviderStatus[], provider: ProviderId, model: str
 }
 
 /**
- * Resolves the model for a turn. "auto" keeps light turns on Sonnet 5.5 (fast)
- * and sends complex ones to Opus 5.5; "Think harder" always gets the strongest
- * model at xhigh. When Claude is unavailable or rate-limited, Auto tiers the
- * ChatGPT models the same way.
+ * Resolves the model for a turn. "auto" runs on a tier (see orchestration/tiers.ts): the one
+ * asked for, else fast for light turns (Sonnet 5.5, low effort) and deep for complex ones
+ * (Opus 5.5); "Think harder" always gets deep at xhigh. When Claude is unavailable or
+ * rate-limited, Auto uses the same tier on ChatGPT.
  */
 export function resolveRoute(modelId: string, text: string, opts: RouteOptions): RouteResult {
   const status = (id: ProviderId) => opts.statuses.find((s) => s.id === id);
@@ -77,59 +81,27 @@ export function resolveRoute(modelId: string, text: string, opts: RouteOptions):
     return { ok: true, route: { ...parsed, effort, reason: opts.thinkHarder ? "Think harder" : "Picked by you" } };
   }
 
-  const chatgptModels = (status("chatgpt")?.models ?? []).filter((m) => m.available).map((m) => m.model);
-  const claudeUp = Boolean(status("claude")?.loggedIn);
-  const chatgptUp = Boolean(status("chatgpt")?.loggedIn) && chatgptModels.length > 0;
-  const claudeFirst = claudeUp && (!opts.limited.has("claude") || !chatgptUp || opts.limited.has("chatgpt"));
-
-  if (claudeFirst) {
-    if (opts.thinkHarder) {
-      return { ok: true, route: { provider: "claude", model: CLAUDE_OPUS, effort: "xhigh", reason: "Auto · think harder → Opus 5.5" } };
-    }
-    if (complexity.complex) {
-      return { ok: true, route: { provider: "claude", model: CLAUDE_OPUS, effort: "high", reason: `Auto · ${complexity.why} → Opus 5.5` } };
-    }
-    return { ok: true, route: { provider: "claude", model: CLAUDE_SONNET, effort: "low", reason: "Auto · quick ask → Sonnet 5.5" } };
-  }
-
-  if (chatgptUp) {
-    const { light, heavy } = chatgptTiers(chatgptModels);
-    const heavyTurn = opts.thinkHarder || complexity.complex;
-    const model = heavyTurn ? heavy : light;
-    const effort: Effort = opts.thinkHarder ? "xhigh" : complexity.complex ? "high" : "low";
-    const why = opts.thinkHarder ? "think harder" : complexity.complex ? complexity.why : "quick ask";
-    const because = claudeUp ? "Claude at its usage limit" : "Claude not connected";
+  const tier: Tier = opts.thinkHarder ? "deep" : (opts.tier ?? (complexity.complex ? "deep" : "fast"));
+  const why = opts.thinkHarder ? "think harder" : complexity.complex ? complexity.why : opts.tier ? `${opts.tier} tier` : "quick ask";
+  const picked = pickTier(tier, { statuses: opts.statuses, limited: opts.limited, prefer: opts.prefer, thinkHarder: opts.thinkHarder });
+  if (!picked) {
     return {
-      ok: true,
-      route: {
-        provider: "chatgpt",
-        model,
-        effort,
-        reason: `Auto · ${why} → ${modelLabel(opts.statuses, "chatgpt", model)} (${because})`,
-      },
+      ok: false,
+      error: "No model provider is connected. Log in to Claude Code (`claude`) or Codex (`codex login`), then reload.",
     };
   }
-
+  const { provider, model, effort, note } = picked;
   return {
-    ok: false,
-    error: "No model provider is connected. Log in to Claude Code (`claude`) or Codex (`codex login`), then reload.",
+    ok: true,
+    route: { provider, model, effort, reason: `Auto · ${why} → ${modelLabel(opts.statuses, provider, model)}${note ? ` (${note})` : ""}` },
   };
 }
 
-/** Default model (listed first) for quick asks; the frontier model for hard ones when the plan has it. */
-function chatgptTiers(models: string[]): { light: string; heavy: string } {
-  const light = models[0];
-  return { light, heavy: models.find((m) => /astra/i.test(m)) ?? light };
-}
-
 /**
- * The model for one-shot work TOT does itself on a given provider — light for drafting and
- * classifying, heavy for reviewing code — with the same tiers as Auto. Null when the provider has none.
+ * The model for one-shot work TOT does itself on a given provider — light (fast tier) for
+ * drafting and classifying, heavy (deep tier) for reviewing code — with the same tiers as Auto.
+ * Null when the provider has none.
  */
 export function modelForWork(provider: ProviderId, heavy: boolean, statuses: ProviderStatus[]): string | null {
-  if (provider === "claude") return heavy ? CLAUDE_OPUS : CLAUDE_SONNET;
-  const models = (statuses.find((s) => s.id === "chatgpt")?.models ?? []).filter((m) => m.available).map((m) => m.model);
-  if (!models.length) return null;
-  const tiers = chatgptTiers(models);
-  return heavy ? tiers.heavy : tiers.light;
+  return tierModel(heavy ? "deep" : "fast", provider, statuses)?.model ?? null;
 }

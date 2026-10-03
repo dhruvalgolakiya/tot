@@ -60,6 +60,12 @@ import { MAX_UPLOAD_BYTES, toAttachment, uploads } from "./data/uploads.ts";
 import { wiki, WikiError } from "./data/wiki.ts";
 import { mailboxes } from "./mail/mailbox.ts";
 import { personaGitHub } from "./persona-github.ts";
+import { dispatcher } from "./orchestration/dispatch.ts";
+import { orchestrationRoutes } from "./orchestration/routes.ts";
+import { taskQueue } from "./tasks/queue.ts";
+import { taskRoutes } from "./tasks/routes.ts";
+import { isTask } from "./tasks/store.ts";
+import { tasks } from "./tasks/tasks.ts";
 import { trustRoutes } from "./trust/routes.ts";
 
 export const api = new Hono();
@@ -268,9 +274,13 @@ api.patch("/conversations/:id", async (c) => {
   return c.json(conversation);
 });
 
-// The computer belongs to the agent, so deleting a chat leaves it alone.
-api.delete("/conversations/:id", (c) => {
+// The computer belongs to the agent, so deleting a chat leaves it alone (a task's worktree goes with it).
+api.delete("/conversations/:id", async (c) => {
   const id = c.req.param("id");
+  if (isTask(conversations.get(id))) {
+    await tasks.remove(id, { deleteBranch: c.req.query("deleteBranch") === "1" });
+    return c.json({ ok: true });
+  }
   runRegistry.activeFor(id)?.stop();
   const agentId = conversations.get(id)?.agentId;
   conversations.delete(id);
@@ -280,8 +290,17 @@ api.delete("/conversations/:id", (c) => {
 });
 
 api.post("/conversations/:id/messages", async (c) => {
+  const id = c.req.param("id");
   const request = await body<SendMessageRequest>(c);
-  return c.json(await sendMessage(c.req.param("id"), request));
+  const conversation = conversations.get(id);
+  if (isTask(conversation)) {
+    const result = await tasks.message(id, request);
+    if ("started" in result) return c.json(result.started);
+    return c.json({ runId: runRegistry.activeFor(id)?.id ?? "", userMessage: result.steered, conversation: toPublicConversation(conversations.get(id)!) });
+  }
+  // A chat: TOT decides whether to answer here, pass it to a running task, or start tasks (module 02).
+  if (conversation) return c.json(await dispatcher.handle(id, request));
+  return c.json(await sendMessage(id, request));
 });
 
 // Aliases for the chat's agent's computer.
@@ -294,6 +313,9 @@ api.post("/conversations/:id/computer/stop", async (c) => {
   const conversation = found(conversations.get(c.req.param("id")), "Chat not found.");
   return c.json(await computerManager.stop(conversation.agentId));
 });
+
+api.route("/", taskRoutes);
+api.route("/", orchestrationRoutes);
 
 // ---------------------------------------------------------------------------
 // Routines
@@ -830,7 +852,45 @@ api.patch("/settings", async (c) => {
     }
     patch.computer.idleStopMinutes = minutes;
   }
+  if (patch.tasks) {
+    const limit = (value: unknown, max: number, what: string) => {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 1 || n > max) throw new HttpError(400, `${what} must be between 1 and ${max}.`);
+      return n;
+    };
+    const { perAgentLimit, globalLimit, resumeInterrupted, notifySlackUserId, switchProviders, missionTokenBudget, maxChildren } = patch.tasks;
+    const budget = Number(missionTokenBudget);
+    if (missionTokenBudget !== undefined && (!Number.isInteger(budget) || budget < 0)) throw new HttpError(400, "The token budget must be a whole number (0 for no limit).");
+    patch.tasks = {
+      ...(perAgentLimit !== undefined ? { perAgentLimit: limit(perAgentLimit, 10, "Tasks per agent") } : {}),
+      ...(globalLimit !== undefined ? { globalLimit: limit(globalLimit, 20, "Tasks at once") } : {}),
+      ...(maxChildren !== undefined ? { maxChildren: limit(maxChildren, 20, "Tasks one chat or task can start") } : {}),
+      ...(missionTokenBudget !== undefined ? { missionTokenBudget: budget } : {}),
+      ...(typeof resumeInterrupted === "boolean" ? { resumeInterrupted } : {}),
+      ...(typeof switchProviders === "boolean" ? { switchProviders } : {}),
+      ...(notifySlackUserId === null || (typeof notifySlackUserId === "string" && /^[A-Z0-9]+$/.test(notifySlackUserId)) ? { notifySlackUserId } : {}),
+    };
+  }
+  if (patch.models) {
+    const tiers = ["fast", "standard", "deep"];
+    const { tiers: tierModels, roles } = patch.models;
+    for (const [tier, byProvider] of Object.entries(tierModels ?? {})) {
+      if (!tiers.includes(tier) || !byProvider || typeof byProvider !== "object") throw new HttpError(400, `Unknown tier "${tier}".`);
+      for (const [provider, model] of Object.entries(byProvider)) {
+        if ((provider !== "claude" && provider !== "chatgpt") || (model !== null && (typeof model !== "string" || model.length > 100))) {
+          throw new HttpError(400, "Pick a model id (or null for TOT's default) per tier and provider.");
+        }
+      }
+    }
+    for (const [role, tier] of Object.entries(roles ?? {})) {
+      if (!["explorer", "planner", "implementer", "tester", "reviewer", "researcher", "writer"].includes(role) || !tiers.includes(tier as string)) {
+        throw new HttpError(400, `Unknown role or tier: ${role} → ${tier}.`);
+      }
+    }
+  }
   const next = settings.patch(patch);
+  // New limits may free up slots for queued tasks.
+  if (patch.tasks) taskQueue.pump();
   // Auth changes alter provider status; don't serve a stale cached one.
   if (patch.claude || patch.anthropicApiKey !== undefined) void providerStatuses(true);
   return c.json(next);

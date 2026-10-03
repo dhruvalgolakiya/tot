@@ -988,6 +988,20 @@ async function* runTurn(input: TurnInput): AsyncGenerator<ProviderEvent> {
       return;
     }
     if (input.signal.aborted) interrupt();
+    // Steering: Codex takes more input for the turn in flight (turn/steer); it fails once the turn is over.
+    input.onSteerable?.(async (text) => {
+      if (!turnId || finished || input.signal.aborted) return false;
+      try {
+        await server.request(
+          "turn/steer",
+          { threadId, expectedTurnId: turnId, input: [{ type: "text", text, text_elements: [] }] },
+          { timeoutMs: RPC_TIMEOUT_MS },
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    });
 
     const out: ProviderEvent[] = [];
     while (true) {

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { ArrowDown } from "lucide-react";
 import type { Message } from "@shared/types";
 import { useStickToBottom } from "../hooks/useStickToBottom";
@@ -40,6 +40,19 @@ export function MessageList({ conversationId }: { conversationId: string }) {
     };
   }, [scrollRef]);
 
+  // Steering notes handed to a reply mid-turn are shown inside that reply, where they arrived.
+  const { shown, notesByReply } = useMemo(() => {
+    const ids = new Set(messages.map((m) => m.id));
+    const notes = new Map<string, Message[]>();
+    const top: Message[] = [];
+    for (const message of messages) {
+      const into = message.steeredInto?.messageId;
+      if (message.role === "user" && into && ids.has(into)) notes.set(into, [...(notes.get(into) ?? []), message]);
+      else top.push(message);
+    }
+    return { shown: top, notesByReply: notes };
+  }, [messages]);
+
   // Between "sent" and the run's first event there is no assistant message yet.
   const awaitingReply = run ? !run.messageId : sending;
   const lastAssistantId = messages.findLast((m) => m.role === "assistant")?.id;
@@ -72,13 +85,14 @@ export function MessageList({ conversationId }: { conversationId: string }) {
             </div>
           )}
 
-          {messages.map((message) =>
+          {shown.map((message) =>
             message.role === "user" ? (
               <UserMessage key={message.id} message={message} />
             ) : (
               <AssistantMessage
                 key={message.id}
                 message={message}
+                notes={notesByReply.get(message.id)}
                 live={run?.messageId === message.id}
                 justFinished={justFinished && message.id === lastAssistantId}
                 isLatest={message.id === lastAssistantId}

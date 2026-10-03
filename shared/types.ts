@@ -181,7 +181,15 @@ export interface Conversation {
   computer: ComputerSummary | null;
   /** Where the chat was started from outside TOT, e.g. a Slack thread; null for chats started in TOT. */
   origin: ConversationOrigin | null;
+  /** "chat" talks with the user; "task" works in the background until it's done (see TaskInfo). */
+  kind: ConversationKind;
+  /** The chat a task was started from (its card shows there); null for chats and top-level tasks. */
+  parentId: string | null;
+  /** Set for tasks: goal, status, plan, branch…; null for chats. */
+  task: TaskInfo | null;
 }
+
+export type ConversationKind = "chat" | "task";
 
 export interface ConversationOrigin {
   kind: "slack" | "email";
@@ -260,7 +268,9 @@ export type MessagePart =
       status: "pending" | "accepted" | "declined" | "expired";
       /** An unanswered request is declined at this time. */
       expiresAt: number;
-    };
+    }
+  /** A task started from this chat. The UI shows it as a live card that reads the task's current state, so the part only holds its id. */
+  | { type: "task"; id: string; taskId: string };
 
 export interface ApprovalField {
   name: string;
@@ -310,6 +320,14 @@ export interface Message {
   routeReason?: string;
   error?: string;
   usage?: Usage;
+  /** User messages sent to a task while it was running ("steering"). */
+  steered?: boolean;
+  /** A steer handed to the model mid-reply: that reply, and the part it arrived after (the UI shows the note inside the reply). */
+  steeredInto?: { messageId: string; afterPartId: string | null };
+  /** Written by TOT to keep a task going, e.g. "Continue the task"; shown as a quiet divider rather than a bubble. */
+  auto?: boolean;
+  /** How TOT decided to handle this user message (module 02): answered here, sent to a task, or spawned tasks. */
+  dispatch?: Dispatch;
   createdAt: number;
 }
 
@@ -376,7 +394,9 @@ export type AppEvent =
   /** New mail in a persona's mailbox (incoming or sent). */
   | { type: "mail"; personaId: string; mail: MailSummary }
   /** A chat is waiting for the user's approval (pending) or no longer is, e.g. a background routine run. */
-  | { type: "approval"; agentId: string; conversationId: string; runId: string; partId: string; message: string; pending: boolean };
+  | { type: "approval"; agentId: string; conversationId: string; runId: string; partId: string; message: string; pending: boolean }
+  /** A task's state changed (status, progress, plan, branch, summary); same payload as "conversation". */
+  | { type: "task"; conversation: Conversation };
 
 // ---------------------------------------------------------------------------
 // Computers (one per agent, created lazily on first tool use)
@@ -909,14 +929,19 @@ export interface Settings {
     /** Let Codex use the apps/connectors connected to the ChatGPT account, when supported. */
     useConnectedApps: boolean;
   };
+  tasks: TaskSettings;
+  /** Model tiers (module 02). */
+  models: ModelTierSettings;
 }
 
 /** PATCH /api/settings body. Secrets are write-only and never returned. */
-export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "claude" | "chatgpt">> & {
+export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "claude" | "chatgpt" | "tasks" | "models">> & {
+  models?: Partial<ModelTierSettings>;
   computer?: Partial<Omit<Settings["computer"], "boatApiKeySet">>;
   memory?: Partial<Settings["memory"]>;
   claude?: Partial<Omit<Settings["claude"], "apiKeySet">>;
   chatgpt?: Partial<Settings["chatgpt"]>;
+  tasks?: Partial<TaskSettings>;
   /** Set to "" to clear. */
   boatApiKey?: string;
   /** Set to "" to clear. */
@@ -949,7 +974,29 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // PATCH  /api/conversations/:id               UpdateConversationRequest -> Conversation
 // DELETE /api/conversations/:id               -> { ok: true }
 // POST   /api/conversations/:id/messages      SendMessageRequest -> SendMessageResponse
+//                                              (a task: steers it while it runs or waits in the queue — runId is then the
+//                                              turn running, or "" — else picks it up again with this message.
+//                                              A chat: TOT decides (module 02; `mode` overrides): answers here, or passes the
+//                                              message to a running task or starts tasks — runId "" — with the decision on
+//                                              userMessage.dispatch)
 // POST   /api/conversations/:id/computer/stop -> ComputerSummary | null   (alias: the chat's agent's computer)
+//
+// Tasks (a task is a conversation with kind "task"; see TaskInfo)
+// GET    /api/tasks[?agentId=&status=]        -> Conversation[]  (queued ones in queue order first, then newest first)
+// POST   /api/tasks                           StartTaskRequest & { agentId? } -> Conversation  (a top-level task)
+// POST   /api/conversations/:id/tasks         StartTaskRequest -> Conversation  (started from this chat; its card shows there)
+// POST   /api/conversations/:id/convert       ConvertToTaskRequest -> Conversation  (this chat becomes a task, transcript kept)
+// POST   /api/conversations/:id/steer         SteerRequest -> Message  (the saved note; reaches a running task mid-turn or next turn)
+// POST   /api/tasks/:id/pause                 -> Conversation  (interrupts the turn; resume continues it)
+// POST   /api/tasks/:id/resume                -> Conversation  (queued again; starts when a slot is free)
+// POST   /api/tasks/:id/stop                  -> Conversation  (the worktree and branch are kept)
+// POST   /api/tasks/:id/run-now               -> Conversation  (front of the queue; starts now if a slot is free)
+// POST   /api/tasks/:id/to-chat               -> { ok: true }  (a stopped, paused or finished task becomes a plain chat again)
+// POST   /api/tasks/:id/continue-on           ContinueOnRequest -> Conversation  (module 02: writes a handoff, then carries on
+//                                              in a fresh session on that provider; a finished task does so on its next message)
+// PATCH  /api/tasks/:id                       TaskPatch -> Conversation  (rename, goal, position in the queue)
+// GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
+// DELETE /api/conversations/:id?deleteBranch=1  (a task: also removes its worktree; its branch only with deleteBranch, and only if never pushed)
 //
 // POST   /api/uploads                         multipart/form-data, field "file" (≤ 25 MB) -> Attachment
 // GET    /api/uploads/:id/:name               -> the file
@@ -1070,6 +1117,8 @@ export interface SendMessageRequest {
   modelId?: string;
   /** Force the strongest model + higher effort for this turn. */
   thinkHarder?: boolean;
+  /** Chats: let TOT decide (default), answer here, or run it as a task. */
+  mode?: DispatchMode;
 }
 
 export interface SendMessageResponse {
@@ -1084,6 +1133,241 @@ export interface PluginInput {
   config: PluginConfig;
   enabled?: boolean;
   providers?: ProviderId[];
+}
+
+// ---------------------------------------------------------------------------
+// Tasks (roadmap module 01). A task is a conversation (kind "task") that keeps
+// working in the background until it's done: TOT sends turn after turn while it
+// makes progress, it survives closed tabs and server restarts, and it waits in
+// a per-agent queue when its agent is busy. The user can steer, pause, resume
+// and stop it. A chat can start tasks (each shows as a live card in the chat,
+// and the result is reported back there) or become one. A task with a repo is
+// a coding task: it works on its own branch in its own git worktree on the
+// agent's computer, so parallel tasks never collide. TOT never pushes it.
+// ---------------------------------------------------------------------------
+
+/**
+ * queued → running → done | failed | stopped, with detours: needs-input (waiting for an
+ * approval or an answer), paused (by the user), interrupted (the server restarted mid-run).
+ */
+export type TaskStatus = "queued" | "running" | "needs-input" | "paused" | "done" | "failed" | "stopped" | "interrupted";
+
+export interface TaskPlanItem {
+  text: string;
+  done: boolean;
+}
+
+export interface TaskInfo {
+  /** One or two sentences: what "done" means. Shown on cards. */
+  goal: string;
+  status: TaskStatus;
+  /** The latest "what I'm doing" line, from the agent's task_update. */
+  progress: string | null;
+  /** The agent's checklist. */
+  plan: TaskPlanItem[];
+  /** What the task asked the user (status "needs-input" without a pending approval). */
+  question: string | null;
+  /** Null for tasks without code. */
+  repo: TaskRepo | null;
+  /** Place in its agent's queue (1 = next) while queued; null otherwise. */
+  queuePosition: number | null;
+  startedAt: number | null;
+  finishedAt: number | null;
+  /** The result reported back to the chat that started it (or why it failed or stopped). */
+  summary: string | null;
+  /** Turns sent so far (TOT sends more while the task makes progress). */
+  turns: number;
+  usage: { inputTokens: number; outputTokens: number };
+  // Orchestration (module 02).
+  /** What this session is for; null for a task started without one. */
+  role: Role | null;
+  /** The model tier its turns use under TOT Auto; null = the strongest (deep). */
+  tier: Tier | null;
+  /** The provider it should run on (a reviewer on the other provider, a switch after a usage limit); null = Auto decides. */
+  provider: ProviderId | null;
+  /** Levels below the user's chat: 1 for a chat's task (or a top-level task), 2 for a task's own task. */
+  depth: number;
+  /** Tasks spawned together share a group; with `then: "synthesize"` the parent gets one writer turn once they've all finished. */
+  group: string | null;
+  then: "synthesize" | null;
+  /** What it was asked to do, when another session started it. */
+  brief: TaskBrief | null;
+  /** Its structured result (from task_finish). */
+  result: TaskResult | null;
+  /** The latest handoff packet: what another session or provider needs to carry on without the transcript. */
+  handoff: HandoffPacket | null;
+  /** Paused for a usage limit: when it resumes by itself. */
+  resumeAt: number | null;
+}
+
+export interface TaskRepo {
+  /** GitHub "owner/name", a clone URL, or a folder on the agent's computer. */
+  source: string;
+  /** Where the repo lives on the computer: ~/repos/<name> (as Learn a repo does), or the folder itself. */
+  folder: string;
+  /** e.g. "main". */
+  baseBranch: string;
+  /** "tot/<slug>-<4 chars>". */
+  branch: string;
+  /** <folder>/.tot-worktrees/<branch slug>: the task's own checkout, its working directory. */
+  worktree: string;
+  /** The branch's newest commit, recorded after every turn; null before the worktree exists. */
+  headSha: string | null;
+}
+
+export interface StartTaskRequest {
+  /** Defaults to a short title made from the goal. */
+  title?: string;
+  goal: string;
+  /** Orchestration (module 02): what the session is for, its tier, and a provider to prefer. */
+  role?: Role;
+  tier?: Tier;
+  provider?: ProviderId;
+  /** GitHub "owner/name", a git URL, or a folder on the agent's computer; omit for a task without code. */
+  repo?: string;
+  /** Defaults to the repo's default branch. */
+  baseBranch?: string;
+  /** ModelOption id; defaults to the chat's (or the agent's) model. */
+  modelId?: string;
+}
+
+export interface ConvertToTaskRequest {
+  /** Defaults to the chat's title. */
+  goal?: string;
+  repo?: string;
+  baseBranch?: string;
+}
+
+export interface TaskPatch {
+  title?: string;
+  goal?: string;
+  /** 1 = next in its agent's queue (queued tasks only). */
+  queuePosition?: number;
+}
+
+export interface SteerRequest {
+  text: string;
+}
+
+/** A coding task's changes: its worktree (committed or not) against where its branch left the base. */
+export interface TaskChanges {
+  baseBranch: string;
+  branch: string;
+  headSha: string | null;
+  files: TaskChangedFile[];
+  /** Unified diff of every file, cut short on huge changes (see `truncated`). */
+  patch: string;
+  truncated: boolean;
+}
+
+export interface TaskChangedFile {
+  path: string;
+  status: "added" | "modified" | "deleted" | "renamed";
+  additions: number;
+  deletions: number;
+}
+
+export interface TaskSettings {
+  /** Tasks one agent runs at once (one computer each). */
+  perAgentLimit: number;
+  /** When a running task's provider hits its usage limit: write a handoff and carry on with the other one (else pause until the reset). */
+  switchProviders: boolean;
+  /** Tokens one mission (a chat's tasks and their tasks) may use in all; 0 = no limit. */
+  missionTokenBudget: number;
+  /** Tasks one chat or task may start. */
+  maxChildren: number;
+  /** Tasks running at once across all agents. */
+  globalLimit: number;
+  /** After a restart, pick tasks that were running back up by themselves. */
+  resumeInterrupted: boolean;
+  /** Also DM this Slack person when a task finishes or needs input; null = don't. */
+  notifySlackUserId: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Orchestration (roadmap module 02). TOT decides how to run each request:
+// answer inline, pass it to a running task, or spawn sessions — each with a
+// role and a model tier (fast / standard / deep) — and combine their results.
+// Work moves between sessions and providers through handoff packets, so a
+// task can carry on with the other provider when one hits its usage limit.
+// ---------------------------------------------------------------------------
+
+export type Tier = "fast" | "standard" | "deep";
+
+/**
+ * What a session is for: explorer (reads and answers where/how), planner (writes the plan),
+ * implementer (makes the change), tester (writes and runs tests), reviewer (reviews, on the
+ * other provider), researcher (searches and reads, non-coding), writer (combines results).
+ */
+export type Role = "explorer" | "planner" | "implementer" | "tester" | "reviewer" | "researcher" | "writer";
+
+export interface ModelTierSettings {
+  /** The model for each tier on each provider (provider-native ids); null = TOT's default for that tier. */
+  tiers: Record<Tier, Record<ProviderId, string | null>>;
+  /** The tier each role runs on by default. */
+  roles: Record<Role, Tier>;
+}
+
+/** What a child session gets instead of the parent's transcript. */
+export interface TaskBrief {
+  goal: string;
+  constraints: string[];
+  /** Brain pages, files and links worth reading first. */
+  context: string[];
+  /** What "done" means. */
+  done: string;
+}
+
+/** What a child session reports back, besides its summary. */
+export interface TaskResult {
+  summary: string;
+  findings: string[];
+  filesChanged: string[];
+  openQuestions: string[];
+  confidence: "low" | "medium" | "high";
+  sources: string[];
+}
+
+/** Everything another session or provider needs to carry on, without the transcript. */
+export interface HandoffPacket {
+  goal: string;
+  /** Concise and factual. */
+  doneSoFar: string[];
+  decisions: { decision: string; why: string }[];
+  plan: TaskPlanItem[];
+  files: { path: string; change: string }[];
+  repo?: { branch: string; headSha: string; worktree: string };
+  tests: { command: string; status: "pass" | "fail" | "not-run"; note?: string }[];
+  openQuestions: string[];
+  nextStep: string;
+  from: { provider: ProviderId; model: string };
+  createdAt: number;
+}
+
+export type DispatchMode = "auto" | "inline" | "task";
+
+export interface SpawnSession {
+  role: Role;
+  title: string;
+  goal: string;
+  tier: Tier;
+  provider?: ProviderId;
+  repo?: string;
+}
+
+/** TOT's decision for one user message, kept on it and shown as a chip ("Auto → 2 tasks"). */
+export type Dispatch = (
+  | { mode: "inline"; tier: Tier }
+  | { mode: "continue-task"; taskId: string }
+  | { mode: "spawn"; sessions: SpawnSession[]; then?: "synthesize"; taskIds: string[] }
+) & {
+  reason: string;
+  /** A rule, the classifier, or the user's own choice in the composer. */
+  by: "rule" | "classifier" | "user";
+};
+
+export interface ContinueOnRequest {
+  provider: ProviderId;
 }
 
 // ---------------------------------------------------------------------------

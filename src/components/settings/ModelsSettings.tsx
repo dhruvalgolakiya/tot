@@ -8,6 +8,7 @@ import { Field } from "../ui/Field";
 import { RadioCards } from "../ui/RadioCards";
 import { SecretInput } from "../ui/SecretInput";
 import { Switch } from "../ui/Switch";
+import { TierSettings } from "../orchestration/TierSettings";
 import { ProviderCard } from "./ProviderCard";
 import { SettingRow } from "./SettingRow";
 
@@ -100,6 +101,8 @@ export function ModelsSettings({ draft, onChange, secrets, onSecretsChange }: Se
           }
         />
       </ProviderCard>
+
+      <TierSettings draft={draft} onChange={onChange} />
     </div>
   );
 }

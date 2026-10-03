@@ -37,6 +37,13 @@ export interface TurnInput {
   elicit?: (request: ElicitRequest, signal?: AbortSignal) => Promise<ElicitAnswer>;
   /** Most model/tool steps this turn may take, for long jobs; providers without a cap ignore it. */
   maxSteps?: number;
+  /**
+   * Set for turns the user may steer (tasks). A provider that can take input mid-turn calls it
+   * once the turn is under way with its way of delivering a note; that resolves true once the
+   * model has the note, false when it couldn't get it into this turn (TOT then falls back to
+   * stopping at the next tool boundary and sending the note with the next turn).
+   */
+  onSteerable?: (deliver: (text: string) => Promise<boolean>) => void;
 }
 
 /** An MCP server asking the user something mid-turn (MCP `elicitation/create`). */

@@ -42,9 +42,10 @@ const statuses: ProviderStatus[] = [
     label: "ChatGPT",
     installed: true,
     loggedIn: true,
+    // The account's default first, as ChatGPT lists them: it's the deep tier (orchestration/tiers.ts).
     models: [
-      { id: "chatgpt:gpt-luna", provider: "chatgpt", model: "gpt-luna", label: "Luna", available: true },
       { id: "chatgpt:gpt-astra", provider: "chatgpt", model: "gpt-astra", label: "Astra", available: true },
+      { id: "chatgpt:gpt-luna", provider: "chatgpt", model: "gpt-luna", label: "Luna", available: true },
     ],
   },
 ];

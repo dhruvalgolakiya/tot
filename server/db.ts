@@ -387,6 +387,19 @@ db.exec(`
 // Messages that were streaming when the server last stopped can never finish.
 db.exec(`UPDATE messages SET status = 'stopped' WHERE status = 'streaming'`);
 
+// Module 01 (tasks): a conversation is a chat or a task (TaskInfo as JSON), started from a parent chat or not.
+// child_results lists a chat's finished tasks its model hasn't been told about yet. Messages get a JSON
+// meta column (steered notes, TOT's own "continue" turns).
+if (!hasColumn("conversations", "kind")) db.exec(`ALTER TABLE conversations ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'`);
+if (!hasColumn("conversations", "parent_id")) db.exec(`ALTER TABLE conversations ADD COLUMN parent_id TEXT`);
+if (!hasColumn("conversations", "task")) db.exec(`ALTER TABLE conversations ADD COLUMN task TEXT`);
+if (!hasColumn("conversations", "child_results")) db.exec(`ALTER TABLE conversations ADD COLUMN child_results TEXT NOT NULL DEFAULT '[]'`);
+if (!hasColumn("messages", "meta")) db.exec(`ALTER TABLE messages ADD COLUMN meta TEXT`);
+db.exec(`
+  CREATE INDEX IF NOT EXISTS conversations_by_parent ON conversations(parent_id);
+  CREATE INDEX IF NOT EXISTS conversations_by_kind ON conversations(kind, agent_id);
+`);
+
 // Module 03 (trust gates & playbooks, server/trust/): each repo brain's profile, gate results
 // on base commits (so failures that already exist there don't block), and custom playbooks.
 // Built-in playbooks live in code; whether each is on, and the workflow defaults, live in settings.
