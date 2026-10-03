@@ -9,7 +9,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { ModelOption, ProviderStatus, Usage } from "../../../shared/types.ts";
+import type { ModelOption, ProviderStatus, TurnErrorKind, Usage } from "../../../shared/types.ts";
 import { getSecret, paths } from "../../config.ts";
 import { settings } from "../../data/settings.ts";
 import { CLAUDE_OPUS, CLAUDE_SONNET } from "../router.ts";
@@ -101,7 +101,7 @@ function toolResultText(content: ToolResultContent): string {
   return content.map((block) => (block.type === "text" ? (block.text ?? "") : `[${block.type}]`)).join("\n");
 }
 
-type TurnFailure = { message: string; kind?: "limit" | "auth" };
+type TurnFailure = { message: string; kind?: TurnErrorKind };
 
 function friendlyError(code: string, model: string): TurnFailure {
   switch (code) {
@@ -510,7 +510,7 @@ export const claudeProvider: AgentProvider = {
               failure =
                 assistantError ??
                 (message.subtype === "error_max_turns"
-                  ? { message: 'TOT stopped after too many steps. Say "continue" to keep going.' }
+                  ? { message: 'TOT stopped after too many steps. Say "continue" to keep going.', kind: "turn" }
                   : classify(`Claude failed: ${detail || message.subtype}`));
             } else if (message.is_error) {
               // The result text carries details like the reset time, so prefer it for limits.

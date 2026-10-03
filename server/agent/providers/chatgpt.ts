@@ -542,7 +542,7 @@ export function turnErrorEvent(error: TurnError | null | undefined): ErrorEvent 
     return { type: "error", message: `ChatGPT isn't connected or the login expired. ${LOGIN_HINT}`, kind: "auth" };
   }
   if (code === "contextWindowExceeded") {
-    return { type: "error", message: "This chat is too long for the model's context window. Start a new chat to continue." };
+    return { type: "error", message: "This chat is too long for the model's context window. Start a new chat to continue.", kind: "turn" };
   }
   return { type: "error", message: error?.additionalDetails ? `${message} (${error.additionalDetails})` : message };
 }

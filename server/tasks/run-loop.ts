@@ -256,8 +256,10 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
       if (stalls >= MAX_STALLS) {
         const error = end?.message.error ?? "the turn ended unexpectedly.";
         // A provider that keeps failing would fail every queued task the same way: pause the agent's queue
-        // until the user resumes it. A usage limit never does (failover switches or waits for the reset).
-        if (!(provider && limits.active().has(provider))) {
+        // until the user resumes it. Not for the task's own trouble (too many steps, too long for the model),
+        // and never for a usage limit (failover switches or waits for the reset).
+        const providerFault = end?.errorKind !== "turn" && end?.errorKind !== "limit";
+        if (providerFault && !(provider && limits.active().has(provider))) {
           queueHolds.set(task.agentId, provider ?? null, error);
           appEvents.agentChanged(task.agentId);
         }

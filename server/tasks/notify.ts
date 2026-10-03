@@ -33,6 +33,10 @@ function words(task: TaskRecord): { headline: string; body: string } {
   if (status === "needs-input") {
     return { headline: `“${task.title}” needs your input`, body: question ?? "It's waiting for your OK on an action in TOT." };
   }
+  if (status === "stopped") return { headline: `“${task.title}” was stopped`, body: summary ?? "" };
+  if (status === "interrupted") {
+    return { headline: `“${task.title}” was cut off when TOT restarted`, body: "It's waiting for you to resume it in TOT." };
+  }
   return { headline: `“${task.title}” ${status === "done" ? "is done" : "failed"}`, body: summary ?? "" };
 }
 

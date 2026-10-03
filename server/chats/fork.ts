@@ -25,6 +25,9 @@ const oneLine = (text: string) => {
   return line.length > LINE_CHARS ? `${line.slice(0, LINE_CHARS - 1).trimEnd()}…` : line;
 };
 
+/** A message TOT posted about something else (a task's card notice), not a turn of the conversation. */
+const isNoticeOnly = (message: Message) => message.role === "assistant" && message.parts.every((part) => part.type === "notice");
+
 function publish(record: ConversationRecord | null): void {
   if (record) appEvents.publish({ type: "conversation", conversation: toPublicConversation(record) });
 }
@@ -79,7 +82,12 @@ export const forks = {
    */
   nativeStart(conversation: ConversationRecord, provider: ProviderId): { sessionId: string; at: string | null } | null {
     if (!conversation.forkedFrom || conversation.providerSessionId) return null;
-    const at = messages.get(conversation.forkedFrom.messageId);
+    const { conversationId, messageId } = conversation.forkedFrom;
+    // Forked after notices only (a task finished, a fork came back): the reply before them is where the session stands.
+    const history = messages.listByConversation(conversationId);
+    let index = history.findIndex((m) => m.id === messageId);
+    while (index > 0 && isNoticeOnly(history[index]!)) index--;
+    const at = index >= 0 ? history[index] : null;
     const ref = at?.role === "assistant" && at.provider === provider ? messages.providerRef(at.id) : null;
     return ref ? { sessionId: ref.session, at: ref.ref } : null;
   },
