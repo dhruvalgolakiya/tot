@@ -1,18 +1,28 @@
 import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, Usage } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 
-/** Extras kept in the meta column: how a user message was sent (module 01), handled (module 02), and the chats attached to it (module 05). */
-type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "dispatch" | "contextChats">;
+/** Extras kept in the meta column: how a user message was sent (module 01) and the chats attached to it (module 05). */
+type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "contextChats">;
 
 function metaOf(message: Message): string | null {
   const meta: MessageMeta = {
     ...(message.steered ? { steered: true } : {}),
     ...(message.steeredInto ? { steeredInto: message.steeredInto } : {}),
     ...(message.auto ? { auto: true } : {}),
-    ...(message.dispatch ? { dispatch: message.dispatch } : {}),
     ...(message.contextChats?.length ? { contextChats: message.contextChats } : {}),
   };
   return Object.keys(meta).length ? JSON.stringify(meta) : null;
+}
+
+/** The meta column's known extras (older rows can hold others, e.g. a dispatch decision from before it was removed). */
+function metaFrom(value: unknown): MessageMeta {
+  const { steered, steeredInto, auto, contextChats } = parseJson<MessageMeta>(value, {});
+  return {
+    ...(steered ? { steered } : {}),
+    ...(steeredInto ? { steeredInto } : {}),
+    ...(auto ? { auto } : {}),
+    ...(contextChats?.length ? { contextChats } : {}),
+  };
 }
 
 function toMessage(row: Row): Message {
@@ -27,7 +37,7 @@ function toMessage(row: Row): Message {
     routeReason: (row.route_reason as string | null) ?? undefined,
     error: (row.error as string | null) ?? undefined,
     usage: parseJson<Usage | undefined>(row.usage, undefined),
-    ...parseJson<MessageMeta>(row.meta, {}),
+    ...metaFrom(row.meta),
     createdAt: Number(row.created_at),
   };
 }
@@ -76,11 +86,6 @@ export const messages = {
   },
 
   /** Records how TOT handled a user message (its dispatch decision), once that's known. */
-  setDispatch(id: string, dispatch: Message["dispatch"]): void {
-    const message = messages.get(id);
-    if (message) db.prepare(`UPDATE messages SET meta = ? WHERE id = ?`).run(metaOf({ ...message, dispatch }), id);
-  },
-
   get(id: string): Message | null {
     const row = db.prepare(`SELECT * FROM messages WHERE id = ?`).get(id) as Row | undefined;
     return row ? toMessage(row) : null;

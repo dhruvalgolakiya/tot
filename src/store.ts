@@ -8,7 +8,6 @@ import type {
   Attachment,
   ComputerSummary,
   Conversation,
-  DispatchMode,
   Brain,
   GitHubStatus,
   MailSummary,
@@ -21,7 +20,6 @@ import type {
   Settings,
   SettingsPatch,
   SlackStatus,
-  StartTaskRequest,
   TaskPatch,
   UpdateConversationRequest,
 } from "@shared/types";
@@ -917,8 +915,6 @@ function scheduleConversationsRefresh() {
 export interface SendMessageOptions {
   thinkHarder?: boolean;
   attachments?: Attachment[];
-  /** Chats: let TOT decide (default), or answer here. ("Task" goes through `startTask`.) */
-  mode?: DispatchMode;
   /** Other chats attached as reference. */
   contextChats?: string[];
 }
@@ -926,11 +922,13 @@ export interface SendMessageOptions {
 /** Send a message; creates the conversation first on an agent's home screen. */
 export async function sendMessage(
   text: string,
-  { thinkHarder = false, attachments = [], mode, contextChats = [] }: SendMessageOptions = {},
+  { thinkHarder = false, attachments = [], contextChats = [] }: SendMessageOptions = {},
 ): Promise<boolean> {
   const body = text.trim();
   if ((!body && attachments.length === 0) || get().sending) return false;
   set({ sending: true });
+  // Any message can start tasks, which notify when they finish: ask once, while this is still the user's click.
+  askForNotifications();
 
   let conversationId = get().currentId;
   const tempId = localId();
@@ -981,7 +979,6 @@ export async function sendMessage(
       modelId,
       ...(attachments.length ? { attachments: attachments.map((a) => a.id) } : {}),
       ...(thinkHarder ? { thinkHarder: true } : {}),
-      ...(mode && mode !== "auto" ? { mode } : {}),
       ...(contextChats.length ? { contextChats } : {}),
     });
 
@@ -992,10 +989,8 @@ export async function sendMessage(
         [id]: (s.messages[id] ?? []).map((m) => (m.id === tempId ? response.userMessage : m)),
       },
     }));
-    // A task that was busy took the message as a note, or TOT passed it to a task or started tasks:
-    // there's no turn to follow, but the chat may have new messages (the cards).
+    // A task that was busy took the message as a note: there's no turn to follow.
     if (response.runId) attachRun(id, response.runId);
-    else if (response.userMessage.dispatch && response.userMessage.dispatch.mode !== "inline") void loadConversation(id);
     return true;
   } catch (error) {
     if (conversationId) {
@@ -1309,47 +1304,9 @@ function handleTaskEvent(conversation: Conversation) {
 // Tasks
 // ---------------------------------------------------------------------------
 
-/** Browser notifications are asked for once, the first time the user starts a task. */
+/** Browser notifications are asked for once, the first time the user sends a message. */
 function askForNotifications() {
   if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
-}
-
-export interface TaskOptions {
-  repo?: string;
-  baseBranch?: string;
-}
-
-/**
- * "Run as task": in a chat, a task started from it (its request and card are added to the chat);
- * on an agent's home screen, a task of its own, which opens.
- */
-export async function startTask(goal: string, { repo, baseBranch }: TaskOptions = {}): Promise<boolean> {
-  const text = goal.trim();
-  if (!text || get().sending) return false;
-  set({ sending: true });
-  askForNotifications();
-  const body: StartTaskRequest = { goal: text, ...(repo ? { repo } : {}), ...(baseBranch ? { baseBranch } : {}) };
-  try {
-    const { currentId, homeAgentId, agents } = get();
-    const current = currentId ? get().conversations.find((c) => c.id === currentId) : undefined;
-    if (current && !isTask(current)) {
-      // A request id makes a retried request safe: the server returns the task it already started.
-      const requestId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-      const task = await api.startTaskFromChat(current.id, { ...body, requestId });
-      set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
-      await loadConversation(current.id);
-      return true;
-    }
-    const task = await api.createTask({ ...body, agentId: current?.agentId ?? homeAgentId ?? agents[0]?.id });
-    set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
-    navigateToConversation(task.id);
-    return true;
-  } catch (error) {
-    notifyError(error);
-    return false;
-  } finally {
-    set({ sending: false });
-  }
 }
 
 /** A note to the open task while it runs: saved in its transcript, delivered mid-turn or with its next turn. */
@@ -1424,20 +1381,6 @@ export async function continueTaskOn(id: string, provider: ProviderId) {
   } catch (error) {
     toast.dismiss(pending);
     notifyError(error);
-  }
-}
-
-/** Turns the open chat into a task (its transcript stays). */
-export async function convertToTask(conversationId: string, options: { goal?: string } & TaskOptions): Promise<boolean> {
-  askForNotifications();
-  try {
-    const task = await api.convertToTask(conversationId, options);
-    set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
-    toast.success("Now a task");
-    return true;
-  } catch (error) {
-    notifyError(error);
-    return false;
   }
 }
 

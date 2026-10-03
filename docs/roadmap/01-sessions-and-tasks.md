@@ -4,6 +4,8 @@
 
 Read [README.md](README.md) first for the rules, ports and conflict-avoidance conventions.
 
+> **Changed since (2026-10-03):** "Run as task" in the composer (and ⌘↩) and "Make this a task" in the chat menu were removed. The chat's model starts tasks itself (see [02](02-orchestration.md)). The routes behind them (`POST /api/tasks`, `POST /api/conversations/:id/tasks`, `POST /api/conversations/:id/convert`) remain. Slack and email requests become chats rather than tasks, and their model starts any tasks.
+
 ## Goal
 
 Chats and tasks mix freely, like Grok Bot:
