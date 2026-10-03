@@ -1329,7 +1329,9 @@ export async function startTask(goal: string, { repo, baseBranch }: TaskOptions 
     const { currentId, homeAgentId, agents } = get();
     const current = currentId ? get().conversations.find((c) => c.id === currentId) : undefined;
     if (current && !isTask(current)) {
-      const task = await api.startTaskFromChat(current.id, body);
+      // A request id makes a retried request safe: the server returns the task it already started.
+      const requestId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const task = await api.startTaskFromChat(current.id, { ...body, requestId });
       set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
       await loadConversation(current.id);
       return true;

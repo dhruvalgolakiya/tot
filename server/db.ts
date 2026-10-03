@@ -443,6 +443,18 @@ db.exec(`
 // count toward its mission's token budget.
 if (!hasColumn("conversations", "wake_pending")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_pending INTEGER NOT NULL DEFAULT 0`);
 if (!hasColumn("conversations", "wake_tokens")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_tokens INTEGER NOT NULL DEFAULT 0`);
+// Retry-safe starts (server/tasks/requests.ts): the tasks each request id started from a chat, in order.
+// They go with the chat; a deleted task keeps its row, so a retry still doesn't start it again.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS task_requests (
+    parent_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    request_id TEXT NOT NULL,
+    idx INTEGER NOT NULL,
+    task_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (parent_id, request_id, idx)
+  );
+`);
 
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 

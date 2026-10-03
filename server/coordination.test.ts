@@ -2,6 +2,7 @@
 // fake Slack/email threads and a real MCP client for the agent's tools.
 // Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/coordination.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -181,6 +182,15 @@ taskNotifications.start();
 fanIn.start();
 chatWakes.start();
 const server = serve({ fetch: createApp().fetch, port: PORT, hostname: "127.0.0.1" });
+async function request<T = any>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
+  const res = await fetch(`http://127.0.0.1:${PORT}/api${path}`, {
+    method,
+    headers: body === undefined ? {} : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  return { status: res.status, data: text ? JSON.parse(text) : null };
+}
 
 /** An MCP client on the conversation's tools, as the harness would use them. */
 async function mcp(conversationId: string) {
@@ -487,6 +497,55 @@ const bigReply: Message[] = [
 ];
 const exchange = lastExchange(bigReply, { budgetTokens: 4000, chatId: "x" });
 check("…the person's message (not TOT's own), and a huge reply cut to fit", exchange.includes("Do the thing") && !exchange.includes("Continue the task.") && tokens(exchange) <= 4000 && exchange.includes("cut to fit"), String(tokens(exchange)));
+
+// =============================================================================
+// M3: retry-safe task tools
+// =============================================================================
+const retries = chatWith("Retries");
+byGoal.push([/^Retry-safe/, finishAfter(10)]);
+const { client: retryClient, call: retryCall } = await mcp(retries.id);
+const sessionArgs = (title: string) => ({ title, goal: `Retry-safe ${title}` });
+const first = await retryCall("task_start", { ...sessionArgs("Deploy notes"), request_id: "req-deploy" });
+const again = await retryCall("task_start", { ...sessionArgs("Deploy notes"), request_id: "req-deploy" });
+const startedId = (text: string) => /([0-9a-f]{8}-[0-9a-f-]{27})/.exec(text)?.[1];
+check("the same request_id twice: one task", conversations.tasks({ parentId: retries.id }).length === 1 && startedId(first.text) === startedId(again.text) && again.text.startsWith("Already started"), again.text);
+await retryCall("task_start", { ...sessionArgs("Deploy notes"), request_id: "req-other" });
+check("a different id: another task", conversations.tasks({ parentId: retries.id }).length === 2);
+const fanOut = { sessions: [sessionArgs("Part A"), sessionArgs("Part B")], request_id: "req-fan" };
+const firstSet = await retryCall("task_spawn_many", fanOut);
+const secondSet = await retryCall("task_spawn_many", { ...fanOut, sessions: [sessionArgs("Part A"), sessionArgs("Part B"), sessionArgs("Part C")] });
+const ids = (text: string) => [...text.matchAll(/- ([0-9a-f-]{36}) ·/g)].map((m) => m[1]).join(",");
+check("task_spawn_many: a repeat returns the same set, in order", conversations.tasks({ parentId: retries.id }).length === 4 && ids(firstSet.text) === ids(secondSet.text) && ids(firstSet.text).split(",").length === 2 && secondSet.text.startsWith("Already started"), secondSet.text.slice(0, 200));
+check("request ids are at most 100 characters", (await retryCall("task_start", { ...sessionArgs("Too long"), request_id: "x".repeat(101) })).isError && conversations.tasks({ parentId: retries.id }).length === 4);
+await retryClient.close();
+
+// After a restart (a new process opening the same database), the id still means the same task.
+const afterRestart = execFileSync(
+  process.execPath,
+  [
+    "--import",
+    "tsx",
+    "--disable-warning=ExperimentalWarning",
+    "-e",
+    `const { taskRequests } = await import("./server/tasks/requests.ts");
+     const { tasks } = taskRequests.once(${JSON.stringify(retries.id)}, "req-deploy", () => { throw new Error("started again"); });
+     console.log("TASKS " + tasks.map((t) => t.id).join(","));`,
+  ],
+  { env: process.env, encoding: "utf8" },
+);
+check("…even across a restart", afterRestart.includes(`TASKS ${startedId(first.text)}`), afterRestart.trim().split("\n").at(-1));
+
+// "Run as task" from the app: a repeated request (a double click) gets the same task back.
+const clicks = chatWith("Double click");
+byGoal.push([/^Retry-safe clicked/, finishAfter(10)]);
+const click = { goal: "Retry-safe clicked work", requestId: "click-1" };
+const [c1, c2] = await Promise.all([request("POST", `/conversations/${clicks.id}/tasks`, click), request("POST", `/conversations/${clicks.id}/tasks`, click)]);
+check(
+  "route: requestId twice gives one task (201, then 200)",
+  [c1.status, c2.status].sort().join(",") === "200,201" && c1.data.id === c2.data.id && conversations.tasks({ parentId: clicks.id }).length === 1,
+  `${c1.status} ${c2.status}`,
+);
+check("…and only one request shows in the chat", messages.listByConversation(clicks.id).filter((m) => m.role === "user" && !m.auto).length === 1);
 
 server.close();
 chatWakes.stop();

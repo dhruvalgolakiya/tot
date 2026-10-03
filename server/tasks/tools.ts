@@ -7,6 +7,7 @@ import { handoffs } from "../orchestration/handoff.ts";
 import { ROLE_NAMES, toResult } from "../orchestration/roles.ts";
 import { spawnMany, type SpawnSpec } from "../orchestration/spawn.ts";
 import { markResultsRead, MAX_DEPTH } from "./prompt.ts";
+import { taskRequests } from "./requests.ts";
 import { taskStore, type TaskRecord } from "./store.ts";
 import { tasks } from "./tasks.ts";
 
@@ -53,6 +54,12 @@ const sessionShape = {
   context: z.array(z.string()).max(20).optional().describe("Brain pages, files and links to read first"),
   done: z.string().max(1000).optional().describe("What done means"),
 };
+const requestId = z
+  .string()
+  .min(1)
+  .max(100)
+  .optional()
+  .describe("Any id of yours for this call, e.g. a UUID. A repeat with the same id returns the tasks it started instead of starting new ones");
 type SessionInput = { [K in keyof typeof sessionShape]?: z.infer<(typeof sessionShape)[K]> } & { title: string; goal: string };
 
 const toSpec = (input: SessionInput): SpawnSpec => ({
@@ -79,15 +86,20 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     {
       title: "Start a task",
       description:
-        "Start a task: work that runs in the background until it's done (on your computer; with `repo`, on its own git branch and worktree), shown as a live card here, reporting a structured result back. Use it for real work that takes more than a few minutes — a code change, research across sources, a report. The task gets a brief, not this conversation: make the goal self-contained.",
-      inputSchema: sessionShape,
+        "Start a task: work that runs in the background until it's done (on your computer; with `repo`, on its own git branch and worktree), shown as a live card here, reporting a structured result back. Use it for real work that takes more than a few minutes — a code change, research across sources, a report. The task gets a brief, not this conversation: make the goal self-contained. Pass a `request_id` if you might retry this call.",
+      inputSchema: { ...sessionShape, request_id: requestId },
     },
-    (input) =>
+    ({ request_id, ...input }) =>
       guarded(async () => {
-        const [task] = spawnMany(conversation.id, [toSpec(input)], { cards: { kind: "reply" } });
-        const where = task!.task.status === "queued" ? `queued (#${task!.task.queuePosition} in line; it starts when a slot frees up)` : task!.task.status;
+        const { tasks: started, repeat } = taskRequests.once(conversation.id, request_id ?? null, () =>
+          spawnMany(conversation.id, [toSpec(input)], { cards: { kind: "reply" } }),
+        );
+        const task = started[0];
+        if (!task) return reply(`This request_id already started a task, which has since been deleted. Nothing new was started.`);
+        if (repeat) return reply(`Already started with this request_id; nothing new was started:\n${describe(task)}\nCheck on it with task_status.`);
+        const where = task.task.status === "queued" ? `queued (#${task.task.queuePosition} in line; it starts when a slot frees up)` : task.task.status;
         return reply(
-          `Started task ${task!.id} “${task!.title}”${task!.task.role ? ` as ${task!.task.role} (${task!.task.tier})` : ""}: ${where}.${task!.task.repo ? ` It works on branch ${task!.task.repo.branch} in ${task!.task.repo.worktree}.` : ""} Its card is here, and its result comes back when it finishes. Check on it with task_status.`,
+          `Started task ${task.id} “${task.title}”${task.task.role ? ` as ${task.task.role} (${task.task.tier})` : ""}: ${where}.${task.task.repo ? ` It works on branch ${task.task.repo.branch} in ${task.task.repo.worktree}.` : ""} Its card is here, and its result comes back when it finishes. Check on it with task_status.`,
         );
       }),
   );
@@ -97,15 +109,25 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     {
       title: "Start several tasks",
       description:
-        'Fan out: start several sessions at once for independent parts of the work (e.g. one researcher per vendor), each with its own role and brief. With then: "synthesize", you get one turn with all their results to combine once the last one finishes. Don\'t use it for small or sequential work.',
+        'Fan out: start several sessions at once for independent parts of the work (e.g. one researcher per vendor), each with its own role and brief. With then: "synthesize", you get one turn with all their results to combine once the last one finishes. Don\'t use it for small or sequential work. Pass a `request_id` if you might retry this call.',
       inputSchema: {
         sessions: z.array(z.object(sessionShape)).min(1).max(6).describe("One entry per session"),
         then: z.enum(["synthesize"]).optional().describe('"synthesize": combine their results in one turn here when they\'re all done'),
+        request_id: requestId,
       },
     },
-    ({ sessions, then }) =>
+    ({ sessions, then, request_id }) =>
       guarded(async () => {
-        const started = spawnMany(conversation.id, sessions.map(toSpec), { then, cards: { kind: "reply" } });
+        const { tasks: started, repeat } = taskRequests.once(conversation.id, request_id ?? null, () =>
+          spawnMany(conversation.id, sessions.map(toSpec), { then, cards: { kind: "reply" } }),
+        );
+        if (repeat) {
+          return reply(
+            started.length
+              ? `Already started with this request_id; nothing new was started:\n${started.map(describe).join("\n")}`
+              : "This request_id already started tasks, which have since been deleted. Nothing new was started.",
+          );
+        }
         return reply(
           `Started ${plural(started.length, "task")}:\n${started.map(describe).join("\n")}\n${then ? "You'll get their results in one turn when they've all finished." : "Their results come back as they finish."}`,
         );

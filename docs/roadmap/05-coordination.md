@@ -137,11 +137,12 @@ Read [README.md](README.md) first.
     - It always includes the first and latest user messages and the latest reply, in order, plus the omitted count and the `chat_read` pointer.
     - The model can page the rest. A 6-message chat goes in whole.
   - *Shipped:* `server/agent/context-select.ts` (`selectContext`, `lastExchange`, the 16k / 4k budgets) feeds `transcriptPreamble` on a provider switch and on a failed resume; gaps are marked in place and the closing line carries `chat_read { chatId, before }`. A kept message too big for the budget on its own is the one thing that gets cut, and says so. Handoff packets end with `<last_exchange>` (the last message from a person and the last reply). `chat_read` pages (`before`, `limit` 20/50, 4,000 characters a message), reads the current chat, and is now registered with memory off too, for the current chat only. Tested through the real turn pipeline with fake providers.
-- [ ] **M3 · Retry-safe task tools.**
+- [x] **M3 · Retry-safe task tools.**
   - What to build: the `task_requests` table, and `request_id` / `requestId` on the tools and the route.
   - *Accept:*
     - The same `request_id` twice gives one task, even across a restart.
     - Different ids give two. `task_spawn_many` returns the same set on a repeat.
+  - *Shipped:* `server/tasks/requests.ts` (`taskRequests.once`, synchronous so two calls can't both start) behind `task_start`, `task_spawn_many` (`request_id`, ≤ 100 characters; a repeat answers "Already started…" with the original tasks) and `POST /api/conversations/:id/tasks` (`requestId`; 201, then 200 with the same task). Rows go with their chat but not with a deleted task, so a retry never restarts deleted work. "Run as task" sends a `requestId`. The restart case is tested from a second process on the same database.
 - [ ] **M4 · Nothing ends silently.**
   - What to build: notices for stopped/interrupted tasks, the cut-off-reply note for chats, the queue hold and its Resume.
   - *Accept:*

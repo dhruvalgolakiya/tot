@@ -984,7 +984,8 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // Tasks (a task is a conversation with kind "task"; see TaskInfo)
 // GET    /api/tasks[?agentId=&status=]        -> Conversation[]  (queued ones in queue order first, then newest first)
 // POST   /api/tasks                           StartTaskRequest & { agentId? } -> Conversation  (a top-level task)
-// POST   /api/conversations/:id/tasks         StartTaskRequest -> Conversation  (started from this chat; its card shows there)
+// POST   /api/conversations/:id/tasks         StartTaskRequest -> Conversation  (started from this chat; its card shows there.
+//                                              201; with a requestId it started before: 200 and that task, nothing new)
 // POST   /api/conversations/:id/convert       ConvertToTaskRequest -> Conversation  (this chat becomes a task, transcript kept)
 // POST   /api/conversations/:id/steer         SteerRequest -> Message  (the saved note; reaches a running task mid-turn or next turn)
 // POST   /api/tasks/:id/pause                 -> Conversation  (interrupts the turn; resume continues it)
@@ -1229,6 +1230,8 @@ export interface StartTaskRequest {
   baseBranch?: string;
   /** ModelOption id; defaults to the chat's (or the agent's) model. */
   modelId?: string;
+  /** Started from a chat: any id (≤ 100 characters); sending it again returns the task it started (module 05). */
+  requestId?: string;
 }
 
 export interface ConvertToTaskRequest {
