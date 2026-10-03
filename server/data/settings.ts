@@ -22,6 +22,7 @@ function defaults(): StoredSettings {
       globalLimit: 4,
       resumeInterrupted: true,
       notifySlackUserId: null,
+      wakeChats: true,
       switchProviders: true,
       missionTokenBudget: 5_000_000,
       maxChildren: 6,

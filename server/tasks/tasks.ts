@@ -32,6 +32,7 @@ import { taskQueue } from "./queue.ts";
 import { runLoop } from "./run-loop.ts";
 import { steer } from "./steer.ts";
 import { FINISHED, isTask, newTaskInfo, taskStore, type TaskRecord } from "./store.ts";
+import { chatWakes } from "./wake.ts";
 import { planRepo, worktrees } from "./worktree.ts";
 
 /**
@@ -144,7 +145,7 @@ export function showCards(parentId: string, taskIds: string[], opts: { userText?
   publishConversation(parentId, true);
 }
 
-/** A finished task's result goes back to the chat that started it: a note there, and its model hears on its next turn. */
+/** A finished task's result goes back to the chat that started it: a note there, and its model hears on its next turn (or a wake-up). */
 function reportToParent(task: TaskRecord): void {
   const parent = task.parentId ? conversations.get(task.parentId) : null;
   if (!parent) return;
@@ -161,6 +162,7 @@ function reportToParent(task: TaskRecord): void {
     createdAt: Date.now(),
   });
   publishConversation(parent.id, true);
+  chatWakes.flag(task);
 }
 
 function create(input: CreateTaskInput): TaskRecord {

@@ -113,6 +113,13 @@ export function TasksSettings({ draft, onChange }: SettingsSectionProps) {
           />
           <SettingRow
             className="px-4"
+            htmlFor="tasks-wake"
+            title="Tell the chat when its tasks finish"
+            description="The chat picks up the results and replies by itself, instead of waiting for your next message."
+            control={<Switch id="tasks-wake" checked={tasks.wakeChats} onCheckedChange={(wakeChats) => update({ wakeChats })} />}
+          />
+          <SettingRow
+            className="px-4"
             title="Also tell me on Slack"
             description={
               people.length

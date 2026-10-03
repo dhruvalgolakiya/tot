@@ -121,7 +121,7 @@ Read [README.md](README.md) first.
 
 ## Milestones
 
-- [ ] **M1 · Wake the chat.**
+- [x] **M1 · Wake the chat.**
   - What to build: `wake.ts`, `onSteerable` for chats, the `wakePending` column, the setting, Slack/email delivery, the startup pass.
   - *Accept:*
     - With a fake sender, a chat starts 2 tasks and ends its turn. Both finish 1 s apart: exactly **one** wake turn follows, with both results.
@@ -129,6 +129,7 @@ Read [README.md](README.md) first.
     - If the agent called `task_status` on both first, no wake happens.
     - A wake pending at shutdown happens once after startup.
     - Never two wake turns at once.
+  - *Shipped:* `server/tasks/wake.ts` (`chatWakes`) is flagged by `reportToParent`, batches results for 3 s, steers them into a running turn or waits for it to end, then sends one auto turn; follow-ups, the restart pass (`wake_pending`), the budget (`wake_tokens` counts in `missionUsage`) and Slack/email delivery (the task's own thread post is held back for it) are covered in `server/coordination.test.ts`. `childResultsNote` now clears only the results it read, and `task_status` marks one read. Settings → Tasks → "Tell the chat when its tasks finish" (`tasks.wakeChats`, default on).
 - [ ] **M2 · Context selection on provider switch.**
   - What to build: `context-select.ts`, `withTranscript()` replaced, the verbatim tail after a handoff packet, `chat_read` paging including the current chat.
   - *Accept:*

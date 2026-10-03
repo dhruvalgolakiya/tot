@@ -6,7 +6,7 @@ import { guarded, reply } from "../mcp/results.ts";
 import { handoffs } from "../orchestration/handoff.ts";
 import { ROLE_NAMES, toResult } from "../orchestration/roles.ts";
 import { spawnMany, type SpawnSpec } from "../orchestration/spawn.ts";
-import { MAX_DEPTH } from "./prompt.ts";
+import { markResultsRead, MAX_DEPTH } from "./prompt.ts";
 import { taskStore, type TaskRecord } from "./store.ts";
 import { tasks } from "./tasks.ts";
 
@@ -138,6 +138,8 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
       guarded(async () => {
         const task = child(conversation, id);
         if (!task) return reply(`No task with id ${id} was started from here.`, true);
+        // Its result has been seen now: no wake-up or next-turn note repeats it.
+        markResultsRead(conversation.id, [id]);
         const plan = task.task.plan.map((step) => `  - [${step.done ? "x" : " "}] ${step.text}`).join("\n");
         const result = task.task.result;
         const extra = result

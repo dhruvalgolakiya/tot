@@ -28,6 +28,10 @@ export interface ConversationRecord extends Conversation {
   systemPrompt: string | null;
   /** Tasks started from this chat that finished since its model last heard about them. */
   childResults: string[];
+  /** Results came in that the chat hasn't been woken about yet (tasks/wake.ts). */
+  wakePending: boolean;
+  /** Tokens the chat's wake-up turns used, counted in its mission's budget. */
+  wakeTokens: number;
 }
 
 function toRecord(row: Row): ConversationRecord {
@@ -51,11 +55,13 @@ function toRecord(row: Row): ConversationRecord {
     providerSessionId: (row.provider_session_id as string | null) ?? null,
     systemPrompt: (row.system_prompt as string | null) ?? null,
     childResults: parseJson<string[]>(row.child_results, []),
+    wakePending: Boolean(row.wake_pending),
+    wakeTokens: Number(row.wake_tokens ?? 0),
   };
 }
 
 export function toPublicConversation(record: ConversationRecord): Conversation {
-  const { providerSessionId: _s, systemPrompt: _p, childResults: _c, ...conversation } = record;
+  const { providerSessionId: _s, systemPrompt: _p, childResults: _c, wakePending: _w, wakeTokens: _t, ...conversation } = record;
   return conversation;
 }
 
@@ -70,6 +76,8 @@ type ConversationPatch = Partial<{
   parentId: string | null;
   task: TaskInfo | null;
   childResults: string[];
+  wakePending: boolean;
+  wakeTokens: number;
 }>;
 
 export const conversations = {
@@ -96,6 +104,11 @@ export const conversations = {
     }
     const rows = db.prepare(`SELECT * FROM conversations WHERE ${where.join(" AND ")} ORDER BY created_at DESC, rowid DESC`).all(...args) as Row[];
     return rows.map(toRecord);
+  },
+
+  /** Chats with results they haven't been woken about yet. */
+  wakePending(): ConversationRecord[] {
+    return (db.prepare(`SELECT * FROM conversations WHERE wake_pending = 1`).all() as Row[]).map(toRecord);
   },
 
   get(id: string): ConversationRecord | null {
@@ -145,6 +158,8 @@ export const conversations = {
       parent_id: patch.parentId,
       task: patch.task === undefined ? undefined : patch.task && JSON.stringify(patch.task),
       child_results: patch.childResults && JSON.stringify(patch.childResults),
+      wake_pending: patch.wakePending === undefined ? undefined : Number(patch.wakePending),
+      wake_tokens: patch.wakeTokens,
       updated_at: touch ? Date.now() : undefined,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);

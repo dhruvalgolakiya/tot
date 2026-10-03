@@ -99,19 +99,32 @@ export function resultBlock(child: ConversationRecord): string {
   );
 }
 
-/** Results of a chat's tasks that finished since its model last heard, as a note for its next turn; "" when none. */
-export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults">): string {
-  if (!conversation.childResults.length) return "";
+/** Finished tasks' results as a note for a model, opening with `heading`; "" when none of them is a task anymore. */
+export function resultsNote(ids: string[], heading = "Tasks you started have finished."): string {
   const blocks: string[] = [];
-  for (const id of conversation.childResults) {
+  for (const id of ids) {
     const child = conversations.get(id);
     if (child?.kind !== "task" || !child.task) continue;
     blocks.push(resultBlock(child));
   }
-  conversations.update(conversation.id, { childResults: [] });
   return blocks.length
-    ? `[Tasks you started have finished since your last reply. Their results:\n<task_results>\n${blocks.join("\n")}\n</task_results>\nUse them where they matter; the user can see each one on its card.]`
+    ? `[${heading} Their results:\n<task_results>\n${blocks.join("\n")}\n</task_results>\nUse them where they matter; the user can see each one on its card.]`
     : "";
+}
+
+/** Marks results as heard by the conversation's model (its next turn, a wake-up, or task_status). */
+export function markResultsRead(conversationId: string, ids: string[]): void {
+  const current = conversations.get(conversationId);
+  if (!current || !ids.length) return;
+  const unread = current.childResults.filter((id) => !ids.includes(id));
+  if (unread.length !== current.childResults.length) conversations.update(conversationId, { childResults: unread });
+}
+
+/** Results of a chat's tasks that finished since its model last heard, as a note for its next turn; "" when none. */
+export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults">): string {
+  if (!conversation.childResults.length) return "";
+  markResultsRead(conversation.id, conversation.childResults);
+  return resultsNote(conversation.childResults, "Tasks you started have finished since your last reply.");
 }
 
 /** The opening of a fresh session that carries on from a handoff packet instead of the transcript. */

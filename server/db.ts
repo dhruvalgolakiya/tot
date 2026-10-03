@@ -438,6 +438,12 @@ db.exec(`
   );
 `);
 
+// Module 05 (coordination, server/tasks/wake.ts): a chat whose tasks finished and that hasn't been
+// woken about them yet (so a restart still wakes it), and the tokens its wake-up turns used, which
+// count toward its mission's token budget.
+if (!hasColumn("conversations", "wake_pending")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_pending INTEGER NOT NULL DEFAULT 0`);
+if (!hasColumn("conversations", "wake_tokens")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_tokens INTEGER NOT NULL DEFAULT 0`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

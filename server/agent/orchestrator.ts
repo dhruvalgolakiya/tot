@@ -269,8 +269,9 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         signal,
         elicit,
         maxSteps: ctx.maxSteps,
-        // Tasks can be steered mid-turn when the provider supports it (see tasks/steer.ts).
-        ...(conversation.kind === "task" ? { onSteerable: (deliver: (text: string) => Promise<boolean>) => void (run.steer = deliver) } : {}),
+        // Turns take notes mid-turn when the provider supports it: the user's notes to a task (tasks/steer.ts),
+        // and a chat's tasks' results (tasks/wake.ts).
+        onSteerable: (deliver) => void (run.steer = deliver),
       };
     };
 

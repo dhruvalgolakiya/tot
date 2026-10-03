@@ -3,6 +3,7 @@ import { settings } from "../data/settings.ts";
 import { emailTasks } from "../mail/tasks.ts";
 import { slack } from "../slack.ts";
 import { taskStore, type TaskRecord } from "./store.ts";
+import { wakes } from "./wake.ts";
 
 /**
  * Telling people when a task finishes or needs them. Every tab gets the "task" app event (the
@@ -36,8 +37,16 @@ function words(task: TaskRecord): { headline: string; body: string } {
 }
 
 async function notify(task: TaskRecord): Promise<void> {
-  // Tasks whose results get combined into one answer don't each post their own (the combined answer goes out instead).
-  if (task.task.then === "synthesize" && task.task.status !== "needs-input") return;
+  if (task.task.status !== "needs-input") {
+    // Tasks whose results get combined into one answer don't each post their own (the combined answer goes out instead).
+    if (task.task.then === "synthesize") return;
+    // Nor do those of a chat from Slack or email that gets woken about them: its reply goes to the thread instead (wake.ts).
+    if (wakes(task) && conversations.get(task.parentId!)?.origin) return;
+  }
+  await tell(task);
+}
+
+async function tell(task: TaskRecord): Promise<void> {
   const { headline, body } = words(task);
   const markdown = `*${headline}*${body ? `\n\n${body}` : ""}`;
   const text = `${headline}.${body ? `\n\n${body}` : ""}`;
@@ -63,10 +72,13 @@ export const taskNotifications = {
     unsubscribe = null;
   },
 
-  /** Sends a reply TOT wrote on its own (a combined answer) to the Slack or email thread the chat came from, if any. */
+  /** Sends a reply TOT wrote on its own (a combined answer, a wake-up's reply) to the Slack or email thread the chat came from, if any. */
   async deliver(conversationId: string, markdown: string): Promise<boolean> {
     return (await notifiers.slackThread(conversationId, markdown)) || (await notifiers.emailThread(conversationId, markdown));
   },
+
+  /** The task's own "done" / "failed" notice, for a wake-up that ended without a reply to send. */
+  tell,
 
   /** Tests: fake Slack and email. */
   use(fake: TaskNotifiers): void {

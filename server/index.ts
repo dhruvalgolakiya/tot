@@ -18,6 +18,7 @@ import { taskFailover } from "./orchestration/failover.ts";
 import { handoffs } from "./orchestration/handoff.ts";
 import { taskNotifications } from "./tasks/notify.ts";
 import { tasks } from "./tasks/tasks.ts";
+import { chatWakes } from "./tasks/wake.ts";
 
 // Never put TOT on the network without sign-in: it drives paid subscriptions and runs commands.
 const exposed = LAN || !isLoopbackBind(HOST);
@@ -52,6 +53,7 @@ taskNotifications.start();
 fanIn.start();
 taskFailover.start();
 handoffs.start();
+chatWakes.start();
 
 let shuttingDown = false;
 async function shutdown(signal: string) {
@@ -63,6 +65,8 @@ async function shutdown(signal: string) {
   emailTasks.stop();
   // Running tasks show as interrupted next time (and resume by themselves, unless that's turned off).
   tasks.shutdown();
+  // Chats waiting to be told about their tasks get told after the restart.
+  chatWakes.stop();
   runRegistry.stopAll();
   await Promise.allSettled([computerManager.shutdown(), stopCodex(), apps.stop({ keepEnabled: true }), slack.stop(), mailboxes.stopAll()]);
   server.close();

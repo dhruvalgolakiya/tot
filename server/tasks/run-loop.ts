@@ -53,7 +53,7 @@ let onLimit: ((taskId: string, provider: ProviderId) => Promise<"switched" | "pa
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Resolves with how a run ended (null when it's unknown). */
-function runEnd(runId: string): Promise<RunEnd | null> {
+export function runEnd(runId: string): Promise<RunEnd | null> {
   const run = runRegistry.get(runId);
   if (!run) return Promise.resolve(null);
   return new Promise((resolve) => {

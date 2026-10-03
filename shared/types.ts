@@ -1282,6 +1282,8 @@ export interface TaskSettings {
   resumeInterrupted: boolean;
   /** Also DM this Slack person when a task finishes or needs input; null = don't. */
   notifySlackUserId: string | null;
+  /** A chat picks up its tasks' results and replies on its own when they finish, instead of on the user's next message (module 05). */
+  wakeChats: boolean;
 }
 
 // ---------------------------------------------------------------------------
