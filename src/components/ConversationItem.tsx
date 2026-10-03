@@ -11,6 +11,7 @@ import { IconButton } from "./ui/IconButton";
 import { listRowClass } from "./ui/ListRow";
 import { SlackMark } from "./ui/SlackMark";
 import { StatusDot } from "./ui/StatusDot";
+import { CHAT_DRAG_TYPE } from "../lib/attached-chats";
 import { Tip } from "./ui/Tip";
 
 type ConversationItemProps = {
@@ -66,6 +67,11 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
         onClick={open}
         aria-current={active ? "page" : undefined}
         title={title}
+        // Dropped on the composer, it's attached to the next message as reference.
+        onDragStart={(event) => {
+          event.dataTransfer.setData(CHAT_DRAG_TYPE, conversation.id);
+          event.dataTransfer.effectAllowed = "copyLink";
+        }}
         className={listRowClass({ selected: active, className: "pr-8" })}
       >
         {streaming && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />}

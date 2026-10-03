@@ -166,12 +166,13 @@ Read [README.md](README.md) first.
     - A fork switched to the other provider gets the context selection.
     - Merge-back gives the source chat a notice and the fork's summary on its next turn.
   - *Shipped:* `server/chats/fork.ts` + `server/chats/routes.ts`. Providers emit a `ref` event (Claude: each top-level assistant message's uuid; Codex: the turn id), stored with its session in `messages.provider_ref`. `TurnInput.fork` makes a fork's first turn copy that session: `resumeOptions` → `resume` + `forkSession` + `resumeSessionAt`, `newThreadRequest` → `thread/fork` with `lastTurnId` (checked against the app-server 0.159 schema). A fork on the other provider, or a native fork that fails, gets `selectContext` of the copied messages. Merge-back notes live in `conversations.merge_notes` (one per fork, replaced) and open the source's next turn once. `chat_read` reads a fork's source and a chat's forks with memory off. UI: "Fork chat" and "Bring back to X" in the chat's "…" menu, "Fork from here" in a reply's "…" menu, "Forked from X" at the top of a fork.
-- [ ] **M7 · Attach a chat as context.**
+- [x] **M7 · Attach a chat as context.**
   - What to build: `contextChats` meta, the preamble, the `@` picker and chips, drag from the sidebar.
   - *Accept:*
     - With a chat attached, "what did we decide there?" is answered from it.
     - The chip shows on the sent message.
     - No more than the budget of the attached chat goes into the prompt.
+  - *Shipped:* `server/chats/attach.ts`: `SendMessageRequest.contextChats` (≤ 3, same agent, not itself) is kept on the user message; its turn gets an `<attached_chat title id>` block per chat with `selectContext` at 4k tokens, marked as background rather than instructions. A message with chats attached is answered in place under Auto (not dispatched to tasks). `chat_read` reads chats attached to the conversation's messages, even with memory off. UI: typing `@` in the composer opens a chat picker (arrows, Enter / Tab, Escape); picked chats show as removable chips above the input and as links under the sent message; dragging a chat from the sidebar onto the composer attaches it.
 
 Order: M1 first, since M5 builds on it. M2 next, since M6 and M7 reuse `selectContext`. M3 and M4 can go anywhere.
 
@@ -196,6 +197,6 @@ Order: M1 first, since M5 builds on it. M2 next, since M6 and M7 reuse `selectCo
 
 ## Open questions
 
-- **Wake turns in Slack and email chats** post a second message to the thread. Proposal: yes, and skip the plain "task done" message there, so there's still one message per finished batch.
-- **Attaching a chat from another agent.** Proposal: not in M7. Allow it later only when the user attaches it themselves, never by the agent.
-- **Fork from a task's transcript.** Proposal: later, once forks of chats have been used for a while.
+- **Wake turns in Slack and email chats** post a second message to the thread. Proposal: yes, and skip the plain "task done" message there, so there's still one message per finished batch. *Built as proposed (M1).*
+- **Attaching a chat from another agent.** Proposal: not in M7. Allow it later only when the user attaches it themselves, never by the agent. *Not in M7, as proposed.*
+- **Fork from a task's transcript.** Proposal: later, once forks of chats have been used for a while. *Later, as proposed.*

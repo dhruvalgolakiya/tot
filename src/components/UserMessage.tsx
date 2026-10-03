@@ -8,6 +8,7 @@ import { fileIcon, isImageMime } from "../lib/fileIcon";
 import { messageText } from "../lib/tools";
 import { DispatchChip } from "./orchestration/DispatchChip";
 import { IconButton } from "./ui/IconButton";
+import { ChatChip } from "./ChatChip";
 import { Tip } from "./ui/Tip";
 
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
@@ -101,6 +102,13 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
           {text}
         </div>
       )}
+      {message.contextChats?.length ? (
+        <div className="mt-1.5 flex max-w-[80%] flex-wrap justify-end gap-1.5 sm:max-w-[70%]">
+          {message.contextChats.map((id) => (
+            <ChatChip key={id} conversationId={id} />
+          ))}
+        </div>
+      ) : null}
       {message.dispatch && <DispatchChip dispatch={message.dispatch} />}
       <div className="mt-1 flex h-7 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         {text && (

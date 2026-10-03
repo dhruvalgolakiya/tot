@@ -7,6 +7,7 @@ import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.t
 import { agents } from "../data/agents.ts";
 import { brains } from "../data/brains.ts";
 import { CUT_OFF_BY_RESTART } from "../db.ts";
+import { attachedNote, cleanContextChats } from "../chats/attach.ts";
 import { forks } from "../chats/fork.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
@@ -106,6 +107,7 @@ export async function sendMessage(
   if (runRegistry.activeFor(conversationId)) {
     throw new HttpError(409, `${agents.get(conversation.agentId)?.name ?? "TOT"} is still replying in this chat.`);
   }
+  const contextChats = cleanContextChats(request.contextChats, conversation);
 
   const modelId = request.modelId ?? conversation.modelId;
   const statuses = await providerStatuses();
@@ -135,6 +137,7 @@ export async function sendMessage(
     status: "complete",
     ...(options.auto ? { auto: true } : {}),
     ...(options.dispatch ? { dispatch: options.dispatch } : {}),
+    ...(contextChats.length ? { contextChats } : {}),
     createdAt: now,
   };
   const assistant: Message = {
@@ -170,6 +173,7 @@ export async function sendMessage(
     route,
     history,
     attachments,
+    contextChats,
     preamble: options.preamble,
     autoTitle: isFirstTurn,
     auto: parseModelId(modelId) === "auto",
@@ -199,6 +203,8 @@ interface TurnContext {
   route: Route;
   history: Message[];
   attachments: UploadRecord[];
+  /** Chats attached to the message as reference. */
+  contextChats: string[];
   preamble?: string;
   autoTitle: boolean;
   /** Routed by TOT Auto, so a usage limit may move the turn to the other provider. */
@@ -385,6 +391,8 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
   // Results of tasks this chat started that finished since its model last heard, and what its forks brought back.
   const tasksNote = childResultsNote(conversation);
   const mergeNote = forks.takeNotes(conversation);
+  // Chats the user attached to this message, as reference.
+  const attached = attachedNote(ctx.contextChats);
   // A chat's last reply cut off by a restart: said once, on the next turn (tasks hear it from their loop).
   const lastReply = ctx.history.findLast((m) => m.role === "assistant");
   const restartNote =
@@ -392,7 +400,7 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
       ? "[TOT restarted during your last reply, so it was cut off. Check where things stand before you carry on.]"
       : "";
   const text =
-    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, mergeNote, ctx.preamble, prepared.context, ctx.text]
+    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, ctx.text]
       .filter(Boolean)
       .join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";

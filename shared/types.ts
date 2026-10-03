@@ -332,6 +332,8 @@ export interface Message {
   auto?: boolean;
   /** How TOT decided to handle this user message (module 02): answered here, sent to a task, or spawned tasks. */
   dispatch?: Dispatch;
+  /** User messages: chats attached as reference (module 05). */
+  contextChats?: string[];
   createdAt: number;
 }
 
@@ -1129,6 +1131,8 @@ export interface SendMessageRequest {
   thinkHarder?: boolean;
   /** Chats: let TOT decide (default), answer here, or run it as a task. */
   mode?: DispatchMode;
+  /** Other chats of the same agent attached as reference (module 05; at most 3). */
+  contextChats?: string[];
 }
 
 export interface SendMessageResponse {

@@ -1,8 +1,8 @@
 import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, Usage } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 
-/** Extras kept in the meta column: how a user message was sent (module 01) and handled (module 02). */
-type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "dispatch">;
+/** Extras kept in the meta column: how a user message was sent (module 01), handled (module 02), and the chats attached to it (module 05). */
+type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "dispatch" | "contextChats">;
 
 function metaOf(message: Message): string | null {
   const meta: MessageMeta = {
@@ -10,6 +10,7 @@ function metaOf(message: Message): string | null {
     ...(message.steeredInto ? { steeredInto: message.steeredInto } : {}),
     ...(message.auto ? { auto: true } : {}),
     ...(message.dispatch ? { dispatch: message.dispatch } : {}),
+    ...(message.contextChats?.length ? { contextChats: message.contextChats } : {}),
   };
   return Object.keys(meta).length ? JSON.stringify(meta) : null;
 }

@@ -919,12 +919,14 @@ export interface SendMessageOptions {
   attachments?: Attachment[];
   /** Chats: let TOT decide (default), or answer here. ("Task" goes through `startTask`.) */
   mode?: DispatchMode;
+  /** Other chats attached as reference. */
+  contextChats?: string[];
 }
 
 /** Send a message; creates the conversation first on an agent's home screen. */
 export async function sendMessage(
   text: string,
-  { thinkHarder = false, attachments = [], mode }: SendMessageOptions = {},
+  { thinkHarder = false, attachments = [], mode, contextChats = [] }: SendMessageOptions = {},
 ): Promise<boolean> {
   const body = text.trim();
   if ((!body && attachments.length === 0) || get().sending) return false;
@@ -968,6 +970,7 @@ export async function sendMessage(
         role: "user",
         parts,
         status: "complete",
+        ...(contextChats.length ? { contextChats } : {}),
         createdAt: Date.now(),
       },
     ]);
@@ -979,6 +982,7 @@ export async function sendMessage(
       ...(attachments.length ? { attachments: attachments.map((a) => a.id) } : {}),
       ...(thinkHarder ? { thinkHarder: true } : {}),
       ...(mode && mode !== "auto" ? { mode } : {}),
+      ...(contextChats.length ? { contextChats } : {}),
     });
 
     set((s) => ({

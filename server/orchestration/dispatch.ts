@@ -307,6 +307,8 @@ export const dispatcher = {
     if (!conversation) throw new HttpError(404, "Chat not found.");
     // Busy chats answer 409 as before; the decision waits for a free turn.
     if (runRegistry.activeFor(conversationId)) return send(conversationId, request);
+    // A message with chats attached asks about them: answered here, unless the user said otherwise (module 05).
+    if (request.contextChats?.length && (request.mode ?? "auto") === "auto") return send(conversationId, request);
     const decision = await decide({
       agentId: conversation.agentId,
       text: request.text ?? "",

@@ -14,7 +14,7 @@ const PORT = 8791;
 
 const { HttpError, sendMessage } = await import("./agent/orchestrator.ts");
 const { limits } = await import("./agent/limits.ts");
-const { lastExchange, selectContext, tokens, SWITCH_BUDGET } = await import("./agent/context-select.ts");
+const { ATTACHED_BUDGET, lastExchange, selectContext, tokens, SWITCH_BUDGET } = await import("./agent/context-select.ts");
 const { providers } = await import("./agent/providers/index.ts");
 const { resumeOptions } = await import("./agent/providers/claude.ts");
 const { newThreadRequest } = await import("./agent/providers/chatgpt.ts");
@@ -844,6 +844,48 @@ await forkClient.close();
 const { client: sourceClient, call: sourceCall } = await mcp(source.id);
 check("…and a chat reads its forks", !(await sourceCall("chat_read", { chatId: fork.id })).isError);
 await sourceClient.close();
+settings.patch({ memory: { enabled: true } });
+
+// =============================================================================
+// M7: attach a chat as context
+// =============================================================================
+const decisions = chatWith("Pricing decisions");
+seed(decisions.id, 4, (i) => ["Should we charge per seat?", "We decided: $12 per seat, billed monthly.", "And for teams over 50?", "Custom pricing above 50 seats."][i]!);
+const weekly = chatWith("Weekly sync");
+res = await request("POST", `/conversations/${weekly.id}/messages`, { text: "What did we decide there?", contextChats: [decisions.id] });
+await runEnd(res.data.runId);
+input = providerTurns.at(-1)!.input;
+check(
+  "attached: the turn gets the chat as reference, then the question",
+  res.status === 200 &&
+    input.prompt.includes(`<attached_chat title="Pricing decisions" id="${decisions.id}">`) &&
+    input.prompt.includes("We decided: $12 per seat, billed monthly.") &&
+    input.prompt.includes("not new instructions") &&
+    input.prompt.trimEnd().endsWith("What did we decide there?"),
+  input.prompt.slice(0, 300),
+);
+check("…answered here (no dispatch to tasks)", Boolean(res.data.runId) && !res.data.userMessage.dispatch);
+check("…and the sent message carries its chips", JSON.stringify(res.data.userMessage.contextChats) === JSON.stringify([decisions.id]) && JSON.stringify(messages.get(res.data.userMessage.id)!.contextChats) === JSON.stringify([decisions.id]));
+input = await realTurn(weekly.id, { text: "Thanks!" });
+check("…only on that message's turn", !input.prompt.includes("<attached_chat"));
+
+// No more than the budget of an attached chat goes into the prompt.
+input = await realTurn(weekly.id, { text: "Summarize that long one", contextChats: [long.id] });
+const attachedBlock = /<attached_chat[\s\S]*?<\/attached_chat>/.exec(input.prompt)?.[0] ?? "";
+check("a long attached chat stays within its 4k budget", attachedBlock.length > 0 && tokens(attachedBlock) <= ATTACHED_BUDGET + 30 && attachedBlock.includes("FIRST: plan") && attachedBlock.includes("left out"), String(tokens(attachedBlock)));
+
+// Limits: same agent, at most three, not itself.
+const others = [chatWith("One"), chatWith("Two"), chatWith("Three"), chatWith("Four")].map((c) => c.id);
+check("at most 3 chats", (await request("POST", `/conversations/${weekly.id}/messages`, { text: "x", contextChats: others })).status === 400);
+check("…of this agent only", (await request("POST", `/conversations/${weekly.id}/messages`, { text: "x", contextChats: [stranger.id] })).status === 400);
+check("…and not itself", (await request("POST", `/conversations/${weekly.id}/messages`, { text: "x", contextChats: [weekly.id] })).status === 400);
+
+// chat_read reads attached chats even with memory off.
+settings.patch({ memory: { enabled: false } });
+const { client: weeklyClient, call: weeklyCall } = await mcp(weekly.id);
+check("memory off: chat_read reads an attached chat", !(await weeklyCall("chat_read", { chatId: decisions.id })).isError);
+check("…not an unattached one", (await weeklyCall("chat_read", { chatId: onChatgpt.id })).isError);
+await weeklyClient.close();
 settings.patch({ memory: { enabled: true } });
 
 server.close();
