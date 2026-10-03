@@ -60,7 +60,6 @@ import { MAX_UPLOAD_BYTES, toAttachment, uploads } from "./data/uploads.ts";
 import { wiki, WikiError } from "./data/wiki.ts";
 import { mailboxes } from "./mail/mailbox.ts";
 import { personaGitHub } from "./persona-github.ts";
-import { dispatcher } from "./orchestration/dispatch.ts";
 import { orchestrationRoutes } from "./orchestration/routes.ts";
 import { taskQueue } from "./tasks/queue.ts";
 import { taskRoutes } from "./tasks/routes.ts";
@@ -299,8 +298,7 @@ api.post("/conversations/:id/messages", async (c) => {
     if ("started" in result) return c.json(result.started);
     return c.json({ runId: runRegistry.activeFor(id)?.id ?? "", userMessage: result.steered, conversation: toPublicConversation(conversations.get(id)!) });
   }
-  // A chat: TOT decides whether to answer here, pass it to a running task, or start tasks (module 02).
-  if (conversation) return c.json(await dispatcher.handle(id, request));
+  // A chat: its model answers, starting tasks itself when the work calls for it.
   return c.json(await sendMessage(id, request));
 });
 

@@ -1008,10 +1008,22 @@ check(
     input.prompt.trimEnd().endsWith("What did we decide there?"),
   input.prompt.slice(0, 300),
 );
-check("…answered here (no dispatch to tasks)", Boolean(res.data.runId) && !res.data.userMessage.dispatch);
+check("…answered here", Boolean(res.data.runId));
 check("…and the sent message carries its chips", JSON.stringify(res.data.userMessage.contextChats) === JSON.stringify([decisions.id]) && JSON.stringify(messages.get(res.data.userMessage.id)!.contextChats) === JSON.stringify([decisions.id]));
 input = await realTurn(weekly.id, { text: "Thanks!" });
 check("…only on that message's turn", !input.prompt.includes("<attached_chat"));
+
+// A message in a chat goes to its model, even one that sounds like work: the model starts tasks itself (task_start).
+const workChat = chatWith("Sounds like work");
+const tasksBefore = conversations.tasks().length;
+res = await request("POST", `/conversations/${workChat.id}/messages`, { text: "Compare Notion, Coda and Obsidian for a 10-person team" });
+await runEnd(res.data.runId);
+check(
+  "a chat message starts a turn of its model, and no tasks by itself",
+  res.status === 200 && Boolean(res.data.runId) && providerTurns.at(-1)!.input.conversationId === workChat.id && conversations.tasks().length === tasksBefore && !("dispatch" in res.data.userMessage),
+  JSON.stringify(res.data).slice(0, 200),
+);
+check("…and the model is told when to start tasks and to plan in MD files", providerTurns.at(-1)!.input.systemPrompt.includes("task_start") && providerTurns.at(-1)!.input.systemPrompt.includes("PLAN.md"));
 
 // No more than the budget of an attached chat goes into the prompt.
 input = await realTurn(weekly.id, { text: "Summarize that long one", contextChats: [long.id] });

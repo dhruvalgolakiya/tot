@@ -1,4 +1,4 @@
-// Orchestration (roadmap module 02): dispatch, tiers, spawning limits, handoffs, failover and fan-in,
+// Orchestration (roadmap module 02): tiers, spawning limits, handoffs, failover and fan-in,
 // with fake model turns, a fake classifier, a fake handoff writer and fixture provider statuses.
 // Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/orchestration.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
@@ -15,13 +15,11 @@ const { MessageBuilder } = await import("./agent/message-builder.ts");
 const { resolveRoute } = await import("./agent/router.ts");
 const { runRegistry } = await import("./agent/runs.ts");
 const { agents } = await import("./data/agents.ts");
-const { brains } = await import("./data/brains.ts");
 const { conversations, toPublicConversation } = await import("./data/conversations.ts");
 const { messages } = await import("./data/messages.ts");
 const { settings } = await import("./data/settings.ts");
 const { createApp } = await import("./app.ts");
 const { checkSpawn, missionUsage, missionRoot } = await import("./orchestration/budget.ts");
-const { dispatcher, namedItems, parseClassified, ruleDecision } = await import("./orchestration/dispatch.ts");
 const { taskFailover } = await import("./orchestration/failover.ts");
 const { fanIn } = await import("./orchestration/fanin.ts");
 const { handoffs, packetFromState, validateHandoff } = await import("./orchestration/handoff.ts");
@@ -35,7 +33,6 @@ const { taskStore } = await import("./tasks/store.ts");
 const { tasks } = await import("./tasks/tasks.ts");
 type Run = import("./agent/runs.ts").Run;
 type TurnOptions = import("./agent/orchestrator.ts").TurnOptions;
-type Dispatch = import("../shared/types.ts").Dispatch;
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -107,7 +104,6 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
     parts: [{ type: "text", id: randomUUID(), text: request.text }],
     status: "complete",
     ...(options.auto ? { auto: true } : {}),
-    ...(options.dispatch ? { dispatch: options.dispatch } : {}),
     createdAt: now,
   };
   messages.insert(user);
@@ -159,7 +155,6 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
   return { runId: run.id, userMessage: user, conversation: toPublicConversation(conversations.get(conversationId)!) };
 }
 runLoop.useSender(fakeSend);
-dispatcher.useSender(fakeSend);
 
 // Handoffs: a fake model that writes a good packet (or, when told, a bad one).
 let writerCalls: { provider: string; model: string; prompt: string }[] = [];
@@ -232,103 +227,7 @@ check("router: think harder → deep at xhigh", route.ok && route.route.model ==
 route = resolveRoute("claude:claude-sonnet-5-5", "hi", { statuses: fixture, limited: new Set(), tier: "deep" });
 check("router: a picked model wins over tiers", route.ok && route.route.model === "claude-sonnet-5-5" && route.route.reason === "Picked by you");
 
-// =============================================================================
-// M2: the dispatch fixture table (rules, plus a fake classifier for what they leave open)
-// =============================================================================
 const dana = agents.create({ name: "Dana", mascot });
-brains.create({ name: "web", kind: "repo", source: "https://github.com/acme/web", agentId: dana.id });
-const classified = new Map<string, unknown>([
-  ["The checkout page throws a 500 when the cart is empty, can you take a look and fix it?", { mode: "spawn", sessions: [{ role: "implementer", title: "Fix checkout 500", goal: "Fix the 500 on an empty cart" }], reason: "a bug to fix" }],
-  ["build me a landing page for my bakery", { mode: "spawn", sessions: [{ role: "implementer", title: "Bakery landing page", goal: "Build a landing page for a bakery" }], reason: "a build" }],
-  ["I've been thinking about our onboarding flow and whether we should split it into two steps; there are tradeoffs around activation and drop-off. Thoughts?", { mode: "inline", tier: "deep", reason: "discussion" }],
-  ["also cover SSO", { mode: "continue-task", taskId: "T-HEIGHT", reason: "follow-up" }],
-  ["set up a weekly digest of our GitHub activity and send me a draft of the first one", { mode: "spawn", sessions: [{ role: "researcher", title: "GitHub digest", goal: "Draft a weekly GitHub digest" }], reason: "a job" }],
-]);
-let classifierCalls = 0;
-dispatcher.useClassifier(async (_prompt, input) => {
-  classifierCalls++;
-  return classified.get(input.text) ?? { mode: "inline", tier: "fast", reason: "default" };
-});
-const LINEAR = { id: "T-LINEAR", title: "Research Linear", goal: "Research Linear" };
-const HEIGHT = { id: "T-HEIGHT", title: "Research Height", goal: "Research Height" };
-type Expect = string; // "inline" | "continue:<id>" | "spawn:<role,role>[+synthesize]"
-const table: { text: string; running?: (typeof LINEAR)[]; attachments?: number; mode?: "auto" | "inline" | "task"; expect: Expect }[] = [
-  { text: "what's the capital of France?", expect: "inline" },
-  { text: "hi!", expect: "inline" },
-  { text: "thanks, that's great", expect: "inline" },
-  { text: "how does OAuth PKCE work?", expect: "inline" },
-  { text: "explain the difference between TCP and UDP", expect: "inline" },
-  { text: "rewrite this to sound friendlier: we regret to inform you that your order is late", expect: "inline" },
-  { text: "translate 'good morning' into Japanese", expect: "inline" },
-  { text: "fix the typo in my last message", expect: "inline" },
-  { text: "can you make it shorter?", expect: "inline" },
-  { text: "summarize this: the meeting covered Q3 targets, hiring and the offsite", expect: "inline" },
-  { text: "what time is it in Tokyo right now?", expect: "inline" },
-  { text: "Write a haiku about autumn", expect: "inline" },
-  { text: "fix the flaky checkout test in web", expect: "spawn:implementer" },
-  { text: "can you implement dark mode in acme/web?", expect: "spawn:implementer" },
-  { text: "refactor the billing module in web to use the new API client", expect: "spawn:implementer" },
-  { text: "investigate why the build is slow in web", expect: "spawn:explorer" },
-  { text: "review the auth changes in web", expect: "spawn:reviewer" },
-  { text: "update the readme in https://github.com/acme/site", expect: "spawn:implementer" },
-  { text: "Compare Linear, Jira and Height for a 10-person team", expect: "spawn:researcher,researcher,researcher+synthesize" },
-  { text: "compare Postgres vs MySQL for our analytics workload", expect: "spawn:researcher,researcher+synthesize" },
-  { text: "Evaluate Stripe, Paddle and Lemon Squeezy for EU VAT handling", expect: "spawn:researcher,researcher,researcher+synthesize" },
-  { text: "research the top 5 vector databases and write a comparison", expect: "spawn:researcher" },
-  { text: "write a report on the state of open-source LLM licensing", expect: "spawn:researcher" },
-  { text: "analyze our churn over the last two quarters and tell me what's driving it", expect: "spawn:researcher" },
-  { text: "also check their API rate limits", running: [LINEAR], expect: "continue:T-LINEAR" },
-  { text: "for the Linear task, include pricing for 50 seats", running: [LINEAR, HEIGHT], expect: "continue:T-LINEAR" },
-  { text: "make sure the Height one covers offline mode", running: [LINEAR, HEIGHT], expect: "continue:T-HEIGHT" },
-  { text: "what's 2+2?", running: [LINEAR], expect: "inline" },
-  { text: "also cover SSO", running: [LINEAR, HEIGHT], expect: "continue:T-HEIGHT" },
-  { text: "The checkout page throws a 500 when the cart is empty, can you take a look and fix it?", expect: "spawn:implementer" },
-  { text: "build me a landing page for my bakery", expect: "spawn:implementer" },
-  { text: "I've been thinking about our onboarding flow and whether we should split it into two steps; there are tradeoffs around activation and drop-off. Thoughts?", expect: "inline" },
-  { text: "set up a weekly digest of our GitHub activity and send me a draft of the first one", expect: "spawn:researcher" },
-  { text: "fix the flaky checkout test in web", mode: "inline", expect: "inline" },
-  { text: "what does this error mean?", mode: "task", expect: "spawn:researcher" },
-  { text: "fix the bug in this screenshot", attachments: 1, expect: "inline" },
-];
-const describeDecision = (d: Dispatch) =>
-  d.mode === "inline" ? "inline" : d.mode === "continue-task" ? `continue:${d.taskId}` : `spawn:${d.sessions.map((s) => s.role).join(",")}${d.then ? `+${d.then}` : ""}`;
-let right = 0;
-const misses: string[] = [];
-for (const row of table) {
-  const decision = await dispatcher.decide({ agentId: dana.id, text: row.text, attachments: row.attachments ?? 0, mode: row.mode ?? "auto", running: row.running ?? [], recent: [] });
-  const got = describeDecision(decision);
-  if (got === row.expect) right++;
-  else misses.push(`“${row.text.slice(0, 40)}” → ${got} (wanted ${row.expect})`);
-}
-check(`dispatch fixture table: ${right}/${table.length} routed as expected (≥90%)`, table.length >= 30 && right / table.length >= 0.9, misses.join(" | "));
-check("the classifier only runs when the rules aren't sure", classifierCalls > 0 && classifierCalls <= 8, String(classifierCalls));
-const coding = ruleDecision({ agentId: dana.id, text: "fix the flaky checkout test in web", attachments: 0, mode: "auto", running: [], recent: [] });
-check("coding work gets the repo and the deep tier", coding?.mode === "spawn" && coding.sessions[0]!.repo === "https://github.com/acme/web" && coding.sessions[0]!.tier === "deep", JSON.stringify(coding));
-check("named items", namedItems("compare Linear, Jira and Height for a 10-person team").join("|") === "Linear|Jira|Height" && namedItems("compare these two approaches").length === 0);
-
-// A real-shaped classifier answer (text around JSON, as models write it) and bad ones.
-const input = { agentId: dana.id, text: "x", attachments: 0, mode: "auto" as const, running: [LINEAR], recent: [] };
-const realShaped = JSON.parse(/\{[\s\S]*\}/.exec('Sure — here is my decision:\n{"mode":"spawn","sessions":[{"role":"researcher","title":"Vendors","goal":"Compare vendors"},{"role":"writer","title":"Summary","goal":"Write it up"}],"synthesize":true,"reason":"two parts"}')![0]);
-const parsed = parseClassified(realShaped, input);
-check("classifier JSON: valid", parsed?.mode === "spawn" && parsed.sessions.length === 2 && parsed.then === "synthesize" && parsed.by === "classifier", JSON.stringify(parsed));
-check("classifier JSON: unknown role rejected", parseClassified({ mode: "spawn", sessions: [{ role: "boss", title: "x", goal: "y" }] }, input) === null);
-check("classifier JSON: a task that isn't running rejected", parseClassified({ mode: "continue-task", taskId: "nope" }, input) === null);
-check("classifier JSON: spawn without sessions rejected", parseClassified({ mode: "spawn" }, input) === null);
-dispatcher.useClassifier(async () => {
-  await sleep(2500);
-  return { mode: "spawn", sessions: [{ role: "researcher", title: "late", goal: "late" }] };
-});
-// Long, no question, no work words: the rules can't tell, so the classifier is asked.
-const unsure = "I keep going back and forth on whether to move our blog off WordPress; there's the SEO risk and the redesign, and nothing's decided yet";
-const started = Date.now();
-const slow = await dispatcher.decide({ agentId: dana.id, text: unsure, attachments: 0, mode: "auto", running: [], recent: [] });
-const took = Date.now() - started;
-check("classifier timeout (2 s) → inline", slow.mode === "inline" && took >= 1900 && took < 2400, `${describeDecision(slow)} in ${took}ms`);
-dispatcher.useClassifier(async () => {
-  throw new Error("down");
-});
-check("classifier failure → inline", (await dispatcher.decide({ agentId: dana.id, text: unsure, attachments: 0, mode: "auto", running: [], recent: [] })).mode === "inline");
-dispatcher.useClassifier(async () => ({ mode: "inline", tier: "fast" }));
 
 // =============================================================================
 // M1: an explorer child on the fast tier returns a structured result, shown as a card
@@ -547,12 +446,11 @@ scripts.set(compareChat.id, async (t) => {
   writerTurns++;
   t.say("Linear fits best; Jira is heavier; Height is lighter. Sources: linear.example, jira.example, height.example.");
 });
-res = await request("POST", `/conversations/${compareChat.id}/messages`, { text: "Compare Linear, Jira and Height for a 10-person team" });
-const decision = (res.data.userMessage as Message).dispatch;
-check(
-  "dispatch spawns 3 researchers, then a writer",
-  res.status === 200 && res.data.runId === "" && decision?.mode === "spawn" && decision.sessions.length === 3 && decision.then === "synthesize" && decision.taskIds.length === 3,
-  JSON.stringify(decision).slice(0, 200),
+// What the chat's model does with task_spawn_many: three researchers, combined by one writer turn.
+spawnMany(
+  compareChat.id,
+  ["Linear", "Jira", "Height"].map((name) => ({ title: `Research ${name}`, goal: `Research ${name} for a 10-person team`, role: "researcher" as const })),
+  { then: "synthesize", cards: { kind: "reply" } },
 );
 const children = conversations.tasks({ parentId: compareChat.id });
 check("three research tasks, one group", children.length === 3 && new Set(children.map((c) => c.task!.group)).size === 1 && children.every((c) => c.task!.role === "researcher"));
@@ -593,32 +491,6 @@ await until(() => status(lead.id) === "done", 6000);
 const leadChildren = conversations.tasks({ parentId: lead.id });
 check("a task waits for its own tasks", status(lead.id) === "done" && leadChildren.every((c) => c.task!.status === "done" && c.task!.depth === 2) && sentTo(lead.id).length === 2);
 
-// =============================================================================
-// The composer's override, and continue-task from a chat
-// =============================================================================
-const steerChat = conversations.create({ agentId: dana.id, modelId: "auto", title: "Steering" });
-let release = false;
-byGoal.push([
-  /^Research Asana/,
-  async (t) => {
-    t.tool("web_search");
-    while (!release && !t.run.controller.signal.aborted) await sleep(20);
-    tasks.finish(t.id, "done", "Asana done.");
-  },
-]);
-const [asana] = spawnMany(steerChat.id, [{ title: "Research Asana", goal: "Research Asana for us", role: "researcher" }], { cards: { kind: "none" } });
-await until(() => runRegistry.activeFor(asana!.id) !== undefined);
-res = await request("POST", `/conversations/${steerChat.id}/messages`, { text: "also check their API rate limits" });
-check(
-  "a follow-up goes to the running task",
-  res.data.userMessage?.dispatch?.mode === "continue-task" && messages.listByConversation(asana!.id).some((m) => m.steered && m.parts.some((p) => p.type === "text" && p.text === "also check their API rate limits")),
-  JSON.stringify(res.data.userMessage?.dispatch),
-);
-res = await request("POST", `/conversations/${steerChat.id}/messages`, { text: "what's 2+2?", mode: "inline" });
-check("Inline override answers here", Boolean(res.data.runId) && res.data.userMessage.dispatch?.mode === "inline" && res.data.userMessage.dispatch.by === "user");
-await until(() => !runRegistry.activeFor(steerChat.id));
-release = true;
-await until(() => status(asana!.id) === "done");
 
 server.close();
 stopAutoHandoffs();

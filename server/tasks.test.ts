@@ -25,7 +25,6 @@ const { settings } = await import("./data/settings.ts");
 const { db } = await import("./db.ts");
 const { slack } = await import("./slack.ts");
 const { createApp } = await import("./app.ts");
-const { dispatcher, ruleDecision } = await import("./orchestration/dispatch.ts");
 const { taskNotifications } = await import("./tasks/notify.ts");
 const { childResultsNote, continuationPreamble } = await import("./tasks/prompt.ts");
 const { taskQueue } = await import("./tasks/queue.ts");
@@ -71,6 +70,8 @@ type Script = (turn: Turn) => Promise<void | "error">;
 const scripts = new Map<string, Script>();
 /** Scripts for tasks the test can't name in advance (started by a tool or from Slack), by their goal. */
 const byGoal: [RegExp, Script][] = [];
+/** Scripts for chats the test can't name in advance (started from Slack), by their message's text. */
+const byText: [RegExp, Script][] = [];
 const sent: { conversationId: string; text: string; preamble: string; auto: boolean; fresh: boolean }[] = [];
 const sentTo = (id: string) => sent.filter((s) => s.conversationId === id);
 
@@ -119,8 +120,11 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
     let outcome: void | "error" = undefined;
     // Lets a test register a task's script right after creating it.
     await sleep(5);
-    const goal = conversations.get(conversationId)?.task?.goal ?? "";
-    const script = scripts.get(conversationId) ?? byGoal.find(([pattern]) => pattern.test(goal))?.[1] ?? (async (t: Turn) => t.say("ok"));
+    const goal = conversations.get(conversationId)?.task?.goal;
+    const script =
+      scripts.get(conversationId) ??
+      (goal !== undefined ? byGoal.find(([pattern]) => pattern.test(goal)) : byText.find(([pattern]) => pattern.test(request.text)))?.[1] ??
+      (async (t: Turn) => t.say("ok"));
     try {
       outcome = await script(turn);
     } catch (err) {
@@ -135,8 +139,7 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
   return { runId: run.id, userMessage: user, conversation: toPublicConversation(conversations.get(conversationId)!) };
 }
 runLoop.useSender(fakeSend);
-// The dispatcher's classifier is module 02's to test; here the rules decide, or it's answered inline.
-dispatcher.useClassifier(async () => null);
+slack.useSender(fakeSend);
 
 // --- Fake notifiers ------------------------------------------------------------
 const notices: { via: string; id: string; text: string }[] = [];
@@ -629,7 +632,7 @@ check("otherwise a Slack DM (needs input too)", notices.some((n) => n.via === "d
 settings.patch({ tasks: { notifySlackUserId: null } });
 await request("POST", `/tasks/${dmMe.id}/stop`);
 
-// Intake rule.
+// Slack and email requests.
 const intakeAgent = agents.create({ name: "Intake", mascot });
 const intakeComputer = await computerManager.ensure(intakeAgent.id);
 await intakeComputer.backend.exec(
@@ -638,18 +641,8 @@ await intakeComputer.backend.exec(
   { timeoutMs: 30_000 },
 );
 brains.create({ name: "tot", kind: "repo", source: "~/repos/tot", agentId: intakeAgent.id });
-// Which Slack and email requests become tasks: the dispatcher's rules (module 02 replaced 01's keyword rule).
-const ruled = (text: string) => ruleDecision({ agentId: intakeAgent.id, text, attachments: 0, mode: "auto", running: [], recent: [] });
-const firstRepo = (text: string) => {
-  const decision = ruled(text);
-  return decision?.mode === "spawn" ? (decision.sessions[0]?.repo ?? "none") : null;
-};
-check("intake: work on a known repo", firstRepo("fix the flaky test in tot") === "~/repos/tot");
-check("intake: a job without a repo", firstRepo("Research these 5 vendors and write a comparison") === "none");
-check("intake: questions stay chats", ruled("what's the weather in Paris?")?.mode === "inline" && ruled("add a footer")?.mode !== "spawn");
-check("intake: GitHub URLs count", firstRepo("update the readme in https://github.com/acme/site.") === "https://github.com/acme/site");
 
-// Slack end to end: "@TOT fix the flaky test in tot" → a queued coding task → the result in the thread.
+// Slack end to end: "@TOT fix the flaky test in tot" → a chat whose model starts a coding task → the result in the thread.
 const posted: { channel: string; thread_ts?: string; blocks?: any[] }[] = [];
 const fakeApi = {
   auth: { test: async () => ({ team: "Acme", user: "tot", user_id: "UBOT" }) },
@@ -677,23 +670,34 @@ taskNotifications.use({
   slackDm: async () => false,
 });
 const said = (text: string) => posted.some((p) => JSON.stringify(p.blocks ?? []).includes(text));
+byText.push([
+  /fix the flaky test in tot/,
+  async (t) => {
+    // What the chat's model does with task_start.
+    tasks.startFromChat(t.taskId, { title: "Fix the flaky test", goal: "Fix the flaky checkout test", repo: "~/repos/tot" }, "agent");
+    t.say("On it: I started a task to fix the flaky test.");
+  },
+]);
 byGoal.push([
-  /flaky test/,
+  /flaky checkout test/,
   async (t) => {
     await t.tool("computer_exec", 5);
     tasks.finish(t.taskId, "done", "Fixed the race in checkout.test.ts.");
   },
 ]);
 socket.emit("app_mention", { ack: async () => {}, event: { channel: "CENG", user: "UALICE", text: "<@UBOT> fix the flaky test in tot", ts: "1790000100.000100" } });
-await until(() => said("Started a task"));
+await until(() => said("I started a task"));
+const slackChat = conversations.list(intakeAgent.id).find((c) => c.origin?.kind === "slack");
 const slackTask = conversations.tasks({ agentId: intakeAgent.id })[0];
-check("Slack: work lands as a coding task", Boolean(slackTask) && slackTask!.task?.repo?.source === "~/repos/tot" && slackTask!.origin?.kind === "slack" && slackTask!.origin.label === "#eng", JSON.stringify(slackTask?.task));
-check("Slack: acknowledged in the thread", said("Started a task: *fix the flaky test in tot*"), JSON.stringify(posted.at(-1)?.blocks));
+check("Slack: the request goes to a chat's model", Boolean(slackChat) && slackChat!.kind === "chat" && slackChat!.origin?.label === "#eng" && sentTo(slackChat!.id).length === 1, JSON.stringify(slackChat));
+check("…which starts a coding task under it", Boolean(slackTask) && slackTask!.parentId === slackChat!.id && slackTask!.task?.repo?.source === "~/repos/tot", JSON.stringify(slackTask?.task));
+check("…and the chat's reply is posted in the thread", posted.some((p) => p.thread_ts === "1790000100.000100" && JSON.stringify(p.blocks).includes("I started a task")), JSON.stringify(posted.at(-1)?.blocks));
 await until(() => said("Fixed the race in checkout.test.ts."), 15_000);
 check("Slack: the result is posted in the thread", posted.some((p) => p.thread_ts === "1790000100.000100" && JSON.stringify(p.blocks).includes("Fixed the race")), JSON.stringify(posted.at(-1)));
+await until(() => !runRegistry.activeFor(slackChat!.id));
 socket.emit("app_mention", { ack: async () => {}, event: { channel: "CENG", user: "UALICE", text: "<@UBOT> also add a regression test", ts: "1790000100.000300", thread_ts: "1790000100.000100" } });
-await until(() => said("Picked the task up again"));
-check("Slack: a follow-up picks the task up again", said("Picked the task up again") && sentTo(slackTask!.id).at(-1)?.text.includes("also add a regression test") === true);
+await until(() => sentTo(slackChat!.id).length === 2);
+check("Slack: a follow-up in the thread goes to the chat's model", sentTo(slackChat!.id).at(-1)?.text.includes("also add a regression test") === true);
 await until(() => status(slackTask!.id) === "done" || status(slackTask!.id) === "failed");
 await slack.disconnect();
 

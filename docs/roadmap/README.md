@@ -15,12 +15,12 @@ The plan has five modules. Each has its own doc, written so an agent can pick it
 | # | Module | Doc | Depends on | Worktree |
 |---|--------|-----|------------|----------|
 | 01 | **Sessions & Tasks**: chats ↔ tasks, task cards, worktrees, queue, steer/pause, background runs, notifications | [01-sessions-and-tasks.md](01-sessions-and-tasks.md) | nothing | **A** |
-| 02 | **Orchestration**: auto-spawn decisions, model tiers, sub-sessions, handoff packets, provider failover | [02-orchestration.md](02-orchestration.md) | 01 | **A** (after 01) |
+| 02 | **Orchestration**: model tiers, sub-sessions, handoff packets, provider failover (its auto-spawn dispatcher was later removed: the chat's model decides) | [02-orchestration.md](02-orchestration.md) | 01 | **A** (after 01) |
 | 03 | **Trust gates & playbooks**: repo profile, test gates, cross-provider review, scope guards, pstack-style playbooks | [03-trust-gates-and-playbooks.md](03-trust-gates-and-playbooks.md) | nothing for M1–M4; 01 for M5 | **B** |
 | 04 | **PR workflow**: diff, draft PR, checks, address review comments, update branch, shortcuts | [04-pr-workflow.md](04-pr-workflow.md) | 01 | **B** (after 03 M1–M4) |
 | 05 | **Coordination**: chats woken when their tasks finish, context that fits on a provider switch, retry-safe task tools, nothing ending silently, wait for a task, fork and merge back, attach a chat | [05-coordination.md](05-coordination.md) | 01, 02 (both merged) | **C** |
 
-01, 02 and 03 (M1–M4) are merged into `main`. 04 and 05 are next and can run side by side: 04 works in its own `server/prs/` and the PR UI, 05 in `server/tasks/`, `server/orchestration/` and the turn pipeline. Both make small changes to `server/tasks/notify.ts`; whoever merges second resolves.
+01, 02, 03 (M1–M4) and 05 are merged into `main`. 04 is next.
 
 ## Parallel plan: two worktrees
 

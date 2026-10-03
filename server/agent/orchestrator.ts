@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Dispatch, Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse, Tier, TurnErrorKind } from "../../shared/types.ts";
+import type { Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse, Tier, TurnErrorKind } from "../../shared/types.ts";
 import { appEvents } from "../app-events.ts";
 import { apps } from "../apps.ts";
 import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.ts";
@@ -86,12 +86,10 @@ export interface TurnOptions {
   maxSteps?: number;
   /** TOT wrote the user message itself to keep a task going (shown as a quiet divider). */
   auto?: boolean;
-  /** Auto only: the model tier (a task's role, a dispatch decision); see orchestration/tiers.ts. */
+  /** Auto only: the model tier (e.g. a task's role); see orchestration/tiers.ts. */
   tier?: Tier;
   /** Auto only: the provider to run on when it can (a reviewer on the other provider, a switch after a limit). */
   prefer?: ProviderId | null;
-  /** How TOT decided to handle the message, kept on it for the UI. */
-  dispatch?: Dispatch;
 }
 
 export async function sendMessage(
@@ -146,7 +144,6 @@ export async function sendMessage(
     ],
     status: "complete",
     ...(options.auto ? { auto: true } : {}),
-    ...(options.dispatch ? { dispatch: options.dispatch } : {}),
     ...(contextChats.length ? { contextChats } : {}),
     createdAt: now,
   };

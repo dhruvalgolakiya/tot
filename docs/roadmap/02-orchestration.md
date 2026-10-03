@@ -4,6 +4,8 @@
 
 Read [README.md](README.md) first.
 
+> **Changed since (2026-10-03):** the composer's Auto / Inline / Task menu, the dispatcher (`dispatch.ts`: rules, then a classifier) and the decision chip were removed. Every message, whether typed in TOT, sent from Slack or emailed, goes to the chat's model. The model starts tasks itself with `task_start` / `task_spawn_many`, passes follow-ups to running tasks with `task_message`, and keeps the plan for bigger work in a markdown file. Tiers, roles, handoffs, failover and fan-in are unchanged. The dispatch parts below (M2, the composer pill, the chip) describe what was built then.
+
 ## Goal
 
 TOT decides how to run each request, so the user doesn't have to.

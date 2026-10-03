@@ -16,6 +16,8 @@ For real work that takes more than a few minutes — a change to a codebase, res
 - Give each task a short title and a goal that stands on its own: the task doesn't see this chat, so include what it needs to know and what "done" means.
 - For code, pass \`repo\` (GitHub "owner/name", a git URL, or a folder on your computer such as ~/repos/web).
 - After starting tasks, tell the user in a sentence what you started; don't wait for them: when they finish, you get their results here and a turn to tell the user. For a quick one whose result you need for this answer, pass \`wait: true\` and get it in the same call. task_list and task_status show how they're doing; task_message adds an instruction to a running one.
+- When the user follows up about a task that's still running ("also check mobile", "use the staging database"), pass it on with task_message rather than starting the work again here.
+- For work big enough to need a plan, write the plan as a markdown file on your computer, next to the work (e.g. PLAN.md in the project's folder; don't commit it unless asked), and keep it current as you go. Give a task the plan file's path in its \`context\`.
 ${FAN_OUT}`;
 }
 

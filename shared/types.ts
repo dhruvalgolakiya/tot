@@ -330,8 +330,6 @@ export interface Message {
   steeredInto?: { messageId: string; afterPartId: string | null };
   /** Written by TOT to keep a task going, e.g. "Continue the task"; shown as a quiet divider rather than a bubble. */
   auto?: boolean;
-  /** How TOT decided to handle this user message (module 02): answered here, sent to a task, or spawned tasks. */
-  dispatch?: Dispatch;
   /** User messages: chats attached as reference (module 05). */
   contextChats?: string[];
   createdAt: number;
@@ -985,9 +983,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/conversations/:id/messages      SendMessageRequest -> SendMessageResponse
 //                                              (a task: steers it while it runs or waits in the queue — runId is then the
 //                                              turn running, or "" — else picks it up again with this message.
-//                                              A chat: TOT decides (module 02; `mode` overrides): answers here, or passes the
-//                                              message to a running task or starts tasks — runId "" — with the decision on
-//                                              userMessage.dispatch)
+//                                              A chat: its model answers, starting tasks itself when the work calls for it)
 // POST   /api/conversations/:id/computer/stop -> ComputerSummary | null   (alias: the chat's agent's computer)
 //
 // Tasks (a task is a conversation with kind "task"; see TaskInfo)
@@ -1132,8 +1128,6 @@ export interface SendMessageRequest {
   modelId?: string;
   /** Force the strongest model + higher effort for this turn. */
   thinkHarder?: boolean;
-  /** Chats: let TOT decide (default), answer here, or run it as a task. */
-  mode?: DispatchMode;
   /** Other chats of the same agent attached as reference (module 05; at most 3). */
   contextChats?: string[];
 }
@@ -1364,28 +1358,6 @@ export interface HandoffPacket {
   from: { provider: ProviderId; model: string };
   createdAt: number;
 }
-
-export type DispatchMode = "auto" | "inline" | "task";
-
-export interface SpawnSession {
-  role: Role;
-  title: string;
-  goal: string;
-  tier: Tier;
-  provider?: ProviderId;
-  repo?: string;
-}
-
-/** TOT's decision for one user message, kept on it and shown as a chip ("Auto → 2 tasks"). */
-export type Dispatch = (
-  | { mode: "inline"; tier: Tier }
-  | { mode: "continue-task"; taskId: string }
-  | { mode: "spawn"; sessions: SpawnSession[]; then?: "synthesize"; taskIds: string[] }
-) & {
-  reason: string;
-  /** A rule, the classifier, or the user's own choice in the composer. */
-  by: "rule" | "classifier" | "user";
-};
 
 export interface ContinueOnRequest {
   provider: ProviderId;

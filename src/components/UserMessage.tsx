@@ -6,7 +6,6 @@ import { useCopy } from "../hooks/useCopy";
 import { formatBytes } from "../lib/format";
 import { fileIcon, isImageMime } from "../lib/fileIcon";
 import { messageText } from "../lib/tools";
-import { DispatchChip } from "./orchestration/DispatchChip";
 import { IconButton } from "./ui/IconButton";
 import { ChatChip } from "./ChatChip";
 import { Tip } from "./ui/Tip";
@@ -109,7 +108,6 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
           ))}
         </div>
       ) : null}
-      {message.dispatch && <DispatchChip dispatch={message.dispatch} />}
       <div className="mt-1 flex h-7 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         {text && (
           <Tip content={copied ? "Copied" : "Copy"}>
