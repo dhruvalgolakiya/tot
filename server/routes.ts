@@ -64,6 +64,7 @@ import { dispatcher } from "./orchestration/dispatch.ts";
 import { orchestrationRoutes } from "./orchestration/routes.ts";
 import { taskQueue } from "./tasks/queue.ts";
 import { taskRoutes } from "./tasks/routes.ts";
+import { chatRoutes } from "./chats/routes.ts";
 import { isTask } from "./tasks/store.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { trustRoutes } from "./trust/routes.ts";
@@ -315,6 +316,7 @@ api.post("/conversations/:id/computer/stop", async (c) => {
 });
 
 api.route("/", taskRoutes);
+api.route("/", chatRoutes);
 api.route("/", orchestrationRoutes);
 
 // ---------------------------------------------------------------------------
@@ -858,7 +860,7 @@ api.patch("/settings", async (c) => {
       if (!Number.isInteger(n) || n < 1 || n > max) throw new HttpError(400, `${what} must be between 1 and ${max}.`);
       return n;
     };
-    const { perAgentLimit, globalLimit, resumeInterrupted, notifySlackUserId, switchProviders, missionTokenBudget, maxChildren } = patch.tasks;
+    const { perAgentLimit, globalLimit, resumeInterrupted, notifySlackUserId, switchProviders, missionTokenBudget, maxChildren, wakeChats } = patch.tasks;
     const budget = Number(missionTokenBudget);
     if (missionTokenBudget !== undefined && (!Number.isInteger(budget) || budget < 0)) throw new HttpError(400, "The token budget must be a whole number (0 for no limit).");
     patch.tasks = {
@@ -868,6 +870,7 @@ api.patch("/settings", async (c) => {
       ...(missionTokenBudget !== undefined ? { missionTokenBudget: budget } : {}),
       ...(typeof resumeInterrupted === "boolean" ? { resumeInterrupted } : {}),
       ...(typeof switchProviders === "boolean" ? { switchProviders } : {}),
+      ...(typeof wakeChats === "boolean" ? { wakeChats } : {}),
       ...(notifySlackUserId === null || (typeof notifySlackUserId === "string" && /^[A-Z0-9]+$/.test(notifySlackUserId)) ? { notifySlackUserId } : {}),
     };
   }

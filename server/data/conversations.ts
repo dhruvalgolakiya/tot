@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Conversation, ConversationKind, ConversationOrigin, ProviderId, TaskInfo } from "../../shared/types.ts";
+import type { Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 
@@ -28,6 +28,18 @@ export interface ConversationRecord extends Conversation {
   systemPrompt: string | null;
   /** Tasks started from this chat that finished since its model last heard about them. */
   childResults: string[];
+  /** Results came in that the chat hasn't been woken about yet (tasks/wake.ts). */
+  wakePending: boolean;
+  /** Tokens the chat's wake-up turns used, counted in its mission's budget. */
+  wakeTokens: number;
+  /** Notes brought back from its forks, for its next turn (chats/fork.ts). */
+  mergeNotes: MergeNote[];
+}
+
+export interface MergeNote {
+  forkId: string;
+  note: string;
+  at: number;
 }
 
 function toRecord(row: Row): ConversationRecord {
@@ -51,11 +63,15 @@ function toRecord(row: Row): ConversationRecord {
     providerSessionId: (row.provider_session_id as string | null) ?? null,
     systemPrompt: (row.system_prompt as string | null) ?? null,
     childResults: parseJson<string[]>(row.child_results, []),
+    forkedFrom: parseJson<ForkOrigin | null>(row.forked_from, null),
+    wakePending: Boolean(row.wake_pending),
+    wakeTokens: Number(row.wake_tokens ?? 0),
+    mergeNotes: parseJson<MergeNote[]>(row.merge_notes, []),
   };
 }
 
 export function toPublicConversation(record: ConversationRecord): Conversation {
-  const { providerSessionId: _s, systemPrompt: _p, childResults: _c, ...conversation } = record;
+  const { providerSessionId: _s, systemPrompt: _p, childResults: _c, wakePending: _w, wakeTokens: _t, mergeNotes: _m, ...conversation } = record;
   return conversation;
 }
 
@@ -70,6 +86,9 @@ type ConversationPatch = Partial<{
   parentId: string | null;
   task: TaskInfo | null;
   childResults: string[];
+  wakePending: boolean;
+  wakeTokens: number;
+  mergeNotes: MergeNote[];
 }>;
 
 export const conversations = {
@@ -98,6 +117,16 @@ export const conversations = {
     return rows.map(toRecord);
   },
 
+  /** Chats forked from this one. */
+  forksOf(id: string): ConversationRecord[] {
+    return (db.prepare(`SELECT * FROM conversations WHERE json_extract(forked_from, '$.conversationId') = ?`).all(id) as Row[]).map(toRecord);
+  },
+
+  /** Chats with results they haven't been woken about yet. */
+  wakePending(): ConversationRecord[] {
+    return (db.prepare(`SELECT * FROM conversations WHERE wake_pending = 1`).all() as Row[]).map(toRecord);
+  },
+
   get(id: string): ConversationRecord | null {
     const row = db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(id) as Row | undefined;
     return row ? toRecord(row) : null;
@@ -112,11 +141,12 @@ export const conversations = {
     kind?: ConversationKind;
     parentId?: string | null;
     task?: TaskInfo | null;
+    forkedFrom?: ForkOrigin | null;
   }): ConversationRecord {
     const id = randomUUID();
     const now = Date.now();
     db.prepare(
-      `INSERT INTO conversations (id, agent_id, routine_id, title, model_id, origin, kind, parent_id, task, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO conversations (id, agent_id, routine_id, title, model_id, origin, kind, parent_id, task, forked_from, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.agentId,
@@ -127,6 +157,7 @@ export const conversations = {
       input.kind ?? "chat",
       input.parentId ?? null,
       input.task ? JSON.stringify(input.task) : null,
+      input.forkedFrom ? JSON.stringify(input.forkedFrom) : null,
       now,
       now,
     );
@@ -145,6 +176,9 @@ export const conversations = {
       parent_id: patch.parentId,
       task: patch.task === undefined ? undefined : patch.task && JSON.stringify(patch.task),
       child_results: patch.childResults && JSON.stringify(patch.childResults),
+      wake_pending: patch.wakePending === undefined ? undefined : Number(patch.wakePending),
+      wake_tokens: patch.wakeTokens,
+      merge_notes: patch.mergeNotes && JSON.stringify(patch.mergeNotes),
       updated_at: touch ? Date.now() : undefined,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);

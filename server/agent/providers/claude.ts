@@ -209,6 +209,15 @@ class PromptStream implements AsyncIterable<SDKUserMessage> {
   }
 }
 
+/**
+ * Which session a turn continues: its own, or for a fork's first turn a copy of another session
+ * (forkSession), cut after the message `at` (resumeSessionAt) when given.
+ */
+export function resumeOptions(input: Pick<TurnInput, "sessionId" | "fork">): { resume?: string; forkSession?: boolean; resumeSessionAt?: string } {
+  if (input.fork) return { resume: input.fork.sessionId, forkSession: true, ...(input.fork.at ? { resumeSessionAt: input.fork.at } : {}) };
+  return { resume: input.sessionId };
+}
+
 /** After a turn ends with a steering note still queued, how long to wait for Claude Code to start on it. */
 const QUEUED_NOTE_WAIT_MS = 5_000;
 
@@ -365,7 +374,7 @@ export const claudeProvider: AgentProvider = {
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         settings: { disableClaudeAiConnectors: !settings.get().claude.useConnectedApps },
-        resume: input.sessionId,
+        ...resumeOptions(input),
         includePartialMessages: true,
         maxTurns: input.maxSteps ?? MAX_AGENT_TURNS,
         stderr: (chunk) => stderr.push(chunk),
@@ -450,6 +459,8 @@ export const claudeProvider: AgentProvider = {
 
           case "assistant":
             if (message.parent_tool_use_id) break;
+            // The turn's latest point in the session: where a fork from this reply starts.
+            yield { type: "ref", ref: message.uuid };
             if (message.error) assistantError = friendlyError(message.error, input.model);
             for (const block of message.message.content) {
               if (block.type === "tool_use" || block.type === "server_tool_use" || block.type === "mcp_tool_use") {

@@ -54,6 +54,7 @@ export function buildSettingsPatch(saved: Settings, draft: Settings, secrets: Se
     "globalLimit",
     "resumeInterrupted",
     "notifySlackUserId",
+    "wakeChats",
     "switchProviders",
     "missionTokenBudget",
     "maxChildren",

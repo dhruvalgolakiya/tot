@@ -3,6 +3,7 @@ import type { ConvertToTaskRequest, StartTaskRequest, SteerRequest, TaskPatch, T
 import { HttpError } from "../agent/orchestrator.ts";
 import { agents } from "../data/agents.ts";
 import { conversations } from "../data/conversations.ts";
+import { cleanRequestId, taskRequests } from "./requests.ts";
 import { steer } from "./steer.ts";
 import { isTask, taskStore, toPublic, type TaskRecord } from "./store.ts";
 import { tasks } from "./tasks.ts";
@@ -46,7 +47,11 @@ taskRoutes.post("/tasks", async (c) => {
 
 taskRoutes.post("/conversations/:id/tasks", async (c) => {
   const request = await body<StartTaskRequest>(c);
-  return c.json(toPublic(tasks.startFromChat(c.req.param("id"), request, "user")), 201);
+  const chatId = c.req.param("id");
+  // The same requestId again (a double click, a retried request) gets the task it started back.
+  const { tasks: started, repeat } = taskRequests.once(chatId, cleanRequestId(request.requestId), () => [tasks.startFromChat(chatId, request, "user")]);
+  if (!started[0]) throw new HttpError(409, "That request already started a task, which has since been deleted.");
+  return c.json(toPublic(started[0]), repeat ? 200 : 201);
 });
 
 taskRoutes.post("/conversations/:id/convert", async (c) => {
@@ -60,6 +65,7 @@ taskRoutes.post("/conversations/:id/steer", async (c) => {
   return c.json(steer(c.req.param("id"), text));
 });
 
+taskRoutes.post("/agents/:id/queue/resume", (c) => c.json(tasks.resumeQueue(c.req.param("id"))));
 taskRoutes.post("/tasks/:id/pause", (c) => c.json(toPublic(tasks.pause(c.req.param("id")))));
 taskRoutes.post("/tasks/:id/resume", (c) => c.json(toPublic(tasks.resume(c.req.param("id")))));
 taskRoutes.post("/tasks/:id/stop", (c) => c.json(toPublic(tasks.stop(c.req.param("id")))));

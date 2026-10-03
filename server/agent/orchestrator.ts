@@ -6,10 +6,13 @@ import { apps } from "../apps.ts";
 import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.ts";
 import { agents } from "../data/agents.ts";
 import { brains } from "../data/brains.ts";
+import { CUT_OFF_BY_RESTART } from "../db.ts";
+import { attachedNote, cleanContextChats } from "../chats/attach.ts";
+import { forks } from "../chats/fork.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
-import { messageText, messages } from "../data/messages.ts";
+import { messages } from "../data/messages.ts";
 import { personas } from "../data/personas.ts";
 import { plugins } from "../data/plugins.ts";
 import { settings as settingsStore } from "../data/settings.ts";
@@ -21,6 +24,7 @@ import { githubAccessFor, personaGitHub } from "../persona-github.ts";
 import { prepareAttachments } from "./attachments.ts";
 import { makeElicitor } from "./approvals.ts";
 import { brainHints } from "./brain-hints.ts";
+import { contextMessages, selectContext, SWITCH_BUDGET } from "./context-select.ts";
 import { limits } from "./limits.ts";
 import { MessageBuilder } from "./message-builder.ts";
 import {
@@ -103,6 +107,7 @@ export async function sendMessage(
   if (runRegistry.activeFor(conversationId)) {
     throw new HttpError(409, `${agents.get(conversation.agentId)?.name ?? "TOT"} is still replying in this chat.`);
   }
+  const contextChats = cleanContextChats(request.contextChats, conversation);
 
   const modelId = request.modelId ?? conversation.modelId;
   const statuses = await providerStatuses();
@@ -132,6 +137,7 @@ export async function sendMessage(
     status: "complete",
     ...(options.auto ? { auto: true } : {}),
     ...(options.dispatch ? { dispatch: options.dispatch } : {}),
+    ...(contextChats.length ? { contextChats } : {}),
     createdAt: now,
   };
   const assistant: Message = {
@@ -167,6 +173,7 @@ export async function sendMessage(
     route,
     history,
     attachments,
+    contextChats,
     preamble: options.preamble,
     autoTitle: isFirstTurn,
     auto: parseModelId(modelId) === "auto",
@@ -196,6 +203,8 @@ interface TurnContext {
   route: Route;
   history: Message[];
   attachments: UploadRecord[];
+  /** Chats attached to the message as reference. */
+  contextChats: string[];
   preamble?: string;
   autoTitle: boolean;
   /** Routed by TOT Auto, so a usage limit may move the turn to the other provider. */
@@ -241,21 +250,27 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   let route = ctx.route;
   let status: MessageStatus = "complete";
   let error: string | undefined;
+  // Where this reply ends up in its provider session, so a fork can start there.
+  const place: { session?: string; ref?: string } = {};
 
   try {
     const { text, images, systemPrompt } = await prepareTurn(ctx);
 
+    // As much of the conversation as fits a new model's budget, with a pointer to the rest.
     const withTranscript = () =>
       transcriptPreamble(
-        history.map((m) => ({ role: m.role, text: messageText(m) })).filter((t) => t.text),
+        selectContext(contextMessages(history), { budgetTokens: SWITCH_BUDGET, chatId: conversation.id }).text,
         text,
+        conversation.forkedFrom && !conversation.provider ? "This chat is a fork of another one, picking up from where it branched off." : undefined,
       );
 
     /** Turn input for a route: resume the provider's session when this chat already has one. */
     const inputFor = (route: Route, fresh = false): TurnInput => {
       const resumable = !fresh && !ctx.freshSession && conversation.provider === route.provider && conversation.providerSessionId;
-      // A different provider can't resume the old session: carry the transcript over instead.
-      const needsTranscript = !resumable && !ctx.freshSession && conversation.provider !== null;
+      // A fork's first turn continues a copy of the source's session when this provider wrote the reply it was forked at.
+      const fork = !fresh && !ctx.freshSession ? forks.nativeStart(conversation, route.provider) : null;
+      // A different provider can't resume the old session (nor a fork's copy another's): carry the transcript over instead.
+      const needsTranscript = !resumable && !fork && !ctx.freshSession && (conversation.provider !== null || conversation.forkedFrom !== null);
       return {
         conversationId: conversation.id,
         prompt: needsTranscript || fresh ? withTranscript() : text,
@@ -263,14 +278,16 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         model: route.model,
         effort: route.effort,
         sessionId: resumable ? conversation.providerSessionId! : undefined,
+        ...(fork ? { fork } : {}),
         systemPrompt,
         mcpServers: mcpServersFor(conversation, route.provider),
         workDir: paths.agentHome,
         signal,
         elicit,
         maxSteps: ctx.maxSteps,
-        // Tasks can be steered mid-turn when the provider supports it (see tasks/steer.ts).
-        ...(conversation.kind === "task" ? { onSteerable: (deliver: (text: string) => Promise<boolean>) => void (run.steer = deliver) } : {}),
+        // Turns take notes mid-turn when the provider supports it: the user's notes to a task (tasks/steer.ts),
+        // and a chat's tasks' results (tasks/wake.ts).
+        onSteerable: (deliver) => void (run.steer = deliver),
       };
     };
 
@@ -279,6 +296,11 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
       for await (const event of providers[route.provider].runTurn(input)) {
         if (event.type === "session") {
           conversations.update(conversation.id, { provider: route.provider, providerSessionId: event.sessionId });
+          place.session = event.sessionId;
+          continue;
+        }
+        if (event.type === "ref") {
+          place.ref = event.ref;
           continue;
         }
         if (event.type === "error") throw new TurnError(event.message, event.kind);
@@ -313,8 +335,8 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         builder.notice("warning", `${from} is at its usage limit${reset ? ` (${reset})` : ""} — switched to ${providers[route.provider].label}.`);
         Object.assign(assistant, { provider: route.provider, model: route.model, routeReason: route.reason });
         await attempt(route, inputFor(route));
-      } else if (inputFor(route).sessionId) {
-        // A session that can't be resumed (deleted transcript, expired thread) shouldn't
+      } else if (inputFor(route).sessionId || inputFor(route).fork) {
+        // A session that can't be resumed or forked (deleted transcript, expired thread) shouldn't
         // kill the chat: start a fresh session seeded with the transcript, once.
         console.warn(`[tot] resume failed for ${conversation.id}, starting a fresh session:`, err);
         await attempt(route, inputFor(route, true));
@@ -337,6 +359,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   run.steer = undefined;
   const final = builder.finish(status, error);
   messages.save(final);
+  if (place.session && place.ref) messages.setProviderRef(final.id, { session: place.session, ref: place.ref });
   if (title) await Promise.race([title, sleep(TITLE_GRACE_MS)]);
   const touched = conversations.update(conversation.id, {}, true);
   run.push({ type: "run-end", status, message: final });
@@ -365,10 +388,21 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
     : null;
   // Brains this message is about (its repo, URL, @name…) that the chat hasn't been shown yet.
   const brainNote = ctx.text ? brainHints(conversation.agentId, conversation.id, ctx.text) : "";
-  // Results of tasks this chat started that finished since its model last heard.
+  // Results of tasks this chat started that finished since its model last heard, and what its forks brought back.
   const tasksNote = childResultsNote(conversation);
+  const mergeNote = forks.takeNotes(conversation);
+  // Chats the user attached to this message, as reference.
+  const attached = attachedNote(ctx.contextChats);
+  // A chat's last reply cut off by a restart: said once, on the next turn (tasks hear it from their loop).
+  const lastReply = ctx.history.findLast((m) => m.role === "assistant");
+  const restartNote =
+    conversation.kind !== "task" && lastReply?.status === "stopped" && lastReply.error === CUT_OFF_BY_RESTART
+      ? "[TOT restarted during your last reply, so it was cut off. Check where things stand before you carry on.]"
+      : "";
   const text =
-    [githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
+    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, ctx.text]
+      .filter(Boolean)
+      .join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
   let systemPrompt = conversation.systemPrompt;

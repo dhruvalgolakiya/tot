@@ -112,6 +112,8 @@ export interface Agent {
   personaId: string | null;
   /** What's in the workspace, for the sidebar. */
   counts: { chats: number; pages: number; routines: number };
+  /** Its task queue is paused: a task failed on repeated provider errors (module 05). */
+  queueHold: QueueHold | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -187,6 +189,8 @@ export interface Conversation {
   parentId: string | null;
   /** Set for tasks: goal, status, plan, branch…; null for chats. */
   task: TaskInfo | null;
+  /** A fork (module 05): the chat and the message it was forked at; null otherwise. */
+  forkedFrom: ForkOrigin | null;
 }
 
 export type ConversationKind = "chat" | "task";
@@ -328,6 +332,8 @@ export interface Message {
   auto?: boolean;
   /** How TOT decided to handle this user message (module 02): answered here, sent to a task, or spawned tasks. */
   dispatch?: Dispatch;
+  /** User messages: chats attached as reference (module 05). */
+  contextChats?: string[];
   createdAt: number;
 }
 
@@ -984,7 +990,8 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // Tasks (a task is a conversation with kind "task"; see TaskInfo)
 // GET    /api/tasks[?agentId=&status=]        -> Conversation[]  (queued ones in queue order first, then newest first)
 // POST   /api/tasks                           StartTaskRequest & { agentId? } -> Conversation  (a top-level task)
-// POST   /api/conversations/:id/tasks         StartTaskRequest -> Conversation  (started from this chat; its card shows there)
+// POST   /api/conversations/:id/tasks         StartTaskRequest -> Conversation  (started from this chat; its card shows there.
+//                                              201; with a requestId it started before: 200 and that task, nothing new)
 // POST   /api/conversations/:id/convert       ConvertToTaskRequest -> Conversation  (this chat becomes a task, transcript kept)
 // POST   /api/conversations/:id/steer         SteerRequest -> Message  (the saved note; reaches a running task mid-turn or next turn)
 // POST   /api/tasks/:id/pause                 -> Conversation  (interrupts the turn; resume continues it)
@@ -995,6 +1002,11 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/tasks/:id/continue-on           ContinueOnRequest -> Conversation  (module 02: writes a handoff, then carries on
 //                                              in a fresh session on that provider; a finished task does so on its next message)
 // PATCH  /api/tasks/:id                       TaskPatch -> Conversation  (rename, goal, position in the queue)
+// POST   /api/agents/:id/queue/resume         -> Agent  (module 05: clears agent.queueHold; queued tasks start again)
+// POST   /api/conversations/:id/fork          ForkRequest -> Conversation  (module 05: "Fork of …", its messages copied up to
+//                                              messageId; its first turn continues the source's provider session natively when it can)
+// POST   /api/conversations/:id/merge-back    -> Conversation  (module 05: a fork brings its new messages back to its source chat: a
+//                                              notice there, and a note for its next turn; returns the source)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
 // DELETE /api/conversations/:id?deleteBranch=1  (a task: also removes its worktree; its branch only with deleteBranch, and only if never pushed)
 //
@@ -1119,6 +1131,8 @@ export interface SendMessageRequest {
   thinkHarder?: boolean;
   /** Chats: let TOT decide (default), answer here, or run it as a task. */
   mode?: DispatchMode;
+  /** Other chats of the same agent attached as reference (module 05; at most 3). */
+  contextChats?: string[];
 }
 
 export interface SendMessageResponse {
@@ -1229,6 +1243,8 @@ export interface StartTaskRequest {
   baseBranch?: string;
   /** ModelOption id; defaults to the chat's (or the agent's) model. */
   modelId?: string;
+  /** Started from a chat: any id (≤ 100 characters); sending it again returns the task it started (module 05). */
+  requestId?: string;
 }
 
 export interface ConvertToTaskRequest {
@@ -1282,6 +1298,8 @@ export interface TaskSettings {
   resumeInterrupted: boolean;
   /** Also DM this Slack person when a task finishes or needs input; null = don't. */
   notifySlackUserId: string | null;
+  /** A chat picks up its tasks' results and replies on its own when they finish, instead of on the user's next message (module 05). */
+  wakeChats: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1544,4 +1562,32 @@ export interface TrustReviewRequest {
   plan?: string;
   /** Who wrote the code; the reviewer is the other provider unless Settings → Workflows picks one. */
   implementedBy?: ProviderId;
+}
+
+// ---------------------------------------------------------------------------
+// Coordination (roadmap module 05). A chat is woken when its tasks finish;
+// a provider switch carries only the context that fits; task starts are
+// retry-safe; nothing ends silently (a provider that keeps failing pauses
+// its agent's queue); chats can be forked, merged back and attached.
+// ---------------------------------------------------------------------------
+
+/** A paused task queue: the next queued task waits until the user resumes it. */
+export interface QueueHold {
+  /** The provider that kept failing, when known. */
+  provider: ProviderId | null;
+  /** Its last error. */
+  reason: string;
+  createdAt: number;
+}
+
+/** Where a forked chat came from: its messages up to `messageId` were copied at `at`. */
+export interface ForkOrigin {
+  conversationId: string;
+  messageId: string;
+  at: number;
+}
+
+/** POST /api/conversations/:id/fork; without a message, the whole chat. */
+export interface ForkRequest {
+  messageId?: string;
 }

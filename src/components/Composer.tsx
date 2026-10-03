@@ -4,9 +4,11 @@ import { DropdownMenu } from "radix-ui";
 import { ArrowUp, Check, ChevronDown, Lightbulb, ListChecks, LoaderCircle, MessageSquare, Plus, Sparkles, Square } from "lucide-react";
 import type { DispatchMode } from "@shared/types";
 import type { UseAttachments } from "../hooks/useAttachments";
+import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
 import { isSteerable, isTask } from "../lib/tasks";
 import { selectActiveAgent, selectActiveAgentId, selectCurrentConversation, sendMessage, startTask, steerTask, stopRun, useStore } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
+import { ChatChip } from "./ChatChip";
 import { RepoChip } from "./tasks/RepoPicker";
 import { Kbd } from "./ui/Kbd";
 import { Tip } from "./ui/Tip";
@@ -73,6 +75,37 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const taskMode = asTask && !task;
+  // Other chats attached as reference: picked by typing @, or dragged in from the sidebar.
+  const conversations = useStore((s) => s.conversations);
+  const [contextChats, setContextChats] = useState<string[]>([]);
+  const [caret, setCaret] = useState(0);
+  const [highlight, setHighlight] = useState(0);
+  const [dismissedAt, setDismissedAt] = useState<number | null>(null);
+  const [chatOver, setChatOver] = useState(false);
+  useEffect(() => setContextChats([]), [currentId]);
+  const canAttachChats = !task && !taskMode;
+  const mention = canAttachChats && contextChats.length < MAX_ATTACHED_CHATS ? mentionAt(text, caret) : null;
+  const matches =
+    mention && mention.start !== dismissedAt
+      ? chatMatches(conversations, { agentId, exclude: [...contextChats, ...(currentId ? [currentId] : [])], query: mention.query })
+      : [];
+  const picking = matches.length > 0;
+  useEffect(() => setHighlight(0), [mention?.query]);
+  const attachChat = (id: string) =>
+    setContextChats((list) => (list.includes(id) || id === currentId || list.length >= MAX_ATTACHED_CHATS ? list : [...list, id]));
+
+  /** Swaps the "@query" being typed for a chip. */
+  function pickChat(id: string) {
+    if (!mention) return;
+    const before = text.slice(0, mention.start);
+    setText(`${before}${text.slice(caret)}`);
+    attachChat(id);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(before.length, before.length);
+      setCaret(before.length);
+    });
+  }
   const canSend = steering
     ? text.trim().length > 0 && attachments.items.length === 0
     : (text.trim().length > 0 || attachments.ready.length > 0) && !run && !sending && !attachments.uploading;
@@ -116,12 +149,15 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
     const harder = thinkHarder;
     const files = attachments.ready.map((it) => it.attachment);
     const previousItems = attachments.items;
+    const chats = contextChats;
     setText("");
     setInterim("");
     setThinkHarder(false); // "Think harder" applies to one message only.
+    setContextChats([]);
     attachments.clear();
-    const sent = await sendMessage(value, { thinkHarder: harder, attachments: files, mode });
+    const sent = await sendMessage(value, { thinkHarder: harder, attachments: files, mode, contextChats: chats });
     if (!sent) {
+      setContextChats(chats);
       setText((current) => current || value);
       setThinkHarder(harder);
       attachments.restore(previousItems);
@@ -141,6 +177,25 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // The @ chat picker takes the arrows, Enter / Tab and Escape while it's open.
+    if (picking) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setHighlight((current) => (current + step + matches.length) % matches.length);
+        return;
+      }
+      if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+        event.preventDefault();
+        pickChat(matches[Math.min(highlight, matches.length - 1)]!.id);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDismissedAt(mention!.start);
+        return;
+      }
+    }
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return;
     // ⌘↩ / Ctrl+↩ runs it as a task.
     if ((event.metaKey || event.ctrlKey) && !task) {
@@ -177,8 +232,49 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
         event.preventDefault();
         void submit();
       }}
-      className="surface-raised min-h-[60px] rounded-3xl border border-edge transition-colors focus-within:border-edge-strong"
+      onDragOver={(event) => {
+        if (!canAttachChats || !event.dataTransfer.types.includes(CHAT_DRAG_TYPE)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setChatOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setChatOver(false);
+      }}
+      onDrop={(event) => {
+        const id = event.dataTransfer.getData(CHAT_DRAG_TYPE);
+        if (!id) return;
+        event.preventDefault();
+        setChatOver(false);
+        attachChat(id);
+      }}
+      className={clsx(
+        "surface-raised relative min-h-[60px] rounded-3xl border transition-colors focus-within:border-edge-strong",
+        chatOver ? "border-accent-edge" : "border-edge",
+      )}
     >
+      {picking && (
+        <div role="listbox" aria-label="Attach a chat" className="menu absolute bottom-full left-0 mb-2 w-80 max-w-full">
+          <p className="menu-label">Attach a chat for reference</p>
+          {matches.map((chat, index) => (
+            <div
+              key={chat.id}
+              role="option"
+              aria-selected={index === highlight}
+              data-highlighted={index === highlight ? "" : undefined}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                pickChat(chat.id);
+              }}
+              onMouseEnter={() => setHighlight(index)}
+              className="menu-item"
+            >
+              <MessageSquare className="size-4 shrink-0 text-fg-muted" />
+              <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -189,8 +285,11 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
           event.target.value = "";
         }}
       />
-      {attachments.items.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-4 pt-3.5">
+      {(attachments.items.length > 0 || contextChats.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3.5">
+          {contextChats.map((id) => (
+            <ChatChip key={id} conversationId={id} onRemove={() => setContextChats((list) => list.filter((other) => other !== id))} />
+          ))}
           {attachments.items.map((item) => (
             <AttachmentChip key={item.localId} item={item} onRemove={attachments.removeAttachment} />
           ))}
@@ -204,7 +303,11 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
         ref={inputRef}
         rows={1}
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          setText(event.target.value);
+          setCaret(event.target.selectionStart);
+        }}
+        onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
         placeholder={placeholder}

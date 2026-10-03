@@ -919,12 +919,14 @@ export interface SendMessageOptions {
   attachments?: Attachment[];
   /** Chats: let TOT decide (default), or answer here. ("Task" goes through `startTask`.) */
   mode?: DispatchMode;
+  /** Other chats attached as reference. */
+  contextChats?: string[];
 }
 
 /** Send a message; creates the conversation first on an agent's home screen. */
 export async function sendMessage(
   text: string,
-  { thinkHarder = false, attachments = [], mode }: SendMessageOptions = {},
+  { thinkHarder = false, attachments = [], mode, contextChats = [] }: SendMessageOptions = {},
 ): Promise<boolean> {
   const body = text.trim();
   if ((!body && attachments.length === 0) || get().sending) return false;
@@ -968,6 +970,7 @@ export async function sendMessage(
         role: "user",
         parts,
         status: "complete",
+        ...(contextChats.length ? { contextChats } : {}),
         createdAt: Date.now(),
       },
     ]);
@@ -979,6 +982,7 @@ export async function sendMessage(
       ...(attachments.length ? { attachments: attachments.map((a) => a.id) } : {}),
       ...(thinkHarder ? { thinkHarder: true } : {}),
       ...(mode && mode !== "auto" ? { mode } : {}),
+      ...(contextChats.length ? { contextChats } : {}),
     });
 
     set((s) => ({
@@ -1329,7 +1333,9 @@ export async function startTask(goal: string, { repo, baseBranch }: TaskOptions 
     const { currentId, homeAgentId, agents } = get();
     const current = currentId ? get().conversations.find((c) => c.id === currentId) : undefined;
     if (current && !isTask(current)) {
-      const task = await api.startTaskFromChat(current.id, body);
+      // A request id makes a retried request safe: the server returns the task it already started.
+      const requestId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const task = await api.startTaskFromChat(current.id, { ...body, requestId });
       set((s) => ({ conversations: upsertConversation(s.conversations, task) }));
       await loadConversation(current.id);
       return true;
@@ -1374,6 +1380,37 @@ export const resumeTask = (id: string) => taskAction(() => api.resumeTask(id));
 export const stopTask = (id: string) => taskAction(() => api.stopTask(id));
 export const runTaskNow = (id: string) => taskAction(() => api.runTaskNow(id));
 export const patchTask = (id: string, patch: TaskPatch) => taskAction(() => api.patchTask(id, patch));
+
+/** "Fork chat" / "Fork from here": a new chat with the history so far, which opens. */
+export async function forkChat(conversationId: string, messageId?: string) {
+  try {
+    const fork = await api.forkChat(conversationId, messageId ? { messageId } : {});
+    set((s) => ({ conversations: upsertConversation(s.conversations, fork) }));
+    navigateToConversation(fork.id);
+  } catch (error) {
+    notifyError(error);
+  }
+}
+
+/** "Bring back to …": the fork's new messages go to the chat it came from, for its next reply. */
+export async function mergeBack(forkId: string) {
+  try {
+    const source = await api.mergeBack(forkId);
+    set((s) => ({ conversations: upsertConversation(s.conversations, source) }));
+    toast.success(`Brought back to “${source.title}”`, { action: { label: "Open", onClick: () => navigateToConversation(source.id) } });
+  } catch (error) {
+    notifyError(error);
+  }
+}
+
+/** "Resume" on a paused queue: its tasks start again. */
+export async function resumeQueue(agentId: string) {
+  try {
+    handleAgentEvent(await api.resumeQueue(agentId));
+  } catch (error) {
+    notifyError(error);
+  }
+}
 
 /** "Continue on ChatGPT / Claude": a handoff, then a fresh session there. */
 export async function continueTaskOn(id: string, provider: ProviderId) {

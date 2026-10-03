@@ -384,8 +384,10 @@ db.exec(`
   );
 `);
 
-// Messages that were streaming when the server last stopped can never finish.
-db.exec(`UPDATE messages SET status = 'stopped' WHERE status = 'streaming'`);
+// Messages that were streaming when the server last stopped can never finish. The error says why, and a
+// chat's next turn tells its model (module 05).
+export const CUT_OFF_BY_RESTART = "Cut off when TOT restarted.";
+db.prepare(`UPDATE messages SET status = 'stopped', error = ? WHERE status = 'streaming'`).run(CUT_OFF_BY_RESTART);
 
 // Module 01 (tasks): a conversation is a chat or a task (TaskInfo as JSON), started from a parent chat or not.
 // child_results lists a chat's finished tasks its model hasn't been told about yet. Messages get a JSON
@@ -435,6 +437,37 @@ db.exec(`
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
+  );
+`);
+
+// Module 05 (coordination, server/tasks/wake.ts): a chat whose tasks finished and that hasn't been
+// woken about them yet (so a restart still wakes it), and the tokens its wake-up turns used, which
+// count toward its mission's token budget.
+if (!hasColumn("conversations", "wake_pending")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_pending INTEGER NOT NULL DEFAULT 0`);
+if (!hasColumn("conversations", "wake_tokens")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_tokens INTEGER NOT NULL DEFAULT 0`);
+// Forks (server/chats/fork.ts): where a chat was forked from, notes brought back from its forks for its
+// next turn, and each reply's place in its provider session (so a fork can start there natively).
+if (!hasColumn("conversations", "forked_from")) db.exec(`ALTER TABLE conversations ADD COLUMN forked_from TEXT`);
+if (!hasColumn("conversations", "merge_notes")) db.exec(`ALTER TABLE conversations ADD COLUMN merge_notes TEXT NOT NULL DEFAULT '[]'`);
+if (!hasColumn("messages", "provider_ref")) db.exec(`ALTER TABLE messages ADD COLUMN provider_ref TEXT`);
+// Retry-safe starts (server/tasks/requests.ts): the tasks each request id started from a chat, in order.
+// They go with the chat; a deleted task keeps its row, so a retry still doesn't start it again.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS task_requests (
+    parent_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    request_id TEXT NOT NULL,
+    idx INTEGER NOT NULL,
+    task_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (parent_id, request_id, idx)
+  );
+
+  -- An agent's paused task queue (server/data/queue-holds.ts): a task failed on repeated provider errors.
+  CREATE TABLE IF NOT EXISTS queue_holds (
+    agent_id TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+    provider TEXT,
+    reason TEXT NOT NULL,
+    created_at INTEGER NOT NULL
   );
 `);
 

@@ -24,6 +24,12 @@ export interface TurnInput {
   /** Provider session/thread id to resume; undefined starts a fresh session. */
   sessionId?: string;
   /**
+   * A forked chat's first turn (module 05): start from a copy of another session of this provider
+   * (instead of a fresh one), cut after the turn whose ref (a "ref" event) is `at` — the whole
+   * session when null. The copy's id comes back as the "session" event.
+   */
+  fork?: { sessionId: string; at: string | null };
+  /**
    * TOT system prompt (persona, custom instructions, memory, computer guidance).
    * Frozen per conversation so provider-side prompt caches stay warm.
    */
@@ -77,6 +83,8 @@ export interface ElicitAnswer {
 export type ProviderEvent =
   /** Emit as soon as the session/thread id is known so it can be resumed next turn. */
   | { type: "session"; sessionId: string }
+  /** The provider's own id for (the latest point of) this turn, so a fork can start from it: Claude's message uuid, Codex's turn id. */
+  | { type: "ref"; ref: string }
   | { type: "text-delta"; blockId: string; delta: string }
   | { type: "reasoning-delta"; blockId: string; delta: string }
   | { type: "tool-start"; toolCallId: string; name: string; input?: unknown }

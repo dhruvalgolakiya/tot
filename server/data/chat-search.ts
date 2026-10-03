@@ -17,7 +17,10 @@ export interface RecentChat {
   updatedAt: number;
 }
 
-const MAX_TRANSCRIPT_CHARS = 14_000;
+/** chat_read pages: messages per page by default and at most, and characters per message. */
+const PAGE = 20;
+const MAX_PAGE = 50;
+const MAX_MESSAGE_CHARS = 4000;
 
 export const chatSearch = {
   /** Best matches in the agent's chats (other than `exclude`), one hit per chat. */
@@ -49,23 +52,28 @@ export const chatSearch = {
     return rows.map((row) => ({ id: String(row.id), title: String(row.title), updatedAt: Number(row.updated_at) }));
   },
 
-  /** A readable transcript of one chat, or null when it isn't in this agent's workspace. */
-  transcript(agentId: string, conversationId: string): { title: string; text: string } | null {
+  /**
+   * A page of one chat's messages, oldest first: the newest `limit`, or the `limit` before message
+   * `before`. Null when the chat isn't in this agent's workspace (or `before` isn't in it).
+   */
+  transcript(
+    agentId: string,
+    conversationId: string,
+    opts: { before?: string; limit?: number } = {},
+  ): { title: string; messages: { id: string; role: "user" | "assistant"; text: string }[]; earlier: number; total: number } | null {
     const chat = db.prepare(`SELECT title FROM conversations WHERE id = ? AND agent_id = ?`).get(conversationId, agentId) as
       | Row
       | undefined;
     if (!chat) return null;
-    const lines = messages
+    const all = messages
       .listByConversation(conversationId)
-      .map((m) => ({ role: m.role, text: messageText(m) }))
-      .filter((t) => t.text)
-      .map((t) => `${t.role === "user" ? "User" : "You"}: ${t.text}`);
-    let text = lines.join("\n\n");
-    // Keep the opening (what was asked) and the end (where it got to).
-    if (text.length > MAX_TRANSCRIPT_CHARS) {
-      const head = Math.floor(MAX_TRANSCRIPT_CHARS * 0.3);
-      text = `${text.slice(0, head)}\n\n… ${text.length - MAX_TRANSCRIPT_CHARS} characters omitted …\n\n${text.slice(-(MAX_TRANSCRIPT_CHARS - head))}`;
-    }
-    return { title: String(chat.title), text };
+      .map((m) => ({ id: m.id, role: m.role, text: messageText(m) }))
+      .filter((m) => m.text);
+    const end = opts.before ? all.findIndex((m) => m.id === opts.before) : all.length;
+    if (end < 0) return null;
+    const start = Math.max(0, end - Math.min(opts.limit ?? PAGE, MAX_PAGE));
+    const clipped = (text: string) => (text.length > MAX_MESSAGE_CHARS ? `${text.slice(0, MAX_MESSAGE_CHARS).trimEnd()}… [cut at 4,000 characters]` : text);
+    const page = all.slice(start, end).map((m) => ({ ...m, text: clipped(m.text) }));
+    return { title: String(chat.title), messages: page, earlier: start, total: all.length };
   },
 };

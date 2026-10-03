@@ -15,7 +15,7 @@ export function chatTasksSection(): string {
 For real work that takes more than a few minutes — a change to a codebase, research across several sources, a report or comparison — start a task with task_start instead of doing it here. A task runs in the background on your computer (a coding task on its own git branch and worktree), shows in this chat as a live card, and reports its result back here when it finishes; the user can close the tab meanwhile. Start several at once for independent pieces of work (say, one per vendor to research). Keep quick questions and small edits inline.
 - Give each task a short title and a goal that stands on its own: the task doesn't see this chat, so include what it needs to know and what "done" means.
 - For code, pass \`repo\` (GitHub "owner/name", a git URL, or a folder on your computer such as ~/repos/web).
-- After starting tasks, tell the user in a sentence what you started; don't wait for them. task_list and task_status show how they're doing; task_message adds an instruction to a running one.
+- After starting tasks, tell the user in a sentence what you started; don't wait for them: when they finish, you get their results here and a turn to tell the user. For a quick one whose result you need for this answer, pass \`wait: true\` and get it in the same call. task_list and task_status show how they're doing; task_message adds an instruction to a running one.
 ${FAN_OUT}`;
 }
 
@@ -81,6 +81,11 @@ export function continuationPreamble(
 /** One finished task's result as structured data for a model: its summary plus findings, files and sources. */
 export function resultBlock(child: ConversationRecord): string {
   const task = child.task!;
+  // Stopped, or cut off by a restart: how it ended, and no result.
+  if (task.status === "stopped" || task.status === "interrupted") {
+    const note = task.status === "stopped" ? "Stopped before it finished: there's no result." : "Cut off when TOT restarted; it waits for the user to resume it. No result yet.";
+    return JSON.stringify({ id: child.id, title: child.title, role: task.role, status: task.status, note, ...(task.repo ? { branch: task.repo.branch } : {}) }, null, 1);
+  }
   const result = task.result;
   return JSON.stringify(
     {
@@ -99,25 +104,38 @@ export function resultBlock(child: ConversationRecord): string {
   );
 }
 
-/** Results of a chat's tasks that finished since its model last heard, as a note for its next turn; "" when none. */
-export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults">): string {
-  if (!conversation.childResults.length) return "";
+/** Finished tasks' results as a note for a model, opening with `heading`; "" when none of them is a task anymore. */
+export function resultsNote(ids: string[], heading = "Tasks you started have finished."): string {
   const blocks: string[] = [];
-  for (const id of conversation.childResults) {
+  for (const id of ids) {
     const child = conversations.get(id);
     if (child?.kind !== "task" || !child.task) continue;
     blocks.push(resultBlock(child));
   }
-  conversations.update(conversation.id, { childResults: [] });
   return blocks.length
-    ? `[Tasks you started have finished since your last reply. Their results:\n<task_results>\n${blocks.join("\n")}\n</task_results>\nUse them where they matter; the user can see each one on its card.]`
+    ? `[${heading} Their results:\n<task_results>\n${blocks.join("\n")}\n</task_results>\nUse them where they matter; the user can see each one on its card.]`
     : "";
 }
 
-/** The opening of a fresh session that carries on from a handoff packet instead of the transcript. */
-export function handoffPreamble(packet: HandoffPacket, why: string): string {
+/** Marks results as heard by the conversation's model (its next turn, a wake-up, or task_status). */
+export function markResultsRead(conversationId: string, ids: string[]): void {
+  const current = conversations.get(conversationId);
+  if (!current || !ids.length) return;
+  const unread = current.childResults.filter((id) => !ids.includes(id));
+  if (unread.length !== current.childResults.length) conversations.update(conversationId, { childResults: unread });
+}
+
+/** Results of a chat's tasks that finished since its model last heard, as a note for its next turn; "" when none. */
+export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults">): string {
+  if (!conversation.childResults.length) return "";
+  markResultsRead(conversation.id, conversation.childResults);
+  return resultsNote(conversation.childResults, "Tasks you started have finished since your last reply.");
+}
+
+/** The opening of a fresh session that carries on from a handoff packet instead of the transcript, with the last exchange verbatim. */
+export function handoffPreamble(packet: HandoffPacket, why: string, exchange = ""): string {
   return `[${why} You're continuing this task from a handoff packet written by ${packet.from.provider} (${packet.from.model}); you don't have the earlier conversation. Trust the packet, check the current state where it matters (your worktree, files), and carry on from its next step.
 <handoff>
 ${JSON.stringify(packet, null, 1)}
-</handoff>]`;
+</handoff>${exchange ? `\nThe last message from the user and the last reply before the handoff, verbatim:\n<last_exchange>\n${exchange}\n</last_exchange>` : ""}]`;
 }

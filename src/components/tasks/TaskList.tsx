@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { isTask, sortTasks, type TaskConversation } from "../../lib/tasks";
-import { selectActiveAgentId, useStore } from "../../store";
+import { selectActiveAgent, selectActiveAgentId, useStore } from "../../store";
+import { QueueHoldLine } from "./QueueHold";
 import { QueuePopover } from "./QueuePopover";
 import { TaskRow } from "./TaskRow";
 
@@ -17,6 +18,7 @@ export function TaskList({ query }: { query: string }) {
   const conversations = useStore((s) => s.conversations);
   const currentId = useStore((s) => s.currentId);
   const agentId = useStore(selectActiveAgentId);
+  const hold = useStore((s) => selectActiveAgent(s)?.queueHold ?? null);
   const [showFinished, setShowFinished] = useState(false);
   const needle = query.trim().toLowerCase();
 
@@ -51,8 +53,9 @@ export function TaskList({ query }: { query: string }) {
     <section className="mt-2">
       <div className="flex h-6 items-center justify-between pr-1 pl-2.5">
         <h2 className="group-label">Tasks</h2>
-        {queued.length > 0 && <QueuePopover queued={queued} />}
+        {queued.length > 0 && <QueuePopover queued={queued} hold={hold} />}
       </div>
+      {hold && agentId && <QueueHoldLine agentId={agentId} hold={hold} className="px-2.5" />}
       <ul className="space-y-px">
         {rows.map(({ task, depth }) => (
           <li key={task.id} className={clsx(depth > 0 && "pl-4")}>

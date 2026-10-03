@@ -10,7 +10,7 @@ TOT should become a daily driver for running many agents at once, for code and f
 - can be steered, paused and queued;
 - pass tests and an independent review before you see a PR.
 
-The plan has four modules. Each has its own doc, written so an agent can pick it up and build it.
+The plan has five modules. Each has its own doc, written so an agent can pick it up and build it.
 
 | # | Module | Doc | Depends on | Worktree |
 |---|--------|-----|------------|----------|
@@ -18,6 +18,9 @@ The plan has four modules. Each has its own doc, written so an agent can pick it
 | 02 | **Orchestration**: auto-spawn decisions, model tiers, sub-sessions, handoff packets, provider failover | [02-orchestration.md](02-orchestration.md) | 01 | **A** (after 01) |
 | 03 | **Trust gates & playbooks**: repo profile, test gates, cross-provider review, scope guards, pstack-style playbooks | [03-trust-gates-and-playbooks.md](03-trust-gates-and-playbooks.md) | nothing for M1–M4; 01 for M5 | **B** |
 | 04 | **PR workflow**: diff, draft PR, checks, address review comments, update branch, shortcuts | [04-pr-workflow.md](04-pr-workflow.md) | 01 | **B** (after 03 M1–M4) |
+| 05 | **Coordination**: chats woken when their tasks finish, context that fits on a provider switch, retry-safe task tools, nothing ending silently, wait for a task, fork and merge back, attach a chat | [05-coordination.md](05-coordination.md) | 01, 02 (both merged) | **C** |
+
+01, 02 and 03 (M1–M4) are merged into `main`. 04 and 05 are next and can run side by side: 04 works in its own `server/prs/` and the PR UI, 05 in `server/tasks/`, `server/orchestration/` and the turn pipeline. Both make small changes to `server/tasks/notify.ts`; whoever merges second resolves.
 
 ## Parallel plan: two worktrees
 
@@ -43,6 +46,13 @@ git worktree add ../tot-trust -b feat/trust main
 cd ../tot-tasks && npm ci        # each worktree needs its own node_modules
 ```
 
+Module 05 gets its own worktree from today's `main`:
+
+```bash
+git worktree add ../tot-coordination -b feat/coordination main
+cd ../tot-coordination && npm ci
+```
+
 ## Running the app inside a worktree
 
 The user's own TOT runs from the main checkout: web on 5173, API on 8787, Executor on 4791, with data in `~/.tot`. **Never use those ports or that folder from a worktree.** `~/.tot` holds:
@@ -54,7 +64,7 @@ The user's own TOT runs from the main checkout: web on 5173, API on 8787, Execut
 Don't copy `.env` either: without `TOT_ACCESS_TOKEN` the app stays local-only, which is what you want.
 
 ```bash
-# Worktree A (use 8802 / 5182 / 4802 for worktree B)
+# Worktree A (use 8802 / 5182 / 4802 for worktree B, 8803 / 5183 / 4803 and ~/.tot-dev-c for worktree C)
 TOT_DATA_DIR=$HOME/.tot-dev-a TOT_PORT=8801 TOT_EXECUTOR_PORT=4801 npm run dev:server
 TOT_PORT=8801 npx vite --port 5181 --strictPort
 ```

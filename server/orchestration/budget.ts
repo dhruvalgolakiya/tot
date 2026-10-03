@@ -20,9 +20,9 @@ export function missionRoot(conversation: ConversationRecord): ConversationRecor
   return current;
 }
 
-/** Tokens used by every task under a mission's root (and the root, when it's a task). */
+/** Tokens used by every task under a mission's root (and the root: its own turns when it's a task, its wake-ups when it's a chat). */
 export function missionUsage(root: ConversationRecord): number {
-  let total = root.task ? root.task.usage.inputTokens + root.task.usage.outputTokens : 0;
+  let total = (root.task ? root.task.usage.inputTokens + root.task.usage.outputTokens : 0) + root.wakeTokens;
   const queue = [root.id];
   for (let i = 0; i < queue.length && i < 200; i++) {
     for (const child of conversations.tasks({ parentId: queue[i] })) {

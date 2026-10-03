@@ -8,6 +8,8 @@ import { brainHints } from "../agent/brain-hints.ts";
 import { computerManager, type ActiveComputer, type Screenshot } from "../computer/manager.ts";
 import { MCP_TOKEN, VERSION } from "../config.ts";
 import { appEvents } from "../app-events.ts";
+import { attachedTo } from "../chats/attach.ts";
+import { forks } from "../chats/fork.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
@@ -388,22 +390,37 @@ function buildServer(conversation: ConversationRecord): McpServer {
           );
         }),
     );
-
-    server.registerTool(
-      "chat_read",
-      {
-        title: "Read an earlier chat",
-        description: "Read the transcript of one of your earlier chats in this workspace, by the id from chat_search or your recent-chats list.",
-        inputSchema: { chatId: z.string().min(1).describe("The chat id") },
-      },
-      ({ chatId }) =>
-        guarded(async () => {
-          const chat = chatId === conversationId ? null : chatSearch.transcript(agentId, chatId);
-          if (!chat) return reply(`No earlier chat with id ${chatId} in this workspace.`, true);
-          return reply(`“${chat.title}”\n\n${chat.text || "(no messages)"}`);
-        }),
-    );
   }
+
+  // chat_read always works on this chat (context selection points models at what it left out) and on the
+  // chats linked to it (the one it was forked from, its forks, chats attached to its messages); on the
+  // workspace's other chats only with memory on.
+  server.registerTool(
+    "chat_read",
+    {
+      title: "Read a chat",
+      description:
+        "Read a chat in this workspace — an earlier one (by the id from chat_search or your recent-chats list) or this one — newest messages first: a page of messages in order, and how to read further back with `before`.",
+      inputSchema: {
+        chatId: z.string().min(1).describe("The chat id"),
+        before: z.string().optional().describe("A message id: read the messages before it (from the hint at the end of the last page)"),
+        limit: z.number().int().min(1).max(50).optional().describe("Messages per page (default 20)"),
+      },
+    },
+    ({ chatId, before, limit }) =>
+      guarded(async () => {
+        const readable = memory.enabled || chatId === conversationId || forks.linked(conversation).has(chatId) || attachedTo(conversationId).has(chatId);
+        const chat = readable ? chatSearch.transcript(agentId, chatId, { before, limit }) : null;
+        if (!chat) return reply(before ? `No message ${before} in chat ${chatId} in this workspace.` : `No chat with id ${chatId} in this workspace.`, true);
+        if (!chat.messages.length) return reply(`“${chat.title}”\n\n(no messages${before ? " before that one" : ""})`);
+        const lines = chat.messages.map((m) => `${m.role === "user" ? "User" : "You"}: ${m.text}`);
+        const more = chat.earlier
+          ? `\n\n[${chat.earlier} earlier message${chat.earlier === 1 ? "" : "s"}. More before: chat_read { chatId: "${chatId}", before: "${chat.messages[0]!.id}" }]`
+          : "";
+        const range = `messages ${chat.earlier + 1}–${chat.earlier + chat.messages.length} of ${chat.total}, oldest first`;
+        return reply(`“${chat.title}”${chatId === conversationId ? " (this chat)" : ""} — ${range}\n\n${lines.join("\n\n")}${more}`);
+      }),
+  );
 
   registerRoutineTools(server, agentId);
   registerMailTools(server, agentId, conversationId);

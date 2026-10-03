@@ -1,4 +1,5 @@
 import { conversations } from "../data/conversations.ts";
+import { queueHolds } from "../data/queue-holds.ts";
 import { settings } from "../data/settings.ts";
 import { runLoop } from "./run-loop.ts";
 import { taskStore, type TaskRecord } from "./store.ts";
@@ -6,7 +7,8 @@ import { taskStore, type TaskRecord } from "./store.ts";
 /**
  * The task queue. An agent has one computer, so it runs at most a few tasks at once
  * (Settings → Tasks, default 2), and there's an app-wide cap too (default 4). Queued tasks
- * wait their turn, first in first out, unless the user reorders them or says "Run now".
+ * wait their turn, first in first out, unless the user reorders them or says "Run now". A paused
+ * queue (a provider kept failing; data/queue-holds.ts) starts nothing until the user resumes it.
  */
 
 const byPosition = (a: TaskRecord, b: TaskRecord) =>
@@ -52,7 +54,7 @@ export const taskQueue = {
     renumber(task.agentId, [...others.slice(0, index), task, ...others.slice(index)]);
   },
 
-  /** Starts queued tasks while their agents (and the app) have free slots: oldest place in line first. */
+  /** Starts queued tasks while their agents (and the app) have free slots: oldest place in line first. Paused queues wait. */
   pump(): void {
     const { perAgentLimit, globalLimit } = settings.get().tasks;
     const queued = conversations
@@ -60,9 +62,11 @@ export const taskQueue = {
       .filter((task): task is TaskRecord => task.task?.status === "queued")
       .sort(byPosition);
     const started = new Set<string>();
+    const held = new Map<string, boolean>();
+    const isHeld = (agentId: string) => held.get(agentId) ?? held.set(agentId, queueHolds.get(agentId) !== null).get(agentId)!;
     for (const task of queued) {
       if (runLoop.count() >= globalLimit) break;
-      if (runLoop.count(task.agentId) >= perAgentLimit) continue;
+      if (runLoop.count(task.agentId) >= perAgentLimit || isHeld(task.agentId)) continue;
       if (runLoop.start(task.id)) started.add(task.agentId);
     }
     for (const agentId of started) renumber(agentId);
@@ -71,7 +75,7 @@ export const taskQueue = {
   /** Whether a task would start right away if queued now. */
   hasSlot(agentId: string): boolean {
     const { perAgentLimit, globalLimit } = settings.get().tasks;
-    return runLoop.count() < globalLimit && runLoop.count(agentId) < perAgentLimit;
+    return runLoop.count() < globalLimit && runLoop.count(agentId) < perAgentLimit && !queueHolds.get(agentId);
   },
 
   /** Keeps the queue moving: renumbers when a task leaves it, and starts the next when a loop ends. */

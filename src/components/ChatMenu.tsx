@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Ellipsis, ListChecks } from "lucide-react";
+import { Ellipsis, GitFork, GitMerge, ListChecks } from "lucide-react";
 import type { Conversation } from "@shared/types";
-import { useStore } from "../store";
+import { forkChat, mergeBack, useStore } from "../store";
 import { MakeTaskDialog } from "./tasks/MakeTaskDialog";
 import { IconButton } from "./ui/IconButton";
 
@@ -10,6 +10,7 @@ import { IconButton } from "./ui/IconButton";
 export function ChatMenu({ chat }: { chat: Conversation }) {
   const [making, setMaking] = useState(false);
   const busy = useStore((s) => Boolean(s.activeRuns[chat.id]));
+  const source = useStore((s) => (chat.forkedFrom ? s.conversations.find((c) => c.id === chat.forkedFrom!.conversationId) : undefined));
 
   return (
     <>
@@ -32,6 +33,16 @@ export function ChatMenu({ chat }: { chat: Conversation }) {
               <ListChecks className="size-4 text-fg-muted" />
               <span className="flex-1">Make this a task</span>
             </DropdownMenu.Item>
+            <DropdownMenu.Item className="menu-item" disabled={busy} onSelect={() => void forkChat(chat.id)}>
+              <GitFork className="size-4 text-fg-muted" />
+              <span className="flex-1">Fork chat</span>
+            </DropdownMenu.Item>
+            {source && (
+              <DropdownMenu.Item className="menu-item" onSelect={() => void mergeBack(chat.id)}>
+                <GitMerge className="size-4 text-fg-muted" />
+                <span className="min-w-0 flex-1 truncate">Bring back to {source.title}</span>
+              </DropdownMenu.Item>
+            )}
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>

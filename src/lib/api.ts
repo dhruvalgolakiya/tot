@@ -18,6 +18,7 @@ import type {
   ContinueOnRequest,
   ConversationDetail,
   ConvertToTaskRequest,
+  ForkRequest,
   CreateConversationRequest,
   GitHubConnectRequest,
   GitHubDevicePoll,
@@ -174,6 +175,10 @@ export const api = {
   /** A task started from a chat: the request and its card are added to the chat. */
   startTaskFromChat: (conversationId: string, body: StartTaskRequest) =>
     request<Conversation>("POST", `/conversations/${seg(conversationId)}/tasks`, body),
+  /** A fork of the chat, at a reply or whole: a new chat with the history so far. */
+  forkChat: (conversationId: string, body: ForkRequest) => request<Conversation>("POST", `/conversations/${seg(conversationId)}/fork`, body),
+  /** A fork's new messages go back to the chat it came from, for that chat's next reply; resolves with that chat. */
+  mergeBack: (forkId: string) => request<Conversation>("POST", `/conversations/${seg(forkId)}/merge-back`, {}),
   convertToTask: (conversationId: string, body: ConvertToTaskRequest) =>
     request<Conversation>("POST", `/conversations/${seg(conversationId)}/convert`, body),
   /** A note for a running task; resolves with the saved message. */
@@ -182,6 +187,8 @@ export const api = {
   resumeTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/resume`, {}),
   stopTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/stop`, {}),
   runTaskNow: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/run-now`, {}),
+  /** A paused task queue (a provider kept failing) starts tasks again. */
+  resumeQueue: (agentId: string) => request<Agent>("POST", `/agents/${seg(agentId)}/queue/resume`, {}),
   taskToChat: (id: string) => request<Ok>("POST", `/tasks/${seg(id)}/to-chat`, {}),
   patchTask: (id: string, patch: TaskPatch) => request<Conversation>("PATCH", `/tasks/${seg(id)}`, patch),
   taskChanges: (id: string) => request<TaskChanges>("GET", `/tasks/${seg(id)}/changes`),

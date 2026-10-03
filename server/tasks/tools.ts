@@ -6,9 +6,12 @@ import { guarded, reply } from "../mcp/results.ts";
 import { handoffs } from "../orchestration/handoff.ts";
 import { ROLE_NAMES, toResult } from "../orchestration/roles.ts";
 import { spawnMany, type SpawnSpec } from "../orchestration/spawn.ts";
-import { MAX_DEPTH } from "./prompt.ts";
-import { taskStore, type TaskRecord } from "./store.ts";
+import { runRegistry } from "../agent/runs.ts";
+import { markResultsRead, MAX_DEPTH, resultBlock } from "./prompt.ts";
+import { taskRequests } from "./requests.ts";
+import { FINISHED, taskStore, type TaskRecord } from "./store.ts";
 import { tasks } from "./tasks.ts";
+import { DEFAULT_WAIT_MINUTES, MAX_WAIT_MINUTES, waitForTasks } from "./wait.ts";
 
 /**
  * The agent's task tools on TOT's MCP server. In a chat (and in a task that may start tasks of
@@ -53,6 +56,50 @@ const sessionShape = {
   context: z.array(z.string()).max(20).optional().describe("Brain pages, files and links to read first"),
   done: z.string().max(1000).optional().describe("What done means"),
 };
+const requestId = z
+  .string()
+  .min(1)
+  .max(100)
+  .optional()
+  .describe("Any id of yours for this call, e.g. a UUID. A repeat with the same id returns the tasks it started instead of starting new ones");
+const waitShape = {
+  wait: z.boolean().optional().describe("Wait here for the result instead of ending your turn: for a quick task whose result you need now"),
+  wait_minutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_WAIT_MINUTES)
+    .optional()
+    .describe(`How long to wait, 1–${MAX_WAIT_MINUTES} minutes (default ${DEFAULT_WAIT_MINUTES}); after that you hear when it finishes`),
+};
+
+/** What ends a wait early: the conversation's turn being stopped, or the tool call being cancelled. */
+function stopSignal(conversationId: string, callSignal: AbortSignal | undefined): AbortSignal | undefined {
+  const signals = [runRegistry.activeFor(conversationId)?.controller.signal, callSignal].filter((signal): signal is AbortSignal => Boolean(signal));
+  return signals.length ? AbortSignal.any(signals) : undefined;
+}
+
+/** Waits on started tasks, then says how they stand: results inline (read, so no wake repeats them), and what's still going. */
+async function waited(conversationId: string, started: TaskRecord[], minutes: number, signal: AbortSignal | undefined): Promise<string> {
+  const how = await waitForTasks(
+    started.map((task) => task.id),
+    minutes,
+    signal,
+  );
+  const now = started.map((task) => taskStore.get(task.id)).filter((task): task is TaskRecord => task !== null);
+  const ended = now.filter((task) => FINISHED.has(task.task.status));
+  markResultsRead(conversationId, ended.map((task) => task.id));
+  const open = now.filter((task) => !FINISHED.has(task.task.status));
+  const parts: string[] = [];
+  if (ended.length) parts.push(`${plural(ended.length, "task")} ended. Results:\n<task_results>\n${ended.map(resultBlock).join("\n")}\n</task_results>`);
+  if (open.length) {
+    const why = how === "timeout" ? `Still running after ${plural(minutes, "minute")}` : how === "stopped" ? "Stopped waiting: your turn was stopped" : "Not finished";
+    const it = open.length === 1 ? "it" : "they";
+    parts.push(`${why}; you'll hear when ${it} finish${open.length === 1 ? "es" : ""}, no need to check on ${open.length === 1 ? "it" : "them"}:\n${open.map(describe).join("\n")}`);
+  }
+  return parts.join("\n\n");
+}
+
 type SessionInput = { [K in keyof typeof sessionShape]?: z.infer<(typeof sessionShape)[K]> } & { title: string; goal: string };
 
 const toSpec = (input: SessionInput): SpawnSpec => ({
@@ -79,16 +126,22 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     {
       title: "Start a task",
       description:
-        "Start a task: work that runs in the background until it's done (on your computer; with `repo`, on its own git branch and worktree), shown as a live card here, reporting a structured result back. Use it for real work that takes more than a few minutes — a code change, research across sources, a report. The task gets a brief, not this conversation: make the goal self-contained.",
-      inputSchema: sessionShape,
+        "Start a task: work that runs in the background until it's done (on your computer; with `repo`, on its own git branch and worktree), shown as a live card here, reporting a structured result back. Use it for real work that takes more than a few minutes — a code change, research across sources, a report. The task gets a brief, not this conversation: make the goal self-contained. Pass a `request_id` if you might retry this call. For a quick task whose result you need now, pass `wait: true` to get it in this call.",
+      inputSchema: { ...sessionShape, request_id: requestId, ...waitShape },
     },
-    (input) =>
+    ({ request_id, wait, wait_minutes, ...input }, extra) =>
       guarded(async () => {
-        const [task] = spawnMany(conversation.id, [toSpec(input)], { cards: { kind: "reply" } });
-        const where = task!.task.status === "queued" ? `queued (#${task!.task.queuePosition} in line; it starts when a slot frees up)` : task!.task.status;
-        return reply(
-          `Started task ${task!.id} “${task!.title}”${task!.task.role ? ` as ${task!.task.role} (${task!.task.tier})` : ""}: ${where}.${task!.task.repo ? ` It works on branch ${task!.task.repo.branch} in ${task!.task.repo.worktree}.` : ""} Its card is here, and its result comes back when it finishes. Check on it with task_status.`,
+        const { tasks: started, repeat } = taskRequests.once(conversation.id, request_id ?? null, () =>
+          spawnMany(conversation.id, [toSpec(input)], { cards: { kind: "reply" } }),
         );
+        const task = started[0];
+        if (!task) return reply(`This request_id already started a task, which has since been deleted. Nothing new was started.`);
+        const where = task.task.status === "queued" ? `queued (#${task.task.queuePosition} in line; it starts when a slot frees up)` : task.task.status;
+        const said = repeat
+          ? `Already started with this request_id; nothing new was started:\n${describe(task)}`
+          : `Started task ${task.id} “${task.title}”${task.task.role ? ` as ${task.task.role} (${task.task.tier})` : ""}: ${where}.${task.task.repo ? ` It works on branch ${task.task.repo.branch} in ${task.task.repo.worktree}.` : ""} Its card is here.`;
+        if (wait) return reply(`${said}\n\n${await waited(conversation.id, started, wait_minutes ?? DEFAULT_WAIT_MINUTES, stopSignal(conversation.id, extra.signal))}`);
+        return reply(`${said} Its result comes back when it finishes. Check on it with task_status.`);
       }),
   );
 
@@ -97,18 +150,26 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     {
       title: "Start several tasks",
       description:
-        'Fan out: start several sessions at once for independent parts of the work (e.g. one researcher per vendor), each with its own role and brief. With then: "synthesize", you get one turn with all their results to combine once the last one finishes. Don\'t use it for small or sequential work.',
+        'Fan out: start several sessions at once for independent parts of the work (e.g. one researcher per vendor), each with its own role and brief. With then: "synthesize", you get one turn with all their results to combine once the last one finishes; with `wait: true`, you get them in this call instead. Don\'t use it for small or sequential work. Pass a `request_id` if you might retry this call.',
       inputSchema: {
         sessions: z.array(z.object(sessionShape)).min(1).max(6).describe("One entry per session"),
         then: z.enum(["synthesize"]).optional().describe('"synthesize": combine their results in one turn here when they\'re all done'),
+        request_id: requestId,
+        ...waitShape,
       },
     },
-    ({ sessions, then }) =>
+    ({ sessions, then, request_id, wait, wait_minutes }, extra) =>
       guarded(async () => {
-        const started = spawnMany(conversation.id, sessions.map(toSpec), { then, cards: { kind: "reply" } });
-        return reply(
-          `Started ${plural(started.length, "task")}:\n${started.map(describe).join("\n")}\n${then ? "You'll get their results in one turn when they've all finished." : "Their results come back as they finish."}`,
+        if (wait && then) return reply('Pass either wait (their results in this call) or then: "synthesize" (one turn with all of them later), not both.', true);
+        const { tasks: started, repeat } = taskRequests.once(conversation.id, request_id ?? null, () =>
+          spawnMany(conversation.id, sessions.map(toSpec), { then, cards: { kind: "reply" } }),
         );
+        if (repeat && !started.length) return reply("This request_id already started tasks, which have since been deleted. Nothing new was started.");
+        const said = repeat
+          ? `Already started with this request_id; nothing new was started:\n${started.map(describe).join("\n")}`
+          : `Started ${plural(started.length, "task")}:\n${started.map(describe).join("\n")}`;
+        if (wait) return reply(`${said}\n\n${await waited(conversation.id, started, wait_minutes ?? DEFAULT_WAIT_MINUTES, stopSignal(conversation.id, extra.signal))}`);
+        return reply(`${said}\n${then ? "You'll get their results in one turn when they've all finished." : "Their results come back as they finish."}`);
       }),
   );
 
@@ -138,6 +199,8 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
       guarded(async () => {
         const task = child(conversation, id);
         if (!task) return reply(`No task with id ${id} was started from here.`, true);
+        // Its result has been seen now: no wake-up or next-turn note repeats it.
+        markResultsRead(conversation.id, [id]);
         const plan = task.task.plan.map((step) => `  - [${step.done ? "x" : " "}] ${step.text}`).join("\n");
         const result = task.task.result;
         const extra = result

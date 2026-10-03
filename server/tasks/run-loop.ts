@@ -1,10 +1,13 @@
 import { setImmediate as tick, setTimeout as sleep } from "node:timers/promises";
 import type { Message, MessageStatus, ProviderId, RunEvent, SendMessageRequest } from "../../shared/types.ts";
+import { HANDOFF_TAIL_BUDGET, lastExchange } from "../agent/context-select.ts";
 import { limits } from "../agent/limits.ts";
 import { HttpError, sendMessage, type TurnOptions } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
+import { appEvents } from "../app-events.ts";
 import { conversations } from "../data/conversations.ts";
 import { messageText, messages } from "../data/messages.ts";
+import { queueHolds } from "../data/queue-holds.ts";
 import { overBudget } from "../orchestration/budget.ts";
 import { renderBrief } from "../orchestration/roles.ts";
 import { continuationPreamble, handoffPreamble } from "./prompt.ts";
@@ -53,7 +56,7 @@ let onLimit: ((taskId: string, provider: ProviderId) => Promise<"switched" | "pa
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Resolves with how a run ended (null when it's unknown). */
-function runEnd(runId: string): Promise<RunEnd | null> {
+export function runEnd(runId: string): Promise<RunEnd | null> {
   const run = runRegistry.get(runId);
   if (!run) return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -139,7 +142,9 @@ function nextTurn(task: TaskRecord): { body: SendMessageRequest; options: TurnOp
       ...options,
       auto: true,
       freshSession: fresh,
-      preamble: packet ? `${handoffPreamble(packet, `${handOff}.`)}\n${continuation}` : continuation,
+      preamble: packet
+        ? `${handoffPreamble(packet, `${handOff}.`, lastExchange(history, { budgetTokens: HANDOFF_TAIL_BUDGET, chatId: task.id }))}\n${continuation}`
+        : continuation,
     },
   };
 }
@@ -249,7 +254,14 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
       }
       stalls++;
       if (stalls >= MAX_STALLS) {
-        fail(taskId, `Stopped after repeated errors: ${end?.message.error ?? "the turn ended unexpectedly."}`);
+        const error = end?.message.error ?? "the turn ended unexpectedly.";
+        // A provider that keeps failing would fail every queued task the same way: pause the agent's queue
+        // until the user resumes it. A usage limit never does (failover switches or waits for the reset).
+        if (!(provider && limits.active().has(provider))) {
+          queueHolds.set(task.agentId, provider ?? null, error);
+          appEvents.agentChanged(task.agentId);
+        }
+        fail(taskId, `Stopped after repeated errors: ${error}`);
         return;
       }
       continue;

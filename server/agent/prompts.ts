@@ -286,16 +286,14 @@ Your name is ${name}. Under the hood, TOT sends each message to a model from the
     .join("\n\n");
 }
 
-/** Plain transcript used to carry a conversation over when the provider changes mid-chat. */
-export function transcriptPreamble(turns: { role: "user" | "assistant"; text: string }[], nextMessage: string): string {
-  if (!turns.length) return nextMessage;
-  const body = turns
-    .map((t) => `<${t.role}>\n${t.text}\n</${t.role}>`)
-    .join("\n");
-  return `This chat started with another model. Here is the conversation so far, for context:
-<conversation>
-${body}
-</conversation>
+/**
+ * Carries a conversation over when the provider changes mid-chat: the earlier messages picked to fit
+ * (agent/context-select.ts), as a <conversation> block, then the user's new message.
+ */
+export function transcriptPreamble(conversation: string, nextMessage: string, opening = "This chat started with another model."): string {
+  if (!conversation) return nextMessage;
+  return `${opening} Here is the conversation so far, for context:
+${conversation}
 
 Continue the conversation. The user's new message:
 ${nextMessage}`;
