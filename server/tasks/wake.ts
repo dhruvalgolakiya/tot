@@ -33,6 +33,8 @@ const timers = new Map<string, NodeJS.Timeout>();
 /** Chats with a wake under way, and those that got more results meanwhile. */
 const busy = new Set<string>();
 const followUps = new Set<string>();
+/** Tasks a tool call is waiting on (wait.ts): their results go back in that call, not in a wake. */
+const heldBack = new Map<string, number>();
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -46,7 +48,7 @@ export function wakes(task: TaskRecord): boolean {
 function unread(chat: ConversationRecord): string[] {
   return chat.childResults.filter((id) => {
     const task = taskStore.get(id);
-    return task !== null && task.task.then !== "synthesize";
+    return task !== null && task.task.then !== "synthesize" && !heldBack.has(id);
   });
 }
 
@@ -173,6 +175,19 @@ export const chatWakes = {
     for (const timer of timers.values()) clearTimeout(timer);
     timers.clear();
     followUps.clear();
+  },
+
+  /** A tool call waits on these tasks (wait.ts): wakes leave their results to it until `release`. */
+  holdBack(ids: string[]): void {
+    for (const id of ids) heldBack.set(id, (heldBack.get(id) ?? 0) + 1);
+  },
+
+  release(ids: string[]): void {
+    for (const id of ids) {
+      const left = (heldBack.get(id) ?? 1) - 1;
+      if (left > 0) heldBack.set(id, left);
+      else heldBack.delete(id);
+    }
   },
 
   /** Tests: a shorter wait for results to batch up. */

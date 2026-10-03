@@ -33,6 +33,7 @@ const { taskNotifications } = await import("./tasks/notify.ts");
 const { runEnd, runLoop } = await import("./tasks/run-loop.ts");
 const { taskStore } = await import("./tasks/store.ts");
 const { tasks } = await import("./tasks/tasks.ts");
+const { taskWaits } = await import("./tasks/wait.ts");
 const { chatWakes, wakeText } = await import("./tasks/wake.ts");
 type Run = import("./agent/runs.ts").Run;
 type TurnOptions = import("./agent/orchestrator.ts").TurnOptions;
@@ -650,6 +651,74 @@ input = await realTurn(cutReply.id, { text: "where were we?" });
 check("…the chat's next turn is told once", input.prompt.startsWith("[TOT restarted during your last reply, so it was cut off. Check where things stand before you carry on.]"), input.prompt.slice(0, 120));
 input = await realTurn(cutReply.id, { text: "and now?" });
 check("…and not again", !input.prompt.includes("TOT restarted"));
+
+// =============================================================================
+// M5: wait for a task
+// =============================================================================
+taskWaits.useMinute(400);
+
+// A fast task: its result comes back in the tool call, and no wake follows.
+const quick = chatWith("Quick wait");
+const holdQuick = gate();
+scripts.set(quick.id, async (t) => {
+  if (t.index > 0) return t.say("An extra turn.");
+  await holdQuick.wait;
+  t.say("The rate is 1.08.");
+});
+byGoal.push([/^Look up the exchange rate/, finishAfter(100)], [/^Look up (EUR|GBP)$/, finishAfter(50)]);
+await fakeSend(quick.id, { text: "what's the rate?" });
+const { client: quickClient, call: quickCall } = await mcp(quick.id);
+const quickReply = await quickCall("task_start", { title: "Exchange rate", goal: "Look up the exchange rate", wait: true });
+check("wait: the result comes back in the call", !quickReply.isError && quickReply.text.includes("1 task ended. Results:") && quickReply.text.includes('"summary": "Exchange rate: result"'), quickReply.text);
+check("…marked read", conversations.get(quick.id)!.childResults.length === 0);
+const both = await quickCall("task_spawn_many", { sessions: [{ title: "EUR", goal: "Look up EUR" }, { title: "GBP", goal: "Look up GBP" }], wait: true });
+check("task_spawn_many waits for all of them", both.text.includes("2 tasks ended") && both.text.includes("EUR: result") && both.text.includes("GBP: result"), both.text.slice(0, 200));
+check("…not together with then: synthesize", (await quickCall("task_spawn_many", { sessions: [{ title: "x", goal: "Look up EUR" }], wait: true, then: "synthesize" })).isError);
+holdQuick.open();
+await until(() => !runRegistry.activeFor(quick.id));
+await sleep(500);
+check("…and no wake follows", sentTo(quick.id).length === 1 && !conversations.get(quick.id)!.wakePending && conversations.get(quick.id)!.childResults.length === 0, String(sentTo(quick.id).length));
+await quickClient.close();
+
+// A wait that runs out says "still running", and one wake follows when the task finishes.
+const slow = chatWith("Slow wait");
+const holdSlow = gate();
+scripts.set(slow.id, async (t) => {
+  if (t.index > 0) return t.say("The report is in.");
+  await holdSlow.wait;
+  t.say("I'll tell you when it's in.");
+});
+byGoal.push([/^Write the long report/, finishAfter(1200)]);
+await fakeSend(slow.id, { text: "write the report" });
+const { client: slowClient, call: slowCall } = await mcp(slow.id);
+let began = Date.now();
+const slowReply = await slowCall("task_start", { title: "Long report", goal: "Write the long report", wait: true, wait_minutes: 1 });
+check("timed out: still running", slowReply.text.includes("Still running after 1 minute; you'll hear when it finishes") && Date.now() - began < 1000, `${Date.now() - began}ms ${slowReply.text.slice(-160)}`);
+holdSlow.open();
+await until(() => sentTo(slow.id).length === 2, 5000);
+await until(() => !runRegistry.activeFor(slow.id));
+await sleep(400);
+check("…then one wake when it finishes", sentTo(slow.id).length === 2 && sentTo(slow.id)[1]!.text === "“Long report” finished.", JSON.stringify(sentTo(slow.id).map((x) => x.text)));
+await slowClient.close();
+
+// Stopping the parent turn ends the wait.
+const stopWait = chatWith("Stopped wait");
+scripts.set(stopWait.id, async (t) => {
+  if (t.index === 0) await t.stopped;
+});
+byGoal.push([/^Never-ending crawl/, async (t) => void (await t.stopped)]);
+await fakeSend(stopWait.id, { text: "crawl everything" });
+const { client: stopClient, call: stopCall } = await mcp(stopWait.id);
+began = Date.now();
+const pendingWait = stopCall("task_start", { title: "Crawl", goal: "Never-ending crawl", wait: true, wait_minutes: 10 });
+await sleep(300);
+runRegistry.activeFor(stopWait.id)!.stop();
+const stoppedWait = await pendingWait;
+check("stopping the turn ends the wait", stoppedWait.text.includes("Stopped waiting: your turn was stopped") && Date.now() - began < 2000, `${Date.now() - began}ms ${stoppedWait.text.slice(-120)}`);
+const crawl = conversations.tasks({ parentId: stopWait.id })[0]!;
+check("…and the task keeps running", status(crawl.id) === "running");
+await request("POST", `/tasks/${crawl.id}/stop`);
+await stopClient.close();
 
 server.close();
 chatWakes.stop();

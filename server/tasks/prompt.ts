@@ -15,7 +15,7 @@ export function chatTasksSection(): string {
 For real work that takes more than a few minutes — a change to a codebase, research across several sources, a report or comparison — start a task with task_start instead of doing it here. A task runs in the background on your computer (a coding task on its own git branch and worktree), shows in this chat as a live card, and reports its result back here when it finishes; the user can close the tab meanwhile. Start several at once for independent pieces of work (say, one per vendor to research). Keep quick questions and small edits inline.
 - Give each task a short title and a goal that stands on its own: the task doesn't see this chat, so include what it needs to know and what "done" means.
 - For code, pass \`repo\` (GitHub "owner/name", a git URL, or a folder on your computer such as ~/repos/web).
-- After starting tasks, tell the user in a sentence what you started; don't wait for them. task_list and task_status show how they're doing; task_message adds an instruction to a running one.
+- After starting tasks, tell the user in a sentence what you started; don't wait for them: when they finish, you get their results here and a turn to tell the user. For a quick one whose result you need for this answer, pass \`wait: true\` and get it in the same call. task_list and task_status show how they're doing; task_message adds an instruction to a running one.
 ${FAN_OUT}`;
 }
 

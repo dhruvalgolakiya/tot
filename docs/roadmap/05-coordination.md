@@ -151,12 +151,13 @@ Read [README.md](README.md) first.
     - A stopped task's chat gets a notice, and the stop is in its next turn's results.
     - A chat reply cut off by a restart is mentioned once on the chat's next turn.
   - *Shipped:* `reportToParent` covers every ending (a stopped task, and an interrupted one when auto-resume is off), with the notices above; deleting a task isn't reported. `resultBlock` gives those a status and a note, no result. Startup marks a still-streaming reply `stopped` with `error: "Cut off when TOT restarted."` (shown under the reply), and a chat's next turn opens with the one-line note. `queue_holds` + `server/data/queue-holds.ts`: `run-loop` holds the agent's queue on "Stopped after repeated errors" unless the provider is at its usage limit, `pump()` skips held agents, `agent.queueHold` drives "Queue paused: Claude kept failing. Resume" in the sidebar's Tasks section and the queue popover (the error on hover), and `POST /api/agents/:id/queue/resume` (or Run now) clears it. Wakes start before tasks at boot, so a task cut off by the restart wakes its chat.
-- [ ] **M5 · Wait for a task.**
+- [x] **M5 · Wait for a task.**
   - What to build: `wait` / `wait_minutes` on both tools.
   - *Accept:*
     - A fast fake task returns its result in the tool call, with no wake after.
     - A timed-out wait returns "still running", and one wake follows when the task finishes.
     - Stopping the parent turn ends the wait.
+  - *Shipped:* `server/tasks/wait.ts` (`waitForTasks`: until every task is done, failed, stopped, paused, cut off or asking the user; the timeout; or the turn's abort signal / the call's own cancel). `task_start` and `task_spawn_many` take `wait` and `wait_minutes` (1–10, default 5); results come back inline and are marked read, and wakes hold back from tasks being waited on, so nothing is told twice. `wait` with `then: "synthesize"` is refused. The chat's task instructions now say results come back on their own, and when to wait.
 - [ ] **M6 · Fork and merge back.**
   - What to build: `fork.ts`, the `provider_ref` and `forkedFrom` columns, native forks on both providers, the `selectContext` fallback, merge-back, the menu items.
   - *Accept:*
