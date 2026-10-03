@@ -66,6 +66,7 @@ import { taskQueue } from "./tasks/queue.ts";
 import { taskRoutes } from "./tasks/routes.ts";
 import { isTask } from "./tasks/store.ts";
 import { tasks } from "./tasks/tasks.ts";
+import { trustRoutes } from "./trust/routes.ts";
 
 export const api = new Hono();
 
@@ -894,3 +895,9 @@ api.patch("/settings", async (c) => {
   if (patch.claude || patch.anthropicApiKey !== undefined) void providerStatuses(true);
   return c.json(next);
 });
+
+// ---------------------------------------------------------------------------
+// Trust gates & playbooks (module 03): repo profiles, checks, reviews, playbooks
+// ---------------------------------------------------------------------------
+
+api.route("/", trustRoutes);

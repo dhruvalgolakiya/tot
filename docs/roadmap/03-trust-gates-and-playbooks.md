@@ -166,18 +166,23 @@ See [pstack explained](https://hustlecoding.github.io/pstack-explained/).
 
 ## Milestones
 
-- [ ] **M1 · Repo profile.**
+- [x] **M1 · Repo profile.**
   - Table, routes, draft from code (and the Learn a repo hook), the editor UI with "Run now" per command, and the rendered brain page.
   - *Accept:* Learn a repo on a real-shaped fixture repo yields a correct draft profile (commands, protected paths); edits persist and show in the brain.
-- [ ] **M2 · Gates.**
+  - *Shipped:* `server/trust/profile.ts` drafts commands from the repo's own manifests (npm/pnpm/yarn/bun, Python, Go, Rust, Ruby, Makefile) and protected paths from its file tree; a light model only adds conventions, definition of done and missing commands from Learn a repo's notes. Brain menu → "Repo profile…" edits it, with Run now per command; it renders as the brain's "Repo profile" page.
+- [x] **M2 · Gates.**
   - `runGates` with baseline caching, `checkScope` (scope, deps, size, skipped tests), the dev route, and the GateReport component.
   - *Accept:* on a temp repo with a failing test on base and a new failure on a branch, only the new failure blocks; adding a dependency is flagged needs-approval; `.skip` is caught.
-- [ ] **M3 · Independent review.**
+  - *Shipped:* `server/trust/gates.ts` reruns a failing command on the base commit in a throwaway worktree (cached by commit) and blocks only on failure lines the base doesn't have; `server/trust/scope.ts` checks plan files, protected paths, dependencies (package.json by name), size and skipped/commented/deleted tests. `POST /api/trust/check` and the Checks lab at `/dev/trust` (with samples) render the GateReport.
+- [x] **M3 · Independent review.**
   - `reviewDiff` on the other provider, structured findings, the dev route, and the Review component.
   - *Accept:* on a fixture diff that calls a non-existent function and has an off-by-one, the review returns `changes-requested` with both as must-fix (asserted with a fake provider returning the structured JSON, plus one manual run with a real provider recorded in this doc).
-- [ ] **M4 · Playbooks.**
+  - *Shipped:* `server/trust/review.ts` asks a fresh, tool-less model on the other provider (Settings → Workflows can fix one), with the plan, conventions, latest checks, a diff numbered by new-file line, and the calls in it that exist nowhere else in the repo (`git grep`). Output is validated with zod and re-asked once; big diffs are reviewed in parts. `POST /api/trust/review` (dev only) and the Review component in the Checks lab.
+  - *Manual run with a real provider (2026-10-03):* a fixture storefront branch with `i <= items.length` in `src/cart.js`, a call to a non-existent `applyDiscount` in `src/checkout.js` and an unplanned migration, marked as written by Claude. ChatGPT (`gpt-6-astra`) reviewed it in 24 s: `changes-requested`, both bugs must-fix at the right lines (`src/cart.js:3`, `src/checkout.js:5`), plus should-fixes for the unrelated migration and tests that never reach the totals code.
+- [x] **M4 · Playbooks.**
   - Built-ins, the custom-playbook table, `matchPlaybook`, and Settings → Workflows.
   - *Accept:* "the checkout page crashes when the cart is empty" matches Bug fix, and "add CSV export" matches Feature; a duplicated playbook can be edited and saved.
+  - *Shipped:* `server/trust/playbooks.ts` with the five built-ins (instructions carry the anti-hallucination rules), custom playbooks with validation (approve-plan needs a plan, a fix loop needs something to fix), and `matchPlaybook`: hints as whole words first, the light classifier on a tie, Feature as the fallback. Settings → Workflows has the defaults (plans need your OK by default, as the open question proposed; reviewer; fix rounds), the playbook list with on/off and "Duplicate & edit", and a step editor. `isReadOnly` marks playbooks without implement or fix-loop steps for M5's scope gate.
 - [ ] **M5 · Engine plus task integration** (after 01 is on `main`).
   - Tasks run their playbook; gates after each step; the fix-loop; plan approval; the Checks tab; `needs-input` escalation.
   - *Accept:* a Bug fix task on a fixture repo reproduces the bug with a failing test, fixes it, passes gates, gets an approving review, and ends with a summary that links the evidence. A task that changes a protected path stops for approval.

@@ -1,5 +1,5 @@
 import type { Effort, ProviderId, ProviderStatus, Tier } from "../../shared/types.ts";
-import { pickTier } from "../orchestration/tiers.ts";
+import { pickTier, tierModel } from "../orchestration/tiers.ts";
 
 export { CLAUDE_OPUS, CLAUDE_SONNET } from "../orchestration/tiers.ts";
 
@@ -95,4 +95,13 @@ export function resolveRoute(modelId: string, text: string, opts: RouteOptions):
     ok: true,
     route: { provider, model, effort, reason: `Auto · ${why} → ${modelLabel(opts.statuses, provider, model)}${note ? ` (${note})` : ""}` },
   };
+}
+
+/**
+ * The model for one-shot work TOT does itself on a given provider — light (fast tier) for
+ * drafting and classifying, heavy (deep tier) for reviewing code — with the same tiers as Auto.
+ * Null when the provider has none.
+ */
+export function modelForWork(provider: ProviderId, heavy: boolean, statuses: ProviderStatus[]): string | null {
+  return tierModel(heavy ? "deep" : "fast", provider, statuses)?.model ?? null;
 }

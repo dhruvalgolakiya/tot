@@ -59,6 +59,13 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     hasDraft: false,
   },
   {
+    id: "workflows",
+    label: "Workflows",
+    description: "How agents work through coding tasks: playbooks, plan approval, and independent reviews.",
+    icon: ListChecks,
+    hasDraft: false,
+  },
+  {
     id: "apps",
     label: "Apps",
     description: "Connect Gmail, Linear, Notion and more once; every agent can use them. Actions that change things ask for your OK first.",
