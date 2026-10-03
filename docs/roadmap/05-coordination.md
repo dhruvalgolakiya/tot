@@ -130,12 +130,13 @@ Read [README.md](README.md) first.
     - A wake pending at shutdown happens once after startup.
     - Never two wake turns at once.
   - *Shipped:* `server/tasks/wake.ts` (`chatWakes`) is flagged by `reportToParent`, batches results for 3 s, steers them into a running turn or waits for it to end, then sends one auto turn; follow-ups, the restart pass (`wake_pending`), the budget (`wake_tokens` counts in `missionUsage`) and Slack/email delivery (the task's own thread post is held back for it) are covered in `server/coordination.test.ts`. `childResultsNote` now clears only the results it read, and `task_status` marks one read. Settings → Tasks → "Tell the chat when its tasks finish" (`tasks.wakeChats`, default on).
-- [ ] **M2 · Context selection on provider switch.**
+- [x] **M2 · Context selection on provider switch.**
   - What to build: `context-select.ts`, `withTranscript()` replaced, the verbatim tail after a handoff packet, `chat_read` paging including the current chat.
   - *Accept:*
     - A 300-message chat switched from Claude to ChatGPT sends at most the budget.
     - It always includes the first and latest user messages and the latest reply, in order, plus the omitted count and the `chat_read` pointer.
     - The model can page the rest. A 6-message chat goes in whole.
+  - *Shipped:* `server/agent/context-select.ts` (`selectContext`, `lastExchange`, the 16k / 4k budgets) feeds `transcriptPreamble` on a provider switch and on a failed resume; gaps are marked in place and the closing line carries `chat_read { chatId, before }`. A kept message too big for the budget on its own is the one thing that gets cut, and says so. Handoff packets end with `<last_exchange>` (the last message from a person and the last reply). `chat_read` pages (`before`, `limit` 20/50, 4,000 characters a message), reads the current chat, and is now registered with memory off too, for the current chat only. Tested through the real turn pipeline with fake providers.
 - [ ] **M3 · Retry-safe task tools.**
   - What to build: the `task_requests` table, and `request_id` / `requestId` on the tools and the route.
   - *Accept:*

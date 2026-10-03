@@ -1,5 +1,6 @@
 import { setImmediate as tick, setTimeout as sleep } from "node:timers/promises";
 import type { Message, MessageStatus, ProviderId, RunEvent, SendMessageRequest } from "../../shared/types.ts";
+import { HANDOFF_TAIL_BUDGET, lastExchange } from "../agent/context-select.ts";
 import { limits } from "../agent/limits.ts";
 import { HttpError, sendMessage, type TurnOptions } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
@@ -139,7 +140,9 @@ function nextTurn(task: TaskRecord): { body: SendMessageRequest; options: TurnOp
       ...options,
       auto: true,
       freshSession: fresh,
-      preamble: packet ? `${handoffPreamble(packet, `${handOff}.`)}\n${continuation}` : continuation,
+      preamble: packet
+        ? `${handoffPreamble(packet, `${handOff}.`, lastExchange(history, { budgetTokens: HANDOFF_TAIL_BUDGET, chatId: task.id }))}\n${continuation}`
+        : continuation,
     },
   };
 }

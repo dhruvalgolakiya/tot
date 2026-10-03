@@ -11,7 +11,9 @@ import type { ConversationOrigin, Message, SendMessageRequest } from "../shared/
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 const PORT = 8791;
 
-const { HttpError } = await import("./agent/orchestrator.ts");
+const { HttpError, sendMessage } = await import("./agent/orchestrator.ts");
+const { lastExchange, selectContext, tokens, SWITCH_BUDGET } = await import("./agent/context-select.ts");
+const { providers } = await import("./agent/providers/index.ts");
 const { MessageBuilder } = await import("./agent/message-builder.ts");
 const { runRegistry } = await import("./agent/runs.ts");
 const { MCP_TOKEN } = await import("./config.ts");
@@ -22,14 +24,17 @@ const { settings } = await import("./data/settings.ts");
 const { createApp } = await import("./app.ts");
 const { missionUsage } = await import("./orchestration/budget.ts");
 const { fanIn } = await import("./orchestration/fanin.ts");
+const { handoffs } = await import("./orchestration/handoff.ts");
 const { spawnMany } = await import("./orchestration/spawn.ts");
 const { taskNotifications } = await import("./tasks/notify.ts");
-const { runLoop } = await import("./tasks/run-loop.ts");
+const { runEnd, runLoop } = await import("./tasks/run-loop.ts");
 const { taskStore } = await import("./tasks/store.ts");
 const { tasks } = await import("./tasks/tasks.ts");
 const { chatWakes, wakeText } = await import("./tasks/wake.ts");
 type Run = import("./agent/runs.ts").Run;
 type TurnOptions = import("./agent/orchestrator.ts").TurnOptions;
+type TurnInput = import("./agent/providers/types.ts").TurnInput;
+type AgentProvider = import("./agent/providers/types.ts").AgentProvider;
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -50,6 +55,42 @@ function gate(): { wait: Promise<void>; open: () => void } {
 }
 
 settings.patch({ computer: { mode: "local" }, tasks: { perAgentLimit: 6, globalLimit: 12, maxChildren: 6, missionTokenBudget: 0 } });
+
+// --- Fake providers behind the real turn pipeline (agent/orchestrator.ts), recording each turn's input ---
+const providerTurns: { provider: "claude" | "chatgpt"; input: TurnInput }[] = [];
+function fakeProvider(id: "claude" | "chatgpt", label: string, models: string[]): AgentProvider {
+  return {
+    id,
+    label,
+    status: async () => ({ id, label, installed: true, loggedIn: true, models: models.map((model) => ({ id: `${id}:${model}`, provider: id, model, label: model, available: true })) }),
+    async *runTurn(input) {
+      providerTurns.push({ provider: id, input });
+      yield { type: "session", sessionId: input.sessionId ?? `${id}-session-${randomUUID().slice(0, 8)}` };
+      yield { type: "text-delta", blockId: "b1", delta: `Reply from ${label}.` };
+      yield { type: "usage", usage: { inputTokens: 10, outputTokens: 5 } };
+    },
+    complete: async () => "A title",
+  };
+}
+providers.claude = fakeProvider("claude", "Claude", ["claude-opus-5-5", "claude-sonnet-5-5"]);
+providers.chatgpt = fakeProvider("chatgpt", "ChatGPT", ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"]);
+/** One real turn (through sendMessage) to its end; returns what the provider was given. */
+async function realTurn(chatId: string, body: SendMessageRequest): Promise<TurnInput> {
+  const { runId } = await sendMessage(chatId, body);
+  await runEnd(runId);
+  return providerTurns.at(-1)!.input;
+}
+/** Adds `n` alternating user / assistant messages to a chat, oldest first. */
+function seed(chatId: string, n: number, text: (i: number) => string): Message[] {
+  const added: Message[] = [];
+  const at = Date.now() - n * 1000;
+  for (let i = 0; i < n; i++) {
+    const message: Message = { id: randomUUID(), conversationId: chatId, role: i % 2 ? "assistant" : "user", parts: [{ type: "text", id: randomUUID(), text: text(i) }], status: "complete", createdAt: at + i * 10 };
+    messages.insert(message);
+    added.push(message);
+  }
+  return added;
+}
 
 // --- Fake model turns: a script per conversation (chats) or per goal (tasks) ------------------
 interface Turn {
@@ -348,6 +389,104 @@ await until(() => status(quietTask.id) === "done");
 await sleep(500);
 check("setting off: no wake, results wait for the next turn", sentTo(quiet.id).length === 0 && conversations.get(quiet.id)!.childResults.includes(quietTask.id) && !conversations.get(quiet.id)!.wakePending);
 settings.patch({ tasks: { wakeChats: true } });
+
+// =============================================================================
+// M2: context selection on a provider switch, and chat_read paging
+// =============================================================================
+
+// The rules on their own: kept messages, newest first, whole messages in order.
+const sample = Array.from({ length: 40 }, (_, i) => ({ id: `m${i}`, role: (i % 2 ? "assistant" : "user") as "user" | "assistant", text: `message ${i} ${"x".repeat(i === 20 ? 3000 : 300)}` }));
+let picked = selectContext(sample, { budgetTokens: 2000, chatId: "chat-1" });
+const order = [...picked.text.matchAll(/message (\d+) /g)].map((m) => Number(m[1]));
+check("selection: the first user message is kept", order[0] === 0);
+check("…and the latest user message and reply, newest first while they fit", order.includes(38) && order.includes(39) && order.at(-1) === 39);
+check("…in their original order", order.every((n, i) => i === 0 || n > order[i - 1]!), order.join(","));
+check("…whole messages only, stopping at the first that doesn't fit", !order.includes(20) && order.every((n) => n === 0 || n > 20) && !picked.text.includes("cut to fit"), order.join(","));
+check("…within the budget", tokens(picked.text) <= 2000 && picked.included === order.length && picked.omitted === 40 - order.length, String(tokens(picked.text)));
+check("…saying what was left out and how to read it", picked.text.includes(`${picked.omitted} earlier messages were left out`) && picked.text.includes('chat_read { chatId: "chat-1", before: "m') && picked.text.includes("left out here"));
+picked = selectContext(sample.slice(0, 6), { budgetTokens: 2000, chatId: "chat-1" });
+check("a short chat goes in whole", picked.included === 6 && picked.omitted === 0 && !picked.text.includes("left out"));
+picked = selectContext([{ id: "a", role: "user", text: "y".repeat(40_000) }, { id: "b", role: "assistant", text: "ok" }], { budgetTokens: 1000, chatId: "chat-1" });
+check("a kept message too big for the budget is cut, and says so", tokens(picked.text) <= 1000 && picked.text.includes("cut to fit") && picked.text.includes("<assistant>\nok"), String(tokens(picked.text)));
+
+// A 300-message chat on Claude switches to ChatGPT: at most the budget goes over, with the pointer to the rest.
+const long = chatWith("Long chat");
+conversations.update(long.id, { provider: "claude", providerSessionId: "claude-session-long", systemPrompt: "You are TOT." });
+const longHistory = seed(long.id, 300, (i) => (i === 0 ? "FIRST: plan the Q3 launch. " : `Turn ${i}: `) + "details ".repeat(60) + (i === 298 ? "LATEST-QUESTION" : i === 299 ? "LATEST-ANSWER" : ""));
+let input = await realTurn(long.id, { text: "And what about pricing?", modelId: "chatgpt:gpt-6.1-sol" });
+const block = /<conversation>[\s\S]*<\/conversation>(\n\[[^\]]*\])?/.exec(input.prompt)?.[0] ?? "";
+check("switch: a fresh ChatGPT session, not a resume", providerTurns.at(-1)!.provider === "chatgpt" && !input.sessionId);
+check("…at most the budget of earlier conversation", block.length > 0 && tokens(block) <= SWITCH_BUDGET, String(tokens(block)));
+const at = (needle: string) => input.prompt.indexOf(needle);
+check("…the first and latest user messages and the latest reply, in order", at("FIRST: plan") >= 0 && at("FIRST: plan") < at("LATEST-QUESTION") && at("LATEST-QUESTION") < at("LATEST-ANSWER"));
+const skipped = Number(/\[(\d+) earlier messages were left out/.exec(input.prompt)?.[1] ?? 0);
+check("…the omitted count and the chat_read pointer", skipped > 0 && input.prompt.includes(`chat_read { chatId: "${long.id}", before: "`), String(skipped));
+check("…then the new message", at("The user's new message:") > at("</conversation>") && input.prompt.trimEnd().endsWith("And what about pricing?"));
+
+// The model pages back through what was left out with chat_read (on this very chat).
+const { client: longClient, call: longCall } = await mcp(long.id);
+const before = /before: "([^"]+)"/.exec(input.prompt)![1]!;
+let page = await longCall("chat_read", { chatId: long.id, before });
+const gapEnd = longHistory.findIndex((m) => m.id === before);
+check("chat_read reads this chat, from the pointer back", !page.isError && page.text.includes("(this chat)") && page.text.includes(`Turn ${gapEnd - 1}: `) && !page.text.includes(`Turn ${gapEnd}: `), page.text.slice(0, 160));
+check("…20 messages a page, with a hint for more", page.text.includes(`messages ${gapEnd - 19}–${gapEnd} of 302`) && page.text.includes(`More before: chat_read { chatId: "${long.id}", before: "${longHistory[gapEnd - 20]!.id}" }`), page.text.slice(0, 120));
+page = await longCall("chat_read", { chatId: long.id, before: longHistory[3]!.id, limit: 50 });
+check("…the first page back has no hint", page.text.includes("messages 1–3 of 302") && !page.text.includes("More before"), page.text.slice(0, 120));
+check("…at most 50 a page", (await longCall("chat_read", { chatId: long.id, limit: 51 })).isError);
+const huge = chatWith("Huge message");
+seed(huge.id, 1, () => "z".repeat(9000));
+page = await longCall("chat_read", { chatId: huge.id });
+check("…each message cut at 4,000 characters", page.text.includes("[cut at 4,000 characters]") && page.text.length < 4300, String(page.text.length));
+const stranger = conversations.create({ agentId: agents.create({ name: "Bo", mascot }).id, modelId: "auto", title: "Not yours" });
+check("…only chats of this agent", (await longCall("chat_read", { chatId: stranger.id })).isError);
+await longClient.close();
+
+// A short chat switches and goes in whole.
+const short = chatWith("Short chat");
+conversations.update(short.id, { provider: "claude", providerSessionId: "claude-session-short", systemPrompt: "You are TOT." });
+seed(short.id, 6, (i) => `short message ${i}`);
+input = await realTurn(short.id, { text: "next", modelId: "chatgpt:gpt-6.1-sol" });
+check("a 6-message chat goes in whole", [0, 1, 2, 3, 4, 5].every((i) => input.prompt.includes(`short message ${i}`)) && !input.prompt.includes("left out"));
+input = await realTurn(short.id, { text: "and again", modelId: "chatgpt:gpt-6.1-sol" });
+check("…and the next turn resumes ChatGPT's own session", Boolean(input.sessionId) && !input.prompt.includes("<conversation>"));
+
+// A handoff packet gets the last user message and the last reply verbatim, within 4k tokens.
+byGoal.push([
+  /^Carry the migration over/,
+  async (t) => {
+    if (t.index === 0) {
+      handoffs.save(t.id, {
+        goal: "Carry the migration over",
+        doneSoFar: ["Wrote the schema"],
+        decisions: [],
+        plan: [{ text: "Write the schema", done: true }, { text: "Backfill", done: false }],
+        files: [],
+        tests: [],
+        openQuestions: [],
+        nextStep: "Backfill the rows",
+      });
+      runLoop.handOff(t.id, "Claude hit its usage limit");
+      t.say("Schema written; next I backfill the rows.");
+      return;
+    }
+    tasks.finish(t.id, "done", "Migrated.");
+  },
+]);
+const migration = tasks.create({ agentId: ana.id, goal: "Carry the migration over to the new database" });
+await until(() => status(migration.id) === "done");
+const handedOver = sentTo(migration.id)[1]?.options.preamble ?? "";
+check(
+  "handoff: the packet, then the last exchange verbatim",
+  handedOver.includes("<handoff>") && /<last_exchange>[\s\S]*Carry the migration over to the new database[\s\S]*Schema written; next I backfill the rows\.[\s\S]*<\/last_exchange>/.test(handedOver) && sentTo(migration.id)[1]!.options.freshSession === true,
+  handedOver.slice(-300),
+);
+const bigReply: Message[] = [
+  { id: "u1", conversationId: "x", role: "user", parts: [{ type: "text", id: "p1", text: "Do the thing" }], status: "complete", createdAt: 1 },
+  { id: "u2", conversationId: "x", role: "user", parts: [{ type: "text", id: "p2", text: "Continue the task." }], status: "complete", auto: true, createdAt: 2 },
+  { id: "a1", conversationId: "x", role: "assistant", parts: [{ type: "text", id: "p3", text: "w".repeat(50_000) }], status: "complete", createdAt: 3 },
+];
+const exchange = lastExchange(bigReply, { budgetTokens: 4000, chatId: "x" });
+check("…the person's message (not TOT's own), and a huge reply cut to fit", exchange.includes("Do the thing") && !exchange.includes("Continue the task.") && tokens(exchange) <= 4000 && exchange.includes("cut to fit"), String(tokens(exchange)));
 
 server.close();
 chatWakes.stop();

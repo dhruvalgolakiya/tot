@@ -9,7 +9,7 @@ import { brains } from "../data/brains.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
-import { messageText, messages } from "../data/messages.ts";
+import { messages } from "../data/messages.ts";
 import { personas } from "../data/personas.ts";
 import { plugins } from "../data/plugins.ts";
 import { settings as settingsStore } from "../data/settings.ts";
@@ -21,6 +21,7 @@ import { githubAccessFor, personaGitHub } from "../persona-github.ts";
 import { prepareAttachments } from "./attachments.ts";
 import { makeElicitor } from "./approvals.ts";
 import { brainHints } from "./brain-hints.ts";
+import { contextMessages, selectContext, SWITCH_BUDGET } from "./context-select.ts";
 import { limits } from "./limits.ts";
 import { MessageBuilder } from "./message-builder.ts";
 import {
@@ -245,11 +246,9 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   try {
     const { text, images, systemPrompt } = await prepareTurn(ctx);
 
+    // As much of the conversation as fits a new model's budget, with a pointer to the rest.
     const withTranscript = () =>
-      transcriptPreamble(
-        history.map((m) => ({ role: m.role, text: messageText(m) })).filter((t) => t.text),
-        text,
-      );
+      transcriptPreamble(selectContext(contextMessages(history), { budgetTokens: SWITCH_BUDGET, chatId: conversation.id }).text, text);
 
     /** Turn input for a route: resume the provider's session when this chat already has one. */
     const inputFor = (route: Route, fresh = false): TurnInput => {

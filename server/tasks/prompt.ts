@@ -127,10 +127,10 @@ export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "
   return resultsNote(conversation.childResults, "Tasks you started have finished since your last reply.");
 }
 
-/** The opening of a fresh session that carries on from a handoff packet instead of the transcript. */
-export function handoffPreamble(packet: HandoffPacket, why: string): string {
+/** The opening of a fresh session that carries on from a handoff packet instead of the transcript, with the last exchange verbatim. */
+export function handoffPreamble(packet: HandoffPacket, why: string, exchange = ""): string {
   return `[${why} You're continuing this task from a handoff packet written by ${packet.from.provider} (${packet.from.model}); you don't have the earlier conversation. Trust the packet, check the current state where it matters (your worktree, files), and carry on from its next step.
 <handoff>
 ${JSON.stringify(packet, null, 1)}
-</handoff>]`;
+</handoff>${exchange ? `\nThe last message from the user and the last reply before the handoff, verbatim:\n<last_exchange>\n${exchange}\n</last_exchange>` : ""}]`;
 }
