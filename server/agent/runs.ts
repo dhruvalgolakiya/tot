@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { RunEvent } from "../../shared/types.ts";
+import type { Message, MessagePart, RunEvent } from "../../shared/types.ts";
 
 type Listener = (seq: number, event: RunEvent) => void;
 
@@ -16,6 +16,14 @@ export class Run {
   private readonly events: RunEvent[] = [];
   private readonly listeners = new Set<Listener>();
   done = false;
+  /** Why it was stopped: by the user (the reply shows "stopped"), or to hand it a steering note (the reply counts as complete). */
+  stopReason: "user" | "steer" = "user";
+  /** While the turn runs: the reply so far. */
+  reply?: () => Message;
+  /** While the turn runs: adds a part to the reply, e.g. the card of a task a tool just started. */
+  addPart?: (part: MessagePart) => void;
+  /** While the turn runs, when the provider can take input mid-turn: hands the model a note; false when it couldn't. */
+  steer?: (text: string) => Promise<boolean>;
 
   constructor(
     readonly conversationId: string,
@@ -45,7 +53,8 @@ export class Run {
     return this.events.length;
   }
 
-  stop(): void {
+  stop(reason: "user" | "steer" = "user"): void {
+    if (!this.controller.signal.aborted) this.stopReason = reason;
     this.controller.abort();
   }
 }

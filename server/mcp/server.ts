@@ -15,6 +15,9 @@ import { describeSchedule, routines, validateRoutine } from "../data/routines.ts
 import { settings } from "../data/settings.ts";
 import { redactGitHubTokens } from "../github.ts";
 import { isThisMachine } from "../net.ts";
+import { registerTaskTools } from "../tasks/tools.ts";
+import { homeRelative } from "../tasks/worktree.ts";
+import type { ConversationRecord } from "../data/conversations.ts";
 import { clip, guarded, isoDay, reply } from "./results.ts";
 import { registerMailTools } from "./mail-tools.ts";
 import { registerWikiTools } from "./wiki-tools.ts";
@@ -161,12 +164,22 @@ function registerDesktopTools(server: McpServer, agentId: string): void {
   );
 }
 
-function buildServer(conversationId: string, agentId: string): McpServer {
+/** A file path for the computer tools: in a coding task, relative paths start in its worktree (`base`). */
+function resolvePath(path: string, base: string | null): string {
+  if (path.startsWith("~/")) return homeRelative(path);
+  if (!base || path.startsWith("/") || path === base || path.startsWith(`${base}/`)) return path;
+  return `${base}/${path}`;
+}
+
+function buildServer(conversation: ConversationRecord): McpServer {
+  const { id: conversationId, agentId } = conversation;
   const server = new McpServer(
     { name: "tot", version: VERSION },
     { instructions: "TOT's tools: your own computer for this chat (computer_*) and long-term memory about the user (memory_*)." },
   );
   const { computer, memory } = settings.get();
+  // A coding task works in its own worktree: commands and relative paths start there.
+  const worktree = conversation.kind === "task" && conversation.task?.repo?.headSha ? homeRelative(conversation.task.repo.worktree) : null;
 
   if (computer.mode !== "off") {
     server.registerTool(
@@ -191,7 +204,7 @@ function buildServer(conversationId: string, agentId: string): McpServer {
         guarded(async () => {
           const active = await computerManager.ensure(agentId);
           const result = await active.backend.exec(active.externalId, command, {
-            cwd,
+            cwd: cwd ? homeRelative(cwd) : (worktree ?? undefined),
             timeoutMs: (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
           });
           computerManager.touch(agentId);
@@ -219,7 +232,7 @@ function buildServer(conversationId: string, agentId: string): McpServer {
       ({ path }) =>
         guarded(async () => {
           const active = await computerManager.ensure(agentId);
-          const content = await active.backend.readFile(active.externalId, path);
+          const content = await active.backend.readFile(active.externalId, resolvePath(path, worktree));
           computerManager.touch(agentId);
           return reply(`${startNote(active)}${clip(redactGitHubTokens(content), FILE_OUTPUT_LIMIT)}`);
         }),
@@ -239,7 +252,7 @@ function buildServer(conversationId: string, agentId: string): McpServer {
       ({ path, content }) =>
         guarded(async () => {
           const active = await computerManager.ensure(agentId);
-          await active.backend.writeFile(active.externalId, path, content);
+          await active.backend.writeFile(active.externalId, resolvePath(path, worktree), content);
           computerManager.touch(agentId);
           return reply(`${startNote(active)}Wrote ${Buffer.byteLength(content)} bytes to ${path}.`);
         }),
@@ -394,6 +407,7 @@ function buildServer(conversationId: string, agentId: string): McpServer {
 
   registerRoutineTools(server, agentId);
   registerMailTools(server, agentId, conversationId);
+  registerTaskTools(server, conversation);
   return server;
 }
 
@@ -496,7 +510,7 @@ mcpRoutes.all("/:conversationId", async (c) => {
   if (!conversation) return c.json({ error: "Unknown chat" }, 404);
 
   // Stateless: a fresh server + transport per request, answered with plain JSON.
-  const server = buildServer(conversationId, conversation.agentId);
+  const server = buildServer(conversation);
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);
   try {

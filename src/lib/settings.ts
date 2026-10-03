@@ -49,6 +49,18 @@ export function buildSettingsPatch(saved: Settings, draft: Settings, secrets: Se
   if (claude) patch.claude = claude;
   const chatgpt = changed(saved.chatgpt, draft.chatgpt, ["useConnectedApps"]);
   if (chatgpt) patch.chatgpt = chatgpt;
+  const tasks = changed(saved.tasks, draft.tasks, [
+    "perAgentLimit",
+    "globalLimit",
+    "resumeInterrupted",
+    "notifySlackUserId",
+    "switchProviders",
+    "missionTokenBudget",
+    "maxChildren",
+  ]);
+  if (tasks) patch.tasks = tasks;
+  // Model tiers are small nested tables: send them whole when anything in them changed.
+  if (JSON.stringify(saved.models) !== JSON.stringify(draft.models)) patch.models = draft.models;
 
   const anthropicKey = secrets.anthropicApiKey.trim();
   if (anthropicKey) patch.anthropicApiKey = anthropicKey;
@@ -65,4 +77,15 @@ export const IDLE_MINUTES = { min: 1, max: 1440 };
 
 export function isValidIdleMinutes(value: number): boolean {
   return Number.isInteger(value) && value >= IDLE_MINUTES.min && value <= IDLE_MINUTES.max;
+}
+
+export const TASK_LIMITS = { perAgent: 10, global: 20, children: 20 };
+
+export function isValidTaskLimit(value: number, max: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= max;
+}
+
+/** A mission's token budget: whole tokens, 0 for no limit. */
+export function isValidBudget(value: number): boolean {
+  return Number.isInteger(value) && value >= 0;
 }

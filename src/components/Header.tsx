@@ -7,6 +7,8 @@ import {
   setSidebarOpen,
   useStore,
 } from "../store";
+import { isTask } from "../lib/tasks";
+import { ChatMenu } from "./ChatMenu";
 import { ComputerChip } from "./ComputerChip";
 import { Mascot } from "./mascot";
 import { ModelPicker } from "./ModelPicker";
@@ -14,6 +16,7 @@ import { IconButton } from "./ui/IconButton";
 import { Kbd } from "./ui/Kbd";
 import { SlackMark } from "./ui/SlackMark";
 import { Tip } from "./ui/Tip";
+import { TaskHeaderActions, TaskHeaderInfo } from "./tasks/TaskHeader";
 
 /**
  * Floats over the chat content on a flat, always-opaque `bg-canvas` — no
@@ -25,10 +28,9 @@ export function Header() {
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const agent = useStore(selectActiveAgent);
   const working = useStore((s) => (agent ? selectAgentWorking(s, agent.id) : false));
-  const slackUrl = useStore((s) => {
-    const origin = selectCurrentConversation(s)?.origin;
-    return origin?.kind === "slack" ? origin.url : null;
-  });
+  const conversation = useStore(selectCurrentConversation);
+  const slackUrl = conversation?.origin?.kind === "slack" ? conversation.origin.url : null;
+  const task = isTask(conversation) ? conversation : null;
 
   return (
     <header className="absolute inset-x-0 top-0 z-10 flex h-14 shrink-0 items-center gap-1 bg-canvas px-3">
@@ -54,7 +56,7 @@ export function Header() {
         </>
       )}
       {/* On desktop the agent rail already shows whose chat this is. */}
-      {agent && (
+      {agent && !task && (
         <button
           type="button"
           onClick={() => navigateToAgentHome(agent.id)}
@@ -65,8 +67,10 @@ export function Header() {
           <span className="hidden truncate sm:inline">{agent.name}</span>
         </button>
       )}
-      <ModelPicker />
-      <div className="ml-auto flex items-center gap-2">
+      {task ? <TaskHeaderInfo task={task} /> : <ModelPicker />}
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        {task && <TaskHeaderActions task={task} />}
+        {conversation && !task && <ChatMenu chat={conversation} />}
         {slackUrl && (
           <Tip content="Open in Slack">
             <a

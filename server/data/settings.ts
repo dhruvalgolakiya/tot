@@ -1,4 +1,4 @@
-import type { Settings, SettingsPatch } from "../../shared/types.ts";
+import type { ModelTierSettings, Settings, SettingsPatch } from "../../shared/types.ts";
 import { getSecret, setSecret } from "../config.ts";
 import { db, parseJson, type Row } from "../db.ts";
 
@@ -17,6 +17,31 @@ function defaults(): StoredSettings {
     memory: { enabled: true },
     claude: { authMode: "subscription", useConnectedApps: true },
     chatgpt: { useConnectedApps: true },
+    tasks: {
+      perAgentLimit: 2,
+      globalLimit: 4,
+      resumeInterrupted: true,
+      notifySlackUserId: null,
+      switchProviders: true,
+      missionTokenBudget: 5_000_000,
+      maxChildren: 6,
+    },
+    models: {
+      tiers: { fast: { claude: null, chatgpt: null }, standard: { claude: null, chatgpt: null }, deep: { claude: null, chatgpt: null } },
+      roles: { explorer: "fast", planner: "deep", implementer: "deep", tester: "standard", reviewer: "deep", researcher: "standard", writer: "standard" },
+    },
+  };
+}
+
+/** Tier choices merge per tier and provider, so changing one model keeps the others. */
+function mergeModels(base: ModelTierSettings, patch: Partial<ModelTierSettings> | undefined): ModelTierSettings {
+  return {
+    tiers: {
+      fast: { ...base.tiers.fast, ...patch?.tiers?.fast },
+      standard: { ...base.tiers.standard, ...patch?.tiers?.standard },
+      deep: { ...base.tiers.deep, ...patch?.tiers?.deep },
+    },
+    roles: { ...base.roles, ...patch?.roles },
   };
 }
 
@@ -31,6 +56,8 @@ function readStored(): StoredSettings {
     memory: { ...base.memory, ...stored.memory },
     claude: { ...base.claude, ...stored.claude },
     chatgpt: { ...base.chatgpt, ...stored.chatgpt },
+    tasks: { ...base.tasks, ...stored.tasks },
+    models: mergeModels(base.models, stored.models),
   };
 }
 
@@ -49,7 +76,7 @@ export const settings = {
 
   patch(patch: SettingsPatch): Settings {
     const current = readStored();
-    const { boatApiKey, anthropicApiKey, computer, memory, claude, chatgpt, ...top } = patch;
+    const { boatApiKey, anthropicApiKey, computer, memory, claude, chatgpt, tasks, models, ...top } = patch;
 
     if (boatApiKey !== undefined) setSecret("boatApiKey", boatApiKey.trim());
     if (anthropicApiKey !== undefined) setSecret("anthropicApiKey", anthropicApiKey.trim());
@@ -61,6 +88,8 @@ export const settings = {
       memory: { ...current.memory, ...memory },
       claude: { ...current.claude, ...claude },
       chatgpt: { ...current.chatgpt, ...chatgpt },
+      tasks: { ...current.tasks, ...tasks },
+      models: mergeModels(current.models, models),
     };
     // Adding a Boat key is a clear signal: switch local computers to Boat unless told otherwise.
     if (boatApiKey && !computer?.mode) next.computer.mode = "boat";

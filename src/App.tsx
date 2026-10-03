@@ -10,6 +10,7 @@ import { MascotGallery } from "./components/mascot";
 import { NewAgentDialog } from "./components/NewAgentDialog";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
+import { TaskPanel } from "./components/tasks/TaskPanel";
 import { WikiView } from "./components/wiki/WikiView";
 import { useAgentAccent } from "./hooks/useAgentAccent";
 import { useAppEvents, useRunningAgents } from "./hooks/useAppEvents";
@@ -125,6 +126,7 @@ export default function App() {
           )}
         </main>
         <ComputerPanel />
+        <TaskPanel />
         <AgentSettingsPanel />
       </div>
       <NewAgentDialog />

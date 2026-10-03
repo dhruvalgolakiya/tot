@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse } from "../../shared/types.ts";
+import type { Dispatch, Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse, Tier } from "../../shared/types.ts";
 import { appEvents } from "../app-events.ts";
 import { apps } from "../apps.ts";
 import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.ts";
@@ -16,6 +16,7 @@ import { settings as settingsStore } from "../data/settings.ts";
 import { toAttachment, uploads, type UploadRecord } from "../data/uploads.ts";
 import { wiki } from "../data/wiki.ts";
 import { bus } from "../events.ts";
+import { chatTasksSection, childResultsNote, taskSection } from "../tasks/prompt.ts";
 import { githubAccessFor, personaGitHub } from "../persona-github.ts";
 import { prepareAttachments } from "./attachments.ts";
 import { makeElicitor } from "./approvals.ts";
@@ -76,6 +77,14 @@ export interface TurnOptions {
   freshSession?: boolean;
   /** Raise the per-turn step cap for long jobs. */
   maxSteps?: number;
+  /** TOT wrote the user message itself to keep a task going (shown as a quiet divider). */
+  auto?: boolean;
+  /** Auto only: the model tier (a task's role, a dispatch decision); see orchestration/tiers.ts. */
+  tier?: Tier;
+  /** Auto only: the provider to run on when it can (a reviewer on the other provider, a switch after a limit). */
+  prefer?: ProviderId | null;
+  /** How TOT decided to handle the message, kept on it for the UI. */
+  dispatch?: Dispatch;
 }
 
 export async function sendMessage(
@@ -99,7 +108,14 @@ export async function sendMessage(
   const statuses = await providerStatuses();
   const routingText = text || attachments.map((file) => file.name).join(", ");
   const complexity = options.heavy ? ({ complex: true, why: options.heavy } as const) : undefined;
-  const result = resolveRoute(modelId, routingText, { thinkHarder: request.thinkHarder, statuses, limited: limits.active(), complexity });
+  const result = resolveRoute(modelId, routingText, {
+    thinkHarder: request.thinkHarder,
+    statuses,
+    limited: limits.active(),
+    complexity,
+    tier: options.tier,
+    prefer: options.prefer,
+  });
   if (!result.ok) throw new HttpError(400, result.error);
   const route = result.route;
 
@@ -114,6 +130,8 @@ export async function sendMessage(
       ...(text ? [{ type: "text" as const, id: randomUUID(), text }] : []),
     ],
     status: "complete",
+    ...(options.auto ? { auto: true } : {}),
+    ...(options.dispatch ? { dispatch: options.dispatch } : {}),
     createdAt: now,
   };
   const assistant: Message = {
@@ -153,6 +171,7 @@ export async function sendMessage(
     autoTitle: isFirstTurn,
     auto: parseModelId(modelId) === "auto",
     complexity,
+    tier: options.tier,
     thinkHarder: Boolean(request.thinkHarder),
     freshSession: Boolean(options.freshSession),
     maxSteps: options.maxSteps,
@@ -183,6 +202,8 @@ interface TurnContext {
   auto: boolean;
   /** Set when the caller marked the turn as heavy work; a fallback route keeps it. */
   complexity?: Complexity;
+  /** The tier asked for, which a fallback route keeps too. */
+  tier?: Tier;
   thinkHarder: boolean;
   freshSession: boolean;
   maxSteps?: number;
@@ -191,9 +212,19 @@ interface TurnContext {
 async function executeTurn(ctx: TurnContext): Promise<void> {
   const { run, conversation, assistant, history } = ctx;
   const builder = new MessageBuilder(assistant, (event) => run.push(event));
-  // Tools that need the user's OK pause the turn and show a card; routine runs wait longer.
-  const elicit = makeElicitor({ run, builder, agentId: conversation.agentId, unattended: Boolean(conversation.routineId) });
+  // Tools that need the user's OK pause the turn and show a card; routine runs and tasks wait longer.
+  const elicit = makeElicitor({
+    run,
+    builder,
+    agentId: conversation.agentId,
+    unattended: Boolean(conversation.routineId) || conversation.kind === "task",
+  });
   const signal = run.controller.signal;
+  run.reply = () => builder.message;
+  run.addPart = (part) => {
+    builder.add(part);
+    messages.save(builder.message);
+  };
 
   run.push({
     type: "run-start",
@@ -238,6 +269,8 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         signal,
         elicit,
         maxSteps: ctx.maxSteps,
+        // Tasks can be steered mid-turn when the provider supports it (see tasks/steer.ts).
+        ...(conversation.kind === "task" ? { onSteerable: (deliver: (text: string) => Promise<boolean>) => void (run.steer = deliver) } : {}),
       };
     };
 
@@ -270,6 +303,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
               statuses: await providerStatuses(),
               limited: limits.active(),
               complexity: ctx.complexity,
+              tier: ctx.tier,
             })
           : null;
         if (!fallback?.ok || fallback.route.provider === route.provider) throw err;
@@ -294,11 +328,13 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
     error = err instanceof Error ? err.message : String(err);
   }
   if (signal.aborted) {
-    status = "stopped";
+    // Stopped to hand the task a steering note: what it did so far stands as a finished reply.
+    status = run.stopReason === "steer" ? "complete" : "stopped";
     error = undefined;
   }
 
   unsubscribe();
+  run.steer = undefined;
   const final = builder.finish(status, error);
   messages.save(final);
   if (title) await Promise.race([title, sleep(TITLE_GRACE_MS)]);
@@ -329,8 +365,10 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
     : null;
   // Brains this message is about (its repo, URL, @name…) that the chat hasn't been shown yet.
   const brainNote = ctx.text ? brainHints(conversation.agentId, conversation.id, ctx.text) : "";
+  // Results of tasks this chat started that finished since its model last heard.
+  const tasksNote = childResultsNote(conversation);
   const text =
-    [githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
+    [githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, ctx.preamble, prepared.context, ctx.text].filter(Boolean).join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
   let systemPrompt = conversation.systemPrompt;
@@ -356,7 +394,16 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
         recentChats: chatSearch.recent(agent.id, { exclude: conversation.id }),
       };
     }
-    systemPrompt = buildSystemPrompt({ settings, workspace, agent, github: access, apps: apps.running, persona: personaAccess });
+    systemPrompt = buildSystemPrompt({
+      settings,
+      workspace,
+      agent,
+      github: access,
+      apps: apps.running,
+      persona: personaAccess,
+      // A task is told its goal and where to work; a chat, when to start tasks.
+      tasks: conversation.kind === "task" && conversation.task ? taskSection(conversation.task) : chatTasksSection(),
+    });
     conversations.update(conversation.id, { systemPrompt });
   }
   return { text, images: prepared.images, systemPrompt };

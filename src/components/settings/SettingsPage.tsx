@@ -42,6 +42,7 @@ import { PersonasSettings } from "./PersonasSettings";
 import { PluginsSettings } from "./PluginsSettings";
 import { SETTINGS_SECTIONS, type SettingsSectionMeta } from "./settingsSections";
 import { SlackSettings } from "./SlackSettings";
+import { TasksSettings } from "../tasks/TasksSettings";
 
 /** Escape should go back, unless it would steal focus from a menu, dialog, or a field the user is editing. */
 function escapeShouldGoBack(): boolean {
@@ -224,6 +225,8 @@ function SectionBody({
       return <ModelsSettings draft={draft} onChange={setSettingsDraft} secrets={secrets} onSecretsChange={setSettingsSecrets} />;
     case "computer":
       return <ComputerSettings draft={draft} onChange={setSettingsDraft} secrets={secrets} onSecretsChange={setSettingsSecrets} />;
+    case "tasks":
+      return <TasksSettings draft={draft} onChange={setSettingsDraft} secrets={secrets} onSecretsChange={setSettingsSecrets} />;
     case "memory":
       return <MemoryBrowser />;
     case "github":

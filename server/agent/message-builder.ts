@@ -66,6 +66,22 @@ export function toolTitle(name: string, input: unknown): string {
       return args.query ? `Searched the web for “${clip(args.query, 60)}”` : "Searched the web";
     case "web_fetch":
       return args.url ? `Read ${clip(args.url, 80)}` : "Read a web page";
+    case "task_start":
+      return args.title ? `Started task “${clip(args.title, 60)}”` : "Started a task";
+    case "task_spawn_many":
+      return Array.isArray(args.sessions) ? `Started ${args.sessions.length} tasks` : "Started tasks";
+    case "handoff_write":
+      return "Wrote a handoff";
+    case "task_list":
+      return "Checked on its tasks";
+    case "task_status":
+      return "Checked on a task";
+    case "task_message":
+      return "Sent a task a note";
+    case "task_update":
+      return args.question ? "Asked you a question" : args.plan ? "Updated its plan" : "Noted its progress";
+    case "task_finish":
+      return args.outcome === "failed" ? "Reported the task failed" : "Finished the task";
     default:
       return name.includes("/") ? `Used ${name}` : name;
   }

@@ -7,6 +7,7 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { ModelOption, ProviderStatus, Usage } from "../../../shared/types.ts";
 import { getSecret, paths } from "../../config.ts";
@@ -151,9 +152,9 @@ async function* silentPrompt(signal: AbortSignal): AsyncGenerator<SDKUserMessage
 
 type ImageType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
 
-/** A one-message prompt stream carrying the user's images alongside their text. */
-async function* withImages(input: TurnInput): AsyncGenerator<SDKUserMessage> {
-  yield {
+/** The turn's opening user message: the user's images alongside their text. */
+function openingMessage(input: TurnInput): SDKUserMessage {
+  return {
     type: "user",
     parent_tool_use_id: null,
     message: {
@@ -168,6 +169,48 @@ async function* withImages(input: TurnInput): AsyncGenerator<SDKUserMessage> {
     },
   };
 }
+
+/** A one-message prompt stream carrying the user's images alongside their text. */
+async function* withImages(input: TurnInput): AsyncGenerator<SDKUserMessage> {
+  yield openingMessage(input);
+}
+
+/**
+ * A prompt stream that stays open for the whole turn, so notes can be added while it runs
+ * (steering): Claude Code folds a queued message into the running turn at its next step, or
+ * runs it right after the turn when the turn ends first.
+ */
+class PromptStream implements AsyncIterable<SDKUserMessage> {
+  private readonly queued: SDKUserMessage[] = [];
+  private wake: (() => void) | null = null;
+  private ended = false;
+
+  push(message: SDKUserMessage): void {
+    this.queued.push(message);
+    this.wake?.();
+  }
+
+  end(): void {
+    this.ended = true;
+    this.wake?.();
+  }
+
+  async *[Symbol.asyncIterator](): AsyncGenerator<SDKUserMessage> {
+    while (true) {
+      const next = this.queued.shift();
+      if (next) {
+        yield next;
+        continue;
+      }
+      if (this.ended) return;
+      await new Promise<void>((resolve) => (this.wake = resolve));
+      this.wake = null;
+    }
+  }
+}
+
+/** After a turn ends with a steering note still queued, how long to wait for Claude Code to start on it. */
+const QUEUED_NOTE_WAIT_MS = 5_000;
 
 // total_cost_usd is cumulative per session, so remember the last total to report per-turn cost.
 const lastSessionCost = new Map<string, number>();
@@ -282,8 +325,11 @@ export const claudeProvider: AgentProvider = {
 
     const stderr = new Tail();
     const mcp = toSdkMcpServers(input.mcpServers);
+    // Steerable turns keep their prompt stream open so notes can be added mid-turn.
+    const stream = input.onSteerable ? new PromptStream() : null;
+    stream?.push(openingMessage(input));
     const q = query({
-      prompt: input.images?.length ? withImages(input) : input.prompt,
+      prompt: stream ?? (input.images?.length ? withImages(input) : input.prompt),
       options: {
         ...baseOptions(controller),
         env: { ...buildEnv(), ...mcp.env },
@@ -330,8 +376,49 @@ export const claudeProvider: AgentProvider = {
     let sessionId = input.sessionId;
     let assistantError: TurnFailure | undefined;
 
+    // Steering notes handed to Claude Code and not yet taken up, by uuid → how to answer the deliverer.
+    const notes = new Map<string, (taken: boolean) => void>();
+    const settleNotes = (taken: boolean, uuids: Iterable<string> = [...notes.keys()]) => {
+      for (const uuid of uuids) {
+        notes.get(uuid)?.(taken);
+        notes.delete(uuid);
+      }
+    };
+    let turnEnded = false;
+    input.onSteerable?.((text) => {
+      if (!stream || turnEnded || controller.signal.aborted) return Promise.resolve(false);
+      const uuid = randomUUID();
+      const taken = new Promise<boolean>((resolve) => notes.set(uuid, resolve));
+      stream.push({ type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "text", text }] }, priority: "next", uuid });
+      return taken;
+    });
+    // A turn that ended with a note still queued: Claude Code runs the note as one more turn, which this turn includes.
+    let awaitingNote = false;
+    const totals = { inputTokens: 0, outputTokens: 0, durationMs: 0 };
+    const iterator = (q as AsyncIterable<SDKMessage>)[Symbol.asyncIterator]();
+
     try {
-      for await (const message of q as AsyncIterable<SDKMessage>) {
+      while (true) {
+        const pending = iterator.next();
+        // Closing the query rejects a read left waiting after the timeout below; nothing needs it then.
+        pending.catch(() => {});
+        const next = awaitingNote
+          ? await Promise.race([pending, new Promise<null>((resolve) => setTimeout(() => resolve(null), QUEUED_NOTE_WAIT_MS).unref())])
+          : await pending;
+        if (!next) {
+          // Claude Code never started on the note: TOT delivers it another way.
+          settleNotes(false);
+          return;
+        }
+        if (next.done) break;
+        const message = next.value;
+        if (awaitingNote && (message.type === "assistant" || message.type === "stream_event")) {
+          awaitingNote = false;
+          settleNotes(true);
+        }
+        if ((message.type === "assistant" || message.type === "stream_event") && message.user_message_uuids?.length) {
+          settleNotes(true, message.user_message_uuids.filter((uuid) => notes.has(uuid)));
+        }
         switch (message.type) {
           case "system":
             if (message.subtype === "init") {
@@ -390,12 +477,11 @@ export const claudeProvider: AgentProvider = {
 
           case "result": {
             const usage = message.usage;
-            const turnUsage: Usage = {
-              inputTokens:
-                usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
-              outputTokens: usage.output_tokens,
-              durationMs: message.duration_ms,
-            };
+            // A note run as an extra turn adds its own result: report the totals.
+            totals.inputTokens += usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+            totals.outputTokens += usage.output_tokens;
+            totals.durationMs += message.duration_ms;
+            const turnUsage: Usage = { ...totals };
             if (sessionId) {
               const previous = lastSessionCost.get(sessionId);
               // After a server restart the earlier total is unknown; better no number than a wrong one.
@@ -420,7 +506,14 @@ export const claudeProvider: AgentProvider = {
               const reported = message.result ? classify(message.result) : undefined;
               failure = reported?.kind === "limit" ? reported : (assistantError ?? reported ?? { message: "Claude returned an error." });
             }
-            if (failure) yield { type: "error", message: failure.message, kind: failure.kind };
+            if (failure) {
+              yield { type: "error", message: failure.message, kind: failure.kind };
+              return;
+            }
+            if (notes.size) {
+              awaitingNote = true;
+              break;
+            }
             return;
           }
         }
@@ -432,6 +525,9 @@ export const claudeProvider: AgentProvider = {
       const failure = assistantError ?? classify(`Claude Code crashed: ${reason}${tail && tail !== reason ? ` (${tail})` : ""}`);
       yield { type: "error", message: failure.message, kind: failure.kind };
     } finally {
+      turnEnded = true;
+      settleNotes(false);
+      stream?.end();
       input.signal.removeEventListener("abort", abort);
       q.close();
     }

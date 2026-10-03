@@ -6,6 +6,7 @@ import { useCopy } from "../hooks/useCopy";
 import { formatBytes } from "../lib/format";
 import { fileIcon, isImageMime } from "../lib/fileIcon";
 import { messageText } from "../lib/tools";
+import { DispatchChip } from "./orchestration/DispatchChip";
 import { IconButton } from "./ui/IconButton";
 import { Tip } from "./ui/Tip";
 
@@ -44,9 +45,34 @@ function FileAttachment({ attachment }: { attachment: Attachment }) {
   );
 }
 
+/** A turn TOT sent itself to keep a task going: a quiet divider, not a bubble. */
+function AutoDivider({ text }: { text: string }) {
+  return (
+    <div role="separator" aria-label={text} className="flex items-center gap-3 text-xs text-fg-subtle">
+      <span className="h-px flex-1 bg-hairline" />
+      <span className="max-w-[70%] truncate">{text.replace(/\.$/, "")}</span>
+      <span className="h-px flex-1 bg-hairline" />
+    </div>
+  );
+}
+
+/** A note the user sent while a task worked; `inline` when it sits inside the reply it was handed to. */
+export function SteerNote({ message, inline = false }: { message: Message; inline?: boolean }) {
+  return (
+    <div className={clsx("flex flex-col items-end", inline && "my-1")}>
+      <span className="mb-1 text-2xs font-medium text-fg-subtle">{inline ? "Your note, mid-task" : "Your note to the task"}</span>
+      <div className="max-w-[80%] rounded-3xl bg-bubble px-4 py-2.5 text-chat whitespace-pre-wrap text-fg [overflow-wrap:anywhere] sm:max-w-[70%]">
+        {messageText(message)}
+      </div>
+    </div>
+  );
+}
+
 export const UserMessage = memo(function UserMessage({ message }: { message: Message }) {
   const { copied, copy } = useCopy();
   const text = messageText(message);
+  if (message.auto) return <AutoDivider text={text} />;
+  if (message.steered) return <SteerNote message={message} />;
   const pending = message.id.startsWith("local-");
   const files = message.parts.filter(
     (part): part is Extract<MessagePart, { type: "file" }> => part.type === "file",
@@ -75,6 +101,7 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
           {text}
         </div>
       )}
+      {message.dispatch && <DispatchChip dispatch={message.dispatch} />}
       <div className="mt-1 flex h-7 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         {text && (
           <Tip content={copied ? "Copied" : "Copy"}>
