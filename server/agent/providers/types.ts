@@ -1,4 +1,4 @@
-import type { Effort, ProviderId, ProviderStatus, Usage } from "../../../shared/types.ts";
+import type { Effort, ProviderId, ProviderStatus, TurnErrorKind, Usage } from "../../../shared/types.ts";
 
 /** An MCP server attached to a turn. TOT's built-in server is always named "tot". */
 export type McpServerSpec =
@@ -94,9 +94,10 @@ export type ProviderEvent =
   /**
    * A fatal turn error. The provider should stop yielding after it.
    * kind "limit" = usage/rate limit reached (TOT Auto may retry on another provider);
-   * kind "auth" = not logged in.
+   * kind "auth" = not logged in;
+   * kind "turn" = the turn's own problem (too many steps, too long for the context window): the provider is fine.
    */
-  | { type: "error"; message: string; kind?: "limit" | "auth" };
+  | { type: "error"; message: string; kind?: TurnErrorKind };
 
 export interface AgentProvider {
   id: ProviderId;

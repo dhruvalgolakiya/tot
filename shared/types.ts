@@ -366,8 +366,11 @@ export type RunEvent =
   | { type: "computer"; computer: ComputerSummary }
   | { type: "usage"; usage: Usage }
   | { type: "error"; message: string }
-  /** Terminal event. `message` is the final persisted assistant message. */
-  | { type: "run-end"; status: MessageStatus; message: Message };
+  /** Terminal event. `message` is the final persisted assistant message; `errorKind` says why it failed, when known. */
+  | { type: "run-end"; status: MessageStatus; message: Message; errorKind?: TurnErrorKind };
+
+/** Why a turn failed: a usage limit, not logged in, or the turn's own problem (too many steps, too long for the context window). */
+export type TurnErrorKind = "limit" | "auth" | "turn";
 
 // ---------------------------------------------------------------------------
 // App-wide live updates (Server-Sent Events on GET /api/events). No replay:

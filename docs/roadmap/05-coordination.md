@@ -46,10 +46,10 @@ Read [README.md](README.md) first.
 - **Context selection.** One function decides which earlier messages a model gets when it can't resume its own session. Used for a provider switch, a fork that can't fork natively, merge-back and attached chats:
   - It always keeps the latest user message, the latest reply and the first user message.
   - It then adds messages from newest to oldest until the budget is used.
-  - It adds whole messages only, never cut, and keeps them in their original order.
+  - It adds whole messages only, never cut, and keeps them in their original order. The one exception: when even the three it always keeps don't fit together, the short ones stay whole and the long ones are cut to share what's left, saying so.
   - It ends with how many messages were left out, and the chat id to read them with `chat_read`.
 - **Request id.** An optional key the agent passes to `task_start` / `task_spawn_many`. The same key from the same chat always means the same tasks.
-- **Queue hold.** An agent's queue stops starting tasks after one fails because its provider kept erroring. It starts again when the user resumes it.
+- **Queue hold.** An agent's queue stops starting tasks after one fails because its provider kept erroring. It starts again when the user resumes it. The task's own trouble (too many steps, too long for the model) and usage limits never hold it.
 
 ## Server design
 
@@ -200,3 +200,28 @@ Order: M1 first, since M5 builds on it. M2 next, since M6 and M7 reuse `selectCo
 - **Wake turns in Slack and email chats** post a second message to the thread. Proposal: yes, and skip the plain "task done" message there, so there's still one message per finished batch. *Built as proposed (M1).*
 - **Attaching a chat from another agent.** Proposal: not in M7. Allow it later only when the user attaches it themselves, never by the agent. *Not in M7, as proposed.*
 - **Fork from a task's transcript.** Proposal: later, once forks of chats have been used for a while. *Later, as proposed.*
+
+## Notes from review
+
+Fixed before merging, each with a test that fails without the fix (`server/coordination.test.ts`):
+
+- **A wake that doesn't get through keeps its results.** If the wake turn errors or is stopped, its results go back to unread for the chat's next turn. If TOT is stopping, the wake stays pending and happens again after the restart (`wake.ts`).
+- **Slack and email threads always hear back, once.**
+  - When the wake turn can't start, or gives up waiting for a busy chat, the thread gets each task's own post.
+  - Over the budget, each task is posted once, not again with every later one.
+  - A chat from Slack or email isn't steered mid-turn; its results get a wake turn whose reply goes to the thread.
+  - Stopped and cut-off tasks are worded as such, not as "failed" (`notify.ts`).
+- **Turn errors carry a kind** (`TurnErrorKind`: `limit`, `auth`, `turn`) to the run's end. The queue holds only for the provider's own failures, not for `turn` errors (too many steps, too long for the context window) or limits (`run-loop.ts`).
+- **A usage limit that hits mid-reply is recorded** (`limits.mark`), so Auto avoids the provider and 02's failover sees it. Before, only limits hit before any output were recorded (`orchestrator.ts`).
+- **One turn at a time, also when two messages arrive together.** `sendMessage` holds the chat from its "already replying?" check until the run exists, so a wake and the user can't both start a turn (`orchestrator.ts`).
+- **The restart note** looks past task notices to find the cut-off reply (`orchestrator.ts`).
+- **"Fork chat" on a whole chat** forks natively from the last reply when the chat ends in notices (`fork.ts`).
+- **Context selection** shares the room fairly when the kept messages don't fit (`context-select.ts`).
+
+Checked live against real Claude and ChatGPT logins, in a separate data folder:
+
+- Native forks on both providers keep the history up to the fork point and nothing after it, and leave the source chat's session unchanged.
+- A wake steered into a running Claude reply is taken mid-turn, with no second wake turn.
+- A plain chat turn ends cleanly, with no processes left behind.
+
+Not changed: wake turns count toward the mission's token budget as specified, so long chats with many wakes reach it sooner.

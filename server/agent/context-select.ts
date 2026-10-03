@@ -47,6 +47,27 @@ function clipToFit(m: ContextMessage, chars: number, chatId: string): ContextMes
   return { ...m, text: `${m.text.slice(0, Math.max(0, chars - note.length - 40)).trimEnd()}${note}` };
 }
 
+/** Splits `room` between messages of these sizes: each one smaller than an even share gets its size, the rest split what's left. */
+function shares(sizes: number[], room: number): number[] {
+  const out = sizes.map(() => 0);
+  let open = sizes.map((_, i) => i);
+  let left = room;
+  while (open.length) {
+    const even = Math.floor(left / open.length);
+    const small = open.filter((i) => sizes[i]! <= even);
+    if (!small.length) {
+      for (const i of open) out[i] = even;
+      break;
+    }
+    for (const i of small) {
+      out[i] = sizes[i]!;
+      left -= sizes[i]!;
+    }
+    open = open.filter((i) => !small.includes(i));
+  }
+  return out;
+}
+
 export function selectContext(messages: ContextMessage[], { budgetTokens, chatId }: { budgetTokens: number; chatId: string }): Selection {
   if (!messages.length) return { text: "", included: 0, omitted: 0 };
   // Room for the messages, leaving some for the <conversation> tags, gap markers and the omitted-messages line.
@@ -55,9 +76,10 @@ export function selectContext(messages: ContextMessage[], { budgetTokens, chatId
   const lastUser = messages.findLastIndex((m) => m.role === "user");
   const lastReply = messages.findLastIndex((m) => m.role === "assistant");
   const kept = [...new Set([firstUser, lastUser, lastReply].filter((i) => i >= 0))];
-  // The kept ones go in whole when they fit together; otherwise each is cut down to its share.
+  // The kept ones go in whole when they fit together; otherwise the short ones stay whole and the long ones share the rest.
   const fits = kept.reduce((sum, i) => sum + cost(messages[i]!), 0) <= room;
-  const list = fits ? messages : messages.map((m, i) => (kept.includes(i) ? clipToFit(m, Math.floor(room / kept.length), chatId) : m));
+  const limits = fits ? null : shares(kept.map((i) => cost(messages[i]!)), room);
+  const list = limits ? messages.map((m, i) => (kept.includes(i) ? clipToFit(m, limits[kept.indexOf(i)]!, chatId) : m)) : messages;
   const chosen = new Set(kept);
   let used = kept.reduce((sum, i) => sum + cost(list[i]!), 0);
   // Then the newest first, while whole messages fit.

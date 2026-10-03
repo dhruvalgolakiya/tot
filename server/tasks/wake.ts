@@ -64,24 +64,34 @@ export function wakeText(ids: string[]): string {
   return `${titles.length} tasks ${allFinished ? "finished" : "ended"}: ${titles.join(", ")}.`;
 }
 
-function settle(chatId: string): void {
-  conversations.update(chatId, { wakePending: false });
+/** The wake is over: no longer pending, unless results it didn't cover came in meanwhile. */
+function settle(chatId: string, handled: string[] = []): void {
+  const chat = conversations.get(chatId);
+  conversations.update(chatId, { wakePending: chat ? unread(chat).some((id) => !handled.includes(id)) : false });
 }
 
-/** Puts results back as unread (the wake turn couldn't start). */
+/** Puts results back as unread (the wake turn couldn't start, or didn't get through). */
 function restore(chatId: string, ids: string[]): void {
   const chat = conversations.get(chatId);
   if (chat) conversations.update(chatId, { childResults: [...new Set([...chat.childResults, ...ids])] });
 }
 
+/** Tasks a Slack or email thread has already been told about by a wake, so it isn't told twice. */
+const told = new Set<string>();
+
 /** A chat from Slack or email: the wake's answer goes to its thread (the tasks' own notices were held back for it). */
 async function deliver(chat: ConversationRecord, ids: string[], answer: string): Promise<void> {
   if (!chat.origin) return;
-  if (answer && (await taskNotifications.deliver(chat.id, answer))) return;
-  // No answer to send: the thread hears about each task the way it would have without wake-ups.
+  if (answer && (await taskNotifications.deliver(chat.id, answer))) {
+    for (const id of ids) told.add(id);
+    return;
+  }
+  // No answer to send: the thread hears about each task the way it would have without wake-ups, once.
   for (const id of ids) {
-    const task = taskStore.get(id);
-    if (task) await taskNotifications.tell(task);
+    const task = told.has(id) ? null : taskStore.get(id);
+    if (!task) continue;
+    told.add(id);
+    await taskNotifications.tell(task);
   }
 }
 
@@ -93,10 +103,11 @@ async function wake(chatId: string): Promise<void> {
 
     const run = runRegistry.activeFor(chatId);
     if (run) {
-      // A turn is running: hand it the results mid-turn when the provider can take them…
-      if (run.steer && (await run.steer(resultsNote(ids)).catch(() => false))) {
+      // A turn is running: hand it the results mid-turn when the provider can take them. Not in a chat from
+      // Slack or email: its thread needs a reply about them, so they wait for the turn to end instead.
+      if (!chat.origin && run.steer && (await run.steer(resultsNote(ids)).catch(() => false))) {
         markResultsRead(chatId, ids);
-        return settle(chatId);
+        return settle(chatId, ids);
       }
       // …else wait for it to end (it may read them itself, or the user may reply first).
       await runEnd(run.id);
@@ -105,7 +116,7 @@ async function wake(chatId: string): Promise<void> {
 
     if (overBudget(chat)) {
       // No turn past the budget: the results wait for the user's next message.
-      settle(chatId);
+      settle(chatId, ids);
       return deliver(chat, ids, "");
     }
 
@@ -122,14 +133,32 @@ async function wake(chatId: string): Promise<void> {
         await sleep(500);
         continue;
       }
+      // The turn can't start (e.g. the chat's model isn't connected): the results wait for the user's next message.
+      settle(chatId, ids);
+      await deliver(chat, ids, "");
       throw err;
     }
-    settle(chatId);
     const end = await runEnd(runId);
     const tokens = (end?.message.usage?.inputTokens ?? 0) + (end?.message.usage?.outputTokens ?? 0);
     if (tokens) conversations.update(chatId, { wakeTokens: (conversations.get(chatId)?.wakeTokens ?? 0) + tokens });
-    return deliver(chat, ids, end?.status === "complete" ? messageText(end.message) : "");
+    if (end?.status !== "complete") {
+      // The turn didn't get through (an error, a stop, TOT stopping): its results stay unread for the chat's next turn.
+      restore(chatId, ids);
+      // Cut off by a shutdown: the wake is still pending, so it happens again after the restart.
+      if (!started) return;
+      settle(chatId, ids);
+      return deliver(chat, ids, "");
+    }
+    settle(chatId, ids);
+    return deliver(chat, ids, messageText(end.message));
   }
+  // Gave up waiting for the chat to be free: what's unread waits for its next turn. (TOT stopping: after the restart.)
+  if (!started) return;
+  const chat = conversations.get(chatId);
+  if (!chat) return;
+  const ids = unread(chat);
+  settle(chatId, ids);
+  await deliver(chat, ids, "");
 }
 
 function schedule(chatId: string, delay = batchMs): void {

@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { ConversationOrigin, Message, SendMessageRequest } from "../shared/types.ts";
+import type { ConversationOrigin, Message, SendMessageRequest, TurnErrorKind } from "../shared/types.ts";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 const PORT = 8791;
@@ -66,6 +66,8 @@ settings.patch({ computer: { mode: "local" }, tasks: { perAgentLimit: 6, globalL
 const providerTurns: { provider: "claude" | "chatgpt"; input: TurnInput }[] = [];
 /** When set, the fake providers fail to fork (a session that's gone), as a real one would. */
 let failForks = false;
+/** When set, the fake providers hit a usage limit after the reply has started. */
+let limitMidReply = false;
 let refs = 0;
 function fakeProvider(id: "claude" | "chatgpt", label: string, models: string[]): AgentProvider {
   return {
@@ -80,6 +82,10 @@ function fakeProvider(id: "claude" | "chatgpt", label: string, models: string[])
       }
       yield { type: "session", sessionId: input.sessionId ?? `${id}-${input.fork ? "fork" : "session"}-${randomUUID().slice(0, 8)}` };
       yield { type: "text-delta", blockId: "b1", delta: `Reply from ${label}.` };
+      if (limitMidReply) {
+        yield { type: "error", message: "You've hit your usage limit.", kind: "limit" };
+        return;
+      }
       yield { type: "ref", ref: `${id}-ref-${++refs}` };
       yield { type: "usage", usage: { inputTokens: 10, outputTokens: 5 } };
     },
@@ -113,8 +119,8 @@ interface Turn {
   options: TurnOptions;
   run: Run;
   say: (text: string) => void;
-  /** Ends the turn as a provider error. */
-  fail: (error: string) => void;
+  /** Ends the turn as a provider error (of this kind, when given). */
+  fail: (error: string, kind?: TurnErrorKind) => void;
   /** Resolves when the turn is stopped. */
   stopped: Promise<void>;
 }
@@ -123,9 +129,12 @@ const scripts = new Map<string, Script>();
 const byGoal: [RegExp, Script][] = [];
 const sent: { id: string; text: string; options: TurnOptions; at: number }[] = [];
 const sentTo = (id: string) => sent.filter((s) => s.id === id);
+/** Chats whose turns can't start (e.g. their model isn't connected): sending answers 400. */
+const refuse = new Set<string>();
 
 async function fakeSend(conversationId: string, request: SendMessageRequest, options: TurnOptions = {}) {
   if (runRegistry.activeFor(conversationId)) throw new HttpError(409, "Busy.");
+  if (refuse.has(conversationId)) throw new HttpError(400, "Claude isn't connected.");
   const index = sentTo(conversationId).length;
   sent.push({ id: conversationId, text: request.text, options, at: Date.now() });
   const now = Date.now();
@@ -149,6 +158,7 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
     messages.save(builder.message);
   };
   let failed: string | null = null;
+  let failedKind: TurnErrorKind | undefined;
   const turn: Turn = {
     id: conversationId,
     text: request.text,
@@ -156,7 +166,7 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
     options,
     run,
     say: (text) => builder.apply({ type: "text-delta", blockId: randomUUID(), delta: text }),
-    fail: (error) => void (failed = error),
+    fail: (error, kind) => void ((failed = error), (failedKind = kind)),
     stopped: new Promise<void>((resolve) => run.controller.signal.addEventListener("abort", () => resolve(), { once: true })),
   };
   void (async () => {
@@ -173,7 +183,7 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, opt
     builder.apply({ type: "usage", usage: { inputTokens: 1000, outputTokens: 200 } });
     const final = builder.finish(end, failed ?? undefined);
     messages.save(final);
-    run.push({ type: "run-end", status: end, message: final });
+    run.push({ type: "run-end", status: end, message: final, ...(end === "error" && failedKind ? { errorKind: failedKind } : {}) });
     runRegistry.finish(run);
   })();
   return { runId: run.id, userMessage: user, conversation: toPublicConversation(conversations.get(conversationId)!) };
@@ -419,6 +429,97 @@ await sleep(500);
 check("setting off: no wake, results wait for the next turn", sentTo(quiet.id).length === 0 && conversations.get(quiet.id)!.childResults.includes(quietTask.id) && !conversations.get(quiet.id)!.wakePending);
 settings.patch({ tasks: { wakeChats: true } });
 
+// A wake turn that doesn't get through (a provider error): its results stay unread for the chat's next turn.
+const wakeFails = chatWith("Wake fails");
+scripts.set(wakeFails.id, async (t) => t.fail("Claude Code crashed: socket hang up"));
+byGoal.push([/^Fails to report/, finishAfter(10)]);
+const unreported = start(wakeFails.id, "Fails to report");
+await until(() => sentTo(wakeFails.id).length === 1);
+await until(() => !runRegistry.activeFor(wakeFails.id));
+await sleep(300);
+check(
+  "a wake turn that errors: its results stay unread",
+  conversations.get(wakeFails.id)!.childResults.includes(unreported.id) && !conversations.get(wakeFails.id)!.wakePending && sentTo(wakeFails.id).length === 1,
+  JSON.stringify(conversations.get(wakeFails.id)!.childResults),
+);
+
+// TOT stopping during a wake turn: the results go back, and the wake happens again after the restart.
+const midWake = chatWith("Stopped mid-wake");
+scripts.set(midWake.id, async (t) => {
+  if (t.index > 0) return t.say("Here's what the task found.");
+  await t.stopped;
+});
+byGoal.push([/^Finishes before the restart/, finishAfter(10)]);
+const beforeRestart = start(midWake.id, "Finishes before the restart");
+await until(() => sentTo(midWake.id).length === 1);
+chatWakes.stop(); // what index.ts does on SIGTERM, then every run is stopped
+runRegistry.activeFor(midWake.id)!.stop();
+await until(() => !runRegistry.activeFor(midWake.id));
+await sleep(200);
+check("a wake turn cut off by a shutdown: results unread, still pending", conversations.get(midWake.id)!.childResults.includes(beforeRestart.id) && conversations.get(midWake.id)!.wakePending);
+chatWakes.start();
+await until(() => sentTo(midWake.id).length === 2);
+await until(() => !runRegistry.activeFor(midWake.id));
+await sleep(300);
+check("…and happens again after the restart", sentTo(midWake.id)[1]?.text === "“Finishes before the restart” finished." && conversations.get(midWake.id)!.childResults.length === 0 && !conversations.get(midWake.id)!.wakePending);
+
+// A Slack chat whose wake turn can't start: its thread still hears about the task, worded for how it ended.
+const refusing = chatWith("Can't reply", { kind: "slack", label: "#ops", url: null });
+slackThreads.add(refusing.id);
+refuse.add(refusing.id);
+byGoal.push([/^Runs until stopped in Slack/, async (t) => void (await t.stopped)]);
+const stoppedInSlack = start(refusing.id, "Long job", "Runs until stopped in Slack");
+await until(() => status(stoppedInSlack.id) === "running");
+await request("POST", `/tasks/${stoppedInSlack.id}/stop`);
+await until(() => notices.some((n) => n.id === refusing.id));
+await sleep(300);
+const refusedPosts = notices.filter((n) => n.id === refusing.id);
+check("Slack, the wake can't start: the thread still hears it, once", refusedPosts.length === 1 && refusedPosts[0]!.text.includes("“Long job” was stopped"), JSON.stringify(refusedPosts));
+check("…and the result stays unread", conversations.get(refusing.id)!.childResults.includes(stoppedInSlack.id));
+refuse.delete(refusing.id);
+
+// A Slack chat with a turn running: results aren't steered into it, so the thread gets a reply about them.
+const slackBusy = chatWith("Slack, busy", { kind: "slack", label: "#eng", url: null });
+slackThreads.add(slackBusy.id);
+const slackSteers: string[] = [];
+const holdSlackBusy = gate();
+let deployCheck: ReturnType<typeof start> | null = null;
+scripts.set(slackBusy.id, async (t) => {
+  if (t.index > 0) return t.say("The deploy check passed.");
+  t.run.steer = async (text) => (slackSteers.push(text), true);
+  deployCheck = start(slackBusy.id, "Check the deploy");
+  await holdSlackBusy.wait;
+  t.say("Working on it.");
+});
+byGoal.push([/^Check the deploy/, finishAfter(10)]);
+await fakeSend(slackBusy.id, { text: "check the deploy" });
+await until(() => deployCheck !== null && status(deployCheck.id) === "done");
+await sleep(400);
+check("Slack chat: results aren't steered into its running turn", slackSteers.length === 0 && sentTo(slackBusy.id).length === 1);
+holdSlackBusy.open();
+await until(() => sentTo(slackBusy.id).length === 2);
+await until(() => notices.some((n) => n.id === slackBusy.id));
+await sleep(300);
+const busyPosts = notices.filter((n) => n.id === slackBusy.id);
+check("…the wake turn's reply goes to the thread", busyPosts.length === 1 && busyPosts[0]!.text === "The deploy check passed.", JSON.stringify(busyPosts));
+
+// Over budget in a Slack chat: each task is posted to the thread once, not again with every later one.
+settings.patch({ tasks: { missionTokenBudget: 1000 } });
+const spentSlack = chatWith("Over budget, Slack", { kind: "slack", label: "#eng", url: null });
+slackThreads.add(spentSlack.id);
+byGoal.push([/^First of two/, finishAfter(10)], [/^Second of two/, finishAfter(800)]);
+start(spentSlack.id, "First", "First of two");
+const secondOfTwo = start(spentSlack.id, "Second", "Second of two");
+await until(() => status(secondOfTwo.id) === "done");
+await sleep(600);
+const budgetPosts = notices.filter((n) => n.id === spentSlack.id);
+check(
+  "over budget, Slack: each task posted once",
+  budgetPosts.length === 2 && budgetPosts[0]!.text.includes("“First”") && budgetPosts[1]!.text.includes("“Second”") && sentTo(spentSlack.id).length === 0,
+  JSON.stringify(budgetPosts.map((post) => post.text.slice(0, 40))),
+);
+settings.patch({ tasks: { missionTokenBudget: 0 } });
+
 // =============================================================================
 // M2: context selection on a provider switch, and chat_read paging
 // =============================================================================
@@ -437,6 +538,12 @@ picked = selectContext(sample.slice(0, 6), { budgetTokens: 2000, chatId: "chat-1
 check("a short chat goes in whole", picked.included === 6 && picked.omitted === 0 && !picked.text.includes("left out"));
 picked = selectContext([{ id: "a", role: "user", text: "y".repeat(40_000) }, { id: "b", role: "assistant", text: "ok" }], { budgetTokens: 1000, chatId: "chat-1" });
 check("a kept message too big for the budget is cut, and says so", tokens(picked.text) <= 1000 && picked.text.includes("cut to fit") && picked.text.includes("<assistant>\nok"), String(tokens(picked.text)));
+picked = selectContext([{ id: "a", role: "user", text: "short question" }, { id: "b", role: "assistant", text: "z".repeat(40_000) }, { id: "c", role: "user", text: "a short follow-up" }], { budgetTokens: 1000, chatId: "chat-1" });
+check(
+  "…only the long one is cut, and it gets the room the short ones leave",
+  picked.text.includes("short question") && picked.text.includes("a short follow-up") && (picked.text.match(/z/g) ?? []).length > 3000 && tokens(picked.text) <= 1000,
+  String((picked.text.match(/z/g) ?? []).length),
+);
 
 // A 300-message chat on Claude switches to ChatGPT: at most the budget goes over, with the pointer to the rest.
 const long = chatWith("Long chat");
@@ -596,6 +703,30 @@ const afterLimit = tasks.create({ agentId: dee.id, goal: "After the limit, still
 await until(() => status(afterLimit.id) === "done");
 check("a usage limit doesn't hold the queue", status(limited.id) === "failed" && status(afterLimit.id) === "done" && agents.get(dee.id)!.queueHold === null);
 limits.clear("claude");
+
+// The task's own trouble (too many steps, too long for the model) fails it, but doesn't hold the queue.
+const eve = agents.create({ name: "Eve", mascot });
+byGoal.push([/^Too many steps/, async (t) => t.fail('TOT stopped after too many steps. Say "continue" to keep going.', "turn")], [/^Behind the busy one/, finishAfter(10)]);
+const tooBusy = tasks.create({ agentId: eve.id, goal: "Too many steps every turn" });
+const behindBusy = tasks.create({ agentId: eve.id, goal: "Behind the busy one" });
+await until(() => status(behindBusy.id) === "done");
+check("the task's own trouble doesn't hold the queue", status(tooBusy.id) === "failed" && agents.get(eve.id)!.queueHold === null);
+
+// A usage limit that hits mid-reply counts: Auto avoids the provider, and a task's failover sees it.
+const midLimit = chatWith("Limit mid-reply");
+limitMidReply = true;
+await realTurn(midLimit.id, { text: "write a long answer", modelId: "claude:claude-opus-5-5" });
+limitMidReply = false;
+const midLimitReply = messages.listByConversation(midLimit.id).findLast((m) => m.role === "assistant")!;
+check("a limit mid-reply is recorded", limits.active().has("claude") && midLimitReply.status === "error", midLimitReply.status);
+limits.clear("claude");
+
+// Two messages at once in one chat (a wake and the user, say): only one turn starts.
+const race = chatWith("Two at once");
+const raced = await Promise.allSettled([sendMessage(race.id, { text: "one", modelId: "claude:claude-opus-5-5" }), sendMessage(race.id, { text: "two", modelId: "claude:claude-opus-5-5" })]);
+const refused = raced.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+check("two messages at once: one turn, the other refused", raced.filter((r) => r.status === "fulfilled").length === 1 && refused.length === 1 && refused[0]!.reason?.status === 409);
+await until(() => !runRegistry.activeFor(race.id));
 settings.patch({ tasks: { perAgentLimit: 6 } });
 
 // A stopped task: its chat gets a notice, and the stop is in the next turn's results (here, the wake).
@@ -660,6 +791,13 @@ input = await realTurn(cutReply.id, { text: "where were we?" });
 check("…the chat's next turn is told once", input.prompt.startsWith("[TOT restarted during your last reply, so it was cut off. Check where things stand before you carry on.]"), input.prompt.slice(0, 120));
 input = await realTurn(cutReply.id, { text: "and now?" });
 check("…and not again", !input.prompt.includes("TOT restarted"));
+// …also when a task's notice came in after the cut-off reply.
+const cutThenNotice = chatWith("Cut off, then a notice");
+seed(cutThenNotice.id, 1, () => "Draft the plan");
+messages.insert({ id: randomUUID(), conversationId: cutThenNotice.id, role: "assistant", parts: [{ type: "text", id: randomUUID(), text: "The plan so f" }], status: "stopped", error: CUT_OFF_BY_RESTART, createdAt: Date.now() });
+messages.insert({ id: randomUUID(), conversationId: cutThenNotice.id, role: "assistant", parts: [{ type: "notice", id: "n_cut", kind: "warning", text: "“Research” was cut off when TOT restarted." }], status: "complete", createdAt: Date.now() + 1 });
+input = await realTurn(cutThenNotice.id, { text: "where were we?" });
+check("…even with a task's notice after the cut-off reply", input.prompt.startsWith("[TOT restarted during your last reply"), input.prompt.slice(0, 120));
 
 // =============================================================================
 // M5: wait for a task
@@ -796,6 +934,12 @@ const lostFork = (await request("POST", `/conversations/${source.id}/fork`, {}))
 input = await realTurn(lostFork.id, { text: "Pick it up", modelId: OPUS });
 failForks = false;
 check("a fork that can't fork natively falls back to context", providerTurns.at(-2)!.input.fork !== undefined && !input.fork && input.prompt.includes("Plan C: the press") && replies(lostFork.id).at(-1)!.status === "complete");
+// Forking the whole chat when it ends in a notice (a task finished): still native, from the last reply.
+messages.insert({ id: randomUUID(), conversationId: source.id, role: "assistant", parts: [{ type: "notice", id: "n_fork", kind: "info", text: "“Research” is done." }], status: "complete", createdAt: Date.now() });
+const noticeFork = (await request("POST", `/conversations/${source.id}/fork`, {})).data;
+input = await realTurn(noticeFork.id, { text: "Carry on", modelId: OPUS });
+const lastCut = messages.providerRef(thirdReply!.id)!;
+check("a whole-chat fork that ends in a notice: native, from the last reply", input.fork?.sessionId === lastCut.session && input.fork.at === lastCut.ref, JSON.stringify(input.fork));
 
 // Refusals.
 const busyChat = chatWith("Busy chat");

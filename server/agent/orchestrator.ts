@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Dispatch, Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse, Tier } from "../../shared/types.ts";
+import type { Dispatch, Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse, Tier, TurnErrorKind } from "../../shared/types.ts";
 import { appEvents } from "../app-events.ts";
 import { apps } from "../apps.ts";
 import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.ts";
@@ -55,7 +55,7 @@ export class HttpError extends Error {
 class TurnError extends Error {
   constructor(
     message: string,
-    readonly kind?: "limit" | "auth",
+    readonly kind?: TurnErrorKind,
   ) {
     super(message);
   }
@@ -63,6 +63,9 @@ class TurnError extends Error {
 
 const SAVE_INTERVAL_MS = 1000;
 const MAX_ATTACHMENTS = 10;
+
+/** Chats with a turn being set up: past the "already replying?" check, before the run exists. */
+const starting = new Set<string>();
 /** How long the end of a turn may wait for the chat title to land. */
 const TITLE_GRACE_MS = 1500;
 
@@ -104,13 +107,20 @@ export async function sendMessage(
   const attachments = files as UploadRecord[];
   const text = request.text?.trim() ?? "";
   if (!text && !attachments.length) throw new HttpError(400, "Message is empty.");
-  if (runRegistry.activeFor(conversationId)) {
+  if (runRegistry.activeFor(conversationId) || starting.has(conversationId)) {
     throw new HttpError(409, `${agents.get(conversation.agentId)?.name ?? "TOT"} is still replying in this chat.`);
   }
   const contextChats = cleanContextChats(request.contextChats, conversation);
 
   const modelId = request.modelId ?? conversation.modelId;
-  const statuses = await providerStatuses();
+  // Held from here until the run exists (no await after this one), so two messages can't both start a turn.
+  starting.add(conversationId);
+  let statuses: Awaited<ReturnType<typeof providerStatuses>>;
+  try {
+    statuses = await providerStatuses();
+  } finally {
+    starting.delete(conversationId);
+  }
   const routingText = text || attachments.map((file) => file.name).join(", ");
   const complexity = options.heavy ? ({ complex: true, why: options.heavy } as const) : undefined;
   const result = resolveRoute(modelId, routingText, {
@@ -250,6 +260,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   let route = ctx.route;
   let status: MessageStatus = "complete";
   let error: string | undefined;
+  let errorKind: TurnErrorKind | undefined;
   // Where this reply ends up in its provider session, so a fork can start there.
   const place: { session?: string; ref?: string } = {};
 
@@ -315,10 +326,11 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
     try {
       await attempt(route, inputFor(route));
     } catch (err) {
+      // A limit counts even when it hits mid-reply: Auto avoids the provider, and a task's failover sees it.
+      if (err instanceof TurnError && err.kind === "limit" && !signal.aborted) limits.mark(route.provider, err.message);
       if (signal.aborted || builder.hasContent) throw err;
 
       if (err instanceof TurnError && err.kind === "limit") {
-        limits.mark(route.provider, err.message);
         const fallback = ctx.auto
           ? resolveRoute("auto", text, {
               thinkHarder: ctx.thinkHarder,
@@ -348,6 +360,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   } catch (err) {
     status = "error";
     error = err instanceof Error ? err.message : String(err);
+    errorKind = err instanceof TurnError ? err.kind : undefined;
   }
   if (signal.aborted) {
     // Stopped to hand the task a steering note: what it did so far stands as a finished reply.
@@ -362,7 +375,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   if (place.session && place.ref) messages.setProviderRef(final.id, { session: place.session, ref: place.ref });
   if (title) await Promise.race([title, sleep(TITLE_GRACE_MS)]);
   const touched = conversations.update(conversation.id, {}, true);
-  run.push({ type: "run-end", status, message: final });
+  run.push({ type: "run-end", status, message: final, ...(status === "error" && errorKind ? { errorKind } : {}) });
   runRegistry.finish(run);
   if (touched) appEvents.publish({ type: "conversation", conversation: toPublicConversation(touched) });
   appEvents.publish({ type: "run", runId: run.id, conversationId: conversation.id, agentId: conversation.agentId, status });
@@ -394,7 +407,7 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
   // Chats the user attached to this message, as reference.
   const attached = attachedNote(ctx.contextChats);
   // A chat's last reply cut off by a restart: said once, on the next turn (tasks hear it from their loop).
-  const lastReply = ctx.history.findLast((m) => m.role === "assistant");
+  const lastReply = ctx.history.findLast((m) => m.role === "assistant" && m.parts.some((part) => part.type !== "notice"));
   const restartNote =
     conversation.kind !== "task" && lastReply?.status === "stopped" && lastReply.error === CUT_OFF_BY_RESTART
       ? "[TOT restarted during your last reply, so it was cut off. Check where things stand before you carry on.]"
