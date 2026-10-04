@@ -19,6 +19,7 @@ import type {
   ConversationDetail,
   ForkRequest,
   CreateConversationRequest,
+  CreateProjectRequest,
   GitHubConnectRequest,
   GitHubDevicePoll,
   GitHubDeviceStart,
@@ -37,6 +38,7 @@ import type {
   PersonaPatch,
   Plugin,
   PluginInput,
+  Project,
   ProviderId,
   ProviderStatus,
   SendMessageRequest,
@@ -50,6 +52,7 @@ import type {
   TaskPatch,
   TaskStatus,
   UpdateConversationRequest,
+  UpdateProjectRequest,
   WikiPage,
   WikiPageInput,
   WikiPagePatch,
@@ -192,6 +195,21 @@ export const api = {
   /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */
   answerApproval: (runId: string, partId: string, answer: ApprovalAnswer) =>
     request<Ok>("POST", `/runs/${seg(runId)}/approvals/${seg(partId)}`, answer),
+
+  /** Projects (module 06): what the user works on — a GitHub repo, a folder on this Mac, or a topic — shared by every agent. */
+  listProjects: ({ archived = false } = {}) => request<Project[]>("GET", archived ? "/projects?archived=1" : "/projects"),
+  /** 409 when there's already a project for that source; 400 with the reason for bad input. `grant` allows a folder in the same call. */
+  createProject: (body: CreateProjectRequest & { grant?: boolean }) => request<Project>("POST", "/projects", body),
+  updateProject: (id: string, patch: UpdateProjectRequest) => request<Project>("PATCH", `/projects/${seg(id)}`, patch),
+  /** Archives it: it leaves the sidebar; its chats and brain stay. */
+  archiveProject: (id: string) => request<Project>("DELETE", `/projects/${seg(id)}`),
+  /** Learn a repo into the project's brain; returns the study chat, filed under the project. */
+  learnProject: (id: string, agentId: string) =>
+    request<{ conversationId: string; runId: string }>("POST", `/projects/${seg(id)}/learn`, { agentId }),
+  /** A folder project: the user allows agents to work in the folder. */
+  grantProjectFolder: (id: string) => request<Project>("POST", `/projects/${seg(id)}/grant`, {}),
+  /** Git folders on this Mac, for the folder picker: `path` is absolute, `label` is "~/…". */
+  recentProjectFolders: () => request<{ path: string; label: string }[]>("GET", "/projects/folders/recent"),
 
   /** Brains: knowledge bases at the app level — each agent's private notebook, and shared ones attached to agents. */
   listBrains: () => request<Brain[]>("GET", "/brains"),

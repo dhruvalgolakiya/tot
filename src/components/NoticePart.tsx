@@ -2,7 +2,8 @@ import type { LucideIcon } from "lucide-react";
 import { BookOpen, Brain, Info, Monitor, Sparkles, TriangleAlert } from "lucide-react";
 import clsx from "clsx";
 import type { MessagePart } from "@shared/types";
-import { navigateToWiki, selectActiveAgentId, useStore } from "../store";
+import { navigateToWiki, selectActiveAgentId, selectCurrentConversation, useStore } from "../store";
+import { MoveToProjectButton } from "./projects/MoveToProjectMenu";
 
 type Notice = Extract<MessagePart, { type: "notice" }>;
 
@@ -15,10 +16,14 @@ const ICONS: Record<Notice["kind"], LucideIcon> = {
   warning: TriangleAlert,
 };
 
-/** A small muted status line, e.g. "Auto → Opus 5.5 · complex task". A "wiki" notice opens the page it refers to. */
+/**
+ * A small muted status line, e.g. "Auto → Opus 5.5 · complex task". A "wiki" notice opens the page it refers to;
+ * "Filed under web" (it has a `projectId`) offers Move, to undo the filing in one step.
+ */
 export function NoticePart({ part }: { part: Notice }) {
   const Icon = ICONS[part.kind] ?? Info;
   const agentId = useStore(selectActiveAgentId);
+  const chat = useStore(selectCurrentConversation);
   const openWiki = part.kind === "wiki" && agentId ? () => navigateToWiki(agentId, part.pageIds?.[0]) : undefined;
 
   const content = (
@@ -27,6 +32,17 @@ export function NoticePart({ part }: { part: Notice }) {
       <span className="min-w-0 text-left">{part.text}</span>
     </>
   );
+
+  if (part.projectId && chat) {
+    return (
+      <div className="flex items-start gap-2 text-xs leading-5 text-fg-subtle">
+        {content}
+        <MoveToProjectButton chat={chat} className="link-muted shrink-0">
+          Move
+        </MoveToProjectButton>
+      </div>
+    );
+  }
 
   if (openWiki) {
     return (

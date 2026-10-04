@@ -26,6 +26,7 @@ import type {
 import { api, ApiError, errorMessage } from "./lib/api";
 import { toMs, truncate } from "./lib/format";
 import { AUTO_MODEL_ID, PROVIDER_LABELS } from "./lib/models";
+import { loadProjects, upsertProject, useProjects } from "./lib/projects";
 import { applyRunEvent, createAssistantMessage, upsertMessage } from "./lib/reducer";
 import {
   agentIdFromPath,
@@ -34,6 +35,8 @@ import {
   conversationPath,
   isSettingsPath,
   MASCOTS_PATH,
+  projectFromPath,
+  projectPath,
   pushPath,
   replacePath,
   settingsPath,
@@ -53,7 +56,7 @@ export type TaskPanelTab = "plan" | "changes" | "activity";
 type LoadState = "loading" | "ready" | "error";
 
 /** Which top-level screen is showing; drives what `App` mounts. */
-export type Page = "home" | "chat" | "mascots" | "wiki" | "settings" | "trust-lab";
+export type Page = "home" | "chat" | "project" | "mascots" | "wiki" | "settings" | "trust-lab";
 
 /** How long a just-finished reply keeps its mascot "happy" before it idles. */
 export const MASCOT_HAPPY_MS = 2200;
@@ -91,6 +94,8 @@ export interface TotState {
   wikiPageId: string | null;
   /** The brain open in the wiki; null means the open page's brain, or else the agent's notebook. */
   wikiBrainId: string | null;
+  /** The project whose page is open; only meaningful when `page === "project"`. */
+  projectId: string | null;
   /** Bumped whenever a brain's pages change (an AppEvent), for the open WikiView to react to. */
   wikiEvent: { brainId: string; conversationId?: string; at: number } | null;
   /** Every brain (notebooks and shared ones); null while still loading. */
@@ -102,6 +107,8 @@ export interface TotState {
   activeRuns: Record<string, ActiveRun>;
   /** A message is on its way to the server (before a run id exists). */
   sending: boolean;
+  /** Text of a message that failed after its chat was created elsewhere (a project's page), for the chat's composer to take back. */
+  composerDraft: string | null;
   /** Conversations whose run just completed; mascot stays "happy" briefly. */
   justFinished: Record<string, boolean>;
   models: ModelOption[];
@@ -180,6 +187,7 @@ export const useStore = create<TotState>()(() => ({
   currentId: null,
   wikiPageId: null,
   wikiBrainId: null,
+  projectId: null,
   wikiEvent: null,
   brains: null,
   viewKey: 0,
@@ -187,6 +195,7 @@ export const useStore = create<TotState>()(() => ({
   detailState: {},
   activeRuns: {},
   sending: false,
+  composerDraft: null,
   justFinished: {},
   models: [],
   providers: [],
@@ -306,6 +315,7 @@ export function initApp() {
   void loadAppsStatus();
   void loadSlackStatus();
   void loadPersonas();
+  void loadProjects().catch(notifyError);
 }
 
 export async function loadAgents() {
@@ -600,6 +610,10 @@ function showWiki(agentId: string, pageId: string | null, brainId: string | null
   });
 }
 
+function showProject(agentId: string, projectId: string) {
+  set({ currentId: null, homeAgentId: agentId, projectId, computerPanelOpen: false, taskPanelOpen: false });
+}
+
 function redirectHome() {
   const target = get().agents[0]?.id ?? null;
   replacePath(target ? agentPath(target) : "/");
@@ -630,6 +644,12 @@ export function syncWithLocation() {
     showWiki(wiki.agentId, wiki.pageId, wiki.brainId);
     return;
   }
+  const project = projectFromPath(pathname);
+  if (project) {
+    set({ page: "project" });
+    showProject(project.agentId, project.projectId);
+    return;
+  }
   const conversationId = conversationIdFromPath(pathname);
   if (conversationId) {
     set({ page: "chat" });
@@ -653,6 +673,24 @@ export function navigateToAgentHome(agentId: string) {
   pushPath(agentPath(agentId));
   set((s2) => ({ viewKey: s2.viewKey + 1, page: "home" }));
   showAgentHome(agentId);
+}
+
+/** Open a project's page, seen from an agent (the active one by default): new chats there start with it. */
+export function navigateToProject(projectId: string, agentId = selectActiveAgentId(get())) {
+  if (!agentId) return;
+  if (!isDesktop()) set({ sidebarOpen: false });
+  const s = get();
+  if (s.page === "project" && s.projectId === projectId && s.homeAgentId === agentId && s.currentId === null) return;
+  pushPath(projectPath(agentId, projectId));
+  set((s2) => ({ viewKey: s2.viewKey + 1, page: "project" }));
+  showProject(agentId, projectId);
+}
+
+/** The agent rail: switch to an agent. On a project's page, stay on it (the next chat there starts with that agent). */
+export function selectAgent(agentId: string) {
+  const s = get();
+  if (s.page === "project" && s.projectId && s.currentId === null) navigateToProject(s.projectId, agentId);
+  else navigateToAgentHome(agentId);
 }
 
 /** Open a conversation. */
@@ -931,13 +969,17 @@ export async function sendMessage(
   askForNotifications();
 
   let conversationId = get().currentId;
+  // From a project's page the new chat opens in another view, whose composer must get the text back on failure.
+  const fromProjectPage = !conversationId && get().page === "project";
   const tempId = localId();
   try {
     if (!conversationId) {
-      const { homeAgentId, agents, draftModelId, settings } = get();
+      const { homeAgentId, agents, draftModelId, settings, page, projectId } = get();
       const conversation = await api.createConversation({
         agentId: homeAgentId ?? agents[0]?.id,
         modelId: draftModelId ?? settings?.defaultModelId ?? AUTO_MODEL_ID,
+        // From a project's page, the chat starts in that project.
+        ...(page === "project" && projectId ? { projectId } : {}),
       });
       conversationId = conversation.id;
       set((s) => ({
@@ -996,11 +1038,17 @@ export async function sendMessage(
     if (conversationId) {
       setMessages(conversationId, (list) => list.filter((m) => m.id !== tempId));
     }
+    if (fromProjectPage && conversationId && body) set({ composerDraft: body });
     notifyError(error);
     return false;
   } finally {
     set({ sending: false });
   }
+}
+
+/** The composer took back a failed message's text (see `composerDraft`). */
+export function clearComposerDraft() {
+  set({ composerDraft: null });
 }
 
 export async function stopRun(conversationId: string) {
@@ -1034,9 +1082,9 @@ export async function setModel(modelId: string) {
   await updateConversation(conversation.id, { modelId });
 }
 
-async function updateConversation(id: string, patch: UpdateConversationRequest) {
+async function updateConversation(id: string, patch: UpdateConversationRequest): Promise<boolean> {
   const previous = get().conversations.find((c) => c.id === id);
-  if (!previous) return;
+  if (!previous) return false;
   patchConversation(id, patch);
   try {
     const updated = await api.updateConversation(id, patch);
@@ -1046,9 +1094,12 @@ async function updateConversation(id: string, patch: UpdateConversationRequest) 
     if (patch.title !== undefined) revert.title = previous.title;
     if (patch.pinned !== undefined) revert.pinned = previous.pinned;
     if (patch.modelId !== undefined) revert.modelId = previous.modelId;
+    if (patch.projectId !== undefined) revert.projectId = previous.projectId;
     patchConversation(id, revert);
     notifyError(error);
+    return false;
   }
+  return true;
 }
 
 export function renameConversation(id: string, title: string) {
@@ -1056,6 +1107,15 @@ export function renameConversation(id: string, title: string) {
   const current = get().conversations.find((c) => c.id === id);
   if (!trimmed || trimmed === current?.title) return;
   void updateConversation(id, { title: trimmed });
+}
+
+/** "Move to project…": files a chat (and its tasks, server-side) in a project, or takes it out with null. */
+export async function moveToProject(id: string, projectId: string | null) {
+  const current = get().conversations.find((c) => c.id === id);
+  if (!current || current.projectId === projectId) return;
+  if (!(await updateConversation(id, { projectId }))) return;
+  const name = projectId ? useProjects.getState().projects.find((p) => p.id === projectId)?.name : null;
+  toast.success(name ? `Moved to ${name}` : "Moved out of the project");
 }
 
 export function togglePinned(id: string) {
@@ -1246,6 +1306,9 @@ export function handleAppEvent(event: AppEvent) {
     case "task":
       handleTaskEvent(event.conversation);
       break;
+    case "project":
+      upsertProject(event.project);
+      break;
     case "run":
       // Running agents are tracked by useRunningAgents() + setRunningAgents; here, follow turns
       // TOT started on its own (a task's next turn, a study step) in the chat that's open.
@@ -1416,6 +1479,7 @@ export function handleAppReconnect() {
   void loadAgents();
   void loadConversations({ quiet: true });
   void loadPersonas();
+  void loadProjects().catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
