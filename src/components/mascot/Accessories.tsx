@@ -84,22 +84,16 @@ function Headphones({ anchors, palette }: Props) {
   const { headTop, earL, earR, faceScale: sc } = anchors;
   return (
     <g>
-      {/* Color-matched band (palette.dark, not flat black) so it reads as a toy
-       *  accessory rather than a stark wire. */}
       <path
         d={`M${earL.x},${earL.y} Q${headTop.x},${headTop.y - 10} ${earR.x},${earR.y}`}
         fill="none"
-        stroke={palette.dark}
+        stroke={palette.ink}
         strokeWidth={4.2 * sc}
         strokeLinecap="round"
       />
       {[earL, earR].map((p) => (
         <g key={`${p.x}-${p.y}`}>
-          {/* Soft two-tone cushion — a color-matched pad around an ink speaker,
-           *  with a small catchlight — instead of a flat black dot. */}
-          <circle cx={p.x} cy={p.y} r={7.8 * sc} fill={palette.dark} />
-          <circle cx={p.x} cy={p.y} r={5.6 * sc} fill={palette.ink} />
-          <circle cx={p.x - 1.4 * sc} cy={p.y - 1.6 * sc} r={2 * sc} fill={palette.light} opacity={0.85} />
+          <circle cx={p.x} cy={p.y} r={7.6 * sc} fill={palette.ink} />
         </g>
       ))}
     </g>

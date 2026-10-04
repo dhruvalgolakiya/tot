@@ -126,23 +126,19 @@ export interface MascotPalette {
   /** Near-black, low-saturation tone for eyes/mouth/small ink details — deliberately
    *  desaturated so it reads as "near-black", not just a darker version of the body hue. */
   ink: string;
-  /** Soft edge tone for the silhouette rim — a light tone, not a dark one, so the whole
-   *  outline reads as a gentle rim light rather than a grounding shadow. */
+  /** A light accent tone for small details (the beret's nub, the scarf's stripe, sleeping z's). */
   outline: string;
-  /** Warm tint for cheek blush, pulled toward pink regardless of base hue. */
-  blush: string;
   /** Bright tone for glow/shadow effects (MascotStage). */
   glow: string;
 }
 
 const TOT_CYAN_HUE = 189; // #22d3ee
 const TOT_VIOLET_HUE = 258; // #a78bfa
-const BLUSH_HUE = 350;
 
 /**
  * Derives a full shading palette from one base color: a light top-left highlight, a
- * light-but-shaded bottom tone, a near-black "ink" for eyes/mouth, a light rim tone, and
- * a warm blush — all in the same family, with a gentle universal pull toward TOT's
+ * gently shaded bottom tone, a near-black "ink" for eyes, mouth and accessories, and a
+ * light accent tone, all in the same family, with a gentle universal pull toward TOT's
  * violet→cyan duotone so every mascot carries a bit of house DNA without losing its own
  * hue. Saturation/lightness are actively pushed up (not just passed through) so pale or
  * muddy custom colors still read as a bright, colorful toy against the near-black canvas.
@@ -153,12 +149,11 @@ export function derivePalette(hex: string): MascotPalette {
   const s = clamp(s0 + 10, 52, 100);
   const l = clamp(l0, 42, 80);
   const base = hslToHex(h, s, l);
-  const light = hslToHex(blendHue(h, TOT_CYAN_HUE, 0.14), clamp(s + 4, 60, 100), clamp(l + 16, 58, 90));
-  const dark = hslToHex(blendHue(h, TOT_VIOLET_HUE, 0.14), clamp(s + 8, 60, 100), clamp(l - 16, 32, 74));
+  const light = hslToHex(blendHue(h, TOT_CYAN_HUE, 0.14), clamp(s + 4, 60, 100), clamp(l + 10, 58, 88));
+  const dark = hslToHex(blendHue(h, TOT_VIOLET_HUE, 0.14), clamp(s + 8, 60, 100), clamp(l - 9, 36, 76));
   const ink = hslToHex(h, clamp(s0 * 0.4, 0, 35), clamp(l0 * 0.12, 3, 9));
   const outline = hslToHex(h, clamp(s + 2, 55, 100), clamp(l + 8, 55, 92));
-  const blush = hslToHex(blendHue(h, BLUSH_HUE, 0.4), clamp(s + 10, 55, 100), clamp(l + 10, 60, 85));
-  return { base, light, dark, ink, outline, blush, glow: light };
+  return { base, light, dark, ink, outline, glow: light };
 }
 
 export function withAlpha(hex: string, alpha: number): string {

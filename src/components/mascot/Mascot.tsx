@@ -8,10 +8,10 @@ import clsx from "clsx";
 import type { MascotState, MascotSpec } from "@shared/types";
 import { mascotLabel } from "./catalog";
 import { Accessory } from "./Accessories";
-import { Brows, Cheeks, Eyes, Glint, Mouth, SleepZs, ThinkDots } from "./Faces";
+import { Brows, Eyes, Glint, Mouth, SleepZs, ThinkDots } from "./Faces";
 import { SHAPES, type BodyPiece } from "./geometry";
 import { ensureMascotStyles } from "./styles";
-import { derivePalette, hashFloat, specKey, type MascotPalette } from "./utils";
+import { derivePalette, hashFloat, specKey } from "./utils";
 
 export interface MascotProps {
   spec: MascotSpec;
@@ -23,24 +23,9 @@ export interface MascotProps {
   title?: string;
 }
 
-function BodyShape({
-  piece,
-  fill,
-  palette,
-  outlined,
-}: {
-  piece: BodyPiece;
-  fill: string;
-  palette: MascotPalette;
-  outlined: boolean;
-}) {
-  // A light (not dark) rim stroke, doubling as a gentle all-around rim light that
-  // complements the top-left shine highlight.
-  const edge = outlined
-    ? { stroke: palette.outline, strokeWidth: 1.8, strokeOpacity: 0.6, strokeLinejoin: "round" as const }
-    : {};
-  if ("d" in piece) return <path d={piece.d} fill={fill} {...edge} />;
-  return <circle cx={piece.cx} cy={piece.cy} r={piece.r} fill={fill} {...edge} />;
+function BodyShape({ piece, fill }: { piece: BodyPiece; fill: string }) {
+  if ("d" in piece) return <path d={piece.d} fill={fill} />;
+  return <circle cx={piece.cx} cy={piece.cy} r={piece.r} fill={fill} />;
 }
 
 export function Mascot({ spec, state = "idle", size = 64, className, title }: MascotProps) {
@@ -94,14 +79,14 @@ export function Mascot({ spec, state = "idle", size = 64, className, title }: Ma
 
       <g className="mascot-anim mascot-body-anim">
         {shapeDef.back?.map((piece, i) => (
-          <BodyShape key={`back-${i}`} piece={piece} fill={`url(#${bodyGradId})`} palette={palette} outlined />
+          <BodyShape key={`back-${i}`} piece={piece} fill={`url(#${bodyGradId})`} />
         ))}
         {shapeDef.body.map((piece, i) => (
-          <BodyShape key={`body-${i}`} piece={piece} fill={`url(#${bodyGradId})`} palette={palette} outlined />
+          <BodyShape key={`body-${i}`} piece={piece} fill={`url(#${bodyGradId})`} />
         ))}
         {detailed &&
           shapeDef.ink?.map((piece, i) => (
-            <BodyShape key={`ink-${i}`} piece={piece} fill={palette.ink} palette={palette} outlined={false} />
+            <BodyShape key={`ink-${i}`} piece={piece} fill={palette.ink} />
           ))}
 
         <ellipse
@@ -110,7 +95,7 @@ export function Mascot({ spec, state = "idle", size = 64, className, title }: Ma
           rx={shapeDef.highlight.rx}
           ry={shapeDef.highlight.ry}
           fill={`url(#${shineGradId})`}
-          opacity={0.7}
+          opacity={0.38}
           transform={
             shapeDef.highlight.rotate
               ? `rotate(${shapeDef.highlight.rotate} ${shapeDef.highlight.cx} ${shapeDef.highlight.cy})`
@@ -118,7 +103,6 @@ export function Mascot({ spec, state = "idle", size = 64, className, title }: Ma
           }
         />
 
-        {detailed && state !== "sleeping" && <Cheeks anchors={shapeDef.anchors} palette={palette} />}
         <Eyes eyeStyle={spec.eyes} anchors={shapeDef.anchors} palette={palette} state={state} />
         {state === "error" && <Brows anchors={shapeDef.anchors} palette={palette} />}
         <Mouth state={state} anchors={shapeDef.anchors} palette={palette} />
