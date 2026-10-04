@@ -1,6 +1,6 @@
 # 06 · Projects: agent → project → chat
 
-**Lane:** worktree D, branch `feat/projects`, created from `main`. **Depends on:** 01 (tasks, branches, worktrees). Shows 03's repo profile on the project page when there is one. **Overlaps with 04** in `server/tasks/worktree.ts`: build it after 04, or agree who changes that file first.
+**Lane:** worktree D, branch `feat/projects`, created from `main`. **Depends on:** 01 (tasks, branches, worktrees). Shows 03's repo profile on the project page when there is one. **Overlaps with 04** in `server/tasks/worktree.ts`: 06 was built first, so 04 builds on `inFolder` and the folder grant.
 
 Read [README.md](README.md) first.
 
@@ -262,7 +262,7 @@ export interface Project {
 
 ## Milestones
 
-- [ ] **M1 · Projects and chats in them.**
+- [x] **M1 · Projects and chats in them.**
   - What to build: the table, `projects.ts`, the routes, `conversations.project_id`, the sidebar section, the project page, New project (all three kinds; folder projects can be created but not opened until M3), Move to project, `projectSection`, and `task_start` defaulting to the project. Existing repo brains become GitHub projects; existing chats stay project-less.
   - *Accept:*
     - Creating `acme/web` makes one project and one brain.
@@ -270,6 +270,7 @@ export interface Project {
     - `task_start` without `repo` uses `acme/web`.
     - Moving a chat updates both the sidebar and the project page.
     - Tot's and Puddin's chats in the same project both show on its page.
+  - *Shipped:* `server/projects/` (`projects.ts`, `prompt.ts`, `routes.ts`), `conversations.project_id` (tasks and forks follow their chat), the `# Project:` prompt section with a one-time note when a chat moves or its project changes, `task_start` defaulting to the project's repo and base branch, repo brains migrated at startup (`server/projects.test.ts`); UI in `src/components/projects/` (sidebar section, project page, new project and consent dialogs, Move to project, breadcrumb and ticket chip).
 - [x] **M2 · One folder per project.**
   - What to build: `checkout.ts`, `~/projects/<slug>` clones, worktrees under them, the `~/repos` migration with symlinks, and topic-project folders.
   - *Accept:*

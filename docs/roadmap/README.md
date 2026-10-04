@@ -21,7 +21,7 @@ The plan has six modules. Each has its own doc, written so an agent can pick it 
 | 05 | **Coordination**: chats woken when their tasks finish, context that fits on a provider switch, retry-safe task tools, nothing ending silently, wait for a task, fork and merge back, attach a chat | [05-coordination.md](05-coordination.md) | 01, 02 (both merged) | **C** |
 | 06 | **Projects**: agent → project → chat; GitHub repos, folders on this Mac (with consent) and topics; one folder per project; tickets linked to branches | [06-projects.md](06-projects.md) | 01; after 04 (both change `server/tasks/worktree.ts`) | **D** |
 
-01, 02, 03 (M1–M4) and 05 are merged into `main`. 04 is next, then 06.
+01, 02, 03 (M1–M4) and 05 are merged into `main`. 06 (M1–M4) is built on `feat/projects`. 04 is next.
 
 ## Parallel plan: two worktrees
 
