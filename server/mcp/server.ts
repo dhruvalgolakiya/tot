@@ -17,6 +17,7 @@ import { describeSchedule, routines, validateRoutine } from "../data/routines.ts
 import { settings } from "../data/settings.ts";
 import { redactGitHubTokens } from "../github.ts";
 import { isThisMachine } from "../net.ts";
+import { forTools } from "../projects/checkout.ts";
 import { registerProjectTools } from "../projects/tools.ts";
 import { registerTaskTools } from "../tasks/tools.ts";
 import { homeRelative } from "../tasks/worktree.ts";
@@ -206,13 +207,16 @@ function buildServer(conversation: ConversationRecord): McpServer {
       ({ command, cwd, timeout_seconds }) =>
         guarded(async () => {
           const active = await computerManager.ensure(agentId);
+          // The chat's project folder: set up on the computer, or for a folder on this Mac, granted to this command only.
+          const project = await forTools(conversation, active);
           const result = await active.backend.exec(active.externalId, command, {
             cwd: cwd ? homeRelative(cwd) : (worktree ?? undefined),
             timeoutMs: (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
+            grant: project.grant,
           });
           computerManager.touch(agentId);
           const sections = [
-            `${startNote(active)}exit code ${result.exitCode}${result.timedOut ? " (timed out)" : ""} · ${(result.durationMs / 1000).toFixed(1)}s`,
+            `${startNote(active)}${project.note}exit code ${result.exitCode}${result.timedOut ? " (timed out)" : ""} · ${(result.durationMs / 1000).toFixed(1)}s`,
           ];
           // Output goes into the chat and the model's context: never let a GitHub token through.
           if (result.stdout.trim()) sections.push(`--- stdout ---\n${clip(redactGitHubTokens(result.stdout), EXEC_OUTPUT_LIMIT)}`);
@@ -235,9 +239,10 @@ function buildServer(conversation: ConversationRecord): McpServer {
       ({ path }) =>
         guarded(async () => {
           const active = await computerManager.ensure(agentId);
-          const content = await active.backend.readFile(active.externalId, resolvePath(path, worktree));
+          const project = await forTools(conversation, active);
+          const content = await active.backend.readFile(active.externalId, resolvePath(path, worktree), { grant: project.grant });
           computerManager.touch(agentId);
-          return reply(`${startNote(active)}${clip(redactGitHubTokens(content), FILE_OUTPUT_LIMIT)}`);
+          return reply(`${startNote(active)}${project.note}${clip(redactGitHubTokens(content), FILE_OUTPUT_LIMIT)}`);
         }),
     );
 
@@ -255,9 +260,10 @@ function buildServer(conversation: ConversationRecord): McpServer {
       ({ path, content }) =>
         guarded(async () => {
           const active = await computerManager.ensure(agentId);
-          await active.backend.writeFile(active.externalId, resolvePath(path, worktree), content);
+          const project = await forTools(conversation, active);
+          await active.backend.writeFile(active.externalId, resolvePath(path, worktree), content, { grant: project.grant });
           computerManager.touch(agentId);
-          return reply(`${startNote(active)}Wrote ${Buffer.byteLength(content)} bytes to ${path}.`);
+          return reply(`${startNote(active)}${project.note}Wrote ${Buffer.byteLength(content)} bytes to ${path}.`);
         }),
     );
 

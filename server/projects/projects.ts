@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, realpathSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename } from "node:path";
 import type { Brain, CreateProjectRequest, Project, ProjectIntake, ProjectKind, UpdateProjectRequest } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { brains, BrainError, githubFullName } from "../data/brains.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { db, parseJson, type Row } from "../db.ts";
-import { repoFolder } from "../tasks/worktree.ts";
+import { FolderRefused, resolveFolder } from "./folders.ts";
+
+export { tildePath } from "./folders.ts";
 
 /**
  * Projects (roadmap module 06): what the user works on, shared by every agent. A project is a GitHub
@@ -86,18 +86,14 @@ export function cleanGitHubSource(value: unknown): string {
   throw new HttpError(400, "Type the repo as owner/name, or paste its URL.");
 }
 
-/** "~/code/web" → its real absolute path; it must be an existing folder below your home folder. */
+/** "~/code/web" → its real absolute path, if it's a folder agents may be given (see folders.ts). */
 export function cleanFolderSource(value: unknown): string {
-  const text = typeof value === "string" ? value.trim() : "";
-  if (!text) throw new HttpError(400, "Pick a folder.");
-  const home = realpathSync(homedir());
-  const expanded = text === "~" || text.startsWith("~/") ? join(home, text.slice(1)) : text;
-  if (!isAbsolute(expanded)) throw new HttpError(400, "Use the folder's full path, like ~/code/web.");
-  const path = resolve(expanded);
-  if (!existsSync(path) || !statSync(path).isDirectory()) throw new HttpError(400, `There's no folder at ${text}.`);
-  const real = realpathSync(path);
-  if (real === home || !real.startsWith(`${home}/`)) throw new HttpError(400, "Pick a folder inside your home folder (not the home folder itself).");
-  return real;
+  try {
+    return resolveFolder(typeof value === "string" ? value : "");
+  } catch (err) {
+    if (err instanceof FolderRefused) throw new HttpError(400, err.message);
+    throw err;
+  }
 }
 
 /** The clone URL TOT's repo brains keep as their source (so Learn a repo finds the same brain). */
@@ -170,9 +166,11 @@ export const projects = {
     const brain = brainFor(kind, source, name);
     const id = randomUUID();
     const now = Date.now();
+    // A folder on this Mac can be shared with agents right away, when the user said yes as they added it.
+    const granted = kind === "folder" && input.grant === true ? now : null;
     db.prepare(
-      `INSERT INTO projects (id, name, slug, kind, source, brain_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, uniqueSlug(name), kind, source, brain.id, now, now);
+      `INSERT INTO projects (id, name, slug, kind, source, brain_id, folder_granted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, name, uniqueSlug(name), kind, source, brain.id, granted, now, now);
     appEvents.publish({ type: "brains", brains: brains.list() });
     return publish(projects.get(id)!);
   },
@@ -196,6 +194,22 @@ export const projects = {
       Date.now(),
       id,
     );
+    return publish(projects.get(id)!);
+  },
+
+  /**
+   * The user's yes for a folder project: agents may read the folder, and tasks make tot/… branches
+   * and worktrees in its git repo. Asked once; the folder is checked again before every command.
+   */
+  grant(id: string): Project {
+    const project = projects.get(id);
+    if (!project) throw new HttpError(404, "Project not found.");
+    if (project.kind !== "folder" || !project.source) throw new HttpError(400, "Only a folder on this Mac needs your OK.");
+    if (project.archived) throw new HttpError(400, "This project is archived.");
+    if (cleanFolderSource(project.source) !== project.source) {
+      throw new HttpError(400, "That folder has moved or changed since the project was made. Add it again as a new project.");
+    }
+    db.prepare(`UPDATE projects SET folder_granted_at = ?, updated_at = ? WHERE id = ?`).run(Date.now(), Date.now(), id);
     return publish(projects.get(id)!);
   },
 
@@ -227,21 +241,34 @@ export const projects = {
     appEvents.agentChanged(chat.agentId);
   },
 
-  /** What a task in this project works on when it touches code: the repo to clone, or null (no code here). */
+  /**
+   * What a task in this project works on when it touches code: the repo to clone, the folder on
+   * this Mac once the user allowed it, or null (no code here, or not allowed yet).
+   */
   taskSource(project: Project): string | null {
-    return project.kind === "github" ? project.source : null;
+    if (project.kind === "github") return project.source;
+    return project.kind === "folder" && project.folderGranted ? project.source : null;
   },
 
   /** What Learn a repo studies for this project (the same source its brain was made from), or null. */
   learnSource(project: Project): string | null {
-    return project.kind === "github" ? brainSource("github", project.source) : null;
+    if (project.kind === "github") return brainSource("github", project.source);
+    return project.kind === "folder" && project.folderGranted ? project.source : null;
   },
 
-  /** Where the project's files are on an agent's computer. */
+  /**
+   * Where the project's files are on an agent's computer: ~/projects/<slug> for GitHub and topic
+   * projects (see checkout.ts), and the folder's own path for a folder on this Mac.
+   */
   folder(project: Project): string | null {
-    if (project.kind === "github" && project.source) return repoFolder(project.source);
     if (project.kind === "folder") return project.source;
-    return null;
+    return `~/projects/${project.slug}`;
+  },
+
+  /** The project whose brain this is (archived ones too), or null. */
+  forBrain(brainId: string): Project | null {
+    const row = db.prepare(`SELECT * FROM projects WHERE brain_id = ?`).get(brainId) as Row | undefined;
+    return row ? toProject(row) : null;
   },
 };
 
@@ -260,12 +287,6 @@ function cleanIntake(value: Partial<ProjectIntake>): Partial<ProjectIntake> {
   if (channels) out.slackChannels = channels;
   if (teams) out.linearTeams = teams;
   return out;
-}
-
-/** Shortens a path below the home folder to ~/…, for prompts and labels. */
-export function tildePath(path: string): string {
-  const home = homedir();
-  return path === home ? "~" : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
 
 /** Repo brains learned before projects existed become GitHub projects, once (startup; idempotent). */

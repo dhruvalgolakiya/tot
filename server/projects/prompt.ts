@@ -1,6 +1,7 @@
 import type { Project } from "../../shared/types.ts";
 import { brains } from "../data/brains.ts";
 import { wiki } from "../data/wiki.ts";
+import { gitState } from "./folders.ts";
 import { projects, tildePath } from "./projects.ts";
 
 /**
@@ -23,18 +24,19 @@ function where(project: Project): string {
   const branch = `base branch ${project.defaultBranch ?? "is the repo's default"}`;
   if (project.kind === "github") return `GitHub ${project.source} · ${branch} · files at ${folder}`;
   if (project.kind === "folder") return `Folder on the user's Mac, ${tildePath(project.source ?? "")} · ${branch}`;
-  return "No code.";
+  return `No code. Shared files at ${folder} (drafts, notes, exports); edit them freely.`;
 }
 
 function rule(project: Project, inTask: boolean): string {
-  const folder = projects.folder(project);
-  if (project.kind === "none") {
-    return folder ? `Shared files at ${folder} (drafts, notes, exports); edit them freely.` : "";
-  }
-  const shown = project.kind === "folder" ? tildePath(folder ?? "") : folder;
-  return inTask
-    ? `You're one task in this project: change files only in your own task folder (your worktree), never in ${shown} itself.`
-    : `Look in ${shown}, but don't change it: start a task for any change.\nEach task gets its own branch (tot/…) and folder.`;
+  if (project.kind === "none") return "";
+  const folder = projects.folder(project) ?? "";
+  if (inTask) return `You're one task in this project: change files only in your own task folder (your worktree), never in ${folder} itself.`;
+  if (project.kind === "github") return `Look in ${folder}, but don't change it: start a task for any change.\nEach task gets its own branch (tot/…) and folder.`;
+  // A folder on the user's Mac: on the agent's computer, ~ is its own home, so it gets the full path.
+  if (!project.folderGranted) return "The user hasn't let agents into this folder yet, so you can't open it: ask them to allow it on the project's page in TOT.";
+  const look = `Look in ${folder} (the full path: ~ on your computer is your own home), but don't change it`;
+  if (gitState(folder) !== "repo") return `${look}. It isn't a git repo of its own, so tasks can't start in it.`;
+  return `${look}: start a task for any change.\nEach task gets its own branch (tot/…), which shows up in the user's own repo, and its own folder.`;
 }
 
 export function projectSection(project: Project, { inTask = false }: { inTask?: boolean } = {}): string {

@@ -2,14 +2,18 @@ import { randomBytes } from "node:crypto";
 import type { TaskChangedFile, TaskChanges, TaskRepo } from "../../shared/types.ts";
 import { quote } from "../computer/github-login.ts";
 import { computerManager } from "../computer/manager.ts";
+import type { FolderGrant } from "../computer/types.ts";
 import { cloneFolder, githubFullName } from "../data/brains.ts";
 import { redactGitHubTokens } from "../github.ts";
 
 /**
- * A coding task's own branch and git worktree, on its agent's computer (never on this Mac
- * directly): the repo lives in ~/repos/<name> as Learn a repo keeps it, and each task checks
- * its branch out in <repo>/.tot-worktrees/<branch slug>, so tasks on the same repo run side by
- * side without touching each other or the base branch. Nothing here ever pushes.
+ * A coding task's own branch and git worktree, on its agent's computer: the repo lives in its
+ * project's folder (~/projects/<slug>, see projects/checkout.ts), or outside a project in
+ * ~/repos/<name> as Learn a repo keeps it, and each task checks its branch out in
+ * <repo>/.tot-worktrees/<branch slug>, so tasks on the same repo run side by side without
+ * touching each other or the base branch. In a folder on this Mac (a folder project), the same
+ * happens in the user's own repo through the sandbox's folder grant, so the branch shows up in
+ * their `git branch`. Nothing here ever pushes.
  */
 
 const WORKTREES = ".tot-worktrees";
@@ -49,6 +53,11 @@ export function repoFolder(source: string): string {
   return `~/repos/${cloneFolder(githubFullName(text) ?? text)}`;
 }
 
+/** The same plan with its repo in another folder (its project's), and the worktree under it. */
+export function inFolder(repo: TaskRepo, folder: string): TaskRepo {
+  return { ...repo, folder, worktree: `${folder}/${WORKTREES}/${repo.worktree.split("/").pop()}` };
+}
+
 /**
  * The repo part of a new task: its branch and worktree are named now, created when the task first runs.
  * A task about a ticket (module 06) has its key first: tot/eng-123-fix-checkout-3f2a.
@@ -78,10 +87,17 @@ export function homeRelative(path: string): string {
 
 const oneLine = (text: string) => redactGitHubTokens(text).trim().split("\n").filter(Boolean).slice(-3).join(" · ").slice(0, 400);
 
+interface RunOptions {
+  cwd?: string;
+  timeoutMs?: number;
+  /** The task's folder grant, when its repo is a folder on this Mac (see checkout.grantFor). */
+  grant?: FolderGrant | null;
+}
+
 /** Runs a shell command on the agent's computer; throws with git's own words when it fails. */
-async function run(agentId: string, command: string, cwd?: string, timeoutMs = GIT_TIMEOUT_MS): Promise<string> {
+async function run(agentId: string, command: string, { cwd, timeoutMs = GIT_TIMEOUT_MS, grant }: RunOptions = {}): Promise<string> {
   const active = await computerManager.ensure(agentId);
-  const result = await active.backend.exec(active.externalId, command, { cwd: cwd ? homeRelative(cwd) : undefined, timeoutMs });
+  const result = await active.backend.exec(active.externalId, command, { cwd: cwd ? homeRelative(cwd) : undefined, timeoutMs, grant });
   computerManager.touch(agentId);
   if (result.exitCode !== 0) {
     throw new Error(oneLine(result.stderr || result.stdout) || `exit code ${result.exitCode}${result.timedOut ? " (timed out)" : ""}`);
@@ -89,19 +105,24 @@ async function run(agentId: string, command: string, cwd?: string, timeoutMs = G
   return result.stdout;
 }
 
-async function succeeds(agentId: string, command: string, cwd?: string): Promise<boolean> {
+async function succeeds(agentId: string, command: string, options: RunOptions = {}): Promise<boolean> {
   try {
-    await run(agentId, command, cwd);
+    await run(agentId, command, options);
     return true;
   } catch {
     return false;
   }
 }
 
-/** The ref a task's branch starts from: origin/<base> when the repo has a remote copy of it. */
-async function baseRef(agentId: string, repo: TaskRepo): Promise<string> {
+/**
+ * The ref a task's branch starts from: origin/<base> when the repo has a remote copy of it. In a
+ * folder on this Mac, the user's own <base> comes first: TOT doesn't fetch there, and that branch
+ * is what they have.
+ */
+async function baseRef(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<string> {
   const remote = `origin/${repo.baseBranch}`;
-  return (await succeeds(agentId, `git rev-parse --verify --quiet ${quote(`${remote}^{commit}`)}`, repo.folder)) ? remote : repo.baseBranch;
+  const [first, second] = grant ? [repo.baseBranch, remote] : [remote, repo.baseBranch];
+  return (await succeeds(agentId, `git rev-parse --verify --quiet ${quote(`${first}^{commit}`)}`, { cwd: repo.folder, grant })) ? first : second;
 }
 
 /** One setup at a time per repo on a computer: two tasks starting together mustn't both clone it, or race on `git worktree add`. */
@@ -117,47 +138,55 @@ function oneAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
   return next;
 }
 
-async function defaultBranch(agentId: string, folder: string): Promise<string> {
-  const remoteHead = await run(agentId, "git symbolic-ref --quiet --short refs/remotes/origin/HEAD || true", folder);
+async function defaultBranch(agentId: string, folder: string, grant?: FolderGrant | null): Promise<string> {
+  const remoteHead = await run(agentId, "git symbolic-ref --quiet --short refs/remotes/origin/HEAD || true", { cwd: folder, grant });
   const name = remoteHead.trim().replace(/^origin\//, "");
   if (name) return name;
-  return (await run(agentId, "git rev-parse --abbrev-ref HEAD", folder)).trim() || "main";
+  return (await run(agentId, "git rev-parse --abbrev-ref HEAD", { cwd: folder, grant })).trim() || "main";
 }
 
-/** Clones (if needed), fetches, and adds the task's worktree; see `worktrees.ensure`. */
-async function setUp(agentId: string, repo: TaskRepo): Promise<TaskRepo> {
+/**
+ * Clones (if needed), fetches, and adds the task's worktree; see `worktrees.ensure`. A folder on
+ * this Mac (with a grant) is never cloned or fetched, and checkout.ensure has already made its
+ * .tot-worktrees and kept it out of the user's `git status`: the sandbox lets the task write its
+ * own worktree and branch, nothing around them.
+ */
+async function setUp(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<TaskRepo> {
   const { folder } = repo;
-  if (!(await succeeds(agentId, "test -e .git", folder))) {
-    const url = cloneUrl(repo.source);
+  const here = { cwd: folder, grant };
+  if (!(await succeeds(agentId, "test -e .git", here))) {
+    const url = grant ? null : cloneUrl(repo.source);
     if (!url) throw new Error(`There's no git repo at ${folder} on the computer.`);
-    await run(agentId, `mkdir -p ${quote(homeRelative(folder).replace(/\/[^/]+$/, "") || ".")} && git clone --quiet ${quote(url)} ${quote(homeRelative(folder))}`, undefined, CLONE_TIMEOUT_MS);
+    await run(agentId, `mkdir -p ${quote(homeRelative(folder).replace(/\/[^/]+$/, "") || ".")} && git clone --quiet ${quote(url)} ${quote(homeRelative(folder))}`, { timeoutMs: CLONE_TIMEOUT_MS });
   }
   // A repo without a remote (a local folder) simply has nothing to fetch.
-  if (await succeeds(agentId, "git remote get-url origin", folder)) {
-    await run(agentId, "git fetch --quiet origin", folder, CLONE_TIMEOUT_MS).catch((err) => {
+  if (!grant && (await succeeds(agentId, "git remote get-url origin", here))) {
+    await run(agentId, "git fetch --quiet origin", { cwd: folder, timeoutMs: CLONE_TIMEOUT_MS }).catch((err) => {
       console.warn(`[tot] git fetch in ${folder} failed, using what's there:`, err instanceof Error ? err.message : err);
     });
   }
-  const baseBranch = repo.baseBranch || (await defaultBranch(agentId, folder));
+  const baseBranch = repo.baseBranch || (await defaultBranch(agentId, folder, grant));
   const planned: TaskRepo = { ...repo, baseBranch };
   const relative = `${WORKTREES}/${repo.worktree.split("/").pop()}`;
-  if (!(await succeeds(agentId, `test -e ${quote(`${relative}/.git`)}`, folder))) {
+  if (!(await succeeds(agentId, `test -e ${quote(`${relative}/.git`)}`, here))) {
     // Keep worktrees out of the main checkout's `git status`.
-    await run(
-      agentId,
-      `mkdir -p ${WORKTREES} && exclude="$(git rev-parse --git-path info/exclude)" && mkdir -p "$(dirname "$exclude")" && (grep -qxF '${WORKTREES}/' "$exclude" 2>/dev/null || echo '${WORKTREES}/' >> "$exclude")`,
-      folder,
-    );
-    const branchExists = await succeeds(agentId, `git rev-parse --verify --quiet ${quote(`refs/heads/${repo.branch}`)}`, folder);
+    if (!grant) {
+      await run(
+        agentId,
+        `mkdir -p ${WORKTREES} && exclude="$(git rev-parse --git-path info/exclude)" && mkdir -p "$(dirname "$exclude")" && (grep -qxF '${WORKTREES}/' "$exclude" 2>/dev/null || echo '${WORKTREES}/' >> "$exclude")`,
+        here,
+      );
+    }
+    const branchExists = await succeeds(agentId, `git rev-parse --verify --quiet ${quote(`refs/heads/${repo.branch}`)}`, here);
     await run(
       agentId,
       branchExists
         ? `git worktree add --quiet ${quote(relative)} ${quote(repo.branch)}`
-        : `git worktree add --quiet -b ${quote(repo.branch)} ${quote(relative)} ${quote(await baseRef(agentId, planned))}`,
-      folder,
+        : `git worktree add --quiet -b ${quote(repo.branch)} ${quote(relative)} ${quote(await baseRef(agentId, planned, grant))}`,
+      here,
     );
   }
-  return { ...planned, headSha: await worktrees.head(agentId, planned) };
+  return { ...planned, headSha: await worktrees.head(agentId, planned, grant) };
 }
 
 export const worktrees = {
@@ -166,22 +195,22 @@ export const worktrees = {
    * (with the agent's GitHub login, set up by the computer manager), fetches, and adds the
    * branch's worktree from the base. Returns the repo with its base branch and head filled in.
    */
-  ensure(agentId: string, repo: TaskRepo): Promise<TaskRepo> {
-    return oneAtATime(`${agentId}:${repo.folder}`, () => setUp(agentId, repo));
+  ensure(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<TaskRepo> {
+    return oneAtATime(`${agentId}:${repo.folder}`, () => setUp(agentId, repo, grant));
   },
 
   /** The branch's newest commit; null when the worktree isn't there. */
-  async head(agentId: string, repo: TaskRepo): Promise<string | null> {
+  async head(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<string | null> {
     try {
-      return (await run(agentId, "git rev-parse HEAD", repo.worktree)).trim() || null;
+      return (await run(agentId, "git rev-parse HEAD", { cwd: repo.worktree, grant })).trim() || null;
     } catch {
       return null;
     }
   },
 
   /** Everything the task changed: committed or not, tracked or new, against where its branch left the base. */
-  async changes(agentId: string, repo: TaskRepo): Promise<TaskChanges> {
-    const ref = await baseRef(agentId, repo);
+  async changes(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<TaskChanges> {
+    const ref = await baseRef(agentId, repo, grant);
     const script = [
       "set -e",
       `base=$(git merge-base ${quote(ref)} HEAD)`,
@@ -190,7 +219,7 @@ export const worktrees = {
       `echo '@@UNTRACKED'; git ls-files --others --exclude-standard | head -n ${MAX_UNTRACKED} | while IFS= read -r f; do printf '%s\\t%s\\n' "$(wc -l < "$f" | tr -d ' ')" "$f"; done`,
       `echo '@@PATCH'; { git diff -M "$base"; git ls-files --others --exclude-standard | head -n ${MAX_UNTRACKED} | while IFS= read -r f; do git diff --no-index -- /dev/null "$f" || true; done; } | head -c ${PATCH_LIMIT + 1}`,
     ].join("\n");
-    const out = redactGitHubTokens(await run(agentId, script, repo.worktree));
+    const out = redactGitHubTokens(await run(agentId, script, { cwd: repo.worktree, grant }));
     const section = (name: string) => {
       const start = out.indexOf(`@@${name}\n`);
       if (start === -1) return "";
@@ -219,7 +248,7 @@ export const worktrees = {
     return {
       baseBranch: repo.baseBranch,
       branch: repo.branch,
-      headSha: await worktrees.head(agentId, repo),
+      headSha: await worktrees.head(agentId, repo, grant),
       files,
       patch: patch.slice(0, PATCH_LIMIT),
       truncated: patch.length > PATCH_LIMIT,
@@ -230,15 +259,20 @@ export const worktrees = {
    * Removes the task's worktree. Its branch stays, unless `deleteBranch` and it was never
    * pushed (no remote branch contains it), so nothing that exists elsewhere is lost.
    */
-  async remove(agentId: string, repo: TaskRepo, { deleteBranch = false } = {}): Promise<{ branchDeleted: boolean }> {
+  async remove(
+    agentId: string,
+    repo: TaskRepo,
+    { deleteBranch = false, grant }: { deleteBranch?: boolean; grant?: FolderGrant | null } = {},
+  ): Promise<{ branchDeleted: boolean }> {
+    const here = { cwd: repo.folder, grant };
     const relative = `${WORKTREES}/${repo.worktree.split("/").pop()}`;
-    if (await succeeds(agentId, `test -e ${quote(relative)}`, repo.folder)) {
-      await run(agentId, `git worktree remove --force ${quote(relative)}`, repo.folder);
+    if (await succeeds(agentId, `test -e ${quote(relative)}`, here)) {
+      await run(agentId, `git worktree remove --force ${quote(relative)}`, here);
     }
-    await run(agentId, "git worktree prune", repo.folder).catch(() => {});
+    await run(agentId, "git worktree prune", here).catch(() => {});
     if (!deleteBranch) return { branchDeleted: false };
-    const pushed = (await run(agentId, `git branch -r --contains ${quote(repo.branch)} 2>/dev/null || true`, repo.folder)).trim();
+    const pushed = (await run(agentId, `git branch -r --contains ${quote(repo.branch)} 2>/dev/null || true`, here)).trim();
     if (pushed) return { branchDeleted: false };
-    return { branchDeleted: await succeeds(agentId, `git branch -D ${quote(repo.branch)}`, repo.folder) };
+    return { branchDeleted: await succeeds(agentId, `git branch -D ${quote(repo.branch)}`, here) };
   },
 };

@@ -5,6 +5,7 @@ import { brains, cloneFolder, githubFullName } from "../data/brains.ts";
 import { conversations } from "../data/conversations.ts";
 import { settings } from "../data/settings.ts";
 import { wiki } from "../data/wiki.ts";
+import { projects } from "../projects/projects.ts";
 import { draftAfterLearning } from "../trust/profile.ts";
 import { HttpError, sendMessage } from "./orchestrator.ts";
 import { runRegistry } from "./runs.ts";
@@ -85,13 +86,13 @@ interface Study {
   source: string;
   /** The brain's name, as the agent passes it to wiki_* tools. */
   brain: string;
-  /** ~/repos/<folder> */
+  /** Where the code is on the computer: its project's folder (module 06), else ~/repos/<name>. */
   folder: string;
 }
 
 function layout({ source, brain, folder }: Study): string {
   return `Repository: ${source}
-Local copy: ~/repos/${folder}
+Local copy: ${folder}
 Brain: “${brain}” — this repo's own brain, shared with other agents. Pass brain: "${brain}" on every wiki_* call in this study. Its layout:
 - “Overview” — the brain's pinned start-here guide for any agent about to work on this repo (update it with wiki_write, title "Overview")
 - “${PLAN_TITLE}” — the checklist that carries this study from step to step
@@ -117,7 +118,7 @@ function surveyStep(study: Study): string {
 
 ${layout(study)}
 
-1. Get the code onto your computer: clone it into ~/repos/${folder} (for very big repos, git clone --filter=blob:none); if it's already there, pull the latest; if the source is a folder already on your computer, use it in place. If cloning fails because it's private, stop and tell the user to connect GitHub in Settings → Connections (or, if it's connected, that this account can't see the repo). Note the commit: git log -1 --format='%h %s (%cs)'.
+1. Get the code onto your computer: clone it into ${folder} (for very big repos, git clone --filter=blob:none); if it's already there, pull the latest; if the source is a folder already on your computer, use it in place. If cloning fails because it's private, stop and tell the user to connect GitHub in Settings → Connections (or, if it's connected, that this account can't see the repo). Note the commit: git log -1 --format='%h %s (%cs)'.
 2. Measure it before reading it:
    - tracked files and line counts per top-level and second-level directory, and languages by extension (git ls-files, wc -l)
    - manifests and workspaces (package.json and workspace files, go.mod, Cargo.toml, pyproject.toml, Gemfile, pom.xml/build.gradle, Makefile, Dockerfile, compose files) and CI config
@@ -140,7 +141,7 @@ function updateStep(study: Study): string {
 ${layout(study)}
 
 1. wiki_read “Overview” and “${PLAN_TITLE}” (brain "${brain}").
-2. Get the latest code (pull in ~/repos/${folder}, or clone it again if it's missing; if the source is a folder on your computer, use it in place). Compare with the commit in the plan: git diff --stat <old>..HEAD | tail -80. If that commit is gone, treat every area as changed.
+2. Get the latest code (pull in ${folder}, or clone it again if it's missing; if the source is a folder on your computer, use it in place). Compare with the commit in the plan: git diff --stat <old>..HEAD | tail -80. If that commit is gone, treat every area as changed.
 3. Update “${PLAN_TITLE}” (keep its exact format):
    - set the Commit line to the new commit
    - keep areas an earlier, interrupted study didn't finish unchecked
@@ -202,7 +203,7 @@ ${layout(study)}
    - “Playbooks”: step-by-step recipes for the changes people make most (add an endpoint, a table and migration, a screen, a job…), each pointing at a real example in the code.
    - “Glossary”: domain and project terms and what they mean in this code.
    Leave out a page only when it truly doesn't apply (say, a data model for a stateless CLI).
-3. Rewrite “Overview” as the start-here guide for any agent about to work on this repo: what it is and who uses it, the stack, where it lives (~/repos/${folder}), the commit studied, a page map (every page with one line), and a "Where to look" table — task or concept → page → key paths. Keep its summary a one-line description of the repo.
+3. Rewrite “Overview” as the start-here guide for any agent about to work on this repo: what it is and who uses it, the stack, where it lives (${folder}), the commit studied, a page map (every page with one line), and a "Where to look" table — task or concept → page → key paths. Keep its summary a one-line description of the repo.
 4. Add or update one line about this repo on the Overview of your notebook (brain "notebook"): what it is, where it lives on your computer, and that the “${brain}” brain covers it.
 5. Reply in one or two lines.]`;
 }
@@ -302,7 +303,10 @@ export async function learnRepo(
 
   const brain = repoBrain(agent.id, source);
   appEvents.brainsChanged();
-  const study: Study = { source, brain: brain.name, folder: cloneFolder(source) };
+  // A repo that is a project is studied in the project's folder, where its tasks work too.
+  const project = projects.get(projectId) ?? projects.list().find((p) => projects.learnSource(p) === source) ?? null;
+  const folder = (project && projects.learnSource(project) === source && projects.folder(project)) || `~/repos/${cloneFolder(source)}`;
+  const study: Study = { source, brain: brain.name, folder };
   const updating = readPlan(brain.id) !== null;
   const conversation = conversations.create({ agentId: agent.id, modelId: agent.modelId, title: `Learn ${brain.name}`, projectId });
   // The study writes into the repo's brain by default, and doesn't need to be told about it again.
