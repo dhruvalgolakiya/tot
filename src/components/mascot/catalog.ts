@@ -48,7 +48,11 @@ export const MASCOT_COLORS: readonly string[] = [
   "#f87171", // red
 ];
 
-/** Tot, the default agent's mascot: a violet squircle (the brand hue) with headphones. */
+/**
+ * Tot, the default agent's mascot: a violet blob (brand hue) with headphones — the
+ * derived palette (see utils.ts) pulls its highlight toward TOT's cyan automatically,
+ * so it reads as the violet→cyan brand duotone without any special-casing here.
+ */
 export const defaultMascot: MascotSpec = {
   shape: "blob",
   color: "#a78bfa",

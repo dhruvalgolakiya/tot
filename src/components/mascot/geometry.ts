@@ -1,7 +1,7 @@
 // Per-shape SVG geometry: silhouettes (as one or more filled pieces, in a 100x100
 // viewBox) plus anchor points that eyes/mouth/accessories use to sit correctly on
-// each shape. Cut-paper style: crisp geometric shapes (circles, squircles, stars,
-// stadiums, zigzag edges) built from a few primitives, so all ten read as one set.
+// each shape. Every silhouette is built from the same primitives — `roundedPolygon`
+// and `radialShape` — so all ten shapes read as one squishy, rounded family.
 import type { MascotShape } from "@shared/types";
 
 type Pt = { x: number; y: number };
@@ -89,222 +89,273 @@ export interface ShapeAnchors {
   neck: Pt;
   earL: Pt;
   earR: Pt;
-  /** Relative scale for eyes/mouth/accessory linework (the frog's eyes sit on small bumps). */
+  /** Relative scale for eyes/mouth/accessory linework (frog's face sits on small bumps). */
   faceScale: number;
 }
 
 export interface ShapeDef {
-  /** Pieces drawn behind the body (cat ears, frog eye bumps, the bot's ears). Same color as the body. */
+  /** Pieces drawn behind the head (cat ears, frog eye-bumps). Same body gradient. */
   back?: BodyPiece[];
-  /** The main silhouette: one or more pieces. */
+  /** The main silhouette. Usually one piece. */
   body: BodyPiece[];
-  /** Small cut-outs drawn over the body in the accessory color (the pear's stem and leaf). */
+  /** Small ink-colored details drawn over the body (e.g. the pear's stem). */
   ink?: BodyPiece[];
+  highlight: { cx: number; cy: number; rx: number; ry: number; rotate?: number };
   anchors: ShapeAnchors;
 }
 
-const circle = (cx: number, cy: number, r: number): BodyPiece => ({ cx, cy, r });
-
 export const SHAPES: Record<MascotShape, ShapeDef> = {
-  // A squircle: the plainest, friendliest shape (and Tot's).
   blob: {
-    body: [{ d: "M50,15 C79,15 86,22 86,51 C86,80 79,87 50,87 C21,87 14,80 14,51 C14,22 21,15 50,15 Z" }],
-    anchors: {
-      headTop: { x: 50, y: 15 },
-      crownWidth: 30,
-      eyeLine: 47,
-      eyeSpread: 13,
-      mouthY: 63,
-      neck: { x: 50, y: 86 },
-      earL: { x: 14, y: 50 },
-      earR: { x: 86, y: 50 },
-      faceScale: 1,
-    },
-  },
-
-  // Three paper circles on a flat-bottomed base.
-  cloud: {
-    body: [circle(31, 58, 16), circle(51, 43, 21), circle(70, 56, 16), { d: roundedRectPath(14, 52, 72, 28, 14) }],
-    anchors: {
-      headTop: { x: 51, y: 22 },
-      crownWidth: 24,
-      eyeLine: 55,
-      eyeSpread: 12,
-      mouthY: 68,
-      neck: { x: 50, y: 80 },
-      earL: { x: 15, y: 60 },
-      earR: { x: 85, y: 60 },
-      faceScale: 0.95,
-    },
-  },
-
-  // A small circle on a big one, with a stem and a leaf.
-  pear: {
-    body: [circle(50, 41, 15), circle(50, 64, 25)],
-    ink: [{ d: roundedRectPath(48.6, 17, 3.4, 11, 1.7) }, { d: "M51,22 C54,15 61,13 66,15 C63,21 57,23 51,22 Z" }],
-    anchors: {
-      headTop: { x: 50, y: 26 },
-      crownWidth: 16,
-      eyeLine: 62,
-      eyeSpread: 12,
-      mouthY: 76,
-      neck: { x: 50, y: 52 },
-      earL: { x: 26, y: 64 },
-      earR: { x: 74, y: 64 },
-      faceScale: 0.95,
-    },
-  },
-
-  // A five-point star with just-softened corners.
-  star: {
-    body: [{ d: radialShape(50, 55, [39, 18, 39, 18, 39, 18, 39, 18, 39, 18], [4, 3, 4, 3, 4, 3, 4, 3, 4, 3]) }],
-    anchors: {
-      headTop: { x: 50, y: 18 },
-      crownWidth: 14,
-      eyeLine: 54,
-      eyeSpread: 10,
-      mouthY: 66,
-      neck: { x: 50, y: 80 },
-      earL: { x: 22, y: 52 },
-      earR: { x: 78, y: 52 },
-      faceScale: 0.85,
-    },
-  },
-
-  // Two circles and a point.
-  heart: {
-    body: [
-      circle(34, 39, 18),
-      circle(66, 39, 18),
-      {
-        d: roundedPolygon(
-          [
-            { x: 17.5, y: 46 },
-            { x: 50, y: 33 },
-            { x: 82.5, y: 46 },
-            { x: 50, y: 86 },
-          ],
-          [2, 2, 2, 5],
-        ),
-      },
-    ],
-    anchors: {
-      headTop: { x: 50, y: 30 },
-      crownWidth: 20,
-      eyeLine: 47,
-      eyeSpread: 13,
-      mouthY: 60,
-      neck: { x: 50, y: 76 },
-      earL: { x: 17, y: 42 },
-      earR: { x: 83, y: 42 },
-      faceScale: 0.95,
-    },
-  },
-
-  // A teardrop with a sharp tip.
-  drop: {
-    body: [{ d: "M50,13 C57,24 82,46 82,62 A32,32 0 0 1 18,62 C18,46 43,24 50,13 Z" }],
+    body: [{ d: radialShape(50, 54, [33, 39, 35, 38, 33, 37, 35, 39, 36, 33], 20) }],
+    highlight: { cx: 36, cy: 34, rx: 13, ry: 9, rotate: -18 },
     anchors: {
       headTop: { x: 50, y: 17 },
-      crownWidth: 10,
-      eyeLine: 62,
-      eyeSpread: 12,
-      mouthY: 76,
-      neck: { x: 50, y: 92 },
-      earL: { x: 19, y: 66 },
-      earR: { x: 81, y: 66 },
-      faceScale: 0.95,
-    },
-  },
-
-  // A rounded box with side ears and a nub on top.
-  bot: {
-    back: [
-      { d: roundedRectPath(12, 41, 10, 20, 3) },
-      { d: roundedRectPath(78, 41, 10, 20, 3) },
-      { d: roundedRectPath(45, 14, 10, 10, 2.5) },
-    ],
-    body: [{ d: roundedRectPath(19, 21, 62, 60, 13) }],
-    anchors: {
-      headTop: { x: 50, y: 21 },
       crownWidth: 28,
-      eyeLine: 47,
-      eyeSpread: 13,
+      eyeLine: 50,
+      eyeSpread: 12,
       mouthY: 64,
-      neck: { x: 50, y: 80 },
-      earL: { x: 15, y: 51 },
-      earR: { x: 85, y: 51 },
+      neck: { x: 50, y: 85 },
+      earL: { x: 14, y: 52 },
+      earR: { x: 86, y: 52 },
       faceScale: 1,
     },
   },
 
-  // An arch with a zigzag hem, cut with pinking shears.
-  ghost: {
-    body: [{ d: "M16,86 L16,50 A34,34 0 0 1 84,50 L84,86 L75.5,79 L67,86 L58.5,79 L50,86 L41.5,79 L33,86 L24.5,79 Z" }],
+  cloud: {
+    // Explicit points (not a pure radial shape) so the 3 bumps get a big rounding
+    // radius while the notches between them get a small one — a pure radialShape
+    // over-smooths the notches away and the bumps disappear into one blob.
+    body: [
+      {
+        d: roundedPolygon(
+          [
+            { x: 18, y: 70 },
+            { x: 13, y: 50 },
+            { x: 28, y: 31 },
+            { x: 42, y: 38 },
+            { x: 50, y: 19 },
+            { x: 58, y: 38 },
+            { x: 72, y: 31 },
+            { x: 87, y: 50 },
+            { x: 82, y: 70 },
+            { x: 50, y: 77 },
+          ],
+          [12, 14, 17, 8, 18, 8, 17, 14, 12, 15],
+        ),
+      },
+    ],
+    highlight: { cx: 34, cy: 38, rx: 12, ry: 8, rotate: -12 },
     anchors: {
-      headTop: { x: 50, y: 16 },
-      crownWidth: 30,
-      eyeLine: 46,
+      headTop: { x: 50, y: 24 },
+      crownWidth: 24,
+      eyeLine: 52,
       eyeSpread: 13,
       mouthY: 62,
-      neck: { x: 50, y: 78 },
-      earL: { x: 16, y: 50 },
-      earR: { x: 84, y: 50 },
+      neck: { x: 50, y: 75 },
+      earL: { x: 15, y: 52 },
+      earR: { x: 85, y: 52 },
       faceScale: 1,
     },
   },
 
-  // A stadium with two bumps on top for the eyes.
-  frog: {
-    back: [circle(32, 31, 13.5), circle(68, 31, 13.5)],
-    body: [{ d: roundedRectPath(11, 35, 78, 50, 25) }],
-    anchors: {
-      headTop: { x: 50, y: 30 },
-      crownWidth: 18,
-      eyeLine: 31,
-      eyeSpread: 18,
-      mouthY: 61,
-      neck: { x: 50, y: 84 },
-      earL: { x: 11, y: 60 },
-      earR: { x: 89, y: 60 },
-      faceScale: 0.88,
-    },
-  },
-
-  // A circle with two sharp ears.
-  cat: {
-    back: [
+  pear: {
+    // Explicit points for a real waist: small radius at the shoulders/waist pinches it
+    // in, then a big radius at the belly points flares it back out into a round base.
+    body: [
       {
         d: roundedPolygon(
           [
-            { x: 18, y: 42 },
-            { x: 16, y: 9 },
-            { x: 44, y: 27 },
+            { x: 50, y: 27 },
+            { x: 61, y: 33 },
+            { x: 55, y: 45 },
+            { x: 80, y: 64 },
+            { x: 50, y: 90 },
+            { x: 20, y: 64 },
+            { x: 45, y: 45 },
+            { x: 39, y: 33 },
           ],
-          [3, 3.5, 3],
-        ),
-      },
-      {
-        d: roundedPolygon(
-          [
-            { x: 82, y: 42 },
-            { x: 84, y: 9 },
-            { x: 56, y: 27 },
-          ],
-          [3, 3.5, 3],
+          [7, 9, 7, 27, 22, 27, 7, 9],
         ),
       },
     ],
-    body: [circle(50, 56, 33)],
+    ink: [
+      { d: "M47,25 C46,18 51,13 57,15 C54,17 52,20 52,25 Z" },
+      { d: "M51,17 C57,13 64,15 63,21 C57,22 52,20 51,17 Z" },
+    ],
+    highlight: { cx: 37, cy: 56, rx: 12, ry: 9, rotate: -14 },
     anchors: {
-      headTop: { x: 50, y: 23 },
+      headTop: { x: 50, y: 22 },
+      crownWidth: 16,
+      eyeLine: 58,
+      eyeSpread: 13,
+      mouthY: 71,
+      neck: { x: 50, y: 45 },
+      earL: { x: 23, y: 60 },
+      earR: { x: 77, y: 60 },
+      faceScale: 1,
+    },
+  },
+
+  star: {
+    body: [
+      {
+        d: radialShape(50, 55, [36, 16, 36, 16, 36, 16, 36, 16, 36, 16], [10, 5, 10, 5, 10, 5, 10, 5, 10, 5]),
+      },
+    ],
+    highlight: { cx: 39, cy: 40, rx: 10, ry: 7, rotate: -20 },
+    anchors: {
+      headTop: { x: 50, y: 19 },
       crownWidth: 22,
       eyeLine: 54,
       eyeSpread: 13,
-      mouthY: 68,
-      neck: { x: 50, y: 88 },
-      earL: { x: 17, y: 56 },
-      earR: { x: 83, y: 56 },
+      mouthY: 66,
+      neck: { x: 50, y: 87 },
+      earL: { x: 18, y: 55 },
+      earR: { x: 82, y: 55 },
+      faceScale: 0.95,
+    },
+  },
+
+  heart: {
+    body: [
+      {
+        d: roundedPolygon(
+          [
+            { x: 50, y: 34 },
+            { x: 27, y: 19 },
+            { x: 12, y: 43 },
+            { x: 50, y: 90 },
+            { x: 88, y: 43 },
+            { x: 73, y: 19 },
+          ],
+          [6, 15, 15, 19, 15, 15],
+        ),
+      },
+    ],
+    highlight: { cx: 35, cy: 38, rx: 10, ry: 7, rotate: -25 },
+    anchors: {
+      headTop: { x: 50, y: 26 },
+      crownWidth: 24,
+      eyeLine: 46,
+      eyeSpread: 14,
+      mouthY: 58,
+      neck: { x: 50, y: 80 },
+      earL: { x: 16, y: 40 },
+      earR: { x: 84, y: 40 },
+      faceScale: 1,
+    },
+  },
+
+  drop: {
+    // A near-zero radius at the apex keeps a genuinely sharp point (the neighboring
+    // edges are long, so roundedPolygon's clamp never rounds it away); the wide-set
+    // side points get a big radius so the bottom still reads as a soft round bulb.
+    body: [
+      {
+        d: roundedPolygon(
+          [
+            { x: 50, y: 14 },
+            { x: 69, y: 31 },
+            { x: 83, y: 59 },
+            { x: 50, y: 89 },
+            { x: 17, y: 59 },
+            { x: 31, y: 31 },
+          ],
+          [1.5, 15, 32, 32, 32, 15],
+        ),
+      },
+    ],
+    highlight: { cx: 40, cy: 52, rx: 10, ry: 8, rotate: -16 },
+    anchors: {
+      headTop: { x: 50, y: 23 },
+      crownWidth: 12,
+      eyeLine: 62,
+      eyeSpread: 12,
+      mouthY: 75,
+      neck: { x: 50, y: 92 },
+      earL: { x: 21, y: 66 },
+      earR: { x: 79, y: 66 },
+      faceScale: 0.95,
+    },
+  },
+
+  bot: {
+    // A tighter corner radius than the rest of the family so it still reads as a
+    // rounded screen/device face rather than another blob; flat-ish top is antenna-ready.
+    body: [{ d: roundedRectPath(20, 18, 60, 66, 11) }],
+    highlight: { cx: 36, cy: 33, rx: 12, ry: 9, rotate: -15 },
+    anchors: {
+      headTop: { x: 50, y: 19 },
+      crownWidth: 26,
+      eyeLine: 46,
+      eyeSpread: 14,
+      mouthY: 62,
+      neck: { x: 50, y: 82 },
+      earL: { x: 23, y: 46 },
+      earR: { x: 77, y: 46 },
+      faceScale: 1,
+    },
+  },
+
+  ghost: {
+    // Dome + 4 true semicircular scallops (alternating sweep flag) for a hem that
+    // reads as a clean wavy edge at any size, instead of the barely-there wobble a
+    // freehand curve gives once it's shrunk to 32px.
+    body: [
+      {
+        d: "M50,12 C69,12 84,28 84,49 L84,71 A8.5,8.5 0 0,1 67,71 A8.5,8.5 0 0,0 50,71 A8.5,8.5 0 0,1 33,71 A8.5,8.5 0 0,0 16,71 L16,49 C16,28 31,12 50,12 Z",
+      },
+    ],
+    highlight: { cx: 37, cy: 34, rx: 12, ry: 9, rotate: -15 },
+    anchors: {
+      headTop: { x: 50, y: 18 },
+      crownWidth: 28,
+      eyeLine: 44,
+      eyeSpread: 13,
+      mouthY: 56,
+      neck: { x: 50, y: 68 },
+      earL: { x: 18, y: 44 },
+      earR: { x: 82, y: 44 },
+      faceScale: 1,
+    },
+  },
+
+  frog: {
+    back: [
+      { cx: 35, cy: 29, r: 13 },
+      { cx: 65, cy: 29, r: 13 },
+    ],
+    body: [{ d: radialShape(50, 60, [30, 32, 34, 35, 33, 35, 33, 35, 34, 32], 18, { scaleX: 1.05, scaleY: 0.88 }) }],
+    highlight: { cx: 38, cy: 50, rx: 11, ry: 8, rotate: -10 },
+    anchors: {
+      headTop: { x: 50, y: 17 },
+      crownWidth: 20,
+      eyeLine: 29,
+      eyeSpread: 16,
+      mouthY: 58,
+      neck: { x: 50, y: 84 },
+      earL: { x: 18, y: 58 },
+      earR: { x: 82, y: 58 },
+      faceScale: 0.55,
+    },
+  },
+
+  cat: {
+    back: [
+      { d: roundedPolygon([{ x: 19, y: 38 }, { x: 12, y: 9 }, { x: 39, y: 26 }], [4, 8, 4]) },
+      { d: roundedPolygon([{ x: 81, y: 38 }, { x: 88, y: 9 }, { x: 61, y: 26 }], [4, 8, 4]) },
+    ],
+    body: [{ d: radialShape(50, 56, [33, 34, 35, 33, 35, 36, 35, 33, 35, 34], 20) }],
+    highlight: { cx: 37, cy: 38, rx: 12, ry: 9, rotate: -14 },
+    anchors: {
+      headTop: { x: 50, y: 12 },
+      crownWidth: 20,
+      eyeLine: 52,
+      eyeSpread: 13,
+      mouthY: 64,
+      neck: { x: 50, y: 86 },
+      earL: { x: 18, y: 50 },
+      earR: { x: 82, y: 50 },
       faceScale: 1,
     },
   },

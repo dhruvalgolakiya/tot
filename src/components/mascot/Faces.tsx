@@ -1,44 +1,34 @@
 // Eyes, mouth, brows, and the small state-only decorations (thinking dots, working
 // glint, sleeping z's). Kept separate from Mascot.tsx because this is where most of
-// the "personality" tuning happens. Cut-paper style: white eyes with a black pupil
-// that looks around, flat black mouths, no gloss.
+// the "personality" tuning happens.
 import type { MascotEyes, MascotState } from "@shared/types";
 import type { ShapeAnchors } from "./geometry";
 import type { MascotPalette } from "./utils";
 
-/** One eye at the origin. The pupil sits in its own group so CSS can move it (gaze) without moving the eye. */
-function EyeShape({ eyeStyle, palette }: { eyeStyle: MascotEyes; palette: MascotPalette }) {
+function EyeShape({ eyeStyle, ink }: { eyeStyle: MascotEyes; ink: string }) {
   switch (eyeStyle) {
     case "happy":
-      return <path d="M-7,2.5 Q0,-8 7,2.5" fill="none" stroke={palette.ink} strokeWidth={4.6} strokeLinecap="round" />;
+      return <path d="M-7.5,2.5 Q0,-9.2 7.5,2.5" fill="none" stroke={ink} strokeWidth={5} strokeLinecap="round" />;
     case "wide":
       return (
         <>
-          <circle r={9.6} fill={palette.paper} />
-          <g className="mascot-anim mascot-pupil">
-            <circle cx={1} cy={0.6} r={4.2} fill={palette.ink} />
-          </g>
+          <circle cx={0} cy={0} r={10.4} fill={ink} />
+          <circle cx={-3.4} cy={-3.7} r={2.9} fill="#fff" opacity={0.92} />
         </>
       );
     case "sleepy":
-      // Half-closed: the lower half of the eye, a lid line, and the pupil peeking out.
       return (
         <>
-          <path d="M-8.4,-0.6 A8.4,8.4 0 0 0 8.4,-0.6 Z" fill={palette.paper} />
-          <g className="mascot-anim mascot-pupil">
-            <circle cx={1.6} cy={2.6} r={3.9} fill={palette.ink} />
-          </g>
-          <rect x={-9.4} y={-2.4} width={18.8} height={3.6} rx={1.8} fill={palette.ink} />
+          <rect x={-9} y={-2.9} width={18} height={5.8} rx={2.9} fill={ink} />
+          <circle cx={-4.4} cy={-2.9} r={1.7} fill="#fff" opacity={0.8} />
         </>
       );
     case "dots":
     default:
       return (
         <>
-          <circle r={8.4} fill={palette.paper} />
-          <g className="mascot-anim mascot-pupil">
-            <circle cx={1.8} cy={0.8} r={4.6} fill={palette.ink} />
-          </g>
+          <ellipse cx={0} cy={0} rx={7.4} ry={9} fill={ink} />
+          <circle cx={-2.7} cy={-3.3} r={2.4} fill="#fff" opacity={0.92} />
         </>
       );
   }
@@ -60,19 +50,18 @@ export function Eyes({
   const dx = anchors.eyeSpread;
   const sc = anchors.faceScale;
 
-  // Sleeping always shows closed lids, and a happy mascot always squints, whatever the eye style.
-  if (state === "sleeping" || state === "happy") {
-    const d = state === "sleeping" ? "M-6.5,-0.5 Q0,4.5 6.5,-0.5" : "M-7,2.5 Q0,-8 7,2.5";
+  // Sleeping always shows closed lids, regardless of the mascot's chosen eye style.
+  if (state === "sleeping") {
     return (
       <g>
         {[-1, 1].map((s) => (
           <path
             key={s}
-            d={d}
+            d="M-6,0 Q0,3.6 6,0"
             transform={`translate(${cx + dx * s},${cy}) scale(${sc})`}
             fill="none"
             stroke={palette.ink}
-            strokeWidth={4.4}
+            strokeWidth={3.6}
             strokeLinecap="round"
           />
         ))}
@@ -89,7 +78,7 @@ export function Eyes({
         // never-animated wrapper `<g>`, with the animated class one level further in.
         <g key={s} transform={`translate(${cx + dx * s},${cy}) scale(${sc})`}>
           <g className="mascot-anim mascot-eyes-blink">
-            <EyeShape eyeStyle={eyeStyle} palette={palette} />
+            <EyeShape eyeStyle={eyeStyle} ink={palette.ink} />
           </g>
         </g>
       ))}
@@ -97,43 +86,51 @@ export function Eyes({
   );
 }
 
-/** Cross brows, for "error". */
-export function Brows({ anchors, palette }: { anchors: ShapeAnchors; palette: MascotPalette }) {
+/** Two soft cheek tints below-and-outside the eyes, for Dots-like charm. Skipped by the
+ *  caller at small sizes (same "detailed" gate as accessories). */
+export function Cheeks({ anchors, palette }: { anchors: ShapeAnchors; palette: MascotPalette }) {
   const sc = anchors.faceScale;
-  const y = anchors.eyeLine - 12 * sc;
-  const dx = anchors.eyeSpread;
+  const cy = anchors.eyeLine + 7.5 * sc;
+  const dx = anchors.eyeSpread + 9.5 * sc;
+  const rx = 5.6 * sc;
+  const ry = 3.8 * sc;
   return (
-    <g fill={palette.ink}>
-      <rect x={-6} y={-1.6} width={12} height={3.2} rx={1.6} transform={`translate(${50 - dx},${y}) rotate(14) scale(${sc})`} />
-      <rect x={-6} y={-1.6} width={12} height={3.2} rx={1.6} transform={`translate(${50 + dx},${y}) rotate(-14) scale(${sc})`} />
+    <g fill={palette.blush} opacity={0.5}>
+      <ellipse cx={50 - dx} cy={cy} rx={rx} ry={ry} />
+      <ellipse cx={50 + dx} cy={cy} rx={rx} ry={ry} />
     </g>
   );
 }
 
-/** An open half-moon smile with a tongue: the default face, bigger when happy. */
-function Smile({ r, palette }: { r: number; palette: MascotPalette }) {
+export function Brows({ anchors, palette }: { anchors: ShapeAnchors; palette: MascotPalette }) {
+  const y = anchors.eyeLine - 9 * anchors.faceScale;
+  const dx = anchors.eyeSpread;
   return (
-    <>
-      <path d={`M${-r},0 A${r},${r} 0 0 0 ${r},0 Z`} fill={palette.ink} />
-      <path d={`M${-r * 0.5},${r * 0.66} A${r * 0.52},${r * 0.42} 0 0 1 ${r * 0.5},${r * 0.66} Z`} fill={palette.tongue} />
-    </>
+    <g stroke={palette.ink} strokeWidth={2.6} strokeLinecap="round" fill="none">
+      <path d={`M${50 - dx - 5},${y + 3} L${50 - dx + 5},${y - 2}`} />
+      <path d={`M${50 + dx + 5},${y + 3} L${50 + dx - 5},${y - 2}`} />
+    </g>
   );
 }
 
-export function Mouth({ state, anchors, palette }: { state: MascotState; anchors: ShapeAnchors; palette: MascotPalette }) {
+export function Mouth({
+  state,
+  anchors,
+  palette,
+}: {
+  state: MascotState;
+  anchors: ShapeAnchors;
+  palette: MascotPalette;
+}) {
   const cx = 50;
   const cy = anchors.mouthY;
   const sc = anchors.faceScale;
   const t = `translate(${cx},${cy}) scale(${sc})`;
 
-  if (state === "sleeping") return <ellipse transform={t} cx={0} cy={1} rx={2.6} ry={3} fill={palette.ink} />;
+  if (state === "sleeping") return null; // closed eyes + z's already say it all
 
   if (state === "happy")
-    return (
-      <g transform={t}>
-        <Smile r={10.5} palette={palette} />
-      </g>
-    );
+    return <path transform={t} d="M-9,-1 Q-8,8 0,8.5 Q8,8 9,-1 Q0,3.4 -9,-1 Z" fill={palette.ink} />;
 
   if (state === "speaking")
     // IMPORTANT: `mascot-talk` animates CSS `transform` (scaleY), which would replace
@@ -141,7 +138,7 @@ export function Mouth({ state, anchors, palette }: { state: MascotState; anchors
     // on an outer, never-animated `<g>`, and the animated ellipse sits at its origin.
     return (
       <g transform={t}>
-        <ellipse className="mascot-anim mascot-mouth-anim" cx={0} cy={2} rx={6.4} ry={6.2} fill={palette.ink} />
+        <ellipse className="mascot-anim mascot-mouth-anim" cx={0} cy={1} rx={6} ry={6.4} fill={palette.ink} />
       </g>
     );
 
@@ -149,28 +146,22 @@ export function Mouth({ state, anchors, palette }: { state: MascotState; anchors
     return (
       <path
         transform={t}
-        d="M-7.5,2 L-3.75,-1.5 L0,2 L3.75,-1.5 L7.5,2"
+        d="M-7,1.2 Q-3.5,-2 0,0.6 Q3.5,-2 7,1.2"
         fill="none"
         stroke={palette.ink}
-        strokeWidth={3.2}
+        strokeWidth={3.6}
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
     );
 
-  if (state === "working") return <rect transform={t} x={-6} y={-1.8} width={12} height={3.6} rx={1.8} fill={palette.ink} />;
-
-  if (state === "thinking") return <ellipse transform={t} cx={3} cy={0.6} rx={3.4} ry={3.8} fill={palette.ink} />;
+  if (state === "thinking" || state === "working")
+    return <ellipse transform={t} cx={0} cy={0} rx={4} ry={2} fill={palette.ink} opacity={0.85} />;
 
   // idle
-  return (
-    <g transform={t}>
-      <Smile r={7.8} palette={palette} />
-    </g>
-  );
+  return <path transform={t} d="M-7,-1 Q0,5.4 7,-1" fill="none" stroke={palette.ink} strokeWidth={3.8} strokeLinecap="round" />;
 }
 
-/** Three small dots popping above the head — "thinking". */
+/** Three small dots pulsing above the head — "thinking". */
 export function ThinkDots({ x, y, color }: { x: number; y: number; color: string }) {
   return (
     <g>
@@ -181,13 +172,17 @@ export function ThinkDots({ x, y, color }: { x: number; y: number; color: string
   );
 }
 
-/** A small four-point sparkle near the head — "working". */
-export function Glint({ x, y, color }: { x: number; y: number; color: string }) {
+/** A small twinkling sparkle near the head — "working". */
+export function Glint({ x, y }: { x: number; y: number }) {
   // IMPORTANT: same rule as the eyes/mouth above — `mascot-glint` animates CSS
   // `transform` (scale), so positioning must live on an outer, unanimated `<g>`.
   return (
     <g transform={`translate(${x},${y})`}>
-      <path className="mascot-anim mascot-glint" d="M0,-6.5 L1.7,-1.7 L6.5,0 L1.7,1.7 L0,6.5 L-1.7,1.7 L-6.5,0 L-1.7,-1.7 Z" fill={color} />
+      <path
+        className="mascot-anim mascot-glint"
+        d="M0,-6 C0.6,-2 2,-0.6 6,0 C2,0.6 0.6,2 0,6 C-0.6,2 -2,0.6 -6,0 C-2,-0.6 -0.6,-2 0,-6 Z"
+        fill="#fff"
+      />
     </g>
   );
 }

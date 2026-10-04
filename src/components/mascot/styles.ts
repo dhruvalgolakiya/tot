@@ -25,16 +25,10 @@ const MASCOT_CSS = `
    corner. Pre-promoting avoids the per-frame bounding-box recalculation entirely. */
 .mascot-anim { transform-box: fill-box; transform-origin: 50% 50%; will-change: transform; }
 
-/* Cut-outs (hats, the pear's stem) are near-black on light backgrounds and off-white on dark ones,
-   so the parts sticking out past the body never vanish into the canvas. */
-.mascot .mascot-cutout { color: #18171d; }
-.dark .mascot .mascot-cutout { color: #f3efe6; }
-
 /* Static poses — always applied, independent of motion preference. */
-.mascot--working .mascot-eyes-wrap { transform: scaleY(0.82); }
-.mascot--working .mascot-pupil { transform: translate(-1.8px, 1.4px); }
-.mascot--thinking .mascot-pupil { transform: translate(0.6px, -3px); }
-.mascot--error .mascot-pupil { transform: translate(-1.8px, -0.8px) scale(0.8); }
+.mascot--working .mascot-eyes-wrap { transform: scaleY(0.74); }
+.mascot--thinking .mascot-eyes-wrap { transform: translate(3px, -3px); }
+.mascot--error .mascot-eyes-blink { transform: scale(1.08); }
 
 @media (prefers-reduced-motion: no-preference) {
   .mascot--idle .mascot-body-anim,
@@ -65,12 +59,11 @@ const MASCOT_CSS = `
     animation-delay: calc(var(--m-blink, 0s) * -1);
   }
 
-  .mascot--idle .mascot-pupil,
-  .mascot--speaking .mascot-pupil {
+  .mascot--idle .mascot-eyes-wrap {
     animation: mascot-gaze 7.2s ease-in-out infinite;
     animation-delay: calc(var(--m-gaze, 0s) * -1);
   }
-  .mascot--thinking .mascot-pupil {
+  .mascot--thinking .mascot-eyes-wrap {
     animation: mascot-think-gaze 2.8s ease-in-out infinite;
     animation-delay: calc(var(--m-gaze, 0s) * -1);
   }
@@ -142,15 +135,15 @@ const MASCOT_CSS = `
 }
 @keyframes mascot-gaze {
   0%, 38% { transform: translate(0, 0); }
-  46% { transform: translate(-3.4px, -1px); }
-  62% { transform: translate(-3.4px, -1px); }
-  70% { transform: translate(0.6px, 1px); }
-  84% { transform: translate(0.6px, 1px); }
+  46% { transform: translate(2.6px, -1px); }
+  62% { transform: translate(2.6px, -1px); }
+  70% { transform: translate(-2.2px, 0.6px); }
+  84% { transform: translate(-2.2px, 0.6px); }
   100% { transform: translate(0, 0); }
 }
 @keyframes mascot-think-gaze {
-  0%, 100% { transform: translate(0.6px, -3px); }
-  50% { transform: translate(-1.8px, -3.2px); }
+  0%, 100% { transform: translate(3px, -3px); }
+  50% { transform: translate(4.2px, -2px); }
 }
 @keyframes mascot-talk {
   0%, 100% { transform: scaleY(0.32); }

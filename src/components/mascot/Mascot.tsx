@@ -1,18 +1,17 @@
-// The mascot itself: one <svg>, built from a shape silhouette (geometry.ts), a flat
-// cut-paper palette (utils.ts), a face (Faces.tsx) and an optional accessory
-// (Accessories.tsx). Cut-paper style: one flat body color with a single diagonal
-// "fold" of shadow, no gloss and no outline. All motion is CSS (styles.ts) driven by
-// the `state` class and a handful of per-instance custom properties that desync many
-// on-screen mascots from each other without any JS timers.
+// The mascot itself: one <svg>, built from a shape silhouette (geometry.ts), a
+// derived shading palette (utils.ts), a face (Faces.tsx) and an optional accessory
+// (Accessories.tsx). All motion is CSS (styles.ts) driven by the `state` class and a
+// handful of per-instance custom properties that desync many on-screen mascots from
+// each other without any JS timers.
 import { useId, useMemo, type CSSProperties } from "react";
 import clsx from "clsx";
 import type { MascotState, MascotSpec } from "@shared/types";
 import { mascotLabel } from "./catalog";
 import { Accessory } from "./Accessories";
-import { Brows, Eyes, Glint, Mouth, SleepZs, ThinkDots } from "./Faces";
+import { Brows, Cheeks, Eyes, Glint, Mouth, SleepZs, ThinkDots } from "./Faces";
 import { SHAPES, type BodyPiece } from "./geometry";
 import { ensureMascotStyles } from "./styles";
-import { derivePalette, hashFloat, specKey } from "./utils";
+import { derivePalette, hashFloat, specKey, type MascotPalette } from "./utils";
 
 export interface MascotProps {
   spec: MascotSpec;
@@ -24,9 +23,24 @@ export interface MascotProps {
   title?: string;
 }
 
-function BodyShape({ piece, fill, className }: { piece: BodyPiece; fill: string; className?: string }) {
-  if ("d" in piece) return <path d={piece.d} fill={fill} className={className} />;
-  return <circle cx={piece.cx} cy={piece.cy} r={piece.r} fill={fill} className={className} />;
+function BodyShape({
+  piece,
+  fill,
+  palette,
+  outlined,
+}: {
+  piece: BodyPiece;
+  fill: string;
+  palette: MascotPalette;
+  outlined: boolean;
+}) {
+  // A light (not dark) rim stroke, doubling as a gentle all-around rim light that
+  // complements the top-left shine highlight.
+  const edge = outlined
+    ? { stroke: palette.outline, strokeWidth: 1.8, strokeOpacity: 0.6, strokeLinejoin: "round" as const }
+    : {};
+  if ("d" in piece) return <path d={piece.d} fill={fill} {...edge} />;
+  return <circle cx={piece.cx} cy={piece.cy} r={piece.r} fill={fill} {...edge} />;
 }
 
 export function Mascot({ spec, state = "idle", size = 64, className, title }: MascotProps) {
@@ -50,8 +64,8 @@ export function Mascot({ spec, state = "idle", size = 64, className, title }: Ma
     [key],
   );
 
-  const clipId = `mascot-clip-${rawId}`;
-  const silhouette = [...(shapeDef.back ?? []), ...shapeDef.body];
+  const bodyGradId = `mascot-body-${rawId}`;
+  const shineGradId = `mascot-shine-${rawId}`;
   const { headTop, crownWidth } = shapeDef.anchors;
   const label = title ?? mascotLabel(spec);
 
@@ -67,31 +81,55 @@ export function Mascot({ spec, state = "idle", size = 64, className, title }: Ma
     >
       {title ? <title>{title}</title> : null}
       <defs>
-        <clipPath id={clipId}>
-          {silhouette.map((piece, i) => (
-            <BodyShape key={i} piece={piece} fill="#000" />
-          ))}
-        </clipPath>
+        <linearGradient id={bodyGradId} x1="12%" y1="6%" x2="90%" y2="98%">
+          <stop offset="0%" stopColor={palette.light} />
+          <stop offset="55%" stopColor={palette.base} />
+          <stop offset="100%" stopColor={palette.dark} />
+        </linearGradient>
+        <radialGradient id={shineGradId} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.85" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
       <g className="mascot-anim mascot-body-anim">
-        {silhouette.map((piece, i) => (
-          <BodyShape key={i} piece={piece} fill={palette.base} />
+        {shapeDef.back?.map((piece, i) => (
+          <BodyShape key={`back-${i}`} piece={piece} fill={`url(#${bodyGradId})`} palette={palette} outlined />
         ))}
-        {/* The fold: the lower-right half of the paper, a shade darker. */}
-        <path d="M108,0 L108,108 L0,108 Z" fill={palette.fold} clipPath={`url(#${clipId})`} />
+        {shapeDef.body.map((piece, i) => (
+          <BodyShape key={`body-${i}`} piece={piece} fill={`url(#${bodyGradId})`} palette={palette} outlined />
+        ))}
         {detailed &&
-          shapeDef.ink?.map((piece, i) => <BodyShape key={`ink-${i}`} piece={piece} fill="currentColor" className="mascot-cutout" />)}
+          shapeDef.ink?.map((piece, i) => (
+            <BodyShape key={`ink-${i}`} piece={piece} fill={palette.ink} palette={palette} outlined={false} />
+          ))}
 
+        <ellipse
+          cx={shapeDef.highlight.cx}
+          cy={shapeDef.highlight.cy}
+          rx={shapeDef.highlight.rx}
+          ry={shapeDef.highlight.ry}
+          fill={`url(#${shineGradId})`}
+          opacity={0.7}
+          transform={
+            shapeDef.highlight.rotate
+              ? `rotate(${shapeDef.highlight.rotate} ${shapeDef.highlight.cx} ${shapeDef.highlight.cy})`
+              : undefined
+          }
+        />
+
+        {detailed && state !== "sleeping" && <Cheeks anchors={shapeDef.anchors} palette={palette} />}
         <Eyes eyeStyle={spec.eyes} anchors={shapeDef.anchors} palette={palette} state={state} />
         {state === "error" && <Brows anchors={shapeDef.anchors} palette={palette} />}
         <Mouth state={state} anchors={shapeDef.anchors} palette={palette} />
 
-        {detailed && spec.accessory !== "none" && <Accessory kind={spec.accessory} anchors={shapeDef.anchors} palette={palette} />}
+        {detailed && spec.accessory !== "none" && (
+          <Accessory kind={spec.accessory} anchors={shapeDef.anchors} palette={palette} />
+        )}
 
         {state === "thinking" && <ThinkDots x={headTop.x} y={headTop.y - 13} color={palette.base} />}
-        {state === "working" && <Glint x={headTop.x + crownWidth / 2 + 7} y={headTop.y - 3} color={palette.base} />}
-        {state === "sleeping" && <SleepZs x={headTop.x + crownWidth / 2 - 4} y={headTop.y - 4} color={palette.base} />}
+        {state === "working" && <Glint x={headTop.x + crownWidth / 2 + 6} y={headTop.y - 2} />}
+        {state === "sleeping" && <SleepZs x={headTop.x + crownWidth / 2 - 4} y={headTop.y - 4} color={palette.outline} />}
       </g>
     </svg>
   );
