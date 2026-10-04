@@ -67,10 +67,7 @@ export function Calendar() {
         {DAY.map((entry, index) => (
           <li key={`${entry.time}-${index}`} className="flex gap-3">
             <span className="w-11 shrink-0 pt-3 text-right font-mono text-xs text-fg-subtle tabular-nums">{entry.time}</span>
-            <div
-              className="flex min-w-0 flex-1 gap-3 rounded-xl border-l-[3px] bg-fill-subtle p-3"
-              style={{ borderLeftColor: crew[entry.who].spec.color }}
-            >
+            <div className="flex min-w-0 flex-1 gap-3 rounded-xl border border-hairline p-3">
               <Mascot spec={crew[entry.who].spec} state={entry.state} size={34} />
               <div className="min-w-0">
                 <p className="text-sm font-medium text-fg">
