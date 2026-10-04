@@ -24,6 +24,7 @@ import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
+import { projects } from "../projects/projects.ts";
 import { messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
 import { settings } from "../data/settings.ts";
@@ -90,6 +91,8 @@ function cleanModel(value: unknown): string | undefined {
 export interface CreateTaskInput extends StartTaskRequest {
   agentId: string;
   parentId?: string | null;
+  /** A top-level task's project (module 06); a task started from a chat is in the chat's. */
+  projectId?: string | null;
   origin?: ConversationOrigin;
   /** Orchestration: tasks spawned together, what the parent does when they've all finished, and the brief. */
   group?: string | null;
@@ -186,8 +189,11 @@ function create(input: CreateTaskInput): TaskRecord {
   if (!agent) throw new HttpError(404, "Agent not found.");
   const goal = cleanGoal(input.goal);
   const title = cleanTitle(input.title) ?? taskTitle(goal);
-  const source = cleanRepo(input.repo);
   const parent = input.parentId ? conversations.get(input.parentId) : null;
+  // Inside a project with code, a task always works on the project's repo (module 06).
+  const project = projects.get(parent?.projectId ?? input.projectId);
+  const source = cleanRepo((project && projects.taskSource(project)) ?? input.repo);
+  const baseBranch = input.baseBranch ?? project?.defaultBranch ?? undefined;
   const role = cleanRole(input.role);
   // A reviewer runs on the other provider from the session whose work it reviews.
   const provider = cleanProvider(input.provider) ?? (role && ROLES[role].otherProvider && parent?.provider ? otherProvider(parent.provider) : null);
@@ -198,8 +204,10 @@ function create(input: CreateTaskInput): TaskRecord {
     origin: input.origin,
     kind: "task",
     parentId: parent?.id ?? null,
+    // A task works in its chat's project.
+    projectId: project?.id ?? null,
     task: {
-      ...newTaskInfo(goal, source ? planRepo(source, title, input.baseBranch) : null),
+      ...newTaskInfo(goal, source ? planRepo(source, title, baseBranch) : null),
       role,
       tier: cleanTier(input.tier) ?? (role ? roleTier(role) : null),
       provider,

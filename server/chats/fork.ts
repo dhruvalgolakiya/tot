@@ -67,6 +67,7 @@ export const forks = {
       modelId: source.modelId,
       title: `Fork of ${source.title}`.slice(0, 120),
       forkedFrom: { conversationId: sourceId, messageId: at.id, at: Date.now() },
+      projectId: source.projectId,
     });
     for (const message of kept) messages.insert(copied(message, fork.id));
     // Same instructions as the source, so a native fork carries on exactly as the source would have.

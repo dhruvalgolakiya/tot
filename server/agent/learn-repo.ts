@@ -286,7 +286,11 @@ async function continueStudy(brainId: string, agentId: string, conversationId: s
   await step(conversationId, `Check the ${study.brain} pages against the code and wrap up.`, verifyStep(study), "checking a codebase write-up");
 }
 
-export async function learnRepo(agentId: string, source: string): Promise<{ conversationId: string; runId: string; brainId: string }> {
+export async function learnRepo(
+  agentId: string,
+  source: string,
+  { projectId = null }: { projectId?: string | null } = {},
+): Promise<{ conversationId: string; runId: string; brainId: string }> {
   const agent = agents.get(agentId);
   if (!agent) throw new HttpError(404, "Agent not found.");
   if (settings.get().computer.mode === "off") {
@@ -300,7 +304,7 @@ export async function learnRepo(agentId: string, source: string): Promise<{ conv
   appEvents.brainsChanged();
   const study: Study = { source, brain: brain.name, folder: cloneFolder(source) };
   const updating = readPlan(brain.id) !== null;
-  const conversation = conversations.create({ agentId: agent.id, modelId: agent.modelId, title: `Learn ${brain.name}` });
+  const conversation = conversations.create({ agentId: agent.id, modelId: agent.modelId, title: `Learn ${brain.name}`, projectId });
   // The study writes into the repo's brain by default, and doesn't need to be told about it again.
   brains.setFocus(conversation.id, brain.id);
   brains.markHinted(conversation.id, [brain.id]);

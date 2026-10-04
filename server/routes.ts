@@ -64,6 +64,8 @@ import { orchestrationRoutes } from "./orchestration/routes.ts";
 import { taskQueue } from "./tasks/queue.ts";
 import { taskRoutes } from "./tasks/routes.ts";
 import { chatRoutes } from "./chats/routes.ts";
+import { projectRoutes } from "./projects/routes.ts";
+import { projects } from "./projects/projects.ts";
 import { isTask } from "./tasks/store.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { trustRoutes } from "./trust/routes.ts";
@@ -237,10 +239,15 @@ api.get("/conversations", (c) => c.json(conversations.list(c.req.query("agentId"
 api.post("/conversations", async (c) => {
   const request = await body<CreateConversationRequest>(c).catch(() => ({}) as CreateConversationRequest);
   const agent = request.agentId ? found(agents.get(request.agentId), "Agent not found.") : agents.first();
+  const project = request.projectId ? found(projects.get(request.projectId), "Project not found.") : null;
+  if (project?.archived) throw new HttpError(400, "That project is archived.");
   const conversation = conversations.create({
     agentId: agent.id,
     modelId: request.modelId || agent.modelId || settings.get().defaultModelId,
+    projectId: project?.id ?? null,
   });
+  // New wiki pages from this chat go to the project's brain.
+  if (project) brains.setFocus(conversation.id, project.brainId);
   const created = toPublicConversation(conversation);
   appEvents.publish({ type: "conversation", conversation: created });
   appEvents.agentChanged(agent.id);
@@ -260,8 +267,13 @@ api.get("/conversations/:id", (c) => {
 
 api.patch("/conversations/:id", async (c) => {
   const id = c.req.param("id");
-  found(conversations.get(id), "Chat not found.");
+  const record = found(conversations.get(id), "Chat not found.");
   const patch = await body<UpdateConversationRequest>(c);
+  // Moving a chat takes its tasks along; a task moves with its chat, not on its own.
+  if (patch.projectId !== undefined && patch.projectId !== record.projectId) {
+    if (record.kind === "task" && record.parentId) throw new HttpError(400, "A task stays in its chat's project. Move the chat instead.");
+    projects.moveChat(id, patch.projectId);
+  }
   const title = typeof patch.title === "string" ? patch.title.trim().slice(0, 120) : undefined;
   if (title === "") throw new HttpError(400, "Title can't be empty.");
   const updated = conversations.update(id, {
@@ -315,6 +327,7 @@ api.post("/conversations/:id/computer/stop", async (c) => {
 
 api.route("/", taskRoutes);
 api.route("/", chatRoutes);
+api.route("/", projectRoutes);
 api.route("/", orchestrationRoutes);
 
 // ---------------------------------------------------------------------------

@@ -39,7 +39,7 @@ taskRoutes.get("/tasks", (c) => {
 });
 
 taskRoutes.post("/tasks", async (c) => {
-  const request = await body<StartTaskRequest & { agentId?: string }>(c);
+  const request = await body<StartTaskRequest & { agentId?: string; projectId?: string | null }>(c);
   const agent = request.agentId ? agents.get(request.agentId) : agents.first();
   if (!agent) throw new HttpError(404, "Agent not found.");
   return c.json(toPublic(tasks.create({ ...request, agentId: agent.id })), 201);

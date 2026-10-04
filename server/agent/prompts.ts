@@ -246,6 +246,8 @@ export function buildSystemPrompt(opts: {
   persona?: PersonaAccess;
   /** About tasks: how to work on this one, or (in a chat) when to start them. See tasks/prompt.ts. */
   tasks?: string;
+  /** The project the chat is in (module 06; see projects/prompt.ts). */
+  project?: string | null;
   now?: Date;
 }): string {
   const { settings, agent } = opts;
@@ -275,6 +277,7 @@ Your name is ${name}. Under the hood, TOT sends each message to a model from the
     githubSection(opts.github ?? null, settings.computer.mode !== "off"),
     opts.persona && personaSection(opts.persona),
     opts.tasks,
+    opts.project,
     opts.apps && appsSection(),
     opts.workspace && memorySection(opts.workspace),
     opts.workspace && wikiSection(name, opts.workspace),

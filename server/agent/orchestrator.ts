@@ -41,6 +41,8 @@ import { providerStatuses, providers } from "./providers/index.ts";
 import type { McpServerSpec, TurnInput } from "./providers/types.ts";
 import { CLAUDE_SONNET, parseModelId, resolveRoute, type Complexity, type Route } from "./router.ts";
 import { runRegistry, type Run } from "./runs.ts";
+import { projects } from "../projects/projects.ts";
+import { projectNote, projectSection } from "../projects/prompt.ts";
 
 export class HttpError extends Error {
   constructor(
@@ -409,13 +411,18 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
     conversation.kind !== "task" && lastReply?.status === "stopped" && lastReply.error === CUT_OFF_BY_RESTART
       ? "[TOT restarted during your last reply, so it was cut off. Check where things stand before you carry on.]"
       : "";
+  // The chat's project (module 06): a chat moved in or out since its prompt was frozen hears about it once.
+  const project = projects.get(conversation.projectId);
+  const section = project ? projectSection(project, { inTask: conversation.kind === "task" }) : null;
+  const moved = projectNote(conversation.systemPrompt, section);
+  if (moved.prompt !== null) conversations.update(conversation.id, { systemPrompt: moved.prompt });
   const text =
-    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, ctx.text]
+    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, ctx.text]
       .filter(Boolean)
       .join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
-  let systemPrompt = conversation.systemPrompt;
+  let systemPrompt = moved.prompt ?? conversation.systemPrompt;
   if (!systemPrompt) {
     const settings = settingsStore.get();
     const agent = agents.get(conversation.agentId) ?? agents.first();
@@ -447,6 +454,7 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
       persona: personaAccess,
       // A task is told its goal and where to work; a chat, when to start tasks.
       tasks: conversation.kind === "task" && conversation.task ? taskSection(conversation.task) : chatTasksSection(),
+      project: section,
     });
     conversations.update(conversation.id, { systemPrompt });
   }

@@ -11,6 +11,7 @@ import { ACCESS_TOKEN, DATA_DIR, HOST, IS_PROD, LAN, PORT, VERSION } from "./con
 import { mailboxes } from "./mail/mailbox.ts";
 import { emailTasks } from "./mail/tasks.ts";
 import { isLoopbackBind, lanUrls } from "./net.ts";
+import { migrateRepoBrains } from "./projects/projects.ts";
 import { tokenProblem } from "./session.ts";
 import { slack } from "./slack.ts";
 import { fanIn } from "./orchestration/fanin.ts";
@@ -41,6 +42,8 @@ const server = serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) =>
   if (ACCESS_TOKEN) console.log("Sign-in is on: use TOT_ACCESS_TOKEN from .env.");
 });
 
+// Repo brains learned before projects existed become GitHub projects (once).
+migrateRepoBrains();
 computerManager.startIdleReaper();
 scheduler.start();
 void apps.resume();
