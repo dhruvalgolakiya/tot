@@ -47,7 +47,9 @@ export function SidePanel({ label, icon, title, onClose, width = "w-[380px]", ch
           "flex max-w-full shrink-0 animate-slide-in-right flex-col",
           width,
           wide
-            ? "my-2 mr-2 overflow-hidden rounded-lg border border-hairline bg-canvas"
+            ? // relative: absolutely positioned bits inside (e.g. the hidden native <select> Radix adds to forms)
+              // are clipped by the panel instead of stretching the page.
+              "relative my-2 mr-2 overflow-hidden rounded-lg border border-hairline bg-canvas"
             : "fixed inset-y-0 right-0 z-40 h-full border-l border-hairline bg-panel shadow-dialog",
         )}
       >

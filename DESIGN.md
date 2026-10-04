@@ -43,23 +43,25 @@ code blocks). For a literal white or black that must not flip, use `fixed-white`
 | Selected overlay | `bg-selected` | current row, pressed (`active:`), open trigger | `bg-white/[0.07–0.08]` on active rows |
 | Fills | `bg-fill-subtle` · `bg-fill` · `bg-fill-strong` | cards/inputs · chips, tiles, skeletons · disabled send, strong chips | `bg-white/[0.02–0.03]` · `[0.04–0.06]` · `[0.08–0.1]` |
 | Lines | `border-hairline` · `border-edge` · `border-edge-strong` | dividers, cards, panels · inputs, secondary buttons, menus · hovered controls | `border-white/[0.04–0.08]` · `/10` · `/15–25` |
-| Accent | `bg-accent` · `text-accent-text` · `bg-accent-soft` (`hover:bg-accent-soft-hover`) · `border-accent-edge` | tiny indicators only: active-agent marker, focus ring, links, search-match highlights | `[var(--agent-accent…)]` arbitrary values |
+| Accent | `bg-accent` · `text-accent-text` · `bg-accent-soft` (`hover:bg-accent-soft-hover`) · `border-accent-edge` | tiny indicators only: the agent-working dot, focus ring, links, search-match highlights | `[var(--agent-accent…)]` arbitrary values |
 | Focus | `outline-focus` / `ring-focus` | only if you must draw focus yourself | `ring-[var(--agent-accent-ring)]` |
 | Status | `text-success\|warning\|danger`, `bg-*-soft`, `border-*-edge`, `bg-danger-solid` | status text/icons, tinted boxes, destructive button | `emerald-*`, `amber-*`, `red-*` |
+
+**Never** give a card, row or callout a colored bar down one side (`border-l-4`, a tinted left edge). Cards get an even hairline border all round, or none; status goes in a dot or badge.
 
 Surfaces (unchanged): `bg-panel` app chrome (rail, sidebar) · `bg-canvas` main card and docked panels ·
 `bg-elevated` menus, dialogs, selects, toasts · `bg-bubble` user messages · `bg-sunken` insets (screens,
 paths) · `bg-scrim/60` overlays.
 
 **Accent** is the active agent's mascot color and the only saturated color — but it's reserved for genuinely
-tiny indicators now (the active-agent marker, focus, links, a search-match highlight), not for fills, borders
+tiny indicators now (the agent-working dot, focus, links, a search-match highlight), not for fills, borders
 or "selected" states. Switches, radio cards, segmented controls and tabs went neutral (`bg-fg`/`bg-selected`).
 Primary buttons are monochrome (`bg-fg text-canvas`), never accent. Status colors only carry status — never
 decoration.
 
 ## 3. Typography
 
-Inter (variable weight + optical size, Google Fonts, `display=swap`); code in the system mono (SF Mono).
+Funnel Sans (variable weight, Google Fonts, `display=swap`) for the UI; Funnel Display (`font-display`) for display headings only; Geist Mono for code.
 Weights: 400 text, 500 labels/buttons/row emphasis, 600 headings. Never 700 in UI chrome.
 Use `tabular-nums` for counts, sizes, times and countdowns.
 

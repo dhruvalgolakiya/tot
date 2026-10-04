@@ -37,6 +37,15 @@ Restart `npm run dev` after editing `.env`. With a key present, new agent comput
 
 Production-style run: `npm run build && npm start` (serves the built UI from the API server on :8787).
 
+## Landing page
+
+The public page for TOT lives in `site/`, built from the app's own design tokens and mascots. It's a static site with no API and no sign-in.
+
+```bash
+npm run site          # http://localhost:5190
+npm run site:build    # static files in site/dist, ready for any host
+```
+
 ## Use TOT from your phone
 
 TOT only serves this machine until you give it an access token.

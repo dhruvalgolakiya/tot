@@ -1,0 +1,169 @@
+/* The landing page uses TOT's own tokens, base styles and components, plus the "OS" bits below. */
+@import "../src/index.css";
+@source "./";
+@source "../src/components/ui";
+@source "../src/components/mascot";
+
+@theme {
+  --font-hand: Caveat, "Bradley Hand", "Comic Sans MS", cursive;
+}
+
+@layer components {
+  /* Tot's wallpaper: the brand violet and cyan, with a little pink and amber, over a soft base. */
+  .wallpaper {
+    background-color: #eceef6;
+    background-image:
+      radial-gradient(rgb(0 0 0 / 0.05) 1px, transparent 1px),
+      radial-gradient(55% 50% at 12% 18%, rgb(196 181 253 / 0.7), transparent 70%),
+      radial-gradient(50% 45% at 88% 20%, rgb(103 232 249 / 0.55), transparent 70%),
+      radial-gradient(60% 50% at 62% 100%, rgb(249 168 212 / 0.55), transparent 70%),
+      radial-gradient(40% 40% at 22% 92%, rgb(253 224 71 / 0.4), transparent 70%);
+    background-size:
+      22px 22px,
+      auto,
+      auto,
+      auto,
+      auto;
+    background-attachment: fixed;
+  }
+  .dark .wallpaper {
+    background-color: #0e0e13;
+    background-image:
+      radial-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px),
+      radial-gradient(55% 50% at 12% 18%, rgb(124 58 237 / 0.5), transparent 70%),
+      radial-gradient(50% 45% at 88% 20%, rgb(8 145 178 / 0.45), transparent 70%),
+      radial-gradient(60% 50% at 62% 100%, rgb(190 24 93 / 0.32), transparent 70%),
+      radial-gradient(40% 40% at 22% 92%, rgb(180 83 9 / 0.22), transparent 70%);
+  }
+
+  /* Frosted surfaces: windows, the menu bar, the dock, notifications, phone widgets. */
+  .glass,
+  .window {
+    background: color-mix(in oklab, var(--color-elevated) 78%, transparent);
+    backdrop-filter: blur(28px) saturate(1.6);
+    -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  }
+  .window {
+    background: color-mix(in oklab, var(--color-elevated) 90%, transparent);
+    transition:
+      opacity 180ms ease,
+      scale 220ms var(--ease-emphasized),
+      translate 220ms var(--ease-emphasized),
+      visibility 0s;
+  }
+  /* Minimizing shrinks a window into its dock icon; restoring grows it back out. It stays mounted meanwhile. */
+  .window[data-min] {
+    opacity: 0;
+    scale: 0.08;
+    translate: var(--min-x) var(--min-y);
+    visibility: hidden;
+    transition:
+      opacity 200ms ease-in,
+      scale 220ms var(--ease-emphasized),
+      translate 220ms var(--ease-emphasized),
+      visibility 0s 220ms;
+  }
+  .window[data-closing] {
+    pointer-events: none;
+  }
+
+  /* An inactive window's title-bar lights go grey, like macOS; they light up again on hover. */
+  .light-off {
+    background-color: rgb(0 0 0 / 0.13);
+  }
+  .dark .light-off {
+    background-color: rgb(255 255 255 / 0.16);
+  }
+
+  /* The dock rises into place a beat after the first windows. */
+  .dock-in {
+    animation: dock-in 240ms var(--ease-emphasized) 180ms both;
+  }
+  @keyframes dock-in {
+    from {
+      opacity: 0;
+      translate: 0 16px;
+    }
+  }
+
+  /* App icons: one neutral tile for every app (white in light, graphite in dark), with a tinted glyph. */
+  .app-tile {
+    background: linear-gradient(180deg, #ffffff, #f1f1f3);
+    box-shadow:
+      inset 0 0 0 1px rgb(0 0 0 / 0.07),
+      inset 0 1px 0 #ffffff,
+      0 1px 2px rgb(0 0 0 / 0.06),
+      0 6px 14px -8px rgb(0 0 0 / 0.28);
+  }
+  .dark .app-tile {
+    background: linear-gradient(180deg, #3c3c41, #27272b);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.08),
+      inset 0 1px 0 rgb(255 255 255 / 0.12),
+      0 1px 2px rgb(0 0 0 / 0.5),
+      0 8px 16px -8px rgb(0 0 0 / 0.7);
+  }
+  .app-glyph {
+    color: var(--glyph-light);
+  }
+  .dark .app-glyph {
+    color: var(--glyph-dark);
+  }
+  /* Documents on the desktop: a sheet of paper, white in both themes. */
+  .app-paper {
+    background: #ffffff;
+    box-shadow:
+      inset 0 0 0 1px rgb(0 0 0 / 0.08),
+      0 1px 2px rgb(0 0 0 / 0.1),
+      0 6px 14px -8px rgb(0 0 0 / 0.3);
+  }
+
+  /* The giant "tot" painted on the wallpaper, behind everything. */
+  .watermark {
+    font-size: 34vw;
+    letter-spacing: -0.06em;
+    color: color-mix(in oklab, var(--color-fg) 6%, transparent);
+  }
+
+  /* Labels on the wallpaper need a little help to stay readable. */
+  .desktop-label {
+    text-shadow:
+      0 1px 2px color-mix(in oklab, var(--color-canvas) 90%, transparent),
+      0 0 8px color-mix(in oklab, var(--color-canvas) 70%, transparent);
+  }
+
+  .sticky-note {
+    background: linear-gradient(170deg, #fef3a0, #fde047);
+    box-shadow:
+      0 1px 1px rgb(0 0 0 / 0.08),
+      0 12px 24px -10px rgb(0 0 0 / 0.35);
+    border-radius: 2px 2px 14px 2px;
+  }
+
+  .toast-in {
+    animation: toast-in 420ms var(--ease-emphasized) both;
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px) scale(0.98);
+    }
+  }
+
+  .sheet-in {
+    animation: sheet-in 320ms var(--ease-emphasized) both;
+  }
+  @keyframes sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  .sheet-out {
+    animation: sheet-out 220ms ease-in both;
+  }
+  @keyframes sheet-out {
+    to {
+      transform: translateY(100%);
+    }
+  }
+}
