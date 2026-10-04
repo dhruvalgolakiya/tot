@@ -5,6 +5,7 @@ import type {
   ConvertToTaskRequest,
   Message,
   MessagePart,
+  Project,
   ProviderId,
   Role,
   SendMessageRequest,
@@ -14,6 +15,7 @@ import type {
   TaskChanges,
   TaskInfo,
   TaskPatch,
+  TaskRepo,
   TaskResult,
   Tier,
 } from "../../shared/types.ts";
@@ -24,6 +26,7 @@ import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
+import { checkout, grantFor, prepareTask } from "../projects/checkout.ts";
 import { projects } from "../projects/projects.ts";
 import { messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
@@ -36,7 +39,7 @@ import { runLoop } from "./run-loop.ts";
 import { steer } from "./steer.ts";
 import { FINISHED, isTask, newTaskInfo, taskStore, type TaskRecord } from "./store.ts";
 import { chatWakes } from "./wake.ts";
-import { planRepo, worktrees } from "./worktree.ts";
+import { inFolder, planRepo, worktrees } from "./worktree.ts";
 
 /**
  * Task lifecycle: creating tasks (from a chat, by the agent or the user; top-level; by turning
@@ -80,6 +83,19 @@ function cleanRepo(value: unknown): string | undefined {
     throw new HttpError(400, "Coding tasks need a computer to work on. Turn one on in Settings → Computer.");
   }
   return source;
+}
+
+/**
+ * A new task's repo. Inside a project with code it's always the project's, in the project's folder
+ * (module 06); a folder on this Mac must be allowed, a git repo, and on a local computer.
+ */
+function taskRepo(agentId: string, project: Project | null, repo: unknown, title: string, baseBranch?: string): TaskRepo | null {
+  if (project?.kind === "folder") checkout.usableFolder(agentId, project, { forTasks: true });
+  const projectSource = project ? projects.taskSource(project) : null;
+  const source = cleanRepo(projectSource ?? repo);
+  if (!source) return null;
+  const planned = planRepo(source, title, baseBranch ?? project?.defaultBranch ?? undefined);
+  return projectSource && project ? inFolder(planned, projects.folder(project)!) : planned;
 }
 
 function cleanModel(value: unknown): string | undefined {
@@ -192,8 +208,7 @@ function create(input: CreateTaskInput): TaskRecord {
   const parent = input.parentId ? conversations.get(input.parentId) : null;
   // Inside a project with code, a task always works on the project's repo (module 06).
   const project = projects.get(parent?.projectId ?? input.projectId);
-  const source = cleanRepo((project && projects.taskSource(project)) ?? input.repo);
-  const baseBranch = input.baseBranch ?? project?.defaultBranch ?? undefined;
+  const repo = taskRepo(agent.id, project, input.repo, title, input.baseBranch);
   const role = cleanRole(input.role);
   // A reviewer runs on the other provider from the session whose work it reviews.
   const provider = cleanProvider(input.provider) ?? (role && ROLES[role].otherProvider && parent?.provider ? otherProvider(parent.provider) : null);
@@ -207,7 +222,7 @@ function create(input: CreateTaskInput): TaskRecord {
     // A task works in its chat's project.
     projectId: project?.id ?? null,
     task: {
-      ...newTaskInfo(goal, source ? planRepo(source, title, baseBranch) : null),
+      ...newTaskInfo(goal, repo),
       role,
       tier: cleanTier(input.tier) ?? (role ? roleTier(role) : null),
       provider,
@@ -250,13 +265,9 @@ export const tasks = {
     if (chat.kind === "task") throw new HttpError(400, "This is already a task.");
     if (runRegistry.activeFor(chatId)) throw new HttpError(409, "Wait for the reply to finish, then make it a task.");
     const goal = cleanGoal(request.goal?.trim() || chat.title);
-    const source = cleanRepo(request.repo);
+    const repo = taskRepo(chat.agentId, projects.get(chat.projectId), request.repo, chat.title, request.baseBranch);
     // The system prompt is written again on the next turn, with the task's instructions in it.
-    conversations.update(
-      chatId,
-      { kind: "task", task: newTaskInfo(goal, source ? planRepo(source, chat.title, request.baseBranch) : null), systemPrompt: null },
-      true,
-    );
+    conversations.update(chatId, { kind: "task", task: newTaskInfo(goal, repo), systemPrompt: null }, true);
     taskStore.publish(taskStore.get(chatId)!);
     appEvents.agentChanged(chat.agentId);
     taskQueue.enqueue(chatId);
@@ -373,7 +384,7 @@ export const tasks = {
     }
     // Picking a coding task up again: its worktree must be there before the turn.
     if (task.task.repo && !task.task.repo.headSha) {
-      taskStore.patch(taskId, { repo: await worktrees.ensure(task.agentId, task.task.repo) });
+      taskStore.patch(taskId, { repo: await prepareTask(task) });
     }
     if (!taskStore.transition(taskId, "running")) throw new HttpError(409, `A ${status} task can't take messages.`);
     let started: SendMessageResponse;
@@ -396,9 +407,12 @@ export const tasks = {
     runRegistry.activeFor(taskId)?.stop();
     await runLoop.settled(taskId);
     if (task.task.repo?.headSha) {
-      await worktrees.remove(task.agentId, task.task.repo, { deleteBranch }).catch((err) => {
-        console.warn(`[tot] couldn't remove the worktree of task ${taskId}:`, err instanceof Error ? err.message : err);
-      });
+      const repo = task.task.repo;
+      await Promise.resolve()
+        .then(() => worktrees.remove(task.agentId, repo, { deleteBranch, grant: grantFor(task) }))
+        .catch((err) => {
+          console.warn(`[tot] couldn't remove the worktree of task ${taskId}:`, err instanceof Error ? err.message : err);
+        });
     }
     conversations.delete(taskId);
     removing.delete(taskId);
@@ -411,7 +425,7 @@ export const tasks = {
     const repo = task.task.repo;
     if (!repo) throw new HttpError(400, "This task has no repo.");
     if (!repo.headSha) throw new HttpError(409, "The task's branch isn't set up yet.");
-    return worktrees.changes(task.agentId, repo);
+    return worktrees.changes(task.agentId, repo, grantFor(task));
   },
 
   /**

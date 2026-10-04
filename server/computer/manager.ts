@@ -165,6 +165,13 @@ export const computerManager = {
           } catch (err) {
             console.warn("[tot] setting the persona's git author failed:", errorText(err));
           }
+          // Repos cloned to ~/repos before projects existed move into their project folders (module 06), once per run.
+          try {
+            const { checkout } = await import("../projects/checkout.ts");
+            await checkout.migrate(agentId, active);
+          } catch (err) {
+            console.warn("[tot] moving old clones into project folders failed:", errorText(err));
+          }
           return active;
         })
         .finally(() => inflight.delete(agentId));

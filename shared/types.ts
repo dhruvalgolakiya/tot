@@ -1108,10 +1108,12 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //
 // Projects (module 06; every agent can work in every project)
 // GET    /api/projects[?archived=1]           -> Project[]  (name order; archived ones only with ?archived=1)
-// POST   /api/projects                        CreateProjectRequest -> Project  (also makes or reuses its brain)
+// GET    /api/projects/folders/recent         -> RecentFolder[]  (git repos one level under ~/code, ~/projects, ~/playground, ~/dev, ~/src, ~/Documents/GitHub; newest first, at most 12)
+// POST   /api/projects                        CreateProjectRequest -> Project  (also makes or reuses its brain; 400 for a folder that can't be shared: ~, hidden top-level folders, ~/Library, TOT's data)
 // PATCH  /api/projects/:id                    UpdateProjectRequest -> Project
 // DELETE /api/projects/:id                    -> Project  (archives it; its chats stay, filed under it)
-// POST   /api/projects/:id/learn              { agentId } -> { conversationId, runId }  (Learn a repo into its brain)
+// POST   /api/projects/:id/grant              -> Project  (folder projects: the user's OK for agents to read the folder and make tot/… branches in it)
+// POST   /api/projects/:id/learn              { agentId } -> { conversationId, runId }  (Learn a repo into its brain; a folder project needs its grant and a local computer)
 // ---------------------------------------------------------------------------
 
 export interface CreateConversationRequest {
@@ -1232,7 +1234,7 @@ export interface TaskInfo {
 export interface TaskRepo {
   /** GitHub "owner/name", a clone URL, or a folder on the agent's computer. */
   source: string;
-  /** Where the repo lives on the computer: ~/repos/<name> (as Learn a repo does), or the folder itself. */
+  /** Where the repo lives on the computer: its project's folder (~/projects/<slug>, or a folder on this Mac), ~/repos/<name> outside a project, or the folder itself. */
   folder: string;
   /** e.g. "main". */
   baseBranch: string;
@@ -1632,6 +1634,16 @@ export interface CreateProjectRequest {
   source?: string;
   /** Defaults to the repo's or folder's name; required for kind "none". */
   name?: string;
+  /** Folder projects: the user already said yes to the consent dialog (else POST /api/projects/:id/grant later). */
+  grant?: boolean;
+}
+
+/** A git folder on this Mac, offered by the New project picker. */
+export interface RecentFolder {
+  /** Its real absolute path. */
+  path: string;
+  /** "~/playground/meet-notes". */
+  label: string;
 }
 
 export interface UpdateProjectRequest {

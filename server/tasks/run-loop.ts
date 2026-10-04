@@ -10,6 +10,7 @@ import { messageText, messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
 import { overBudget } from "../orchestration/budget.ts";
 import { renderBrief } from "../orchestration/roles.ts";
+import { grantFor, prepareTask } from "../projects/checkout.ts";
 import { continuationPreamble, handoffPreamble } from "./prompt.ts";
 import { ACTIVE, taskStore, type TaskRecord } from "./store.ts";
 import { worktrees } from "./worktree.ts";
@@ -160,6 +161,15 @@ function turnOptions(task: TaskRecord): TurnOptions {
   };
 }
 
+/** A task's folder grant (module 06), or none when its folder can't be used right now: its head then reads as unknown. */
+function folderGrant(task: TaskRecord) {
+  try {
+    return grantFor(task);
+  } catch {
+    return null;
+  }
+}
+
 /** After a turn: add up its tokens and note where the branch is now. */
 async function recordTurn(task: TaskRecord, reply: Message | undefined): Promise<Snapshot> {
   const usage = {
@@ -167,7 +177,7 @@ async function recordTurn(task: TaskRecord, reply: Message | undefined): Promise
     outputTokens: task.task.usage.outputTokens + (reply?.usage?.outputTokens ?? 0),
   };
   const repo = task.task.repo;
-  const headSha = repo ? await worktrees.head(task.agentId, repo) : null;
+  const headSha = repo ? await worktrees.head(task.agentId, repo, folderGrant(task)) : null;
   const updated = taskStore.patch(task.id, { usage, ...(repo ? { repo: { ...repo, headSha: headSha ?? repo.headSha } } : {}) });
   return snapshot(updated ?? task);
 }
@@ -185,7 +195,7 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
     const setup = `Setting up ${task.task.repo.branch}…`;
     if (!task.task.repo.headSha) taskStore.patch(taskId, { progress: setup });
     try {
-      const repo = await worktrees.ensure(task.agentId, task.task.repo);
+      const repo = await prepareTask(task);
       const current = taskStore.get(taskId);
       taskStore.patch(taskId, { repo, ...(current?.task.progress === setup ? { progress: null } : {}) });
     } catch (err) {

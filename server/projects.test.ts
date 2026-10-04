@@ -104,8 +104,8 @@ await request("PATCH", `/projects/${web.id}`, { instructions: "Use pnpm.\n\nNeve
 let input = await turn(chat.id, { text: "Where is the checkout code?" });
 check(
   "its agent gets the project section: where the repo is, the instructions, the brain and the one rule",
-  input.systemPrompt.includes("# Project: web\n<project>\nGitHub acme/web · base branch is the repo's default · files at ~/repos/web\nInstructions: Use pnpm.\nNever touch billing/ without asking.") &&
-    input.systemPrompt.includes("Look in ~/repos/web, but don't change it: start a task for any change.\nEach task gets its own branch (tot/…) and folder.\n</project>"),
+  input.systemPrompt.includes("# Project: web\n<project>\nGitHub acme/web · base branch is the repo's default · files at ~/projects/web\nInstructions: Use pnpm.\nNever touch billing/ without asking.") &&
+    input.systemPrompt.includes("Look in ~/projects/web, but don't change it: start a task for any change.\nEach task gets its own branch (tot/…) and folder.\n</project>"),
   input.systemPrompt.slice(input.systemPrompt.indexOf("# Project"), input.systemPrompt.indexOf("# Project") + 500),
 );
 check("…and no note about moving, since it started there", !input.prompt.includes("[This chat is now in a project"));
@@ -142,7 +142,7 @@ console.log("\n# Tasks in a project");
 const task = tasks.create({ agentId: tot.id, parentId: chat.id, goal: "Fix the flaky checkout test" });
 check(
   "a task started from a project chat is in the project and works on its repo, without being given one",
-  task.projectId === web.id && task.task.repo?.source === "acme/web" && task.task.repo.branch.startsWith("tot/") && task.task.repo.folder === "~/repos/web",
+  task.projectId === web.id && task.task.repo?.source === "acme/web" && task.task.repo.branch.startsWith("tot/") && task.task.repo.folder === "~/projects/web" && task.task.repo.worktree.startsWith("~/projects/web/.tot-worktrees/tot-"),
   JSON.stringify(task.task.repo),
 );
 const other = tasks.create({ agentId: tot.id, parentId: chat.id, goal: "Something else", repo: "acme/api" });

@@ -433,7 +433,11 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
       workspace = {
         userMemories: memories.forPrompt(text),
         wiki: {
-          brains: mine,
+          // A project's brain carries its folder, so its card says where the files are (module 06).
+          brains: mine.map((brain) => {
+            const project = projects.forBrain(brain.id);
+            return project ? { ...brain, folder: projects.folder(project) } : brain;
+          }),
           overview: wiki.overview(notebook.id),
           outline: wiki.outline(notebook.id).filter((page) => !page.pinned),
           relevant: wiki.relevant(

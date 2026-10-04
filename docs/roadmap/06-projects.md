@@ -269,13 +269,14 @@ export interface Project {
     - `task_start` without `repo` uses `acme/web`.
     - Moving a chat updates both the sidebar and the project page.
     - Tot's and Puddin's chats in the same project both show on its page.
-- [ ] **M2 · One folder per project.**
+- [x] **M2 · One folder per project.**
   - What to build: `checkout.ts`, `~/projects/<slug>` clones, worktrees under them, the `~/repos` migration with symlinks, and topic-project folders.
   - *Accept:*
     - Two tasks in `web` on one computer use `~/projects/web/.tot-worktrees/…` side by side.
     - An old task whose repo was `~/repos/web` still finds its worktree through the symlink.
     - A topic project's chat can write to `~/projects/q4-launch`.
-- [ ] **M3 · Folders on this Mac.**
+  - *Shipped:* `server/projects/checkout.ts` (`ensure` clones GitHub projects to `~/projects/<slug>`, makes topic folders, checks and prepares folder projects; `prepareTask` before every task's worktree), worktrees under the project folder (`inFolder` in `worktree.ts`), the once-per-run `~/repos` → `~/projects` move with a symlink left behind (only a clone whose origin is the project's repo), project brain cards and Learn a repo pointing at the project folder.
+- [x] **M3 · Folders on this Mac.**
   - What to build: the folder picker with recent git folders, the consent dialog, the grant, `folders.ts` validation, and the per-command sandbox grant in `local.ts`.
   - *Accept, against a temp git repo under a temp home:*
     - A task's branch appears in that repo's `git branch`.
@@ -283,6 +284,7 @@ export interface Project {
     - A chat in another project can't read the folder.
     - `~`, `~/.ssh` and a symlink pointing outside are all refused.
     - A non-git folder is readable but no task can start in it.
+  - *Shipped:* `server/projects/folders.ts` (real-path validation, checked again before every sandboxed command; `recentGitFolders`), `GET /api/projects/folders/recent`, `POST /api/projects/:id/grant` and `grant: true` on create, and the per-command folder grant in `local.ts`: chats read the folder; a task also writes only its own worktree, branch, reflog, worktree metadata and new git objects (never the checked-out files, `.git/config`, hooks, info or other refs). Boat agents get "needs a local computer". (Server side; the picker and consent dialog are the UI branch's.)
 - [ ] **M4 · Tickets and intake.**
   - What to build: `ConversationOrigin` `linear`/`github` with `key`, `detectTicket`, `ticket_link`, branch names with the key, intake settings, Slack and email routing through `projects.match`, `chat_set_project`, and its notice.
   - *Accept, with fakes:*
