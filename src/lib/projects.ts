@@ -150,7 +150,10 @@ export function sourceLabel(project: Project): string {
 
 /** The name a new project gets from what was picked: "acme/web" → "web", "~/code/meet-notes" → "meet-notes". */
 export function nameFromSource(source: string): string {
-  const clean = source.trim().replace(/\/+$/, "").replace(/\.git$/i, "");
+  const clean = source
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "");
   return clean.split(/[/:]/).pop() ?? "";
 }
 

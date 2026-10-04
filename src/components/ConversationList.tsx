@@ -48,7 +48,7 @@ export function ConversationList({ query }: { query: string }) {
 
   return (
     <nav aria-label="Chat history" className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <ProjectsSection query={query} workingTasks={workingTasks} />
+      <ProjectsSection query={query} />
       <TaskList query={query} />
 
       {state === "loading" && conversations.length === 0 && (

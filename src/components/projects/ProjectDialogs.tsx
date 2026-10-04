@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Project } from "@shared/types";
 import { errorMessage } from "../../lib/api";
-import { isCodeProject, parseList, sourceLabel, updateProject } from "../../lib/projects";
+import { isCodeProject, parseList, PROJECT_ICONS, sourceLabel, updateProject } from "../../lib/projects";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { Field } from "../ui/Field";
@@ -104,6 +104,7 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: DialogPro
   const [teams, setTeams] = useState("");
   const { saving, error, save } = useSave(onOpenChange, open);
   const code = isCodeProject(project);
+  const Icon = PROJECT_ICONS[project.kind];
 
   useEffect(() => {
     if (!open) return;
@@ -134,17 +135,23 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: DialogPro
               value={name}
               onChange={(event) => setName(event.target.value)}
               maxLength={60}
+              autoFocus
               autoComplete="off"
               className="input"
             />
           </Field>
 
-          <Field label="Files" hint={code ? "Each agent works on its own copy, on tot/… branches." : undefined}>
-            <p className="truncate rounded-lg bg-sunken px-3 py-2 text-sm text-fg-muted">{sourceLabel({ ...project, defaultBranch: null })}</p>
-          </Field>
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-fg">Files</p>
+            <p className="flex min-w-0 items-center gap-2 text-sm text-fg-muted">
+              <Icon aria-hidden="true" className="size-4 shrink-0" />
+              <span className="truncate">{sourceLabel({ ...project, defaultBranch: null })}</span>
+            </p>
+            {code && <p className="text-xs leading-relaxed text-fg-subtle">Each agent works on its own copy, on tot/… branches.</p>}
+          </div>
 
           {code && (
-            <Field label="Base branch" htmlFor="project-branch" hint="Tasks start their branches from this. Leave it empty for the repo's default.">
+            <Field label="Base branch" htmlFor="project-branch" hint="Tasks branch from this. Leave it empty for the repo's default.">
               <input
                 id="project-branch"
                 value={branch}
@@ -152,7 +159,7 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: DialogPro
                 placeholder="The repo's default"
                 autoComplete="off"
                 spellCheck={false}
-                className="input font-mono"
+                className="input"
               />
             </Field>
           )}

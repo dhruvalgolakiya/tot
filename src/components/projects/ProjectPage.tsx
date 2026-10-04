@@ -7,7 +7,7 @@ import { conversationTitle } from "../../lib/conversations";
 import { toMs } from "../../lib/format";
 import { PROJECT_ICONS, shortTime, sourceLabel, useProjects } from "../../lib/projects";
 import { conversationPath } from "../../lib/router";
-import { isTask, TASK_STATUS_LABELS } from "../../lib/tasks";
+import { isOpenTask, isTask, TASK_STATUS_LABELS } from "../../lib/tasks";
 import { navigateToAgentHome, navigateToConversation, selectActiveAgent, useStore } from "../../store";
 import { Composer } from "../Composer";
 import { Mascot } from "../mascot";
@@ -181,9 +181,7 @@ function ProjectChatRow({ conversation, agent, now }: { conversation: Conversati
           <span className="size-5 rounded-full bg-fill" />
         )}
       </span>
-      <span className={clsx("min-w-0 flex-1 truncate", task && !["running", "queued", "needs-input"].includes(task.status) && "text-fg-muted")}>
-        {title}
-      </span>
+      <span className={clsx("min-w-0 flex-1 truncate", task && !isOpenTask(task.status) && "text-fg-muted")}>{title}</span>
       {key && <Badge className="font-mono max-sm:hidden">{key}</Badge>}
       {task && (
         <span className="flex shrink-0 items-center gap-1.5 text-xs text-fg-subtle">

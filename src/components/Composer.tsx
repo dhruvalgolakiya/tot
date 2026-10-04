@@ -4,7 +4,16 @@ import { ArrowUp, Lightbulb, LoaderCircle, MessageSquare, Plus, Square } from "l
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
 import { isSteerable, isTask } from "../lib/tasks";
-import { selectActiveAgent, selectActiveAgentId, selectCurrentConversation, sendMessage, steerTask, stopRun, useStore } from "../store";
+import {
+  clearComposerDraft,
+  selectActiveAgent,
+  selectActiveAgentId,
+  selectCurrentConversation,
+  sendMessage,
+  steerTask,
+  stopRun,
+  useStore,
+} from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
 import { Tip } from "./ui/Tip";
@@ -36,6 +45,13 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
   const [thinkHarder, setThinkHarder] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // A message sent from a project's page that failed once its chat had opened: put its text back here.
+  const draft = useStore((s) => s.composerDraft);
+  useEffect(() => {
+    if (draft === null) return;
+    setText((current) => current || draft);
+    clearComposerDraft();
+  }, [draft]);
 
   // Other chats attached as reference: picked by typing @, or dragged in from the sidebar.
   const conversations = useStore((s) => s.conversations);

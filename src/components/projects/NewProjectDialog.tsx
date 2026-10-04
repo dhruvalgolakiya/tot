@@ -58,6 +58,7 @@ export function NewProjectDialog() {
   const [step, setStep] = useState<"form" | "consent">("form");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; existing: Project | null } | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -75,7 +76,11 @@ export function NewProjectDialog() {
 
   const typedRepo = repoQuery.trim();
   const source =
-    kind === "github" ? (repo ?? (isOwnerRepo(typedRepo) || GIT_URL.test(typedRepo) ? typedRepo : "")) : kind === "folder" ? folder.trim() : "";
+    kind === "github"
+      ? (repo ?? (isOwnerRepo(typedRepo) || GIT_URL.test(typedRepo) ? typedRepo : ""))
+      : kind === "folder"
+        ? folder.trim()
+        : "";
   const shownName = nameTouched || kind === "none" ? name : nameFromSource(source);
   const canCreate = shownName.trim().length > 0 && (kind === "none" || source.length > 0);
 
@@ -84,6 +89,8 @@ export function NewProjectDialog() {
     setError(null);
     // A name typed for one kind still fits another; one filled in from a repo or folder doesn't.
     if (!nameTouched) setName("");
+    // A topic is just its name (the repo and folder fields focus themselves when they appear).
+    if (next === "none") requestAnimationFrame(() => nameRef.current?.focus());
   }
 
   async function create() {
@@ -151,7 +158,7 @@ export function NewProjectDialog() {
                 value={kind}
                 onValueChange={(value) => pickKind(value as ProjectKind)}
                 aria-labelledby="new-project-kind"
-                className="grid gap-2 sm:grid-cols-3"
+                className="divide-y divide-hairline overflow-hidden rounded-xl border border-edge"
               >
                 {KINDS.map((option) => {
                   const Icon = PROJECT_ICONS[option.kind];
@@ -159,15 +166,15 @@ export function NewProjectDialog() {
                     <RadioGroup.Item
                       key={option.kind}
                       value={option.kind}
-                      className="group relative flex items-center gap-3 rounded-xl border border-edge px-3 py-2.5 text-left transition-colors hover:border-edge-strong hover:bg-hover data-[state=checked]:border-edge-strong data-[state=checked]:bg-fill sm:flex-col sm:items-start sm:gap-2 sm:py-3"
+                      className="group flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-hover focus-visible:-outline-offset-2 data-[state=checked]:bg-fill"
                     >
-                      <Icon aria-hidden="true" className="size-4 shrink-0 text-fg-muted group-data-[state=checked]:text-fg" />
-                      <span className="min-w-0 flex-1 pr-5">
-                        <span className="block text-sm font-medium text-fg">{option.label}</span>
-                        <span className="mt-0.5 block text-xs leading-snug text-fg-subtle">{option.hint}</span>
-                      </span>
-                      <span className="absolute top-3 right-3 grid size-4 place-items-center rounded-full border border-fg-faint transition-colors group-data-[state=checked]:border-fg max-sm:top-1/2 max-sm:-translate-y-1/2">
+                      <span className="grid size-4 shrink-0 place-items-center rounded-full border border-fg-faint transition-colors group-data-[state=checked]:border-fg">
                         <RadioGroup.Indicator className="size-2 rounded-full bg-fg" />
+                      </span>
+                      <Icon aria-hidden="true" className="size-4 shrink-0 text-fg-muted group-data-[state=checked]:text-fg" />
+                      <span className="flex min-w-0 flex-1 flex-col gap-x-3 sm:flex-row sm:items-baseline sm:justify-between">
+                        <span className="text-sm font-medium text-fg">{option.label}</span>
+                        <span className="truncate text-xs text-fg-subtle">{option.hint}</span>
                       </span>
                     </RadioGroup.Item>
                   );
@@ -188,19 +195,21 @@ export function NewProjectDialog() {
                   onSelect={setRepo}
                 />
               ) : (
-                <Field label="Repository" htmlFor="new-project-repo" hint="Type it as owner/name, or paste its URL.">
-                  <input
-                    id="new-project-repo"
-                    value={repoQuery}
-                    onChange={(event) => setRepoQuery(event.target.value)}
-                    placeholder="acme/web"
-                    autoFocus
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="input"
-                  />
+                <div className="space-y-2.5">
+                  <Field label="Repository" htmlFor="new-project-repo" hint="Type it as owner/name, or paste its URL.">
+                    <input
+                      id="new-project-repo"
+                      value={repoQuery}
+                      onChange={(event) => setRepoQuery(event.target.value)}
+                      placeholder="acme/web"
+                      autoFocus
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="input"
+                    />
+                  </Field>
                   {githubKnown && (
-                    <p className="flex items-center gap-2 pt-1 text-xs text-fg-subtle">
+                    <p className="flex items-center gap-2 rounded-xl border border-hairline px-3 py-2.5 text-xs text-fg-muted">
                       <GitHubMark className="size-3.5 shrink-0" />
                       <span className="min-w-0 flex-1">Connect GitHub to pick from your repos, private ones too.</span>
                       <button
@@ -215,22 +224,22 @@ export function NewProjectDialog() {
                       </button>
                     </p>
                   )}
-                </Field>
+                </div>
               ))}
 
             {kind === "folder" && <FolderPicker value={folder} onChange={setFolder} projects={projects} />}
 
             <Field label="Name" htmlFor="new-project-name">
               <input
+                ref={nameRef}
                 id="new-project-name"
                 value={shownName}
                 onChange={(event) => {
                   setName(event.target.value);
                   setNameTouched(true);
                 }}
-                placeholder={kind === "none" ? "Q4 launch" : kind === "github" ? "web" : "meet-notes"}
+                placeholder={kind === "none" ? "Q4 launch" : kind === "github" ? "Filled in from the repo" : "Filled in from the folder"}
                 maxLength={60}
-                autoFocus={kind === "none"}
                 autoComplete="off"
                 className="input"
               />
@@ -295,7 +304,10 @@ function startLearning(project: Project, agentId: string, agentName: string) {
   api.learnProject(project.id, agentId).then(
     ({ conversationId }) =>
       toast.success(`${agentName} is learning ${project.name}`, {
-        action: { label: "Open", onClick: () => navigateToConversation(conversationId) },
+        action: {
+          label: "Open",
+          onClick: () => navigateToConversation(conversationId),
+        },
       }),
     notifyError,
   );
@@ -420,7 +432,13 @@ function RepoPicker({ login, query, onQueryChange, selected, onSelect }: RepoPic
             ) : (
               <div className={clsx("space-y-px transition-opacity", searching && "opacity-60")}>
                 {repos.map((repo, index) => (
-                  <RepoOption key={repo.fullName} repo={repo} index={index} selected={repo.fullName === selected} onSelect={() => onSelect(repo.fullName)} />
+                  <RepoOption
+                    key={repo.fullName}
+                    repo={repo}
+                    index={index}
+                    selected={repo.fullName === selected}
+                    onSelect={() => onSelect(repo.fullName)}
+                  />
                 ))}
               </div>
             )}

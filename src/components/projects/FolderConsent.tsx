@@ -13,8 +13,8 @@ export const folderConsentTitle = (folder: string) => `Let agents work in ${fold
 export function FolderConsentText() {
   return (
     <p className="text-sm leading-relaxed text-fg-muted">
-      They can read everything in this folder and make branches (<span className="font-mono text-ui">tot/…</span>) in its
-      git repo. They can't change your checked-out files, push, or see anything outside this folder.
+      They can read everything in this folder and make branches (<span className="font-mono text-ui">tot/…</span>) in its git repo. They
+      can't change your checked-out files, push, or see anything outside this folder.
     </p>
   );
 }

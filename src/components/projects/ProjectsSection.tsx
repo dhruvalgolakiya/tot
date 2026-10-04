@@ -5,7 +5,7 @@ import type { Conversation, Project } from "@shared/types";
 import { conversationTitle } from "../../lib/conversations";
 import { PROJECT_ICONS, setNewProjectOpen, toggleProjectExpanded, useProjects } from "../../lib/projects";
 import { projectPath } from "../../lib/router";
-import { isTask } from "../../lib/tasks";
+import { isOpenTask, isTask } from "../../lib/tasks";
 import { toMs } from "../../lib/format";
 import { navigateToProject, selectActiveAgentId, selectCurrentConversation, useStore } from "../../store";
 import { ConversationItem } from "../ConversationItem";
@@ -16,17 +16,12 @@ import { StatusDot } from "../ui/StatusDot";
 /** How many of a project's chats its sidebar row lists; the rest are on its page. */
 const SHOWN = 8;
 
-type ProjectsSectionProps = {
-  query: string;
-  /** Chats with tasks still working, and how many (from the chat list). */
-  workingTasks: Map<string, number>;
-};
-
 /**
  * "Projects", above the selected agent's chats: one row per project (shared by every agent), each
- * expanding to this agent's chats and tasks in it. With no projects, just a quiet "New project" row.
+ * expanding to this agent's chats and tasks in it, a chat's open tasks one step in under it. With no
+ * projects, just a quiet "New project" row.
  */
-export function ProjectsSection({ query, workingTasks }: ProjectsSectionProps) {
+export function ProjectsSection({ query }: { query: string }) {
   const projects = useProjects((s) => s.projects);
   const expanded = useProjects((s) => s.expanded);
   const conversations = useStore((s) => s.conversations);
@@ -35,25 +30,38 @@ export function ProjectsSection({ query, workingTasks }: ProjectsSectionProps) {
   const pageProjectId = useStore((s) => (s.page === "project" && s.currentId === null ? s.projectId : null));
   const needle = query.trim().toLowerCase();
 
+  const currentId = useStore((s) => s.currentId);
+
   const live = useMemo(() => projects.filter((p) => !p.archived), [projects]);
-  /** This agent's chats in each project, and the tasks it started there on their own; newest first. */
-  const items = useMemo(() => {
+  /** This agent's conversations in each project, newest first; and the open tasks under each chat or task. */
+  const { byProject, childrenOf } = useMemo(() => {
     const byProject = new Map<string, Conversation[]>();
+    const childrenOf = new Map<string, Conversation[]>();
     for (const c of conversations) {
       if (!c.projectId || c.agentId !== agentId) continue;
-      if (isTask(c) && c.parentId) continue; // A chat's tasks show as its count.
       byProject.set(c.projectId, [...(byProject.get(c.projectId) ?? []), c]);
+      // A finished task stays on its chat's card (and the project's page), unless it's the one open.
+      if (isTask(c) && c.parentId && (isOpenTask(c.task.status) || c.id === currentId)) {
+        childrenOf.set(c.parentId, [...(childrenOf.get(c.parentId) ?? []), c]);
+      }
     }
-    for (const list of byProject.values()) list.sort((a, b) => toMs(b.updatedAt) - toMs(a.updatedAt));
-    return byProject;
-  }, [conversations, agentId]);
+    const newest = (a: Conversation, b: Conversation) => toMs(b.updatedAt) - toMs(a.updatedAt);
+    for (const list of byProject.values()) list.sort(newest);
+    for (const list of childrenOf.values()) list.sort(newest);
+    return { byProject, childrenOf };
+  }, [conversations, agentId, currentId]);
 
-  const rows = live.flatMap((project) => {
-    const all = items.get(project.id) ?? [];
-    if (!needle) return [{ project, list: all, open: expanded.has(project.id) || project.id === currentProjectId }];
+  type Row = { project: Project; list: Conversation[]; nested: Map<string, Conversation[]> | null; open: boolean };
+  const rows = live.flatMap((project): Row[] => {
+    const all = byProject.get(project.id) ?? [];
+    if (!needle) {
+      const top = all.filter((c) => !(isTask(c) && c.parentId));
+      return [{ project, list: top, nested: childrenOf, open: expanded.has(project.id) || project.id === currentProjectId }];
+    }
+    // Searching: every match, chats and tasks alike, without nesting.
     const matches = all.filter((c) => conversationTitle(c).toLowerCase().includes(needle));
     if (!matches.length && !project.name.toLowerCase().includes(needle)) return [];
-    return [{ project, list: matches, open: matches.length > 0 }];
+    return [{ project, list: matches, nested: null, open: matches.length > 0 }];
   });
 
   if (needle && rows.length === 0) return null;
@@ -62,16 +70,16 @@ export function ProjectsSection({ query, workingTasks }: ProjectsSectionProps) {
     <section aria-label="Projects" className="mt-2 pb-2">
       {live.length > 0 && <h2 className="group-label px-2.5 pb-1">Projects</h2>}
       <ul className="space-y-px">
-        {rows.map(({ project, list, open }) => (
+        {rows.map(({ project, list, nested, open }) => (
           <ProjectRow
             key={project.id}
             project={project}
             agentId={agentId}
             list={list}
+            nested={nested}
             open={open}
             selected={project.id === pageProjectId}
             canToggle={!needle}
-            workingTasks={workingTasks}
           />
         ))}
         {!needle && (
@@ -90,19 +98,26 @@ export function ProjectsSection({ query, workingTasks }: ProjectsSectionProps) {
 type ProjectRowProps = {
   project: Project;
   agentId: string | null;
+  /** The rows to list: chats and the tasks started on their own (or, while searching, every match). */
   list: Conversation[];
+  /** Open tasks to show one step in under the chat or task that started them; null while searching. */
+  nested: Map<string, Conversation[]> | null;
   open: boolean;
   selected: boolean;
   canToggle: boolean;
-  workingTasks: Map<string, number>;
 };
 
 /** The kind icon turns into a chevron on hover (always, on touch screens): it shows or hides the chats; the name opens the page. */
-function ProjectRow({ project, agentId, list, open, selected, canToggle, workingTasks }: ProjectRowProps) {
+function ProjectRow({ project, agentId, list, nested, open, selected, canToggle }: ProjectRowProps) {
   const currentId = useStore((s) => s.currentId);
   const activeRuns = useStore((s) => s.activeRuns);
   const Icon = PROJECT_ICONS[project.kind];
-  const shown = list.slice(0, SHOWN);
+  const rows: { conversation: Conversation; depth: number }[] = [];
+  const add = (conversation: Conversation, depth: number) => {
+    rows.push({ conversation, depth });
+    for (const child of nested?.get(conversation.id) ?? []) if (depth < 4) add(child, depth + 1);
+  };
+  for (const conversation of list.slice(0, SHOWN)) add(conversation, 0);
 
   const openPage = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
@@ -153,16 +168,16 @@ function ProjectRow({ project, agentId, list, open, selected, canToggle, working
 
       {open && (
         <ul className="space-y-px pt-px pl-6">
-          {shown.map((conversation) => (
-            <li key={conversation.id}>
+          {rows.map(({ conversation, depth }) => (
+            <li key={conversation.id} className={clsx(depth > 0 && "pl-4")}>
               {isTask(conversation) ? (
                 <TaskRow task={conversation} active={conversation.id === currentId} />
               ) : (
+                // Its open tasks are listed right under it, so no count.
                 <ConversationItem
                   conversation={conversation}
                   active={conversation.id === currentId}
                   streaming={Boolean(activeRuns[conversation.id])}
-                  workingTasks={workingTasks.get(conversation.id) ?? 0}
                 />
               )}
             </li>

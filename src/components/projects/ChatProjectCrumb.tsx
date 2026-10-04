@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import clsx from "clsx";
 import { ArrowUpRight, ChevronRight } from "lucide-react";
 import type { Conversation } from "@shared/types";
 import { conversationTitle } from "../../lib/conversations";
@@ -9,7 +10,8 @@ import { Tip } from "../ui/Tip";
 
 /**
  * "web › Fix the flaky checkout test" at the top of a chat that's in a project; the name opens the
- * project's page. Tasks show their own title next to it, so they pass `withTitle={false}`.
+ * project's page. Tasks show their own title next to it, so they pass `withTitle={false}`. Phones
+ * have no room for it in the header (the sidebar shows the chat under its project).
  */
 export function ChatProjectCrumb({ chat, withTitle = true }: { chat: Conversation; withTitle?: boolean }) {
   const project = useProjects((s) => (chat.projectId ? s.projects.find((p) => p.id === chat.projectId) : undefined));
@@ -22,7 +24,11 @@ export function ChatProjectCrumb({ chat, withTitle = true }: { chat: Conversatio
   };
 
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-0.5 text-sm">
+    // With the title it takes only the room left (the model picker keeps its width); without, just the name's.
+    <nav
+      aria-label="Breadcrumb"
+      className={clsx("flex items-center gap-0.5 text-sm max-sm:hidden", withTitle ? "min-w-0 flex-1" : "shrink-0 max-lg:hidden")}
+    >
       <a
         href={projectPath(chat.agentId, project.id)}
         onClick={open}
@@ -30,9 +36,9 @@ export function ChatProjectCrumb({ chat, withTitle = true }: { chat: Conversatio
       >
         {project.name}
       </a>
-      <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-fg-subtle max-sm:hidden" />
+      <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-fg-subtle" />
       {withTitle && (
-        <span aria-current="page" className="min-w-0 truncate px-1 text-fg max-sm:hidden">
+        <span aria-current="page" className="min-w-0 truncate px-1 text-fg">
           {conversationTitle(chat)}
         </span>
       )}
@@ -40,12 +46,23 @@ export function ChatProjectCrumb({ chat, withTitle = true }: { chat: Conversatio
   );
 }
 
-/** "ENG-123 ↗": the ticket a chat came from (Linear or GitHub), linking to it. */
-export function TicketChip({ chat }: { chat: Conversation }) {
+/** The ticket a chat came from (Linear or GitHub), when it has a key. */
+export function chatTicket(chat: Conversation): { key: string; label: string; url: string | null } | null {
   const origin = chat.origin;
   if (!origin || (origin.kind !== "linear" && origin.kind !== "github") || !origin.key) return null;
+  return { key: origin.key, label: origin.label, url: origin.url };
+}
+
+/** "ENG-123 ↗": the ticket a chat came from, linking to it. On phones it's in the chat's "…" menu instead. */
+export function TicketChip({ chat }: { chat: Conversation }) {
+  const origin = chatTicket(chat);
+  if (!origin) return null;
   const className =
-    "inline-flex h-7 max-w-40 shrink-0 items-center gap-1 rounded-full border border-edge px-2.5 text-xs font-medium text-fg-muted transition-colors";
+    // A task's header is full (status, Pause, Stop…): there it shows on wide screens only.
+    clsx(
+      "inline-flex h-7 max-w-40 shrink-0 items-center gap-1 rounded-full border border-edge px-2.5 text-xs font-medium text-fg-muted transition-colors",
+      chat.kind === "task" ? "max-xl:hidden" : "max-sm:hidden",
+    );
   const label = <span className="truncate font-mono">{origin.key}</span>;
 
   return (

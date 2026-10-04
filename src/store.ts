@@ -107,6 +107,8 @@ export interface TotState {
   activeRuns: Record<string, ActiveRun>;
   /** A message is on its way to the server (before a run id exists). */
   sending: boolean;
+  /** Text of a message that failed after its chat was created elsewhere (a project's page), for the chat's composer to take back. */
+  composerDraft: string | null;
   /** Conversations whose run just completed; mascot stays "happy" briefly. */
   justFinished: Record<string, boolean>;
   models: ModelOption[];
@@ -193,6 +195,7 @@ export const useStore = create<TotState>()(() => ({
   detailState: {},
   activeRuns: {},
   sending: false,
+  composerDraft: null,
   justFinished: {},
   models: [],
   providers: [],
@@ -966,6 +969,8 @@ export async function sendMessage(
   askForNotifications();
 
   let conversationId = get().currentId;
+  // From a project's page the new chat opens in another view, whose composer must get the text back on failure.
+  const fromProjectPage = !conversationId && get().page === "project";
   const tempId = localId();
   try {
     if (!conversationId) {
@@ -1033,11 +1038,17 @@ export async function sendMessage(
     if (conversationId) {
       setMessages(conversationId, (list) => list.filter((m) => m.id !== tempId));
     }
+    if (fromProjectPage && conversationId && body) set({ composerDraft: body });
     notifyError(error);
     return false;
   } finally {
     set({ sending: false });
   }
+}
+
+/** The composer took back a failed message's text (see `composerDraft`). */
+export function clearComposerDraft() {
+  set({ composerDraft: null });
 }
 
 export async function stopRun(conversationId: string) {

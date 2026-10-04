@@ -161,6 +161,8 @@ sentence case — replaces `.label-caps`) · `.surface-raised` · `.accent-focus
   `text-xs text-fg-subtle`, at most one visible trailing control (a Switch or a button) plus an Ellipsis menu for the rest.
 - **List row:** `ListRow` / `listRowClass`; trailing meta in `text-xs text-fg-subtle tabular-nums`; row actions
   hover-revealed (`IconButton size="sm"`).
+- **Expandable row** (a project in the sidebar): the row itself navigates; its leading icon turns into a chevron on
+  hover (always, on touch screens) that shows or hides the nested rows, which sit `pl-6` in. No separate toggle column.
 - **Menu:** trigger is an `IconButton` (Ellipsis) or a ghost button with `ChevronDown`;
   `DropdownMenu.Content className="menu w-48" sideOffset={4}`; icons `size-4 text-fg-muted`; destructive item last,
   after a separator, with `.menu-item-danger`.
