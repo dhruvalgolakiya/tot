@@ -44,8 +44,8 @@ export function MascotPicker({ value, onChange, className }: MascotPickerProps) 
       <div className="flex flex-col items-center gap-4 rounded-xl border border-hairline bg-fill-subtle p-6">
         <div className="relative grid place-items-center">
           <div
-            className="absolute inset-0 -z-10 rounded-full blur-3xl"
-            style={{ background: `radial-gradient(circle, ${withAlpha(palette.glow, 0.4)}, transparent 70%)` }}
+            className="absolute inset-0 -z-10 rounded-full"
+            style={{ background: withAlpha(palette.glow, 0.2), transform: "scale(1.2)" }}
             aria-hidden="true"
           />
           <Mascot spec={value} state={previewState} size={132} title={mascotLabel(value)} />

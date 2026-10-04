@@ -116,49 +116,42 @@ function ensureReadable(hex: string, minLightness: number): string {
 }
 
 export interface MascotPalette {
-  /** Safe, punched-up base color (lifted off pure black and boosted so it pops on #0b0b0f). */
+  /** The body: one flat color, lifted off black and saturated enough to pop on both canvases. */
   base: string;
-  /** Top-left highlight tone (gradient stop), gently pulled toward TOT's cyan. */
-  light: string;
-  /** Bottom-right shade tone (gradient stop), gently pulled toward TOT's violet — kept
-   *  light rather than dark, so shading reads as a shade of the toy, not mud. */
-  dark: string;
-  /** Near-black, low-saturation tone for eyes/mouth/small ink details — deliberately
-   *  desaturated so it reads as "near-black", not just a darker version of the body hue. */
+  /** The "fold": the same hue a step darker, for the diagonal shadow across the lower right. */
+  fold: string;
+  /** Pupils, mouth and the sunglasses: one near-black shared by every mascot, so they read as one family. */
   ink: string;
-  /** Soft edge tone for the silhouette rim — a light tone, not a dark one, so the whole
-   *  outline reads as a gentle rim light rather than a grounding shadow. */
-  outline: string;
-  /** Warm tint for cheek blush, pulled toward pink regardless of base hue. */
-  blush: string;
-  /** Bright tone for glow/shadow effects (MascotStage). */
+  /** Eye whites. */
+  paper: string;
+  /** The tongue inside an open mouth. */
+  tongue: string;
+  /** A light tint of the body, for the soft disc behind a mascot on stage (MascotStage, the picker). */
   glow: string;
 }
 
-const TOT_CYAN_HUE = 189; // #22d3ee
-const TOT_VIOLET_HUE = 258; // #a78bfa
-const BLUSH_HUE = 350;
+/** Shared by every mascot (see MascotPalette). Hats and other cut-outs use `currentColor` instead: see styles.ts. */
+export const MASCOT_INK = "#18171d";
+export const MASCOT_PAPER = "#ffffff";
 
 /**
- * Derives a full shading palette from one base color: a light top-left highlight, a
- * light-but-shaded bottom tone, a near-black "ink" for eyes/mouth, a light rim tone, and
- * a warm blush — all in the same family, with a gentle universal pull toward TOT's
- * violet→cyan duotone so every mascot carries a bit of house DNA without losing its own
- * hue. Saturation/lightness are actively pushed up (not just passed through) so pale or
- * muddy custom colors still read as a bright, colorful toy against the near-black canvas.
+ * Derives a mascot's palette from one base color. Cut-paper mascots are flat: a body color and a darker fold,
+ * with the eyes, mouth and cut-outs in shared tones. Pale or muddy custom colors are pushed toward a clear,
+ * saturated mid-tone so every mascot reads as a bright piece of paper on either canvas.
  */
 export function derivePalette(hex: string): MascotPalette {
   const raw = ensureReadable(hex, 34);
   const [h, s0, l0] = hexToHsl(raw);
-  const s = clamp(s0 + 10, 52, 100);
-  const l = clamp(l0, 42, 80);
-  const base = hslToHex(h, s, l);
-  const light = hslToHex(blendHue(h, TOT_CYAN_HUE, 0.14), clamp(s + 4, 60, 100), clamp(l + 16, 58, 90));
-  const dark = hslToHex(blendHue(h, TOT_VIOLET_HUE, 0.14), clamp(s + 8, 60, 100), clamp(l - 16, 32, 74));
-  const ink = hslToHex(h, clamp(s0 * 0.4, 0, 35), clamp(l0 * 0.12, 3, 9));
-  const outline = hslToHex(h, clamp(s + 2, 55, 100), clamp(l + 8, 55, 92));
-  const blush = hslToHex(blendHue(h, BLUSH_HUE, 0.4), clamp(s + 10, 55, 100), clamp(l + 10, 60, 85));
-  return { base, light, dark, ink, outline, blush, glow: light };
+  const s = clamp(s0 + 6, 48, 96);
+  const l = clamp(l0, 48, 74);
+  return {
+    base: hslToHex(h, s, l),
+    fold: hslToHex(h, clamp(s + 4, 50, 100), clamp(l - 11, 36, 64)),
+    ink: MASCOT_INK,
+    paper: MASCOT_PAPER,
+    tongue: hslToHex(blendHue(h, 350, 0.75), 90, 74),
+    glow: hslToHex(h, clamp(s, 55, 100), clamp(l + 14, 62, 88)),
+  };
 }
 
 export function withAlpha(hex: string, alpha: number): string {

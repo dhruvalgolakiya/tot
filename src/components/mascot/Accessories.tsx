@@ -1,29 +1,27 @@
-// The ten accessories. Most render in the mascot's own "ink" tone (a near-black tint
-// of its body color) so they read as a neutral accessory on a colorful character —
-// crown is the deliberate exception, rendered in a fixed gold (crowns read as gold
-// regardless of the wearer). Positioned using each shape's anchor points so the same
-// accessory code works across all ten silhouettes.
+// The ten accessories, as flat paper cut-outs. They're drawn in `currentColor`, which
+// styles.ts sets per theme: near-black on light backgrounds, off-white on dark ones,
+// so a hat sticking out past the body never disappears into the canvas. Small details
+// (buttons, pads, the antenna tip) use the mascot's own color; the sunglasses stay black.
+// Positioned using each shape's anchor points so the same accessory code works across
+// all ten silhouettes.
 import type { MascotAccessory } from "@shared/types";
 import type { ShapeAnchors } from "./geometry";
 import type { MascotPalette } from "./utils";
 
 type Props = { anchors: ShapeAnchors; palette: MascotPalette };
 
-const GOLD = "#f4c04d";
-const GOLD_DARK = "#c8871f";
+const CUT = "currentColor";
 
-function Glasses({ anchors, palette }: Props) {
+function Glasses({ anchors }: Props) {
   const cy = anchors.eyeLine;
   const dx = anchors.eyeSpread;
   const sc = anchors.faceScale;
-  const r = 7.6 * sc;
+  const r = 10.4 * sc;
   return (
-    <g stroke={palette.ink} strokeWidth={2.4 * sc} fill="none" strokeLinecap="round">
+    <g stroke={CUT} strokeWidth={2.8 * sc} fill="none" strokeLinecap="round">
       <circle cx={50 - dx} cy={cy} r={r} />
       <circle cx={50 + dx} cy={cy} r={r} />
-      <path d={`M${50 - dx + r},${cy} L${50 + dx - r},${cy}`} />
-      <path d={`M${50 - dx - r},${cy - 1} L${50 - dx - r - 5},${cy - 3}`} />
-      <path d={`M${50 + dx + r},${cy - 1} L${50 + dx + r + 5},${cy - 3}`} />
+      <path d={`M${50 - dx + r},${cy - 1} Q50,${cy - 4} ${50 + dx - r},${cy - 1}`} />
     </g>
   );
 }
@@ -32,24 +30,20 @@ function Sunglasses({ anchors, palette }: Props) {
   const cy = anchors.eyeLine;
   const dx = anchors.eyeSpread;
   const sc = anchors.faceScale;
-  const r = 8 * sc;
+  const w = 21 * sc;
+  const h = 14 * sc;
   return (
-    <g>
-      <g stroke={palette.ink} strokeWidth={2.4 * sc} fill={palette.ink} strokeLinecap="round">
-        <circle cx={50 - dx} cy={cy} r={r} />
-        <circle cx={50 + dx} cy={cy} r={r} />
-        <path d={`M${50 - dx + r},${cy} L${50 + dx - r},${cy}`} fill="none" />
-        <path d={`M${50 - dx - r},${cy - 1} L${50 - dx - r - 5},${cy - 3}`} fill="none" />
-        <path d={`M${50 + dx + r},${cy - 1} L${50 + dx + r + 5},${cy - 3}`} fill="none" />
-      </g>
+    <g fill={palette.ink}>
+      <rect x={50 - dx - w / 2} y={cy - h / 2} width={w} height={h} rx={6 * sc} />
+      <rect x={50 + dx - w / 2} y={cy - h / 2} width={w} height={h} rx={6 * sc} />
+      <rect x={50 - dx + w / 2 - 1} y={cy - h / 2 + 1} width={2 * dx - w + 2} height={3 * sc} />
       {[-1, 1].map((s) => (
         <path
           key={s}
-          d={`M${50 + dx * s - 3},${cy - 4} Q${50 + dx * s},${cy - 6} ${50 + dx * s + 3},${cy - 4}`}
-          stroke="#fff"
+          d={`M${50 + dx * s - 6 * sc},${cy + 2 * sc} L${50 + dx * s - 1 * sc},${cy - 4 * sc}`}
+          stroke={palette.paper}
           strokeOpacity={0.55}
-          strokeWidth={1.4}
-          fill="none"
+          strokeWidth={2.2 * sc}
           strokeLinecap="round"
         />
       ))}
@@ -59,47 +53,46 @@ function Sunglasses({ anchors, palette }: Props) {
 
 function Bowtie({ anchors, palette }: Props) {
   const { x, y } = anchors.neck;
-  const sc = anchors.faceScale;
   return (
-    <g transform={`translate(${x},${y}) scale(${sc})`} fill={palette.ink}>
-      <path d="M-9,-5 L-1,0 L-9,5 Z" />
-      <path d="M9,-5 L1,0 L9,5 Z" />
-      <circle cx={0} cy={0} r={2.3} fill={palette.outline} />
+    <g>
+      <path
+        d={`M${x},${y} L${x - 12},${y - 7} Q${x - 14},${y} ${x - 12},${y + 7} Z M${x},${y} L${x + 12},${y - 7} Q${x + 14},${y} ${x + 12},${y + 7} Z`}
+        fill={CUT}
+      />
+      <rect x={x - 3.2} y={y - 4} width={6.4} height={8} rx={2} fill={palette.base} stroke={CUT} strokeWidth={1.6} />
     </g>
   );
 }
 
-function Beret({ anchors, palette }: Props) {
+function Beret({ anchors }: Props) {
   const { x, y } = anchors.headTop;
-  const sc = anchors.faceScale;
+  const w = Math.max(anchors.crownWidth, 22) + 14;
   return (
-    <g transform={`translate(${x + 2},${y - 1}) scale(${sc})`} fill={palette.ink}>
-      <path d="M-15,4 C-16,-6 -4,-12 6,-11 C17,-10 18,-1 12,4 C10,-2 2,-6 -4,-5 C-9,-4 -13,0 -15,4 Z" />
-      <circle cx={4} cy={-11} r={1.6} />
+    <g fill={CUT}>
+      <path
+        d={`M${x - w / 2},${y + 2} C${x - w / 2},${y - 9} ${x + w / 2 - 2},${y - 13} ${x + w / 2 + 3},${y - 3} C${x + w / 2 + 4},${y + 3} ${x + w / 4},${y + 4} ${x},${y + 4} C${x - w / 4},${y + 4} ${x - w / 2},${y + 5} ${x - w / 2},${y + 2} Z`}
+      />
+      <circle cx={x + 2} cy={y - 10} r={2.6} />
     </g>
   );
 }
 
 function Headphones({ anchors, palette }: Props) {
-  const { headTop, earL, earR, faceScale: sc } = anchors;
+  const { headTop, earL, earR } = anchors;
+  const top = headTop.y - 6;
   return (
     <g>
-      {/* Color-matched band (palette.dark, not flat black) so it reads as a toy
-       *  accessory rather than a stark wire. */}
       <path
-        d={`M${earL.x},${earL.y} Q${headTop.x},${headTop.y - 10} ${earR.x},${earR.y}`}
+        d={`M${earL.x + 2},${earL.y - 4} C${earL.x + 2},${top} ${earR.x - 2},${top} ${earR.x - 2},${earR.y - 4}`}
         fill="none"
-        stroke={palette.dark}
-        strokeWidth={4.2 * sc}
+        stroke={CUT}
+        strokeWidth={5}
         strokeLinecap="round"
       />
-      {[earL, earR].map((p) => (
-        <g key={`${p.x}-${p.y}`}>
-          {/* Soft two-tone cushion — a color-matched pad around an ink speaker,
-           *  with a small catchlight — instead of a flat black dot. */}
-          <circle cx={p.x} cy={p.y} r={7.8 * sc} fill={palette.dark} />
-          <circle cx={p.x} cy={p.y} r={5.6 * sc} fill={palette.ink} />
-          <circle cx={p.x - 1.4 * sc} cy={p.y - 1.6 * sc} r={2 * sc} fill={palette.light} opacity={0.85} />
+      {[earL, earR].map((ear, i) => (
+        <g key={i}>
+          <rect x={ear.x - 6} y={ear.y - 12} width={12} height={24} rx={5} fill={CUT} />
+          <rect x={ear.x + (i === 0 ? 1.6 : -4.6)} y={ear.y - 7} width={3} height={14} rx={1.5} fill={palette.base} />
         </g>
       ))}
     </g>
@@ -108,80 +101,80 @@ function Headphones({ anchors, palette }: Props) {
 
 function Cap({ anchors, palette }: Props) {
   const { x, y } = anchors.headTop;
-  const w = anchors.crownWidth * 1.15;
-  const sc = anchors.faceScale;
+  const w = Math.max(anchors.crownWidth, 20) + 10;
   return (
-    <g transform={`translate(${x},${y}) scale(${sc})`} fill={palette.ink}>
-      <path d={`M${-w / 2},2 C${-w / 2},-10 ${w / 2},-10 ${w / 2},2 Z`} />
-      <path d={`M${w / 2 - 2},1 Q${w / 2 + 10},1 ${w / 2 + 11},4 Q${w / 2 + 4},5 ${w / 2 - 3},4 Z`} />
-      <circle cx={0} cy={-9} r={1.5} fill={palette.light} />
+    <g fill={CUT}>
+      <path d={`M${x - w / 2},${y + 4} A${w / 2},${w / 2.4} 0 0 1 ${x + w / 2},${y + 4} Z`} />
+      <rect x={x + w / 2 - 6} y={y + 1} width={16} height={4.5} rx={2.25} />
+      <circle cx={x} cy={y + 4 - w / 2.4} r={2.4} fill={palette.base} stroke={CUT} strokeWidth={1.6} />
     </g>
   );
 }
 
 function Antenna({ anchors, palette }: Props) {
   const { x, y } = anchors.headTop;
-  const sc = anchors.faceScale;
   return (
-    <g transform={`translate(${x},${y}) scale(${sc})`}>
-      <path d="M0,2 L0,-14" stroke={palette.ink} strokeWidth={2.4} strokeLinecap="round" />
-      <circle className="mascot-anim mascot-antenna-tip" cx={0} cy={-16} r={3.2} fill={palette.light} />
+    <g>
+      <rect x={x - 1.6} y={y - 13} width={3.2} height={14} rx={1.6} fill={CUT} />
+      <circle className="mascot-antenna-tip" cx={x} cy={y - 15} r={5} fill={palette.base} stroke={CUT} strokeWidth={2} />
     </g>
   );
 }
 
-function Crown({ anchors }: Props) {
+function Crown({ anchors, palette }: Props) {
   const { x, y } = anchors.headTop;
-  const w = anchors.crownWidth;
-  const sc = anchors.faceScale;
+  const w = Math.max(anchors.crownWidth, 18) + 4;
+  const h = w * 0.62;
+  const b = y + 3;
   return (
-    <g transform={`translate(${x},${y - 2}) scale(${sc})`}>
+    <g>
       <path
-        d={`M${-w / 2},4 L${-w / 2},-4 L${-w / 4},2 L0,-9 L${w / 4},2 L${w / 2},-4 L${w / 2},4 Z`}
-        fill={GOLD}
-        stroke={GOLD_DARK}
-        strokeWidth={1}
+        d={`M${x - w / 2},${b} L${x - w / 2},${b - h} L${x - w / 4},${b - h * 0.55} L${x},${b - h * 1.05} L${x + w / 4},${b - h * 0.55} L${x + w / 2},${b - h} L${x + w / 2},${b} Z`}
+        fill={CUT}
         strokeLinejoin="round"
       />
-      <circle cx={0} cy={-1.5} r={2} fill={GOLD_DARK} />
+      <circle cx={x} cy={b - h * 0.32} r={2.2} fill={palette.base} />
     </g>
   );
 }
 
 function Scarf({ anchors, palette }: Props) {
   const { x, y } = anchors.neck;
-  const sc = anchors.faceScale;
   return (
-    <g transform={`translate(${x},${y}) scale(${sc})`}>
-      <path d="M-14,-3 Q0,5 14,-3 L14,2 Q0,10 -14,2 Z" fill={palette.ink} />
-      <path d="M6,5 Q10,14 7,20 Q4,15 5,7 Z" fill={palette.ink} />
-      <path d="M-10,0 Q0,5 10,0" fill="none" stroke={palette.outline} strokeWidth={1} opacity={0.6} />
+    <g>
+      <rect x={x + 6} y={y - 2} width={9} height={20} rx={3} transform={`rotate(-12 ${x + 10} ${y})`} fill={CUT} />
+      <rect x={x - 25} y={y - 6} width={50} height={11} rx={5.5} fill={CUT} />
+      <rect x={x - 12} y={y - 6} width={4} height={11} fill={palette.base} />
+      <rect x={x + 4} y={y - 6} width={4} height={11} fill={palette.base} />
     </g>
   );
 }
 
 export function Accessory({ kind, anchors, palette }: { kind: MascotAccessory } & Props) {
-  switch (kind) {
-    case "glasses":
-      return <Glasses anchors={anchors} palette={palette} />;
-    case "sunglasses":
-      return <Sunglasses anchors={anchors} palette={palette} />;
-    case "bowtie":
-      return <Bowtie anchors={anchors} palette={palette} />;
-    case "beret":
-      return <Beret anchors={anchors} palette={palette} />;
-    case "headphones":
-      return <Headphones anchors={anchors} palette={palette} />;
-    case "cap":
-      return <Cap anchors={anchors} palette={palette} />;
-    case "antenna":
-      return <Antenna anchors={anchors} palette={palette} />;
-    case "crown":
-      return <Crown anchors={anchors} palette={palette} />;
-    case "scarf":
-      return <Scarf anchors={anchors} palette={palette} />;
-    case "none":
-    default:
-      return null;
-  }
+  const props = { anchors, palette };
+  const piece = (() => {
+    switch (kind) {
+      case "glasses":
+        return <Glasses {...props} />;
+      case "sunglasses":
+        return <Sunglasses {...props} />;
+      case "bowtie":
+        return <Bowtie {...props} />;
+      case "beret":
+        return <Beret {...props} />;
+      case "headphones":
+        return <Headphones {...props} />;
+      case "cap":
+        return <Cap {...props} />;
+      case "antenna":
+        return <Antenna {...props} />;
+      case "crown":
+        return <Crown {...props} />;
+      case "scarf":
+        return <Scarf {...props} />;
+      default:
+        return null;
+    }
+  })();
+  return piece && <g className="mascot-cutout">{piece}</g>;
 }
