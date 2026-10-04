@@ -1,8 +1,11 @@
+import { useRef, useState } from "react";
+import clsx from "clsx";
 import { ArrowUp } from "lucide-react";
 import { Mascot } from "../../src/components/mascot";
 import { crew } from "../crew";
+import { createJump, scrollToChild } from "../os/jump";
 
-const FAQ: { q: string; a: string }[] = [
+export const FAQ: { q: string; a: string }[] = [
   {
     q: "Do I need API keys?",
     a: "Nope. I run on your Claude Pro or Max and ChatGPT Plus or Pro logins, the same way Claude Code and Codex do. Keys only come in if you host TOT for other people.",
@@ -27,13 +30,30 @@ const FAQ: { q: string; a: string }[] = [
 ];
 
 /** The FAQ, as a conversation with Tot. */
+/** Opens Help at one question (from the launcher). */
+export const questionJump = createJump();
+
 export function Help() {
+  const thread = useRef<HTMLDivElement>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  questionJump.useJump((question) => {
+    const index = FAQ.findIndex(({ q }) => q === question);
+    const pair = thread.current?.querySelector<HTMLElement>(`[data-question="${index}"]`);
+    if (!pair) return;
+    scrollToChild(pair);
+    setFlash(question);
+    setTimeout(() => setFlash((current) => (current === question ? null : current)), 1600);
+  });
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex-1 space-y-5 px-5 py-5">
-        <p className="text-center text-xs text-fg-subtle">Today · Tot usually replies instantly</p>
-        {FAQ.map(({ q, a }) => (
-          <div key={q} className="space-y-3">
+      <div ref={thread} className="flex-1 space-y-3 px-3 py-5">
+        <p className="pb-2 text-center text-xs text-fg-subtle">Today · Tot usually replies instantly</p>
+        {FAQ.map(({ q, a }, index) => (
+          <div
+            key={q}
+            data-question={index}
+            className={clsx("space-y-3 rounded-2xl px-2 py-1 transition-colors duration-500", flash === q && "bg-accent-soft")}
+          >
             <div className="flex justify-end">
               <p className="max-w-[85%] rounded-3xl bg-bubble px-4 py-2 text-[15px] text-fg">{q}</p>
             </div>

@@ -21,6 +21,10 @@ export interface AppDef {
   name: string;
   /** Window title. */
   title: string;
+  /** One line for the launcher and the Apps menu. */
+  blurb: string;
+  /** Extra words the launcher matches on. */
+  keywords?: string;
   /** Preferred window size on the desktop (shrunk to fit smaller screens). */
   size: { w: number; h: number };
   Body: ComponentType;
@@ -29,18 +33,78 @@ export interface AppDef {
 }
 
 export const APPS: Record<AppId, AppDef> = {
-  readme: { name: "README", title: "README.md", size: { w: 540, h: 504 }, Body: Readme },
-  tot: { name: "TOT", title: "TOT · Flaky checkout test", size: { w: 760, h: 600 }, Body: TotApp },
-  features: { name: "What's inside", title: "What's inside", size: { w: 840, h: 560 }, Body: WhatsInside },
-  maker: { name: "Mascot Maker", title: "Mascot Maker", size: { w: 440, h: 620 }, Body: Maker },
-  calendar: { name: "Calendar", title: "Calendar · Tuesday", size: { w: 560, h: 640 }, Body: Calendar },
-  brains: { name: "Brains", title: "Brains", size: { w: 600, h: 560 }, Body: Brains },
-  terminal: { name: "Terminal", title: "Terminal · zsh", size: { w: 640, h: 460 }, Body: Terminal, dark: true },
-  roadmap: { name: "Roadmap", title: "Roadmap.md", size: { w: 680, h: 600 }, Body: RoadmapApp },
-  help: { name: "Help", title: "Help · Ask Tot", size: { w: 480, h: 620 }, Body: Help },
-  trash: { name: "Trash", title: "Trash", size: { w: 480, h: 540 }, Body: Trash },
-  rules: { name: "House rules", title: "House rules.txt", size: { w: 380, h: 460 }, Body: Rules },
+  readme: { name: "README", title: "README.md", blurb: "The pitch, in one page", keywords: "about intro", size: { w: 540, h: 504 }, Body: Readme },
+  tot: {
+    name: "TOT",
+    title: "TOT · Flaky checkout test",
+    blurb: "Watch Tot fix a flaky test, live",
+    keywords: "chat demo tasks branch",
+    size: { w: 760, h: 600 },
+    Body: TotApp,
+  },
+  features: {
+    name: "What's inside",
+    title: "What's inside",
+    blurb: "Everything TOT does today",
+    keywords: "features shipped",
+    size: { w: 840, h: 560 },
+    Body: WhatsInside,
+  },
+  maker: {
+    name: "Mascot Maker",
+    title: "Mascot Maker",
+    blurb: "Build a mascot and try its moods",
+    keywords: "agents avatar character face",
+    size: { w: 440, h: 620 },
+    Body: Maker,
+  },
+  calendar: {
+    name: "Calendar",
+    title: "Calendar · Tuesday",
+    blurb: "A normal day with your team",
+    keywords: "routines schedule day",
+    size: { w: 560, h: 640 },
+    Body: Calendar,
+  },
+  brains: {
+    name: "Brains",
+    title: "Brains",
+    blurb: "Claude, ChatGPT and who picks what",
+    keywords: "models usage limits claude chatgpt subscription",
+    size: { w: 600, h: 560 },
+    Body: Brains,
+  },
+  terminal: {
+    name: "Terminal",
+    title: "Terminal · zsh",
+    blurb: "Install TOT in a few commands",
+    keywords: "install setup get download start",
+    size: { w: 640, h: 460 },
+    Body: Terminal,
+    dark: true,
+  },
+  roadmap: {
+    name: "Roadmap",
+    title: "Roadmap.md",
+    blurb: "Shipped, next and later",
+    keywords: "plan future next",
+    size: { w: 680, h: 600 },
+    Body: RoadmapApp,
+  },
+  help: { name: "Help", title: "Help · Ask Tot", blurb: "Questions, answered by Tot", keywords: "faq", size: { w: 480, h: 620 }, Body: Help },
+  trash: { name: "Trash", title: "Trash", blurb: "What TOT threw away", keywords: "deleted", size: { w: 480, h: 540 }, Body: Trash },
+  rules: {
+    name: "House rules",
+    title: "House rules.txt",
+    blurb: "What TOT will never do",
+    keywords: "safety never merge push sticky note",
+    size: { w: 380, h: 460 },
+    Body: Rules,
+  },
 };
+
+/** Every app, in the order the launcher and the Apps menu list them. */
+export const APP_ORDER: AppId[] = ["tot", "features", "maker", "calendar", "brains", "terminal", "roadmap", "help", "readme", "rules", "trash"];
 
 /** Every app icon sits on the same neutral tile; one tinted glyph tells them apart (light and dark tints). */
 const GLYPHS: Partial<Record<AppId, { icon: LucideIcon; light: string; dark: string }>> = {

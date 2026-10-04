@@ -18,8 +18,8 @@ const NOTES: { who: CrewMember; title: string; text: string; app: AppId }[] = [
 const SHOW_MS = 6500;
 const GAP_MS = 5000;
 
-/** A notification every few seconds, like the team is busy (because it is). */
-export function Notifications({ className }: { className?: string }) {
+/** A notification every few seconds, like the team is busy (because it is). The first waits until the page has landed. */
+export function Notifications({ className, firstDelay = 2500 }: { className?: string; firstDelay?: number }) {
   const { open } = useOs();
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(false);
@@ -36,10 +36,10 @@ export function Notifications({ className }: { className?: string }) {
           setVisible(true);
         }
       },
-      visible ? SHOW_MS : index === 0 ? 2500 : GAP_MS,
+      visible ? SHOW_MS : index === 0 ? firstDelay : GAP_MS,
     );
     return () => clearTimeout(timer);
-  }, [visible, index, muted]);
+  }, [visible, index, muted, firstDelay]);
 
   if (!visible || muted) return null;
   const note = NOTES[index]!;

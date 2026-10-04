@@ -2,17 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import clsx from "clsx";
 import { Folder } from "lucide-react";
 import { StickyNote } from "../apps/Rules";
-import { ThemeToggle, useClock } from "../ui";
 import { OsContext, useOs } from "./context";
 import type { AppId } from "./ids";
+import { Launcher, useLauncherActions } from "./Launcher";
+import { MenuBar } from "./MenuBar";
 import { Notifications } from "./Notifications";
-import { ClaudeMark, OpenAIMark } from "./BrandMarks";
 import { APPS, AppIcon } from "./registry";
-import { useDrag, Window, type Area, type Win } from "./Window";
+import { displayRect, useDrag, Window, type Area, type Win } from "./Window";
 
 const MENU_H = 32;
 /** Room kept free for the dock at the bottom when windows open. */
 const DOCK_SPACE = 96;
+/** The desktop icons' column on the right, which windows leave alone. */
+const ICONS_W = 120;
 
 const DOCK: AppId[] = ["tot", "features", "maker", "calendar", "brains", "terminal", "roadmap", "help"];
 
@@ -23,28 +25,37 @@ function measure(): Area {
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
-/** The README and the live TOT chat, side by side when there's room, overlapping when there isn't. */
+/**
+ * The first impression: the README and the live TOT chat. Side by side (and centred) when they fit, with the
+ * chat giving up width first, then the README; overlapping, README in front, on narrow screens.
+ */
 function firstWindows(area: Area): Win[] {
+  const left = Math.max(24, Math.round(area.w * 0.045));
+  const gap = 28;
+  const room = area.w - left - ICONS_W - gap;
+  let readmeX: number, readmeW: number, totX: number, totW: number;
+  if (room >= 440 + 620) {
+    totW = clamp(room - APPS.readme.size.w, 620, APPS.tot.size.w);
+    readmeW = clamp(room - totW, 440, APPS.readme.size.w);
+    readmeX = left + Math.round((room - totW - readmeW) / 2);
+    totX = readmeX + readmeW + gap;
+  } else {
+    readmeW = 440;
+    readmeX = left;
+    totW = clamp(area.w - left - ICONS_W - 200, 520, 700);
+    totX = area.w - ICONS_W - totW;
+  }
   const readme: Win = {
     id: "readme",
-    x: Math.max(24, Math.round(area.w * 0.045)),
+    x: readmeX,
     y: 24,
-    w: Math.min(APPS.readme.size.w, area.w - 48),
-    h: Math.min(APPS.readme.size.h, area.usable - 32),
+    w: readmeW,
+    // A narrower README wraps onto more lines.
+    h: Math.min(readmeW < 500 ? 588 : APPS.readme.size.h, area.usable - 24),
     z: 12,
     max: false,
   };
-  const right = readme.x + readme.w + 32;
-  const w = clamp(area.w - right - 112, 620, APPS.tot.size.w);
-  const tot: Win = {
-    id: "tot",
-    x: Math.max(24, Math.min(right, area.w - w - 112)),
-    y: 56,
-    w: Math.min(w, area.w - 48),
-    h: Math.min(APPS.tot.size.h, area.usable - 72),
-    z: 11,
-    max: false,
-  };
+  const tot: Win = { id: "tot", x: totX, y: 56, w: totW, h: Math.min(APPS.tot.size.h, area.usable - 72), z: 11, max: false, delay: 110 };
   return [tot, readme];
 }
 
@@ -57,11 +68,62 @@ function placeNew(id: AppId, count: number, area: Area): Omit<Win, "z"> {
     id,
     w,
     h,
-    x: clamp(Math.round((area.w - w) / 2) - 56 + step, 8, area.w - w - 8),
+    x: clamp(Math.round((area.w - ICONS_W - w) / 2) + step, 8, area.w - w - 8),
     y: clamp(28 + step, 8, Math.max(8, area.usable - h)),
     max: false,
   };
 }
+
+/** Tidies the open windows: a grid when each gets a sensible cell, a neat cascade when not. Front window first. */
+function arrange(wins: Win[], area: Area): Win[] {
+  const visible = wins.filter((win) => !win.min && !win.closing).sort((a, b) => b.z - a.z);
+  const n = visible.length;
+  if (!n) return wins;
+  const pad = 24;
+  const gap = 20;
+  const region = { x: pad, y: 16, w: area.w - pad - ICONS_W, h: area.usable - 24 };
+  const cols = n <= 3 ? n : Math.ceil(n / 2);
+  const rows = Math.ceil(n / cols);
+  const cellW = (region.w - gap * (cols - 1)) / cols;
+  const cellH = (region.h - gap * (rows - 1)) / rows;
+  const tiled = cellW >= 400 && cellH >= 320;
+  const placed = new Map<AppId, Partial<Win>>();
+  visible.forEach((win, index) => {
+    const size = APPS[win.id].size;
+    if (tiled) {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      // A short last row sits centred under the full rows above it.
+      const inRow = row === rows - 1 ? n - cols * (rows - 1) : cols;
+      const shift = ((cols - inRow) * (cellW + gap)) / 2;
+      const w = Math.round(Math.min(cellW, size.w + 120));
+      const h = Math.round(Math.min(cellH, size.h + 80));
+      placed.set(win.id, {
+        x: Math.round(region.x + shift + col * (cellW + gap) + (cellW - w) / 2),
+        y: Math.round(region.y + row * (cellH + gap) + (cellH - h) / 2),
+        w,
+        h,
+        max: false,
+      });
+    } else {
+      // Back to front, each one step down-right of the last.
+      const step = (n - 1 - index) * 32;
+      const w = Math.min(size.w, area.w - ICONS_W - 48 - (n - 1) * 32);
+      const h = Math.min(size.h, area.usable - 24 - (n - 1) * 32);
+      placed.set(win.id, { x: pad + step, y: 16 + step, w, h, max: false });
+    }
+  });
+  return wins.map((win) => (placed.has(win.id) ? { ...win, ...placed.get(win.id) } : win));
+}
+
+/** The front window: the highest one that isn't minimized or closing. */
+function frontOf(wins: Win[]): AppId | null {
+  let best: Win | null = null;
+  for (const win of wins) if (!win.min && !win.closing && (!best || win.z > best.z)) best = win;
+  return best?.id ?? null;
+}
+
+const isAppId = (value: string): value is AppId => Object.hasOwn(APPS, value);
 
 /** Tot's computer: the landing page on screens wide enough for windows. */
 export function Desktop() {
@@ -69,7 +131,14 @@ export function Desktop() {
   const areaRef = useRef(area);
   areaRef.current = area;
   const [wins, setWins] = useState<Win[]>(() => firstWindows(measure()));
+  const winsRef = useRef(wins);
+  winsRef.current = wins;
   const top = useRef(20);
+  const [searching, setSearching] = useState(false);
+  // The sticky note shares the window stack: just under the first windows, on top once it's grabbed.
+  const [noteZ, setNoteZ] = useState(10);
+  // Only write the URL once the visitor has done something (the landing URL stays clean).
+  const touched = useRef(false);
 
   useEffect(() => {
     const update = () => setArea(measure());
@@ -77,32 +146,113 @@ export function Desktop() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
+  const update = useCallback(
+    (id: AppId, patch: Partial<Win>) => setWins((current) => current.map((win) => (win.id === id ? { ...win, ...patch } : win))),
+    [],
+  );
+
   const open = useCallback((id: AppId) => {
+    touched.current = true;
     const z = ++top.current;
     setWins((current) => {
-      if (current.some((win) => win.id === id)) return current.map((win) => (win.id === id ? { ...win, z } : win));
-      return [...current, { ...placeNew(id, current.length, areaRef.current), z }];
+      const existing = current.find((win) => win.id === id);
+      if (existing && !existing.closing) return current.map((win) => (win.id === id ? { ...win, z, min: false, delay: 0 } : win));
+      const rest = current.filter((win) => win.id !== id);
+      const shown = rest.filter((win) => !win.min && !win.closing).length;
+      return [...rest, { ...placeNew(id, shown, areaRef.current), z }];
     });
   }, []);
+
   const focus = useCallback((id: AppId) => {
     setWins((current) => {
       const highest = Math.max(...current.map((win) => win.z));
       if (current.find((win) => win.id === id)?.z === highest) return current;
+      touched.current = true;
       const z = ++top.current;
       return current.map((win) => (win.id === id ? { ...win, z } : win));
     });
   }, []);
-  const close = (id: AppId) => setWins((current) => current.filter((win) => win.id !== id));
-  const update = (id: AppId, patch: Partial<Win>) =>
-    setWins((current) => current.map((win) => (win.id === id ? { ...win, ...patch } : win)));
 
-  const activeId = wins.length ? wins.reduce((a, b) => (a.z > b.z ? a : b)).id : null;
-  const os = useMemo(() => ({ open, layout: "desktop" as const }), [open]);
+  const close = useCallback((id: AppId) => {
+    touched.current = true;
+    setWins((current) => current.map((win) => (win.id === id ? { ...win, closing: true } : win)));
+    setTimeout(() => setWins((current) => current.filter((win) => !(win.id === id && win.closing))), 140);
+  }, []);
+
+  /** Shrinks a window into its dock icon (or the middle of the dock, for apps that aren't in it). */
+  const minimize = useCallback(
+    (id: AppId) => {
+      const win = winsRef.current.find((item) => item.id === id);
+      if (!win) return;
+      touched.current = true;
+      const rect = displayRect(win, areaRef.current);
+      const icon = document.querySelector(`[data-dock-item="${id}"]`) ?? document.querySelector("[data-dock]");
+      const box = icon?.getBoundingClientRect();
+      const target = box
+        ? { x: box.left + box.width / 2, y: box.top + box.height / 2 - MENU_H }
+        : { x: areaRef.current.w / 2, y: areaRef.current.h };
+      update(id, { min: true, minTo: { x: target.x - (rect.x + rect.w / 2), y: target.y - (rect.y + rect.h / 2) } });
+    },
+    [update],
+  );
+
+  const closeAll = useCallback(() => {
+    for (const win of winsRef.current) if (!win.closing) close(win.id);
+  }, [close]);
+  const closeFront = useCallback(() => {
+    const id = frontOf(winsRef.current);
+    if (id) close(id);
+  }, [close]);
+  const tidy = useCallback(() => {
+    touched.current = true;
+    setWins((current) => arrange(current, areaRef.current));
+  }, []);
+  const search = useCallback(() => setSearching(true), []);
+
+  // ⌘K / Ctrl+K opens the launcher; Esc closes the front window (menus and dialogs handle their own Esc first).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearching((current) => !current);
+        return;
+      }
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if ((event.target as HTMLElement).closest?.("input, textarea, [contenteditable='true']")) return;
+      closeFront();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [closeFront]);
+
+  // Deep links: tot.dev/#roadmap opens the Roadmap on top of the first windows.
+  useEffect(() => {
+    const fromHash = () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      if (isAppId(id)) open(id);
+    };
+    const timer = setTimeout(fromHash, 320);
+    window.addEventListener("hashchange", fromHash);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("hashchange", fromHash);
+    };
+  }, [open]);
+
+  const activeId = frontOf(wins);
+  useEffect(() => {
+    if (!touched.current) return;
+    const hash = activeId ? `#${activeId}` : "";
+    if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname + location.search);
+  }, [activeId]);
+
+  const actions = useLauncherActions({ arrange: tidy, closeAll, hasWindows: activeId !== null });
+  const os = useMemo(() => ({ open, search, layout: "desktop" as const }), [open, search]);
 
   return (
     <OsContext.Provider value={os}>
       <div className="wallpaper fixed inset-0 overflow-hidden">
-        <MenuBar />
+        <MenuBar height={MENU_H} hasWindows={activeId !== null} onArrange={tidy} onCloseWindow={closeFront} onCloseAll={closeAll} />
         <main className="absolute inset-x-0 bottom-0" style={{ top: MENU_H }}>
           <p
             aria-hidden="true"
@@ -119,95 +269,21 @@ export function Desktop() {
               active={win.id === activeId}
               onFocus={() => focus(win.id)}
               onClose={() => close(win.id)}
+              onMinimize={() => minimize(win.id)}
               onMove={(x, y) => update(win.id, { x, y })}
+              onResize={(w, h) => update(win.id, { w, h })}
               onToggleMax={() => update(win.id, { max: !win.max })}
             />
           ))}
-          <DraggableNote area={area} />
+          <DraggableNote area={area} z={noteZ} onFocus={() => setNoteZ(++top.current)} />
         </main>
-        <Dock open={(id) => open(id)} openIds={wins.map((win) => win.id)} />
+        <Dock open={open} openIds={wins.filter((win) => !win.closing).map((win) => win.id)} />
         <div className="fixed right-3 z-[10001]" style={{ top: MENU_H + 10 }}>
-          <Notifications />
+          <Notifications firstDelay={6000} />
         </div>
+        <Launcher open={searching} onOpenChange={setSearching} openApp={open} actions={actions} />
       </div>
     </OsContext.Provider>
-  );
-}
-
-function MenuBar() {
-  const now = useClock();
-  const { open } = useOs();
-  return (
-    <header
-      className="glass fixed inset-x-0 top-0 z-[10000] flex items-center gap-1 border-b border-hairline px-3 text-ui"
-      style={{ height: MENU_H }}
-    >
-      <img src="/tot.svg" alt="" className="size-4.5 rounded" />
-      <span className="ml-1.5 mr-3 font-semibold text-fg">TOT</span>
-      <span className="hidden px-2 text-fg-muted lg:inline">File</span>
-      <span className="hidden px-2 text-fg-muted lg:inline">Edit</span>
-      <button
-        type="button"
-        onClick={() => open("maker")}
-        className="rounded-md px-2 py-0.5 text-fg-muted transition-colors hover:bg-hover hover:text-fg"
-      >
-        Agents
-      </button>
-      <button
-        type="button"
-        onClick={() => open("roadmap")}
-        className="rounded-md px-2 py-0.5 text-fg-muted transition-colors hover:bg-hover hover:text-fg"
-      >
-        Roadmap
-      </button>
-      <button
-        type="button"
-        onClick={() => open("help")}
-        className="rounded-md px-2 py-0.5 text-fg-muted transition-colors hover:bg-hover hover:text-fg"
-      >
-        Help
-      </button>
-      <div className="ml-auto flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => open("brains")}
-          aria-label="Open Brains: Claude and ChatGPT usage"
-          className="hidden items-center gap-2 rounded-md px-2 py-0.5 text-fg-muted transition-colors hover:bg-hover hover:text-fg md:flex"
-        >
-          <Meter mark={<ClaudeMark className="size-3.5" />} used={92} />
-          <Meter mark={<OpenAIMark className="size-3.5 text-fg" />} used={34} />
-        </button>
-        <ThemeToggle className="size-6" />
-        <span className="px-1 text-fg tabular-nums">
-          {now.toLocaleString("en-US", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </span>
-        <button
-          type="button"
-          onClick={() => open("terminal")}
-          className="h-6 rounded-full bg-fg px-3 text-xs font-medium text-canvas transition-colors hover:bg-fg/90"
-        >
-          Get TOT
-        </button>
-      </div>
-    </header>
-  );
-}
-
-/** A provider's mark and how much of this week's usage is gone. */
-function Meter({ mark, used }: { mark: ReactNode; used: number }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      {mark}
-      <span className="h-1.5 w-7 overflow-hidden rounded-full bg-fill-strong">
-        <span className={clsx("block h-full rounded-full", used > 80 ? "bg-amber-400" : "bg-emerald-400")} style={{ width: `${used}%` }} />
-      </span>
-    </span>
   );
 }
 
@@ -215,22 +291,27 @@ function DesktopIcons() {
   const { open } = useOs();
   return (
     <div className="absolute top-36 right-3 z-[2] flex flex-col gap-3">
-      <DesktopIcon label="README.md" onOpen={() => open("readme")}>
+      <DesktopIcon label="README.md" delay={220} onOpen={() => open("readme")}>
         <AppIcon id="readme" size={46} />
       </DesktopIcon>
-      <DesktopIcon label="Roadmap.md" onOpen={() => open("roadmap")}>
+      <DesktopIcon label="Roadmap.md" delay={260} onOpen={() => open("roadmap")}>
         <AppIcon id="readme" size={46} />
       </DesktopIcon>
-      <DesktopIcon label="Tot's stuff" onOpen={() => open("features")}>
+      <DesktopIcon label="Tot's stuff" delay={300} onOpen={() => open("features")}>
         <Folder className="size-12 fill-[#7dd3fc] text-[#38bdf8]" strokeWidth={1.25} />
       </DesktopIcon>
     </div>
   );
 }
 
-function DesktopIcon({ label, onOpen, children }: { label: string; onOpen: () => void; children: ReactNode }) {
+function DesktopIcon({ label, delay, onOpen, children }: { label: string; delay: number; onOpen: () => void; children: ReactNode }) {
   return (
-    <button type="button" onClick={onOpen} className="group flex w-20 flex-col items-center gap-1 rounded-lg p-1.5">
+    <button
+      type="button"
+      onClick={onOpen}
+      style={{ animationDelay: `${delay}ms`, animationFillMode: "backwards" }}
+      className="group flex w-20 animate-fade-in flex-col items-center gap-1 rounded-lg p-1.5"
+    >
       <span className="grid h-12 place-items-center">{children}</span>
       <span className="desktop-label rounded px-1.5 text-xs font-medium text-fg group-hover:bg-accent group-hover:text-fixed-white">
         {label}
@@ -243,7 +324,7 @@ function DesktopIcon({ label, onOpen, children }: { label: string; onOpen: () =>
  * The house rules, stuck on the screen like a sticky note on a monitor. It sits below the README; where the
  * screen is too short for both, it peeks up from the bottom edge and slides into view on hover. It can be dragged.
  */
-function DraggableNote({ area }: { area: Area }) {
+function DraggableNote({ area, z, onFocus }: { area: Area; z: number; onFocus: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(320);
   const [spot, setSpot] = useState<{ x: number; y: number } | null>(null);
@@ -260,14 +341,14 @@ function DraggableNote({ area }: { area: Area }) {
   const position = spot ?? home;
   // How far the note hangs off the bottom of the screen (and so how far it rises on hover).
   const lift = spot ? 0 : Math.max(0, position.y + height + 16 - area.h);
-  const drag = useDrag({ ...position, w: 240 }, area, (x, y) => setSpot({ x, y }));
+  const drag = useDrag({ ...position, w: 240 }, area, (x, y) => setSpot({ x, y }), onFocus);
   return (
     <div
       {...drag}
       ref={ref}
       aria-label="House rules (sticky note)"
-      style={{ left: position.x, top: position.y, "--lift": `${lift}px` } as CSSProperties}
-      className="absolute z-[9000] -rotate-3 cursor-grab touch-none transition-[translate] duration-300 ease-emphasized select-none hover:translate-y-[calc(var(--lift)*-1)] active:cursor-grabbing"
+      style={{ left: position.x, top: position.y, zIndex: z, "--lift": `${lift}px` } as CSSProperties}
+      className="absolute -rotate-3 cursor-grab touch-none transition-[translate] duration-300 ease-emphasized select-none hover:translate-y-[calc(var(--lift)*-1)] active:cursor-grabbing"
     >
       <StickyNote />
     </div>
@@ -276,8 +357,8 @@ function DraggableNote({ area }: { area: Area }) {
 
 function Dock({ open, openIds }: { open: (id: AppId) => void; openIds: AppId[] }) {
   return (
-    <nav aria-label="Dock" className="fixed inset-x-0 bottom-3 z-[10000] flex justify-center">
-      <div className="glass flex items-center gap-2 rounded-[24px] border border-edge p-2 shadow-dialog">
+    <nav aria-label="Dock" className="dock-in fixed inset-x-0 bottom-3 z-[10000] flex justify-center">
+      <div data-dock className="glass flex items-center gap-2 rounded-[24px] border border-edge p-2 shadow-dialog">
         {DOCK.map((id) => (
           <DockItem key={id} id={id} open={open} running={openIds.includes(id)} />
         ))}
@@ -291,7 +372,7 @@ function Dock({ open, openIds }: { open: (id: AppId) => void; openIds: AppId[] }
 /** A dock icon: its name floats above on hover, and a small dot below marks an open window. */
 function DockItem({ id, open, running }: { id: AppId; open: (id: AppId) => void; running: boolean }) {
   return (
-    <button type="button" onClick={() => open(id)} aria-label={APPS[id].name} className="group relative rounded-[12px]">
+    <button type="button" data-dock-item={id} onClick={() => open(id)} aria-label={APPS[id].name} className="group relative rounded-[12px]">
       <span className="pointer-events-none absolute -top-11 left-1/2 -translate-x-1/2 rounded-lg border border-edge bg-elevated px-2.5 py-1 text-xs font-medium whitespace-nowrap text-fg opacity-0 shadow-popover transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
         {APPS[id].name}
       </span>

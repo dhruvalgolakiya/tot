@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import {
   ArrowRight,
@@ -24,11 +24,12 @@ import type { MascotState } from "@shared/types";
 import { Mascot } from "../../src/components/mascot";
 import { crew, type CrewMember } from "../crew";
 import { useOs } from "../os/context";
+import { createJump, scrollToChild } from "../os/jump";
 import { MOCK_TASKS, MockTaskCard } from "./TotApp";
 
 type Feature = { icon: LucideIcon; title: string; joke: string; body: string; visual?: ReactNode };
 
-const FEATURES: Feature[] = [
+export const FEATURES: Feature[] = [
   {
     icon: Smile,
     title: "Agents with faces",
@@ -122,14 +123,36 @@ const FEATURES: Feature[] = [
 ];
 
 /** The features, as a two-pane browser on the desktop and a list of cards on the phone. */
+/** Opens What's inside at one feature (from the launcher). */
+export const featureJump = createJump();
+
 export function WhatsInside() {
   const { layout } = useOs();
   const [selected, setSelected] = useState(0);
+  const [flash, setFlash] = useState<string | null>(null);
+  const list = useRef<HTMLDivElement>(null);
+  featureJump.useJump((title) => {
+    const index = FEATURES.findIndex((feature) => feature.title === title);
+    if (index < 0) return;
+    setSelected(index);
+    const card = list.current?.querySelector<HTMLElement>(`[data-feature="${index}"]`);
+    if (!card) return;
+    scrollToChild(card);
+    setFlash(title);
+    setTimeout(() => setFlash((current) => (current === title ? null : current)), 1600);
+  });
   if (layout === "phone") {
     return (
-      <div className="space-y-3 p-4">
-        {FEATURES.map((feature) => (
-          <div key={feature.title} className="rounded-2xl border border-hairline bg-fill-subtle p-5">
+      <div ref={list} className="space-y-3 p-4">
+        {FEATURES.map((feature, index) => (
+          <div
+            key={feature.title}
+            data-feature={index}
+            className={clsx(
+              "rounded-2xl border p-5 transition-colors duration-500",
+              flash === feature.title ? "border-accent-edge bg-accent-soft" : "border-hairline bg-fill-subtle",
+            )}
+          >
             <FeatureDetail feature={feature} />
           </div>
         ))}
