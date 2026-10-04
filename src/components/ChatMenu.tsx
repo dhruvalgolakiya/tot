@@ -2,6 +2,7 @@ import { DropdownMenu } from "radix-ui";
 import { Ellipsis, GitFork, GitMerge } from "lucide-react";
 import type { Conversation } from "@shared/types";
 import { forkChat, mergeBack, useStore } from "../store";
+import { MoveToProjectSub } from "./projects/MoveToProjectMenu";
 import { IconButton } from "./ui/IconButton";
 
 /** The open chat's "…" menu in the header. */
@@ -28,6 +29,7 @@ export function ChatMenu({ chat }: { chat: Conversation }) {
               <span className="min-w-0 flex-1 truncate">Bring back to {source.title}</span>
             </DropdownMenu.Item>
           )}
+          <MoveToProjectSub chat={chat} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

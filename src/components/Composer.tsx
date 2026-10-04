@@ -17,7 +17,8 @@ const touchOnly = () => window.matchMedia("(pointer: coarse)").matches;
 const pill =
   "flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-selected aria-pressed:text-fg";
 
-export function Composer({ attachments }: { attachments: UseAttachments }) {
+/** `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page. */
+export function Composer({ attachments, placeholder: newChatPlaceholder }: { attachments: UseAttachments; placeholder?: string }) {
   const currentId = useStore((s) => s.currentId);
   const run = useStore((s) => (s.currentId ? s.activeRuns[s.currentId] : undefined));
   const sending = useStore((s) => s.sending);
@@ -77,7 +78,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
       ? "Answer the task…"
       : task
         ? "Reply to pick this task up again…"
-        : `Ask ${agentName} anything`;
+        : (newChatPlaceholder ?? `Ask ${agentName} anything`);
 
   useLayoutEffect(() => {
     const input = inputRef.current;

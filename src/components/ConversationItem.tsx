@@ -1,14 +1,16 @@
 import { useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
-import { Clock, Ellipsis, Mail, Pencil, Pin, PinOff, Trash } from "lucide-react";
+import { Clock, Ellipsis, Mail, Pencil, Pin, PinOff, Ticket, Trash } from "lucide-react";
 import type { Conversation } from "@shared/types";
 import { conversationTitle } from "../lib/conversations";
 import { conversationPath } from "../lib/router";
 import { deleteConversation, navigateToConversation, renameConversation, togglePinned, useStore } from "../store";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { MoveToProjectSub } from "./projects/MoveToProjectMenu";
 import { IconButton } from "./ui/IconButton";
 import { listRowClass } from "./ui/ListRow";
+import { GitHubMark } from "./ui/GitHubMark";
 import { SlackMark } from "./ui/SlackMark";
 import { StatusDot } from "./ui/StatusDot";
 import { CHAT_DRAG_TYPE } from "../lib/attached-chats";
@@ -81,7 +83,15 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
         {conversation.origin && (
           <Tip content={conversation.origin.label}>
             <span className="shrink-0 text-fg-muted" title={conversation.origin.label}>
-              {conversation.origin.kind === "slack" ? <SlackMark className="size-3" /> : <Mail className="size-3" />}
+              {conversation.origin.kind === "slack" ? (
+                <SlackMark className="size-3" />
+              ) : conversation.origin.kind === "github" ? (
+                <GitHubMark className="size-3" />
+              ) : conversation.origin.kind === "linear" ? (
+                <Ticket className="size-3" />
+              ) : (
+                <Mail className="size-3" />
+              )}
             </span>
           </Tip>
         )}
@@ -146,6 +156,7 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
                 </>
               )}
             </DropdownMenu.Item>
+            <MoveToProjectSub chat={conversation} />
             <DropdownMenu.Separator className="menu-separator" />
             <DropdownMenu.Item
               className="menu-item menu-item-danger"

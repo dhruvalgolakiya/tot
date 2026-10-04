@@ -255,6 +255,8 @@ export type MessagePart =
       text: string;
       /** For "wiki": the pages that changed, so the UI can link to them. */
       pageIds?: string[];
+      /** For a chat filed under a project ("Filed under web", module 06): the project, so the UI can offer Move. */
+      projectId?: string;
     }
   /** A file the user attached (images render inline). */
   | { type: "file"; id: string; attachment: Attachment }
