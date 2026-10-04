@@ -6,7 +6,6 @@ import { ThemeToggle, useClock } from "../ui";
 import { OsContext, useOs } from "./context";
 import type { AppId } from "./ids";
 import { Notifications } from "./Notifications";
-import { Pets } from "./Pets";
 import { ClaudeMark, OpenAIMark } from "./BrandMarks";
 import { APPS, AppIcon } from "./registry";
 import { useDrag, Window, type Area, type Win } from "./Window";
@@ -112,7 +111,6 @@ export function Desktop() {
             tot
           </p>
           <DesktopIcons />
-          <Pets />
           {wins.map((win) => (
             <Window
               key={win.id}

@@ -119,24 +119,4 @@
       transform: translateY(100%);
     }
   }
-
-  /* Desktop pets stroll back and forth along the bottom of the screen. */
-  .pet {
-    left: 4%;
-    animation: pet-walk var(--pet-seconds, 40s) ease-in-out var(--pet-delay, 0s) infinite alternate;
-  }
-  @keyframes pet-walk {
-    from {
-      left: 4%;
-    }
-    to {
-      left: calc(96% - 56px);
-    }
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pet {
-    animation: none;
-  }
 }
