@@ -47,6 +47,8 @@ code blocks). For a literal white or black that must not flip, use `fixed-white`
 | Focus | `outline-focus` / `ring-focus` | only if you must draw focus yourself | `ring-[var(--agent-accent-ring)]` |
 | Status | `text-success\|warning\|danger`, `bg-*-soft`, `border-*-edge`, `bg-danger-solid` | status text/icons, tinted boxes, destructive button | `emerald-*`, `amber-*`, `red-*` |
 
+**Never** give a card, row or callout a colored bar down one side (`border-l-4`, a tinted left edge). Cards get an even hairline border all round, or none; status goes in a dot or badge.
+
 Surfaces (unchanged): `bg-panel` app chrome (rail, sidebar) · `bg-canvas` main card and docked panels ·
 `bg-elevated` menus, dialogs, selects, toasts · `bg-bubble` user messages · `bg-sunken` insets (screens,
 paths) · `bg-scrim/60` overlays.
