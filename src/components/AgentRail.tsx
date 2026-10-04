@@ -72,13 +72,6 @@ function RailAgentButton({ agent, active }: RailAgentButtonProps) {
 
   return (
     <li className="relative flex w-full shrink-0 items-center justify-center">
-      <span
-        aria-hidden="true"
-        className={clsx(
-          "absolute left-0 h-6 w-1 rounded-r-full bg-accent transition-opacity",
-          active ? "opacity-100" : "opacity-0",
-        )}
-      />
       <Tip content={agent.name} side="right">
         <button
           type="button"
