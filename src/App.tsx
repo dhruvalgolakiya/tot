@@ -8,6 +8,8 @@ import { ComputerPanel } from "./components/ComputerPanel";
 import { Header } from "./components/Header";
 import { MascotGallery } from "./components/mascot";
 import { NewAgentDialog } from "./components/NewAgentDialog";
+import { NewProjectDialog } from "./components/projects/NewProjectDialog";
+import { ProjectPage } from "./components/projects/ProjectPage";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { TrustLab } from "./components/trust/TrustLab";
 import { Sidebar } from "./components/Sidebar";
@@ -18,6 +20,7 @@ import { useAppEvents, useRunningAgents } from "./hooks/useAppEvents";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { conversationTitle } from "./lib/conversations";
 import { loadMarkdown } from "./lib/markdownLoader";
+import { useProjects } from "./lib/projects";
 import {
   goToSettings,
   handleAppEvent,
@@ -47,7 +50,9 @@ export default function App() {
   const page = useStore((s) => s.page);
   const viewKey = useStore((s) => s.viewKey);
   const current = useStore(selectCurrentConversation);
-  const title = current ? conversationTitle(current) : null;
+  const pageProjectId = useStore((s) => (s.page === "project" ? s.projectId : null));
+  const projectName = useProjects((s) => (pageProjectId ? s.projects.find((p) => p.id === pageProjectId)?.name : undefined));
+  const title = current ? conversationTitle(current) : (projectName ?? null);
 
   useEffect(() => {
     initApp();
@@ -124,7 +129,13 @@ export default function App() {
           ) : (
             <>
               <Header />
-              {page === "wiki" ? <WikiView key={viewKey} /> : <ChatView key={viewKey} />}
+              {page === "wiki" ? (
+                <WikiView key={viewKey} />
+              ) : page === "project" ? (
+                <ProjectPage key={viewKey} />
+              ) : (
+                <ChatView key={viewKey} />
+              )}
             </>
           )}
         </main>
@@ -133,6 +144,7 @@ export default function App() {
         <AgentSettingsPanel />
       </div>
       <NewAgentDialog />
+      <NewProjectDialog />
       <Toaster theme={theme} position="top-center" closeButton style={TOAST_THEME} />
     </Tooltip.Provider>
   );

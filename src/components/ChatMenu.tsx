@@ -1,13 +1,16 @@
 import { DropdownMenu } from "radix-ui";
-import { Ellipsis, GitFork, GitMerge } from "lucide-react";
+import { ArrowUpRight, Ellipsis, GitFork, GitMerge } from "lucide-react";
 import type { Conversation } from "@shared/types";
 import { forkChat, mergeBack, useStore } from "../store";
+import { chatTicket } from "./projects/ChatProjectCrumb";
+import { MoveToProjectSub } from "./projects/MoveToProjectMenu";
 import { IconButton } from "./ui/IconButton";
 
 /** The open chat's "…" menu in the header. */
 export function ChatMenu({ chat }: { chat: Conversation }) {
   const busy = useStore((s) => Boolean(s.activeRuns[chat.id]));
   const source = useStore((s) => (chat.forkedFrom ? s.conversations.find((c) => c.id === chat.forkedFrom!.conversationId) : undefined));
+  const ticket = chatTicket(chat);
 
   return (
     <DropdownMenu.Root modal={false}>
@@ -26,6 +29,16 @@ export function ChatMenu({ chat }: { chat: Conversation }) {
             <DropdownMenu.Item className="menu-item" onSelect={() => void mergeBack(chat.id)}>
               <GitMerge className="size-4 text-fg-muted" />
               <span className="min-w-0 flex-1 truncate">Bring back to {source.title}</span>
+            </DropdownMenu.Item>
+          )}
+          <MoveToProjectSub chat={chat} />
+          {/* Phones: the header has no room for the ticket chip. */}
+          {ticket?.url && (
+            <DropdownMenu.Item asChild className="menu-item sm:hidden">
+              <a href={ticket.url} target="_blank" rel="noopener noreferrer">
+                <ArrowUpRight className="size-4 text-fg-muted" />
+                <span className="min-w-0 flex-1 truncate">Open {ticket.key}</span>
+              </a>
             </DropdownMenu.Item>
           )}
         </DropdownMenu.Content>

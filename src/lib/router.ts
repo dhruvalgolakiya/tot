@@ -37,6 +37,21 @@ export function wikiFromPath(pathname: string): { agentId: string; pageId: strin
   }
 }
 
+/** "/a/:agentId/projects/:projectId": a project's page, seen from an agent (new chats there start with it). */
+export function projectPath(agentId: string, projectId: string): string {
+  return `/a/${encodeURIComponent(agentId)}/projects/${encodeURIComponent(projectId)}`;
+}
+
+export function projectFromPath(pathname: string): { agentId: string; projectId: string } | null {
+  const match = /^\/a\/([^/]+)\/projects\/([^/]+)\/?$/.exec(pathname);
+  if (!match) return null;
+  try {
+    return { agentId: decodeURIComponent(match[1]), projectId: decodeURIComponent(match[2]) };
+  } catch {
+    return null;
+  }
+}
+
 export function conversationPath(id: string): string {
   return `/c/${encodeURIComponent(id)}`;
 }

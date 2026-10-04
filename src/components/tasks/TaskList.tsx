@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import clsx from "clsx";
+import { useProjects } from "../../lib/projects";
 import { isTask, sortTasks, type TaskConversation } from "../../lib/tasks";
 import { selectActiveAgent, selectActiveAgentId, useStore } from "../../store";
 import { QueueHoldLine } from "./QueueHold";
@@ -21,15 +22,19 @@ export function TaskList({ query }: { query: string }) {
   const hold = useStore((s) => selectActiveAgent(s)?.queueHold ?? null);
   const [showFinished, setShowFinished] = useState(false);
   const needle = query.trim().toLowerCase();
+  // Tasks in a project are listed under it (module 06), like its chats; an archived project's come back here.
+  const projects = useProjects((s) => s.projects);
+  const filed = useMemo(() => new Set(projects.filter((p) => !p.archived).map((p) => p.id)), [projects]);
 
   const { open, finished } = useMemo(
     () =>
       sortTasks(
         conversations
           .filter(isTask)
-          .filter((task) => task.agentId === agentId && (!needle || task.title.toLowerCase().includes(needle))),
+          .filter((task) => task.agentId === agentId && !(task.projectId && filed.has(task.projectId)))
+          .filter((task) => !needle || task.title.toLowerCase().includes(needle)),
       ),
-    [conversations, agentId, needle],
+    [conversations, agentId, needle, filed],
   );
   const queued = open.filter((task) => task.task.status === "queued");
   if (!open.length && !finished.length) return null;

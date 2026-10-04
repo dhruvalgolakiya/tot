@@ -4,12 +4,16 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { DATA_DIR, EXECUTOR_PORT, IS_PROD, PORT, paths } from "../config.ts";
 import { githubAccessFor } from "../persona-github.ts";
-import type { ComputerBackend, ExecResult } from "./types.ts";
+import { verifyGrant } from "../projects/folders.ts";
+import type { ComputerBackend, ExecResult, FolderGrant } from "./types.ts";
 
 /**
  * A folder per agent on this machine. On macOS every command runs under a
  * Seatbelt profile (the mechanism Codex uses): writes only inside the
  * workspace and temp dirs, no reads of personal files, network allowed.
+ * A command in a folder project (module 06) may also get a folder grant:
+ * the user's folder becomes readable, and a task's own branch and worktree
+ * in it writable (see grantRules).
  */
 
 const SANDBOXED = process.platform === "darwin" && existsSync("/usr/bin/sandbox-exec");
@@ -33,7 +37,44 @@ const sbplString = (value: string) => `"${value.replaceAll("\\", "\\\\").replace
 /** TOT's own server, Executor (apps), and in development the web server in front of TOT. */
 const TOT_PORTS = [...new Set([PORT, EXECUTOR_PORT, ...(IS_PROD ? [] : [5173])])];
 
-function profile(workspace: string): string {
+/**
+ * What a folder grant adds to the profile. Reading: the whole folder. Writing, for a task only: its
+ * own checkout in .tot-worktrees, its worktree's git metadata, its one branch and that branch's
+ * reflog, and new loose git objects. Everything else stays read-only, so the sandbox, not the prompt,
+ * keeps the user's checked-out files, other branches, .git/config, hooks and info untouched: git
+ * would run those for the user later, outside any sandbox. A chat in the project only reads.
+ */
+function grantRules(grant: FolderGrant | null | undefined): { read: string; write: string } {
+  if (!grant) return { read: "", write: "" };
+  const read = `\n  (subpath ${sbplString(grant.folder)})`;
+  if (!grant.task) return { read, write: "" };
+  const git = join(grant.folder, ".git");
+  const { branch, worktree } = grant.task;
+  const path = (...parts: string[]) => sbplString(join(...parts));
+  return {
+    read,
+    write: `
+; Folder grant for a task: its checkout, branch and worktree metadata in the user's repo.
+(allow file-write*
+  (subpath ${path(grant.folder, ".tot-worktrees", worktree)})
+  (subpath ${path(git, "worktrees", worktree)})
+  (literal ${path(git, "refs/heads", branch)})
+  (literal ${path(git, "refs/heads", `${branch}.lock`)})
+  (literal ${path(git, "logs/refs/heads", branch)})
+  (literal ${path(git, "packed-refs.lock")}))
+(deny file-write* (literal ${path(git, "worktrees", worktree, "config.worktree")}))
+; New loose git objects only: existing ones can't be changed or removed, nor objects/info (alternates…)
+; added. No new packs either: git reads packs first without re-hashing them, so a pack could pass
+; other content off as one of the user's objects, for their own next checkout to write.
+(allow file-write-create (subpath ${path(git, "objects")}))
+(deny file-write-create (subpath ${path(git, "objects/info")}) (subpath ${path(git, "objects/pack")}))
+(allow file-write-unlink (require-all (subpath ${path(git, "objects")}) (regex #"/tmp_[^/]*$")))
+`,
+  };
+}
+
+function profile(workspace: string, grant?: FolderGrant | null): string {
+  const granted = grantRules(grant);
   const dataDir = realpathSync(DATA_DIR);
   const nodeDir = dirname(realpathSync(process.execPath));
   // Seatbelt gives rules on a specific operation (file-read-data) precedence over wildcard
@@ -48,13 +89,13 @@ function profile(workspace: string): string {
   (subpath "/private/tmp")
   (subpath "/private/var/folders")
   (subpath "/dev"))
-
+${granted.write}
 ; Reads: no file contents under the home folder or TOT's data dir (database, secrets, other
-; chats' workspaces), except toolchains and this workspace. Metadata stays readable so paths resolve.
+; chats' workspaces), except toolchains, this workspace and a granted folder. Metadata stays readable so paths resolve.
 (deny file-read-data (subpath ${sbplString(HOME)}) (subpath ${sbplString(dataDir)}))
 (allow file-read-data
   ${[...TOOLCHAIN_DIRS, nodeDir].map((dir) => `(subpath ${sbplString(dir)})`).join("\n  ")}
-  (subpath ${sbplString(workspace)}))
+  (subpath ${sbplString(workspace)})${granted.read})
 
 ; getcwd() and Node's startup list each parent of the working directory: allow listing just
 ; those folders (names only — their other contents stay unreadable).
@@ -94,18 +135,98 @@ function killGroups(externalId: string): void {
   groups.delete(externalId);
 }
 
-/** Resolves a path inside the workspace, refusing anything (incl. symlinks) that escapes it. */
-function inside(workspace: string, path: string): string {
+/**
+ * A path's real location (symlinks resolved as far as it exists); relative paths start in the
+ * workspace. `canonical` also takes the case the disk stores, as folder grants are kept.
+ */
+function realLocation(workspace: string, path: string, canonical = false): string {
   const target = isAbsolute(path) ? resolve(path) : resolve(workspace, path);
   let probe = target;
   while (!existsSync(probe)) probe = dirname(probe);
-  const real = join(realpathSync(probe), relative(probe, target));
+  return join(canonical ? realpathSync.native(probe) : realpathSync(probe), relative(probe, target));
+}
+
+const isIn = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`);
+
+/** Resolves a path inside the workspace, refusing anything (incl. symlinks) that escapes it. */
+function inside(workspace: string, path: string): string {
+  const real = realLocation(workspace, path);
   const rel = relative(workspace, real);
   if (rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`"${path}" is outside this computer's workspace (${workspace}). Use paths inside it.`);
   }
   return real;
 }
+
+/** A path in the granted folder (checked again now), or null when it isn't in it. */
+function inGrant(workspace: string, path: string, grant: FolderGrant | null | undefined): string | null {
+  if (!grant) return null;
+  if (!SANDBOXED) throw new Error("Folders on this Mac need the macOS sandbox, which this computer doesn't have.");
+  verifyGrant(grant);
+  const real = realLocation(workspace, path, true);
+  return isIn(real, grant.folder) ? real : null;
+}
+
+/** A command's working directory: an existing folder in the granted folder, or one in the workspace (made if needed). */
+function workingDir(workspace: string, cwd: string, grant: FolderGrant | null | undefined): string {
+  const granted = inGrant(workspace, cwd, grant);
+  if (granted) {
+    if (!existsSync(granted) || !statSync(granted).isDirectory()) throw new Error(`There's no folder at ${cwd}.`);
+    return granted;
+  }
+  const dir = inside(workspace, cwd);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * A file operation in the granted folder, run under the same sandbox as commands (never by TOT
+ * itself), so a symlink swapped in meanwhile can't send it anywhere the sandbox wouldn't allow.
+ */
+function sandboxedFile(workspace: string, grant: FolderGrant, script: string, path: string, input?: string): Promise<Buffer> {
+  return new Promise((done, fail) => {
+    const child = spawn("/usr/bin/sandbox-exec", ["-p", profile(workspace, grant), "/bin/sh", "-c", script, "sh", path], {
+      cwd: workspace,
+      env: { HOME: workspace, PATH: "/usr/bin:/bin" },
+      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    });
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    let bytes = 0;
+    child.stdout!.on("data", (chunk: Buffer) => {
+      if ((bytes += chunk.length) <= MAX_READ_BYTES + 64) out.push(chunk);
+    });
+    child.stderr!.on("data", (chunk: Buffer) => err.push(chunk));
+    const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+    child.once("error", (error) => (clearTimeout(timer), fail(error)));
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) done(Buffer.concat(out));
+      else fail(new Error(Buffer.concat(err).toString("utf8").trim().split("\n").pop() || `exit code ${code}`));
+    });
+    if (input !== undefined) child.stdin!.end(input);
+  });
+}
+
+/** In a project folder, only a task's own worktree is writable: say so when a write is refused. */
+const writeRefused = (path: string, grant: FolderGrant) =>
+  new Error(
+    `Can't write ${path}: ${grant.task ? "in the project's folder, only your own task folder (worktree) is writable" : "the project's folder is read-only in a chat; start a task to change it"}.`,
+  );
+
+/**
+ * Git config for commands in a granted folder: git's background upkeep (gc, maintenance, the
+ * fsmonitor daemon) belongs to the user, and in the sandbox it would only fail or leave locks behind.
+ */
+const GRANTED_GIT = {
+  GIT_CONFIG_COUNT: "3",
+  GIT_CONFIG_KEY_0: "maintenance.auto",
+  GIT_CONFIG_VALUE_0: "false",
+  GIT_CONFIG_KEY_1: "gc.auto",
+  GIT_CONFIG_VALUE_1: "0",
+  GIT_CONFIG_KEY_2: "core.fsmonitor",
+  GIT_CONFIG_VALUE_2: "false",
+};
 
 /** A local computer's id is its agent's (see create). */
 function environment(workspace: string, agentId: string): Record<string, string> {
@@ -166,17 +287,26 @@ export const localBackend: ComputerBackend = {
     return workspaceOf(externalId);
   },
 
-  exec(externalId, command, { cwd, timeoutMs }) {
+  exec(externalId, command, { cwd, timeoutMs, grant }) {
     const workspace = realpathSync(workspaceOf(externalId));
-    const dir = cwd ? inside(workspace, cwd) : workspace;
-    mkdirSync(dir, { recursive: true });
+    let dir: string;
+    try {
+      if (grant) {
+        if (!SANDBOXED) throw new Error("Folders on this Mac need the macOS sandbox, which this computer doesn't have.");
+        verifyGrant(grant);
+      }
+      dir = cwd ? workingDir(workspace, cwd, grant) : workspace;
+    } catch (err) {
+      return Promise.reject(err);
+    }
     const [file, args] = SANDBOXED
-      ? ["/usr/bin/sandbox-exec", ["-p", profile(workspace), "/bin/bash", "-c", command]]
+      ? ["/usr/bin/sandbox-exec", ["-p", profile(workspace, grant), "/bin/bash", "-c", command]]
       : ["/bin/bash", ["-c", command]];
+    const env = { ...environment(workspace, externalId), ...(grant ? GRANTED_GIT : {}) };
 
     return new Promise<ExecResult>((done) => {
       const started = Date.now();
-      const child = spawn(file, args, { cwd: dir, env: environment(workspace, externalId), detached: true, stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(file, args, { cwd: dir, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
       if (child.pid) {
         const set = groups.get(externalId) ?? new Set<number>();
         set.add(child.pid);
@@ -227,8 +357,20 @@ export const localBackend: ComputerBackend = {
     });
   },
 
-  async readFile(externalId, path) {
-    const file = inside(realpathSync(workspaceOf(externalId)), path);
+  async readFile(externalId, path, { grant } = {}) {
+    const workspace = realpathSync(workspaceOf(externalId));
+    const granted = inGrant(workspace, path, grant);
+    if (granted) {
+      // The size on the first line, then at most MAX_READ_BYTES of the file.
+      const out = await sandboxedFile(workspace, grant!, `wc -c < "$1" && head -c ${MAX_READ_BYTES} "$1"`, granted);
+      const newline = out.indexOf(10);
+      const size = Number(out.subarray(0, newline).toString().trim());
+      const buffer = out.subarray(newline + 1);
+      if (buffer.includes(0)) return `[binary file, ${size} bytes]`;
+      const text = buffer.toString("utf8");
+      return size > MAX_READ_BYTES ? `${text}\n… (${size - MAX_READ_BYTES} more bytes not shown)` : text;
+    }
+    const file = inside(workspace, path);
     const size = statSync(file).size;
     const buffer = readFileSync(file).subarray(0, MAX_READ_BYTES);
     if (buffer.includes(0)) return `[binary file, ${size} bytes]`;
@@ -236,8 +378,16 @@ export const localBackend: ComputerBackend = {
     return size > MAX_READ_BYTES ? `${text}\n… (${size - MAX_READ_BYTES} more bytes not shown)` : text;
   },
 
-  async writeFile(externalId, path, content) {
-    const file = inside(realpathSync(workspaceOf(externalId)), path);
+  async writeFile(externalId, path, content, { grant } = {}) {
+    const workspace = realpathSync(workspaceOf(externalId));
+    const granted = inGrant(workspace, path, grant);
+    if (granted) {
+      await sandboxedFile(workspace, grant!, `mkdir -p "$(dirname "$1")" && cat > "$1"`, granted, content).catch(() => {
+        throw writeRefused(path, grant!);
+      });
+      return;
+    }
+    const file = inside(workspace, path);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, content);
   },

@@ -6,6 +6,7 @@ import { agents } from "../data/agents.ts";
 import { brains, cloneFolder } from "../data/brains.ts";
 import { wiki } from "../data/wiki.ts";
 import { db, parseJson, type Row } from "../db.ts";
+import { projects } from "../projects/projects.ts";
 import { jsonIn, trustModel } from "./model.ts";
 import { exec, output, scrub, sections, tail } from "./shell.ts";
 
@@ -39,6 +40,13 @@ export function repoFolder(source: string): string {
   if (text.startsWith("~/")) return text.slice(2);
   if (text.startsWith("/")) return text;
   return `repos/${cloneFolder(text)}`;
+}
+
+/** Where a brain's repo is, relative to the computer's home: its project's folder (module 06), or as repoFolder says. */
+function brainFolder(brain: Brain & { source: string }): string {
+  const project = projects.forBrain(brain.id);
+  const folder = project && project.kind !== "none" ? projects.folder(project) : null;
+  return folder ? folder.replace(/^~\//, "") : repoFolder(brain.source);
 }
 
 function repoBrain(brainId: string): Brain & { source: string } {
@@ -406,7 +414,7 @@ Reply with only this JSON:
 /** A profile to confirm (not saved), from the repo on the agent's computer and, when there are any, Learn a repo's notes. */
 export async function draftProfile(brainId: string, agentId?: string): Promise<RepoProfile> {
   const brain = repoBrain(brainId);
-  const scan = await scanRepo(agentFor(brain, agentId), repoFolder(brain.source));
+  const scan = await scanRepo(agentFor(brain, agentId), brainFolder(brain));
   const detected = detectProfile(scan);
   const draft = await refine(brain, detected).catch((err: unknown) => {
     console.warn(`[tot] refining ${brain.name}'s profile from its notes failed:`, err instanceof Error ? err.message : err);
@@ -483,7 +491,7 @@ export const repoProfiles = {
     ).run(brainId, JSON.stringify(clean), by, now);
     const profile: RepoProfile = { brainId, ...clean, updatedAt: now, updatedBy: by };
 
-    const page = { title: PROFILE_TITLE, summary: PROFILE_SUMMARY, content: renderProfile(profile, repoFolder(brain.source)) };
+    const page = { title: PROFILE_TITLE, summary: PROFILE_SUMMARY, content: renderProfile(profile, brainFolder(brain)) };
     const existing = wiki.withTitle(brainId, PROFILE_TITLE, null)[0];
     if (existing) wiki.update(existing.id, page, by);
     else wiki.create(brainId, page, by);
@@ -499,7 +507,7 @@ export async function runProfileCommand(brainId: string, command: string, agentI
   if (!line) throw new HttpError(400, "Enter a command to run.");
   if (line.includes("{file}")) throw new HttpError(400, "That command runs on one test file ({file}); TOT fills that in during tasks.");
   const agent = agentFor(brain, agentId);
-  const folder = repoFolder(brain.source);
+  const folder = brainFolder(brain);
   await requireFolder(agent, folder);
   const minutes = repoProfiles.get(brainId)?.limits.commandTimeoutMinutes ?? DEFAULT_LIMITS.commandTimeoutMinutes;
   const result = await exec(agent, line, { cwd: folder, timeoutMs: minutes * 60_000 });
@@ -515,7 +523,8 @@ export async function draftAfterLearning(brainId: string, agentId: string): Prom
 /** The profile for a repo folder: its brain's saved one, or one read from the folder now (not saved). */
 export async function profileForFolder(agentId: string, folder: string): Promise<{ brainId: string | null; profile: RepoProfileInput }> {
   const clean = folder.trim().replace(/^~\/?/, "").replace(/\/+$/, "");
-  const brain = brains.list().find((b) => b.kind === "repo" && b.source && repoFolder(b.source) === clean) ?? null;
+  const brain =
+    brains.list().find((b) => b.kind === "repo" && b.source && (repoFolder(b.source) === clean || brainFolder({ ...b, source: b.source }) === clean)) ?? null;
   const saved = brain ? repoProfiles.get(brain.id) : null;
   if (saved) return { brainId: brain!.id, profile: saved };
   return { brainId: brain?.id ?? null, profile: detectProfile(await scanRepo(agentId, clean)) };

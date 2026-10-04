@@ -50,7 +50,10 @@ const sessionShape = {
   ),
   tier: z.enum(["fast", "standard", "deep"]).optional().describe("Model tier; defaults to the role's (Settings → Models)"),
   provider: z.enum(["claude", "chatgpt"]).optional().describe("Run on this provider when it can"),
-  repo: z.string().optional().describe('For code: GitHub "owner/name", a git URL, or a folder on your computer like ~/repos/web'),
+  repo: z
+    .string()
+    .optional()
+    .describe('For code: GitHub "owner/name", a git URL, or a folder on your computer like ~/repos/web. In a project with code, leave it out: the project\'s repo is used.'),
   base_branch: z.string().optional().describe("Branch to start from (default: the repo's default branch)"),
   constraints: z.array(z.string()).max(20).optional().describe("Rules it must follow"),
   context: z.array(z.string()).max(20).optional().describe("Brain pages, files and links to read first"),

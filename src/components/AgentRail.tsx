@@ -4,8 +4,8 @@ import type { Agent, MascotState } from "@shared/types";
 import { setThemePreference, useResolvedTheme } from "../lib/theme";
 import {
   goToSettings,
-  navigateToAgentHome,
   selectActiveAgentId,
+  selectAgent,
   selectAgentWorking,
   setNewAgentDialogOpen,
   useStore,
@@ -77,7 +77,7 @@ function RailAgentButton({ agent, active }: RailAgentButtonProps) {
           type="button"
           aria-label={agent.name}
           aria-current={active ? "page" : undefined}
-          onClick={() => navigateToAgentHome(agent.id)}
+          onClick={() => selectAgent(agent.id)}
           className={clsx(
             "relative grid size-10 shrink-0 place-items-center rounded-xl transition-colors hover:bg-hover",
             active && "bg-selected",

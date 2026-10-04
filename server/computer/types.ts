@@ -10,6 +10,18 @@ export interface ExecResult {
 
 export type ComputerSize = "small" | "default" | "large";
 
+/**
+ * A folder on this Mac that a local computer may use for one command (module 06). It can read all
+ * of it; a task can also write its own branch, its own worktree in <folder>/.tot-worktrees and new
+ * git objects, and nothing else: never the checked-out files, .git/config, hooks or other refs.
+ */
+export interface FolderGrant {
+  /** The folder's real path. */
+  folder: string;
+  /** For a task: its branch ("tot/…") and its worktree's folder name in <folder>/.tot-worktrees. */
+  task?: { branch: string; worktree: string };
+}
+
 /** GUI control of a computer's desktop ("computer use"). Coordinates are real screen pixels. */
 export interface DesktopControl {
   /** PNG of the whole screen scaled to at most `maxWidth` px wide, plus the real screen size. */
@@ -38,9 +50,10 @@ export interface ComputerBackend {
   /** Stop billing / pause (Boat: snapshot + stop). Files must survive. */
   stop(externalId: string): Promise<void>;
   destroy(externalId: string): Promise<void>;
-  exec(externalId: string, command: string, opts: { cwd?: string; timeoutMs: number }): Promise<ExecResult>;
-  readFile(externalId: string, path: string): Promise<string>;
-  writeFile(externalId: string, path: string, content: string): Promise<void>;
+  /** `grant` lets a local computer use a folder on this Mac for this one command (others ignore it). */
+  exec(externalId: string, command: string, opts: { cwd?: string; timeoutMs: number; grant?: FolderGrant | null }): Promise<ExecResult>;
+  readFile(externalId: string, path: string, opts?: { grant?: FolderGrant | null }): Promise<string>;
+  writeFile(externalId: string, path: string, content: string, opts?: { grant?: FolderGrant | null }): Promise<void>;
   /** Writes binary data (e.g. a user's attachment); creates parent folders. */
   upload(externalId: string, path: string, data: Buffer): Promise<void>;
   /** Make a port reachable from the user's browser; returns the URL. */

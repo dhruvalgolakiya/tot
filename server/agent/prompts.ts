@@ -128,8 +128,8 @@ export function personaNote(frozenPrompt: string | null, persona: PersonaAccess)
 export interface WorkspaceContext {
   userMemories: Memory[];
   wiki: {
-    /** Every brain the agent can use, its notebook first. */
-    brains: Pick<AgentBrain, "id" | "name" | "kind" | "description" | "source" | "keywords" | "access" | "pageCount">[];
+    /** Every brain the agent can use, its notebook first; a project's brain with the project's folder on the computer. */
+    brains: (Pick<AgentBrain, "id" | "name" | "kind" | "description" | "source" | "keywords" | "access" | "pageCount"> & { folder?: string | null })[];
     /** The notebook's Overview. */
     overview: WikiPage;
     /** The notebook's other pages, in tree order. */
@@ -165,7 +165,16 @@ ${bullets(workspace.userMemories.map((m) => `- ${m.content}`))}`;
 
 function brainCard(brain: WorkspaceContext["wiki"]["brains"][number]): string {
   if (brain.kind === "notebook") return `- notebook (${brain.id}) — your own, private · ${brain.pageCount} pages`;
-  const repo = brain.kind === "repo" && brain.source ? `repo ${githubFullName(brain.source) ?? brain.source}, cloned in ~/repos/${cloneFolder(brain.source)}` : brain.kind;
+  // A project's brain points at the project folder (module 06); an older repo brain at its clone in ~/repos.
+  const where = brain.folder
+    ? brain.folder === brain.source
+      ? "the project's folder on the user's Mac"
+      : `project folder ${brain.folder}`
+    : brain.kind === "repo" && brain.source
+      ? `cloned in ~/repos/${cloneFolder(brain.source)}`
+      : "";
+  const kind = brain.kind === "repo" && brain.source ? `repo ${githubFullName(brain.source) ?? brain.source}` : brain.kind;
+  const repo = where ? `${kind}, ${where}` : kind;
   return [
     `- ${brain.name} (${brain.id}) — ${repo}`,
     brain.description,
@@ -246,6 +255,8 @@ export function buildSystemPrompt(opts: {
   persona?: PersonaAccess;
   /** About tasks: how to work on this one, or (in a chat) when to start them. See tasks/prompt.ts. */
   tasks?: string;
+  /** The project the chat is in (module 06; see projects/prompt.ts). */
+  project?: string | null;
   now?: Date;
 }): string {
   const { settings, agent } = opts;
@@ -275,6 +286,7 @@ Your name is ${name}. Under the hood, TOT sends each message to a model from the
     githubSection(opts.github ?? null, settings.computer.mode !== "off"),
     opts.persona && personaSection(opts.persona),
     opts.tasks,
+    opts.project,
     opts.apps && appsSection(),
     opts.workspace && memorySection(opts.workspace),
     opts.workspace && wikiSection(name, opts.workspace),

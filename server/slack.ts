@@ -12,6 +12,7 @@ import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { messageText } from "./data/messages.ts";
 import { db, parseJson, type Row } from "./db.ts";
 import { lanUrls } from "./net.ts";
+import { intake } from "./projects/intake.ts";
 import { isTask } from "./tasks/store.ts";
 import { tasks } from "./tasks/tasks.ts";
 
@@ -481,6 +482,8 @@ async function answer(
     thread = getThread(channel, threadTs)!;
     // Mentioned inside an existing thread: the agent gets the conversation so far.
     if (message.thread_ts) context = await threadTranscript(channel, threadTs, "0", ts);
+    // Its project, when the channel or a ticket in the thread is one project's intake (module 06).
+    intake.fileNew(conversation.id, { slackChannel: info.channel?.is_im ? null : info.channel?.name, text: `${request}\n${context}` });
     context = context ? `The Slack thread so far:\n<slack_thread>\n${context}\n</slack_thread>\n` : "";
   } else {
     const fresh = await threadTranscript(channel, threadTs, thread.seenTs, ts);

@@ -67,6 +67,7 @@ function toRecord(row: Row): ConversationRecord {
     wakePending: Boolean(row.wake_pending),
     wakeTokens: Number(row.wake_tokens ?? 0),
     mergeNotes: parseJson<MergeNote[]>(row.merge_notes, []),
+    projectId: (row.project_id as string | null) ?? null,
   };
 }
 
@@ -89,6 +90,8 @@ type ConversationPatch = Partial<{
   wakePending: boolean;
   wakeTokens: number;
   mergeNotes: MergeNote[];
+  projectId: string | null;
+  origin: ConversationOrigin | null;
 }>;
 
 export const conversations = {
@@ -117,6 +120,11 @@ export const conversations = {
     return rows.map(toRecord);
   },
 
+  /** Every chat and task in a project, any agent's, newest first. */
+  inProject(projectId: string): ConversationRecord[] {
+    return (db.prepare(`SELECT * FROM conversations WHERE project_id = ? ORDER BY updated_at DESC`).all(projectId) as Row[]).map(toRecord);
+  },
+
   /** Chats forked from this one. */
   forksOf(id: string): ConversationRecord[] {
     return (db.prepare(`SELECT * FROM conversations WHERE json_extract(forked_from, '$.conversationId') = ?`).all(id) as Row[]).map(toRecord);
@@ -142,11 +150,12 @@ export const conversations = {
     parentId?: string | null;
     task?: TaskInfo | null;
     forkedFrom?: ForkOrigin | null;
+    projectId?: string | null;
   }): ConversationRecord {
     const id = randomUUID();
     const now = Date.now();
     db.prepare(
-      `INSERT INTO conversations (id, agent_id, routine_id, title, model_id, origin, kind, parent_id, task, forked_from, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO conversations (id, agent_id, routine_id, title, model_id, origin, kind, parent_id, task, forked_from, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.agentId,
@@ -158,6 +167,7 @@ export const conversations = {
       input.parentId ?? null,
       input.task ? JSON.stringify(input.task) : null,
       input.forkedFrom ? JSON.stringify(input.forkedFrom) : null,
+      input.projectId ?? null,
       now,
       now,
     );
@@ -179,6 +189,8 @@ export const conversations = {
       wake_pending: patch.wakePending === undefined ? undefined : Number(patch.wakePending),
       wake_tokens: patch.wakeTokens,
       merge_notes: patch.mergeNotes && JSON.stringify(patch.mergeNotes),
+      project_id: patch.projectId,
+      origin: patch.origin === undefined ? undefined : patch.origin && JSON.stringify(patch.origin),
       updated_at: touch ? Date.now() : undefined,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);

@@ -471,6 +471,28 @@ db.exec(`
   );
 `);
 
+// Projects (roadmap module 06): what the user works on, shared by every agent. A chat (and its tasks) is in
+// one project or none.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL,
+    source TEXT,
+    default_branch TEXT,
+    instructions TEXT NOT NULL DEFAULT '',
+    brain_id TEXT NOT NULL,
+    intake TEXT NOT NULL DEFAULT '{}',
+    folder_granted_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    archived_at INTEGER
+  );
+`);
+if (!hasColumn("conversations", "project_id")) db.exec(`ALTER TABLE conversations ADD COLUMN project_id TEXT`);
+db.exec(`CREATE INDEX IF NOT EXISTS conversations_project ON conversations (project_id, agent_id)`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

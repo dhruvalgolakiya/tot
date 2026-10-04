@@ -1,8 +1,10 @@
 import { useMemo } from "react";
-import { groupConversations } from "../lib/conversations";
+import { conversationTitle, groupConversations } from "../lib/conversations";
+import { useProjects } from "../lib/projects";
 import { isTask } from "../lib/tasks";
 import { loadConversations, selectActiveAgentId, useStore } from "../store";
 import { ConversationItem } from "./ConversationItem";
+import { ProjectsSection } from "./projects/ProjectsSection";
 import { TaskList } from "./tasks/TaskList";
 import { Callout } from "./ui/Callout";
 import { EmptyState } from "./ui/EmptyState";
@@ -14,12 +16,25 @@ export function ConversationList({ query }: { query: string }) {
   const currentId = useStore((s) => s.currentId);
   const activeRuns = useStore((s) => s.activeRuns);
   const activeAgentId = useStore(selectActiveAgentId);
+  const projects = useProjects((s) => s.projects);
+  const projectsState = useProjects((s) => s.state);
+  // Chats in a project are listed under it (Projects, above); an archived project's chats come back here.
+  const filed = useMemo(() => new Set(projects.filter((p) => !p.archived).map((p) => p.id)), [projects]);
+  const inProject = (c: { projectId: string | null }) =>
+    Boolean(c.projectId) && (projectsState === "loading" || filed.has(c.projectId!));
   // Tasks have their own group above the chats.
   const agentChats = useMemo(
     () => conversations.filter((c) => c.kind !== "task" && (!activeAgentId || c.agentId === activeAgentId)),
     [conversations, activeAgentId],
   );
-  const groups = useMemo(() => groupConversations(agentChats, query), [agentChats, query]);
+  const looseChats = useMemo(() => agentChats.filter((c) => !inProject(c)), [agentChats, filed, projectsState]);
+  const groups = useMemo(() => groupConversations(looseChats, query), [looseChats, query]);
+  // Nothing to show below the projects: say so only when the projects don't hold this agent's chats (or matches) either.
+  const needle = query.trim().toLowerCase();
+  const shownAbove = needle
+    ? agentChats.some((c) => inProject(c) && conversationTitle(c).toLowerCase().includes(needle)) ||
+      projects.some((p) => !p.archived && p.name.toLowerCase().includes(needle))
+    : agentChats.length > looseChats.length;
   /** Chats with tasks still working: they show a count. */
   const workingTasks = useMemo(() => {
     const counts = new Map<string, number>();
@@ -33,6 +48,7 @@ export function ConversationList({ query }: { query: string }) {
 
   return (
     <nav aria-label="Chat history" className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      <ProjectsSection query={query} />
       <TaskList query={query} />
 
       {state === "loading" && conversations.length === 0 && (
@@ -58,7 +74,7 @@ export function ConversationList({ query }: { query: string }) {
         </div>
       )}
 
-      {state === "ready" && groups.length === 0 && (
+      {state === "ready" && groups.length === 0 && !shownAbove && (
         <EmptyState
           size="sm"
           description={query.trim() ? `No chats match “${query.trim()}”` : "Your chats will show up here."}

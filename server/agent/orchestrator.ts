@@ -41,6 +41,9 @@ import { providerStatuses, providers } from "./providers/index.ts";
 import type { McpServerSpec, TurnInput } from "./providers/types.ts";
 import { CLAUDE_SONNET, parseModelId, resolveRoute, type Complexity, type Route } from "./router.ts";
 import { runRegistry, type Run } from "./runs.ts";
+import { intake } from "../projects/intake.ts";
+import { projects } from "../projects/projects.ts";
+import { projectList, projectNote, projectSection } from "../projects/prompt.ts";
 
 export class HttpError extends Error {
   constructor(
@@ -133,6 +136,8 @@ export async function sendMessage(
   const route = result.route;
 
   const history = messages.listByConversation(conversationId);
+  // A new chat's first message: a ticket link in it sets the chat's origin, and may file it (module 06).
+  const filed = options.auto || history.some((m) => m.role === "user") ? null : intake.firstMessage(conversation, text);
   const now = Date.now();
   const userMessage: Message = {
     id: randomUUID(),
@@ -161,8 +166,9 @@ export async function sendMessage(
   messages.insert(userMessage);
   messages.insert(assistant);
 
-  // Routine (and other pre-named) chats keep their names, so they skip auto-titling.
-  const isFirstTurn = history.length === 0 && !conversation.routineId && !options.keepTitle;
+  // Routine (and other pre-named) chats keep their names, so they skip auto-titling. (A chat filed on
+  // arrival starts with its "Filed under" notice, so it's the first user message that counts.)
+  const isFirstTurn = !history.some((m) => m.role === "user") && !conversation.routineId && !options.keepTitle;
   const updated = conversations.update(
     conversationId,
     { modelId, ...(isFirstTurn ? { title: quickTitle(routingText) } : {}) },
@@ -199,6 +205,8 @@ export async function sendMessage(
     runRegistry.finish(run);
     appEvents.publish({ type: "run", runId: run.id, conversationId, agentId: updated.agentId, status: "error" });
   });
+  // The reply has started by now (executeTurn sets it up before its first await): "Filed under …" goes in it.
+  if (filed) intake.notice(conversationId, filed);
   return { runId: run.id, userMessage, conversation: toPublicConversation(updated) };
 }
 
@@ -409,13 +417,19 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
     conversation.kind !== "task" && lastReply?.status === "stopped" && lastReply.error === CUT_OFF_BY_RESTART
       ? "[TOT restarted during your last reply, so it was cut off. Check where things stand before you carry on.]"
       : "";
+  // The chat's project (module 06), or for a chat in none the list of projects so its agent can file it:
+  // a chat moved in or out since its prompt was frozen hears about it once.
+  const project = projects.get(conversation.projectId);
+  const section = project ? projectSection(project, { inTask: conversation.kind === "task" }) : conversation.kind === "chat" ? projectList() : null;
+  const moved = projectNote(conversation.systemPrompt, section);
+  if (moved.prompt !== null) conversations.update(conversation.id, { systemPrompt: moved.prompt });
   const text =
-    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, ctx.text]
+    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, ctx.text]
       .filter(Boolean)
       .join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
-  let systemPrompt = conversation.systemPrompt;
+  let systemPrompt = moved.prompt ?? conversation.systemPrompt;
   if (!systemPrompt) {
     const settings = settingsStore.get();
     const agent = agents.get(conversation.agentId) ?? agents.first();
@@ -426,7 +440,11 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
       workspace = {
         userMemories: memories.forPrompt(text),
         wiki: {
-          brains: mine,
+          // A project's brain carries its folder, so its card says where the files are (module 06).
+          brains: mine.map((brain) => {
+            const project = projects.forBrain(brain.id);
+            return project ? { ...brain, folder: projects.folder(project) } : brain;
+          }),
           overview: wiki.overview(notebook.id),
           outline: wiki.outline(notebook.id).filter((page) => !page.pinned),
           relevant: wiki.relevant(
@@ -447,6 +465,7 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
       persona: personaAccess,
       // A task is told its goal and where to work; a chat, when to start tasks.
       tasks: conversation.kind === "task" && conversation.task ? taskSection(conversation.task) : chatTasksSection(),
+      project: section,
     });
     conversations.update(conversation.id, { systemPrompt });
   }

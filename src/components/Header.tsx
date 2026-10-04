@@ -12,6 +12,7 @@ import { ChatMenu } from "./ChatMenu";
 import { ComputerChip } from "./ComputerChip";
 import { Mascot } from "./mascot";
 import { ModelPicker } from "./ModelPicker";
+import { ChatProjectCrumb, TicketChip } from "./projects/ChatProjectCrumb";
 import { IconButton } from "./ui/IconButton";
 import { Kbd } from "./ui/Kbd";
 import { SlackMark } from "./ui/SlackMark";
@@ -67,8 +68,19 @@ export function Header() {
           <span className="hidden truncate sm:inline">{agent.name}</span>
         </button>
       )}
-      {task ? <TaskHeaderInfo task={task} /> : <ModelPicker />}
+      {task ? (
+        <>
+          <ChatProjectCrumb chat={task} withTitle={false} />
+          <TaskHeaderInfo task={task} />
+        </>
+      ) : (
+        <>
+          <ModelPicker />
+          {conversation && <ChatProjectCrumb chat={conversation} />}
+        </>
+      )}
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        {conversation && <TicketChip chat={conversation} />}
         {task && <TaskHeaderActions task={task} />}
         {conversation && !task && <ChatMenu chat={conversation} />}
         {slackUrl && (

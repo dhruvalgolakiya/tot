@@ -4,7 +4,16 @@ import { ArrowUp, Lightbulb, LoaderCircle, MessageSquare, Plus, Square } from "l
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
 import { isSteerable, isTask } from "../lib/tasks";
-import { selectActiveAgent, selectActiveAgentId, selectCurrentConversation, sendMessage, steerTask, stopRun, useStore } from "../store";
+import {
+  clearComposerDraft,
+  selectActiveAgent,
+  selectActiveAgentId,
+  selectCurrentConversation,
+  sendMessage,
+  steerTask,
+  stopRun,
+  useStore,
+} from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
 import { Tip } from "./ui/Tip";
@@ -17,7 +26,8 @@ const touchOnly = () => window.matchMedia("(pointer: coarse)").matches;
 const pill =
   "flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-selected aria-pressed:text-fg";
 
-export function Composer({ attachments }: { attachments: UseAttachments }) {
+/** `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page. */
+export function Composer({ attachments, placeholder: newChatPlaceholder }: { attachments: UseAttachments; placeholder?: string }) {
   const currentId = useStore((s) => s.currentId);
   const run = useStore((s) => (s.currentId ? s.activeRuns[s.currentId] : undefined));
   const sending = useStore((s) => s.sending);
@@ -35,6 +45,13 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
   const [thinkHarder, setThinkHarder] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // A message sent from a project's page that failed once its chat had opened: put its text back here.
+  const draft = useStore((s) => s.composerDraft);
+  useEffect(() => {
+    if (draft === null) return;
+    setText((current) => current || draft);
+    clearComposerDraft();
+  }, [draft]);
 
   // Other chats attached as reference: picked by typing @, or dragged in from the sidebar.
   const conversations = useStore((s) => s.conversations);
@@ -77,7 +94,7 @@ export function Composer({ attachments }: { attachments: UseAttachments }) {
       ? "Answer the task…"
       : task
         ? "Reply to pick this task up again…"
-        : `Ask ${agentName} anything`;
+        : (newChatPlaceholder ?? `Ask ${agentName} anything`);
 
   useLayoutEffect(() => {
     const input = inputRef.current;

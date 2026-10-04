@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TOT — an agent that runs on your own ChatGPT and Claude subscriptions, with a cloud computer per agent, long-term memory, and plugins.",
+  "description": "TOT \u2014 an agent that runs on your own ChatGPT and Claude subscriptions, with a cloud computer per agent, long-term memory, and plugins.",
   "engines": {
     "node": ">=22.13"
   },
@@ -16,7 +16,7 @@
     "site:build": "vite build --config site/vite.config.ts",
     "start": "NODE_ENV=production NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx server/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
-    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/smoke.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/desktop.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/computer/boat.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/auth.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/guard.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/github.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/approvals.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/slack.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/personas.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/tasks.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/orchestration.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/trust.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/coordination.test.ts'",
+    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/smoke.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/mcp/desktop.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/computer/boat.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/auth.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/guard.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/github.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/approvals.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/slack.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/personas.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/tasks.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/orchestration.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/trust.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/coordination.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/projects.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/projects-tickets.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/projects-folders.test.ts'",
     "test:live": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx server/agent/providers/chatgpt.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx server/agent/providers/claude.test.ts'"
   },
   "dependencies": {

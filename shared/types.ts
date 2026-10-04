@@ -191,16 +191,21 @@ export interface Conversation {
   task: TaskInfo | null;
   /** A fork (module 05): the chat and the message it was forked at; null otherwise. */
   forkedFrom: ForkOrigin | null;
+  /** The project it's in (module 06); null for chats in no project. Tasks and forks take their chat's. */
+  projectId: string | null;
 }
 
 export type ConversationKind = "chat" | "task";
 
 export interface ConversationOrigin {
-  kind: "slack" | "email";
-  /** e.g. "#eng", "DM with Dhruval" or "Email from Dhruval". */
+  /** Where the work came from: a Slack thread, an email, or a ticket (module 06). */
+  kind: "slack" | "email" | "linear" | "github";
+  /** e.g. "#eng", "DM with Dhruval", "Email from Dhruval" or "ENG-123 · Checkout is flaky". */
   label: string;
-  /** Link to the Slack thread, when known (null for email). */
+  /** Link to the Slack thread or the ticket, when known (null for email). */
   url: string | null;
+  /** A ticket's key, e.g. "ENG-123" or "acme/web#42"; it goes into task branch names. Null otherwise. */
+  key?: string | null;
 }
 
 export type MessageRole = "user" | "assistant";
@@ -219,6 +224,7 @@ export type ToolStatus = "running" | "done" | "error";
  *  - TOT memory:    memory_save, memory_search, memory_update, memory_delete (about the user)
  *  - TOT wiki:      wiki_search, wiki_read, wiki_write, wiki_edit, wiki_delete
  *  - TOT chats:     chat_search, chat_read (earlier chats in the same workspace)
+ *  - TOT projects:  chat_set_project (file a chat that's in no project), ticket_link (module 06)
  *  - TOT routines:  routine_create, routine_list, routine_delete
  *  - TOT email:     email_inbox, email_search, email_read, email_send, email_reply, email_wait
  *                   (agents working as a persona with a mailbox; sending asks the user first)
@@ -250,6 +256,8 @@ export type MessagePart =
       text: string;
       /** For "wiki": the pages that changed, so the UI can link to them. */
       pageIds?: string[];
+      /** For a chat filed under a project ("Filed under web", module 06): the project, so the UI can offer Move. */
+      projectId?: string;
     }
   /** A file the user attached (images render inline). */
   | { type: "file"; id: string; attachment: Attachment }
@@ -403,7 +411,9 @@ export type AppEvent =
   /** A chat is waiting for the user's approval (pending) or no longer is, e.g. a background routine run. */
   | { type: "approval"; agentId: string; conversationId: string; runId: string; partId: string; message: string; pending: boolean }
   /** A task's state changed (status, progress, plan, branch, summary); same payload as "conversation". */
-  | { type: "task"; conversation: Conversation };
+  | { type: "task"; conversation: Conversation }
+  /** A project was created or changed (module 06); archived ones come with `archived: true`. */
+  | { type: "project"; project: Project };
 
 // ---------------------------------------------------------------------------
 // Computers (one per agent, created lazily on first tool use)
@@ -978,7 +988,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/conversations[?agentId=]        -> Conversation[]  (updatedAt desc)
 // POST   /api/conversations                   CreateConversationRequest -> Conversation
 // GET    /api/conversations/:id               -> ConversationDetail
-// PATCH  /api/conversations/:id               UpdateConversationRequest -> Conversation
+// PATCH  /api/conversations/:id               UpdateConversationRequest -> Conversation  (projectId moves it and its tasks)
 // DELETE /api/conversations/:id               -> { ok: true }
 // POST   /api/conversations/:id/messages      SendMessageRequest -> SendMessageResponse
 //                                              (a task: steers it while it runs or waits in the queue — runId is then the
@@ -988,7 +998,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //
 // Tasks (a task is a conversation with kind "task"; see TaskInfo)
 // GET    /api/tasks[?agentId=&status=]        -> Conversation[]  (queued ones in queue order first, then newest first)
-// POST   /api/tasks                           StartTaskRequest & { agentId? } -> Conversation  (a top-level task)
+// POST   /api/tasks                           StartTaskRequest & { agentId?, projectId? } -> Conversation  (a top-level task)
 // POST   /api/conversations/:id/tasks         StartTaskRequest -> Conversation  (started from this chat; its card shows there.
 //                                              201; with a requestId it started before: 200 and that task, nothing new)
 // POST   /api/conversations/:id/convert       ConvertToTaskRequest -> Conversation  (this chat becomes a task, transcript kept)
@@ -1098,6 +1108,15 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // PATCH  /api/workflows                       Partial<WorkflowSettings> -> WorkflowSettings
 // POST   /api/trust/check                     TrustCheckRequest -> GateReport   (dev only until tasks exist; 404 in production)
 // POST   /api/trust/review                    TrustReviewRequest -> Review      (dev only until tasks exist; 404 in production)
+//
+// Projects (module 06; every agent can work in every project)
+// GET    /api/projects[?archived=1]           -> Project[]  (name order; archived ones only with ?archived=1)
+// GET    /api/projects/folders/recent         -> RecentFolder[]  (git repos one level under ~/code, ~/projects, ~/playground, ~/dev, ~/src, ~/Documents/GitHub; newest first, at most 12)
+// POST   /api/projects                        CreateProjectRequest -> Project  (also makes or reuses its brain; 400 for a folder that can't be shared: ~, hidden top-level folders, ~/Library, TOT's data)
+// PATCH  /api/projects/:id                    UpdateProjectRequest -> Project
+// DELETE /api/projects/:id                    -> Project  (archives it; its chats stay, filed under it)
+// POST   /api/projects/:id/grant              -> Project  (folder projects: the user's OK for agents to read the folder and make tot/… branches in it)
+// POST   /api/projects/:id/learn              { agentId } -> { conversationId, runId }  (Learn a repo into its brain; a folder project needs its grant and a local computer)
 // ---------------------------------------------------------------------------
 
 export interface CreateConversationRequest {
@@ -1105,12 +1124,16 @@ export interface CreateConversationRequest {
   agentId?: string;
   /** Defaults to the agent's modelId. */
   modelId?: string;
+  /** Start the chat in this project (module 06). */
+  projectId?: string | null;
 }
 
 export interface UpdateConversationRequest {
   title?: string;
   pinned?: boolean;
   modelId?: string;
+  /** Move the chat into a project, or out of one with null (module 06). Its tasks move with it. */
+  projectId?: string | null;
 }
 
 export interface ConversationDetail {
@@ -1214,7 +1237,7 @@ export interface TaskInfo {
 export interface TaskRepo {
   /** GitHub "owner/name", a clone URL, or a folder on the agent's computer. */
   source: string;
-  /** Where the repo lives on the computer: ~/repos/<name> (as Learn a repo does), or the folder itself. */
+  /** Where the repo lives on the computer: its project's folder (~/projects/<slug>, or a folder on this Mac), ~/repos/<name> outside a project, or the folder itself. */
   folder: string;
   /** e.g. "main". */
   baseBranch: string;
@@ -1565,4 +1588,70 @@ export interface ForkOrigin {
 /** POST /api/conversations/:id/fork; without a message, the whole chat. */
 export interface ForkRequest {
   messageId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Projects (roadmap module 06): what you work on, shared by every agent
+// ---------------------------------------------------------------------------
+
+/** A GitHub repo, a folder on this Mac (used in place, with consent), or a topic with no files. */
+export type ProjectKind = "github" | "folder" | "none";
+
+/** Where a project's work comes from (module 06 M4): tickets from these start their chat in it. */
+export interface ProjectIntake {
+  /** Slack channel names, e.g. "#web-bugs". */
+  slackChannels: string[];
+  /** Linear team keys, e.g. "ENG". */
+  linearTeams: string[];
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  /** Its folder name: ~/projects/<slug> on an agent's computer. Unique, and kept when the project is renamed. */
+  slug: string;
+  kind: ProjectKind;
+  /** "owner/name" (or a git URL) for github; an absolute path for folder; null for none. */
+  source: string | null;
+  /** The branch tasks start from; null means the repo's own default. */
+  defaultBranch: string | null;
+  /** The user's standing instructions for work in this project. */
+  instructions: string;
+  /** Its wiki: a repo brain for code projects, a notes brain for topics. */
+  brainId: string;
+  intake: ProjectIntake;
+  /** Folder projects: the user allowed agents to work in the folder. */
+  folderGranted: boolean;
+  archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+  /** Chats and tasks in it, from every agent. */
+  chats: number;
+  /** Its tasks that are queued or running. */
+  running: number;
+}
+
+export interface CreateProjectRequest {
+  kind: ProjectKind;
+  /** Required for github ("owner/name" or a URL) and folder (an absolute path, or one starting with ~). */
+  source?: string;
+  /** Defaults to the repo's or folder's name; required for kind "none". */
+  name?: string;
+  /** Folder projects: the user already said yes to the consent dialog (else POST /api/projects/:id/grant later). */
+  grant?: boolean;
+}
+
+/** A git folder on this Mac, offered by the New project picker. */
+export interface RecentFolder {
+  /** Its real absolute path. */
+  path: string;
+  /** "~/playground/meet-notes". */
+  label: string;
+}
+
+export interface UpdateProjectRequest {
+  name?: string;
+  instructions?: string;
+  defaultBranch?: string | null;
+  intake?: Partial<ProjectIntake>;
 }
