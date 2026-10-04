@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/tot.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#08080a" />
+    <title>TOT · your tiny AI team</title>
+    <meta
+      name="description"
+      content="AI agents with their own computers, memories that stick and faces you'll get attached to. They run on the Claude and ChatGPT plans you already pay for."
+    />
+    <meta property="og:title" content="TOT · your tiny AI team" />
+    <meta
+      property="og:description"
+      content="AI agents with their own computers, memories that stick and faces you'll get attached to. No API keys."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Inter:opsz,wght@14..32,400..700&display=swap" />
+    <script>
+      // Same theme rule as the app (src/lib/theme.ts), applied before first paint.
+      (function () {
+        var saved = null;
+        try {
+          saved = localStorage.getItem("tot-theme");
+        } catch (e) {}
+        var dark = saved === "dark" || (saved !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        document.querySelector('meta[name="theme-color"]').setAttribute("content", dark ? "#08080a" : "#ffffff");
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

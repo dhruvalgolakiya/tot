@@ -1,0 +1,65 @@
+/* The landing page uses TOT's own tokens, base styles and components, plus a few page-only bits below. */
+@import "../src/index.css";
+@source "./";
+@source "../src/components/ui";
+@source "../src/components/mascot";
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+}
+
+@layer components {
+  /* Sections fade up once as they scroll into view (see Reveal in ui.tsx). */
+  .reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+      opacity 700ms var(--ease-emphasized),
+      transform 700ms var(--ease-emphasized);
+  }
+  .reveal[data-shown] {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* The brand duotone from the logo, as a soft light behind the hero. */
+  .hero-glow {
+    background:
+      radial-gradient(40% 50% at 30% 30%, color-mix(in oklch, var(--color-accent-violet) 22%, transparent), transparent 70%),
+      radial-gradient(35% 45% at 72% 38%, color-mix(in oklch, var(--color-accent-cyan) 16%, transparent), transparent 70%);
+    filter: blur(24px);
+  }
+
+  /* A faint dot grid behind the hero, fading out toward the edges. */
+  .dot-grid {
+    background-image: radial-gradient(var(--line-edge) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black, transparent 75%);
+  }
+
+  /* A row of mascots that drifts sideways forever (the closing call to action). */
+  .parade {
+    animation: parade 48s linear infinite;
+  }
+  @keyframes parade {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .parade {
+      animation: none;
+    }
+  }
+
+  /* The FAQ's chevron turns when its <details> opens. */
+  details[open] > summary .faq-chevron {
+    transform: rotate(45deg);
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+}
