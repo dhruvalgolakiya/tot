@@ -1,9 +1,17 @@
-import { ArrowRight } from "lucide-react";
 import clsx from "clsx";
+import { ArrowRight } from "lucide-react";
+import { ClaudeMark, OpenAIMark } from "../os/BrandMarks";
 
 const BRAINS = [
-  { name: "Claude", via: "Claude Code · your Pro or Max plan", models: "Opus 5.5, Sonnet 5.5", used: 92, mood: "Running on fumes" },
-  { name: "ChatGPT", via: "Codex · your Plus or Pro plan", models: "GPT‑6", used: 34, mood: "Fresh as a daisy" },
+  {
+    name: "Claude",
+    Mark: ClaudeMark,
+    via: "Claude Code · your Pro or Max plan",
+    models: "Opus 5.5, Sonnet 5.5",
+    used: 92,
+    mood: "Running on fumes",
+  },
+  { name: "ChatGPT", Mark: OpenAIMark, via: "Codex · your Plus or Pro plan", models: "GPT‑6", used: 34, mood: "Fresh as a daisy" },
 ];
 
 const ROUTES: { ask: string; pick: string; note: string }[] = [
@@ -21,7 +29,10 @@ export function Brains() {
         {BRAINS.map((brain) => (
           <div key={brain.name} className="rounded-xl border border-hairline bg-fill-subtle p-4">
             <div className="flex items-baseline justify-between gap-2">
-              <p className="text-base font-semibold text-fg-strong">{brain.name}</p>
+              <p className="flex items-center gap-2 text-base font-semibold text-fg-strong">
+                <brain.Mark className="size-4.5" />
+                {brain.name}
+              </p>
               <p className="text-xs text-fg-subtle tabular-nums">{brain.used}% of this week</p>
             </div>
             <p className="mt-0.5 text-xs text-fg-subtle">{brain.via}</p>

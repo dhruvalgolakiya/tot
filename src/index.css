@@ -268,9 +268,12 @@
     background: var(--agent-accent-24);
   }
 
+  /* No visible scrollbars anywhere; everything still scrolls with a trackpad, wheel, touch or keys. */
   * {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklab, var(--color-zinc-700) 80%, transparent) transparent;
+    scrollbar-width: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
   }
 
   /* The one focus style: a 2px accent outline, offset 2px (follows border-radius). Rows inside clipped

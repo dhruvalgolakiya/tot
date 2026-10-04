@@ -7,6 +7,7 @@ import { OsContext, useOs } from "./context";
 import type { AppId } from "./ids";
 import { Notifications } from "./Notifications";
 import { Pets } from "./Pets";
+import { ClaudeMark, OpenAIMark } from "./BrandMarks";
 import { APPS, AppIcon } from "./registry";
 import { useDrag, Window, type Area, type Win } from "./Window";
 
@@ -175,8 +176,8 @@ function MenuBar() {
           aria-label="Open Brains: Claude and ChatGPT usage"
           className="hidden items-center gap-2 rounded-md px-2 py-0.5 text-fg-muted transition-colors hover:bg-hover hover:text-fg md:flex"
         >
-          <Meter label="Claude" used={92} />
-          <Meter label="GPT" used={34} />
+          <Meter mark={<ClaudeMark className="size-3.5" />} used={92} />
+          <Meter mark={<OpenAIMark className="size-3.5 text-fg" />} used={34} />
         </button>
         <ThemeToggle className="size-6" />
         <span className="px-1 text-fg tabular-nums">
@@ -200,11 +201,12 @@ function MenuBar() {
   );
 }
 
-function Meter({ label, used }: { label: string; used: number }) {
+/** A provider's mark and how much of this week's usage is gone. */
+function Meter({ mark, used }: { mark: ReactNode; used: number }) {
   return (
-    <span className="flex items-center gap-1 text-xs">
-      {label}
-      <span className="h-1.5 w-6 overflow-hidden rounded-full bg-fill-strong">
+    <span className="flex items-center gap-1.5">
+      {mark}
+      <span className="h-1.5 w-7 overflow-hidden rounded-full bg-fill-strong">
         <span className={clsx("block h-full rounded-full", used > 80 ? "bg-amber-400" : "bg-emerald-400")} style={{ width: `${used}%` }} />
       </span>
     </span>
@@ -277,32 +279,34 @@ function DraggableNote({ area }: { area: Area }) {
 function Dock({ open, openIds }: { open: (id: AppId) => void; openIds: AppId[] }) {
   return (
     <nav aria-label="Dock" className="fixed inset-x-0 bottom-3 z-[10000] flex justify-center">
-      <div className="glass flex items-end gap-1.5 rounded-[22px] border border-edge px-2 pt-2 pb-1.5 shadow-dialog">
+      <div className="glass flex items-center gap-2 rounded-[24px] border border-edge p-2 shadow-dialog">
         {DOCK.map((id) => (
           <DockItem key={id} id={id} open={open} running={openIds.includes(id)} />
         ))}
-        <span aria-hidden="true" className="mx-1 mb-2 h-10 w-px self-center bg-edge" />
+        <span aria-hidden="true" className="mx-0.5 h-8 w-px bg-hairline" />
         <DockItem id="trash" open={open} running={openIds.includes("trash")} />
       </div>
     </nav>
   );
 }
 
+/** A dock icon: its name floats above on hover, and a small dot below marks an open window. */
 function DockItem({ id, open, running }: { id: AppId; open: (id: AppId) => void; running: boolean }) {
   return (
-    <button
-      type="button"
-      onClick={() => open(id)}
-      aria-label={APPS[id].name}
-      className="group relative flex flex-col items-center gap-1 rounded-xl"
-    >
-      <span className="pointer-events-none absolute -top-10 rounded-md border border-edge bg-elevated px-2 py-1 text-xs whitespace-nowrap text-fg opacity-0 shadow-popover transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+    <button type="button" onClick={() => open(id)} aria-label={APPS[id].name} className="group relative rounded-[12px]">
+      <span className="pointer-events-none absolute -top-11 left-1/2 -translate-x-1/2 rounded-lg border border-edge bg-elevated px-2.5 py-1 text-xs font-medium whitespace-nowrap text-fg opacity-0 shadow-popover transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
         {APPS[id].name}
       </span>
-      <span className="transition-transform duration-200 ease-emphasized group-hover:-translate-y-1.5 group-hover:scale-110">
-        <AppIcon id={id} size={48} />
+      <span className="block transition-transform duration-200 ease-emphasized group-hover:-translate-y-1 group-active:scale-95">
+        <AppIcon id={id} size={46} />
       </span>
-      <span className={clsx("size-1 rounded-full", running ? "bg-fg-muted" : "bg-transparent")} />
+      <span
+        aria-hidden="true"
+        className={clsx(
+          "absolute -bottom-1.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-fg-subtle transition-opacity",
+          running ? "opacity-100" : "opacity-0",
+        )}
+      />
     </button>
   );
 }

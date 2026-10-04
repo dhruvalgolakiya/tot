@@ -1,6 +1,7 @@
-import type { ComponentType } from "react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { Activity, Map, MessageCircleQuestion, PackageOpen, StickyNote, Trash2, type LucideIcon } from "lucide-react";
 import { Mascot } from "../../src/components/mascot";
+import { Logo } from "../../src/components/ui/Logo";
 import { Brains } from "../apps/Brains";
 import { Calendar } from "../apps/Calendar";
 import { Help } from "../apps/Help";
@@ -41,69 +42,50 @@ export const APPS: Record<AppId, AppDef> = {
   rules: { name: "House rules", title: "House rules.txt", size: { w: 380, h: 460 }, Body: Rules },
 };
 
-/** Gradient tiles with a white glyph (icon art, so fixed colors rather than theme tokens). */
-const TILES: Partial<Record<AppId, { icon: LucideIcon; from: string; to: string; ink?: string }>> = {
-  features: { icon: PackageOpen, from: "#60a5fa", to: "#2563eb" },
-  brains: { icon: Activity, from: "#34d399", to: "#059669" },
-  roadmap: { icon: Map, from: "#fbbf24", to: "#f97316" },
-  help: { icon: MessageCircleQuestion, from: "#a78bfa", to: "#7c3aed" },
-  rules: { icon: StickyNote, from: "#fef08a", to: "#facc15", ink: "#713f12" },
+/** Every app icon sits on the same neutral tile; one tinted glyph tells them apart (light and dark tints). */
+const GLYPHS: Partial<Record<AppId, { icon: LucideIcon; light: string; dark: string }>> = {
+  features: { icon: PackageOpen, light: "#2563eb", dark: "#60a5fa" },
+  brains: { icon: Activity, light: "#059669", dark: "#34d399" },
+  roadmap: { icon: Map, light: "#d97706", dark: "#fbbf24" },
+  help: { icon: MessageCircleQuestion, light: "#7c3aed", dark: "#a78bfa" },
+  rules: { icon: StickyNote, light: "#ca8a04", dark: "#facc15" },
+  trash: { icon: Trash2, light: "#52525b", dark: "#d4d4d8" },
 };
 
-/** An app's icon: a rounded tile, the TOT logo, a calendar page, a mascot or a terminal. */
+/** An app's icon: the TOT mark, a mascot, a date, a prompt or a tinted glyph, on a neutral tile. */
 export function AppIcon({ id, size = 48 }: { id: AppId; size?: number }) {
-  const radius = Math.round(size * 0.24);
-  const box = { width: size, height: size, borderRadius: radius };
-  const glyph = Math.round(size * 0.5);
-  const shadow = "0 1px 2px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.25)";
+  const box = { width: size, height: size, borderRadius: Math.round(size * 0.26) };
+  const tile = (children: ReactNode) => (
+    <span style={box} className="app-tile grid shrink-0 place-items-center">
+      {children}
+    </span>
+  );
 
-  if (id === "tot") return <img src="/tot.svg" alt="" style={box} className="block" />;
+  if (id === "tot") return tile(<Logo className="w-[62%]" />);
+  if (id === "maker") return tile(<Mascot spec={crew.mochi.spec} state="idle" size={Math.round(size * 0.76)} />);
   if (id === "calendar") {
     const now = new Date();
-    return (
-      <span style={{ ...box, boxShadow: shadow }} className="flex flex-col items-center justify-center bg-fixed-white leading-none">
-        <span style={{ fontSize: size * 0.2 }} className="font-semibold text-[#ef4444] uppercase">
+    return tile(
+      <span className="flex flex-col items-center leading-none">
+        <span style={{ fontSize: size * 0.19 }} className="font-semibold tracking-wide text-[#ef4444] uppercase">
           {now.toLocaleDateString("en-US", { weekday: "short" })}
         </span>
-        <span style={{ fontSize: size * 0.48 }} className="font-display font-medium text-[#111]">
+        <span style={{ fontSize: size * 0.44, marginTop: size * 0.02 }} className="font-display font-medium text-fg-strong">
           {now.getDate()}
         </span>
-      </span>
-    );
-  }
-  if (id === "maker") {
-    return (
-      <span
-        style={{ ...box, boxShadow: shadow, background: "linear-gradient(160deg, #fce7f3, #f9a8d4)" }}
-        className="grid place-items-center"
-      >
-        <Mascot spec={crew.mochi.spec} state="idle" size={Math.round(size * 0.78)} />
-      </span>
+      </span>,
     );
   }
   if (id === "terminal") {
-    return (
-      <span
-        style={{ ...box, boxShadow: shadow, background: "linear-gradient(160deg, #3f3f46, #09090b)", fontSize: size * 0.32 }}
-        className="flex items-start p-[14%] font-mono font-semibold text-fixed-white"
-      >
+    return tile(
+      <span style={{ fontSize: size * 0.3 }} className="font-mono font-semibold tracking-tight text-fg-strong">
         &gt;_
-      </span>
-    );
-  }
-  if (id === "trash") {
-    return (
-      <span
-        style={{ ...box, boxShadow: shadow }}
-        className="grid place-items-center border border-[rgb(255_255_255/0.3)] bg-[rgb(255_255_255/0.25)] text-fg backdrop-blur"
-      >
-        <Trash2 style={{ width: glyph, height: glyph }} />
-      </span>
+      </span>,
     );
   }
   if (id === "readme") {
     return (
-      <span style={{ ...box, boxShadow: shadow }} className="flex flex-col justify-center gap-[9%] bg-fixed-white px-[20%]">
+      <span style={box} className="app-paper flex flex-col justify-center gap-[9%] px-[22%]">
         <span className="h-[7%] w-3/5 rounded-full bg-[#3f3f46]" />
         <span className="h-[5%] rounded-full bg-[#a1a1aa]" />
         <span className="h-[5%] rounded-full bg-[#a1a1aa]" />
@@ -111,14 +93,13 @@ export function AppIcon({ id, size = 48 }: { id: AppId; size?: number }) {
       </span>
     );
   }
-  const tile = TILES[id]!;
-  const Icon = tile.icon;
-  return (
-    <span
-      style={{ ...box, boxShadow: shadow, background: `linear-gradient(160deg, ${tile.from}, ${tile.to})`, color: tile.ink ?? "#fff" }}
-      className="grid place-items-center"
-    >
-      <Icon style={{ width: glyph, height: glyph }} strokeWidth={2} />
-    </span>
+  const { icon: Icon, light, dark } = GLYPHS[id]!;
+  const glyph = Math.round(size * 0.46);
+  return tile(
+    <Icon
+      className="app-glyph"
+      strokeWidth={1.9}
+      style={{ width: glyph, height: glyph, "--glyph-light": light, "--glyph-dark": dark } as CSSProperties}
+    />,
   );
 }
