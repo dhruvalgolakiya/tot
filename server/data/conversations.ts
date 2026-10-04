@@ -91,6 +91,7 @@ type ConversationPatch = Partial<{
   wakeTokens: number;
   mergeNotes: MergeNote[];
   projectId: string | null;
+  origin: ConversationOrigin | null;
 }>;
 
 export const conversations = {
@@ -189,6 +190,7 @@ export const conversations = {
       wake_tokens: patch.wakeTokens,
       merge_notes: patch.mergeNotes && JSON.stringify(patch.mergeNotes),
       project_id: patch.projectId,
+      origin: patch.origin === undefined ? undefined : patch.origin && JSON.stringify(patch.origin),
       updated_at: touch ? Date.now() : undefined,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);

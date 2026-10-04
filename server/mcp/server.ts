@@ -17,6 +17,7 @@ import { describeSchedule, routines, validateRoutine } from "../data/routines.ts
 import { settings } from "../data/settings.ts";
 import { redactGitHubTokens } from "../github.ts";
 import { isThisMachine } from "../net.ts";
+import { registerProjectTools } from "../projects/tools.ts";
 import { registerTaskTools } from "../tasks/tools.ts";
 import { homeRelative } from "../tasks/worktree.ts";
 import type { ConversationRecord } from "../data/conversations.ts";
@@ -425,6 +426,7 @@ function buildServer(conversation: ConversationRecord): McpServer {
   registerRoutineTools(server, agentId);
   registerMailTools(server, agentId, conversationId);
   registerTaskTools(server, conversation);
+  registerProjectTools(server, conversation);
   return server;
 }
 

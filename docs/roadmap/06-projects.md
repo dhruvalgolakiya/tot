@@ -101,7 +101,7 @@ Brain: "Q4 launch".
   - **Set by the agent** with `ticket_link`, when it finds the ticket another way.
   - A task started from a chat with an origin names its branch after the key: `tot/eng-123-fix-checkout-3f2a`. 04's PR description links the ticket.
 - **Intake.** A project can list where its work comes from: Slack channels (`#web-bugs`) and Linear teams (`ENG`). GitHub issues of its own repo always count.
-  - A ticket from a listed place starts its chat in that project.
+  - A ticket from a listed place starts its chat in that project, when it's the only project that takes it. Only intake counts: a project's name in the text doesn't.
   - Everything else starts with no project, and the agent can file it (rule 5 above).
 
 ## Data model
@@ -152,7 +152,7 @@ export interface Project {
 
 - **`projects.ts`:** the data layer.
   - Create, update and archive projects.
-  - `forChat(id)`, and `match(text)` (name or slug mentioned, or an intake hit).
+  - `forChat(id)`.
   - Creating a project makes its brain: `repo` for code projects, `notes` for topics. The brain is attached to all agents.
 - **`checkout.ts`:**
   - **`ensure(agentId, project)`:** puts the project folder on that agent's computer.
@@ -170,7 +170,8 @@ export interface Project {
 - **`server/computer/local.ts`:** `profile(workspace, grant?)` takes an optional folder grant, and `exec(externalId, command, { cwd, timeoutMs, grant })` passes it through.
   - `computer_exec` (`server/mcp/server.ts`) and `worktree.ts` pass the grant of the conversation's folder project, and nothing for any other conversation.
   - On a Boat computer, folder projects can't run (M5).
-- **`tickets.ts`:** `detectTicket(text)` finds Linear and GitHub issue URLs and keys, and returns `{ kind, key, url }`.
+- **`tickets.ts`:** `detectTicket(text)` finds Linear and GitHub issue (or PR) URLs, and bare Linear keys of a team some project takes, and returns `{ kind, key, url, label }` (the label is the key: a title isn't known).
+- **`intake.ts`:** `intake.match(work)` finds the projects a piece of work belongs to, **by intake only**: a Slack channel the project lists, a ticket from a Linear team it lists, or an issue or PR of its own GitHub repo. A project's name or slug in the text doesn't count: "web" is too common a word. A chat is filed only when exactly one project matches.
 - **Prompt:** `projectSection(project)` in `server/agent/prompts.ts`, placed before the brains section. Its shape is shown under "Rules" above.
   - The project's brain is pinned.
   - The project list (name and one line each, at most 20) is added only to project-less chats, so the agent can file one.
@@ -179,7 +180,7 @@ export interface Project {
   - New `chat_set_project { project }`: works only on a chat that has no project, and posts the "Filed under *web*" notice.
   - New `ticket_link { url }`.
 - **Intake:**
-  - `server/slack.ts` and `server/mail/tasks.ts` call `projects.match()` for a new chat's channel or text, and set `project_id`. Agent selection stays as it is (`pickAgent`).
+  - `server/slack.ts` and `server/mail/tasks.ts` call `intake.match()` for a new chat's channel or text, and set `project_id`. Agent selection stays as it is (`pickAgent`).
   - A Linear or GitHub link in a new chat's first message sets the origin, and the project too when exactly one project matches.
 - **Routes** (`server/projects/routes.ts`, mounted with one `api.route` line):
   - `GET /api/projects`; `POST /api/projects { kind, source?, name? }`; `PATCH /api/projects/:id`; `DELETE /api/projects/:id` (archives it).
@@ -283,8 +284,8 @@ export interface Project {
     - A chat in another project can't read the folder.
     - `~`, `~/.ssh` and a symlink pointing outside are all refused.
     - A non-git folder is readable but no task can start in it.
-- [ ] **M4 · Tickets and intake.**
-  - What to build: `ConversationOrigin` `linear`/`github` with `key`, `detectTicket`, `ticket_link`, branch names with the key, intake settings, Slack and email routing through `projects.match`, `chat_set_project`, and its notice.
+- [x] **M4 · Tickets and intake.** Shipped: `tickets.ts` and `intake.ts` (Slack channels, Linear teams and a GitHub project's own issues; filed only when exactly one project matches, with a "Filed under" notice), ticket origins from a first message's link or `ticket_link`, branches named after the key, `chat_set_project`, and the project list in project-less chats (`server/projects-tickets.test.ts`).
+  - What to build: `ConversationOrigin` `linear`/`github` with `key`, `detectTicket`, `ticket_link`, branch names with the key, intake settings, Slack and email routing through `intake.match`, `chat_set_project`, and its notice.
   - *Accept, with fakes:*
     - A Slack mention in `#web-bugs` starts its chat in `web`.
     - A first message with `https://linear.app/acme/issue/ENG-123/…` sets the chip and the project, and the task branch starts `tot/eng-123-`.

@@ -224,6 +224,7 @@ export type ToolStatus = "running" | "done" | "error";
  *  - TOT memory:    memory_save, memory_search, memory_update, memory_delete (about the user)
  *  - TOT wiki:      wiki_search, wiki_read, wiki_write, wiki_edit, wiki_delete
  *  - TOT chats:     chat_search, chat_read (earlier chats in the same workspace)
+ *  - TOT projects:  chat_set_project (file a chat that's in no project), ticket_link (module 06)
  *  - TOT routines:  routine_create, routine_list, routine_delete
  *  - TOT email:     email_inbox, email_search, email_read, email_send, email_reply, email_wait
  *                   (agents working as a persona with a mailbox; sending asks the user first)
@@ -255,6 +256,8 @@ export type MessagePart =
       text: string;
       /** For "wiki": the pages that changed, so the UI can link to them. */
       pageIds?: string[];
+      /** For a chat filed under a project ("Filed under web", module 06): the project, so the UI can offer Move. */
+      projectId?: string;
     }
   /** A file the user attached (images render inline). */
   | { type: "file"; id: string; attachment: Attachment }

@@ -7,10 +7,16 @@ import { projects, tildePath } from "./projects.ts";
  * What a chat or task in a project is told about it (module 06): one short section, always the same
  * shape, so every agent reads it the same way. It sits between `# Project: <name>` and the
  * <project></project> tags, which is how a frozen prompt's old section is found and replaced.
+ * A chat in no project gets the list of projects instead (`# Projects`, <projects></projects>), so
+ * its agent can file it.
  */
 
 const OVERVIEW_MAX = 4000;
+const LIST_MAX = 20;
 const SECTION = /# Project: [^\n]*\n<project>[\s\S]*?<\/project>/;
+const LIST = /# Projects\n<projects>[\s\S]*?<\/projects>/;
+/** Whichever of the two a frozen prompt has. */
+const BLOCK = new RegExp(`${SECTION.source}|${LIST.source}`);
 
 function where(project: Project): string {
   const folder = projects.folder(project);
@@ -49,22 +55,40 @@ export function projectSection(project: Project, { inTask = false }: { inTask?: 
   return `# Project: ${project.name}\n<project>\n${lines.join("\n")}\n</project>`;
 }
 
+function kindLine(project: Project): string {
+  if (project.kind === "github") return `GitHub ${project.source}`;
+  if (project.kind === "folder") return `folder ${tildePath(project.source ?? "")}`;
+  return "topic, no files";
+}
+
+/** For a chat in no project: the user's projects, one line each, and when to file the chat; null when there are none. */
+export function projectList(): string | null {
+  const all = projects.list();
+  if (!all.length) return null;
+  const lines = all.slice(0, LIST_MAX).map((project) => `- ${project.name}: ${kindLine(project)}`);
+  if (all.length > LIST_MAX) lines.push(`- … and ${all.length - LIST_MAX} more (chat_set_project takes any project's name)`);
+  return `# Projects\n<projects>\nThis chat isn't in a project. The user's projects:\n${lines.join("\n")}\nIf this chat is clearly about one of these, file it with chat_set_project and say so; if it's unclear, ask.\n</projects>`;
+}
+
 /**
- * For a chat whose frozen prompt has another project section (moved in or out, or the project's
- * details changed): a one-time note for its next message, and the prompt to store instead.
+ * For a chat whose frozen prompt has another project block (moved in or out, or the project's details
+ * changed): a one-time note for its next message, and the prompt to store instead. `block` is the
+ * chat's project section, or for a chat in no project the project list (or null).
  */
-export function projectNote(frozenPrompt: string | null, section: string | null): { note: string; prompt: string | null } {
+export function projectNote(frozenPrompt: string | null, block: string | null): { note: string; prompt: string | null } {
   if (!frozenPrompt) return { note: "", prompt: null };
-  const current = SECTION.exec(frozenPrompt)?.[0] ?? null;
-  if (current === section) return { note: "", prompt: null };
-  if (!section) {
-    return {
-      note: "[This chat is no longer in a project. Ignore the earlier project section.]",
-      prompt: frozenPrompt.replace(SECTION, "").replace(/\n{3,}/g, "\n\n"),
-    };
+  const current = BLOCK.exec(frozenPrompt)?.[0] ?? null;
+  if (current === block) return { note: "", prompt: null };
+  const prompt = !current
+    ? `${frozenPrompt}\n\n${block}`
+    : block
+      ? frozenPrompt.replace(current, () => block)
+      : frozenPrompt.replace(current, "").replace(/\n{3,}/g, "\n\n");
+  if (block && SECTION.test(block)) return { note: `[This chat is now in a project; this replaces any earlier project section:\n${block}]`, prompt };
+  if (current && SECTION.test(current)) {
+    // Only the user takes a chat out of a project: its agent shouldn't put it back on its own.
+    return { note: "[This chat is no longer in a project: the user took it out, so don't file it again unless they ask. Ignore the earlier project section.]", prompt };
   }
-  return {
-    note: `[This chat is now in a project; this replaces any earlier project section:\n${section}]`,
-    prompt: current ? frozenPrompt.replace(current, () => section) : `${frozenPrompt}\n\n${section}`,
-  };
+  // Only the list of projects changed (one was added, renamed or archived): no need to say so.
+  return { note: "", prompt };
 }

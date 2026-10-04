@@ -8,6 +8,7 @@ import { mail, type StoredMail } from "../data/mail.ts";
 import { messageText } from "../data/messages.ts";
 import { personas } from "../data/personas.ts";
 import { db, type Row } from "../db.ts";
+import { intake } from "../projects/intake.ts";
 import { pickAgent } from "../slack.ts";
 import { isTask as isTaskConversation } from "../tasks/store.ts";
 import { tasks } from "../tasks/tasks.ts";
@@ -129,6 +130,8 @@ async function handle(personaId: string, mailId: string): Promise<void> {
     // The thread had earlier mail before it reached TOT: the agent gets it as context.
     const earlier = mail.thread(personaId, email.threadId).filter((e) => e.id !== email.id && e.date <= email.date);
     if (earlier.length) context = `The email thread so far:\n<email_thread>\n${transcript(earlier)}\n</email_thread>\n`;
+    // Its project, when a ticket in the email is one project's intake (module 06).
+    intake.fileNew(conversation.id, { text: `${email.subject}\n${request}\n${context}` });
   } else {
     const since = thread.seenAt;
     const fresh = mail.thread(personaId, email.threadId).filter((e) => e.id !== email.id && !e.outgoing && e.date > since && e.date <= email.date);

@@ -25,6 +25,7 @@ import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { projects } from "../projects/projects.ts";
+import { ticketKeyOf } from "../projects/tickets.ts";
 import { messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
 import { settings } from "../data/settings.ts";
@@ -207,7 +208,8 @@ function create(input: CreateTaskInput): TaskRecord {
     // A task works in its chat's project.
     projectId: project?.id ?? null,
     task: {
-      ...newTaskInfo(goal, source ? planRepo(source, title, baseBranch) : null),
+      // A task about a ticket (its own, or its chat's) names its branch after it.
+      ...newTaskInfo(goal, source ? planRepo(source, title, baseBranch, ticketKeyOf(input.origin, parent?.id)) : null),
       role,
       tier: cleanTier(input.tier) ?? (role ? roleTier(role) : null),
       provider,
@@ -254,7 +256,7 @@ export const tasks = {
     // The system prompt is written again on the next turn, with the task's instructions in it.
     conversations.update(
       chatId,
-      { kind: "task", task: newTaskInfo(goal, source ? planRepo(source, chat.title, request.baseBranch) : null), systemPrompt: null },
+      { kind: "task", task: newTaskInfo(goal, source ? planRepo(source, chat.title, request.baseBranch, ticketKeyOf(chat.origin, chat.parentId)) : null), systemPrompt: null },
       true,
     );
     taskStore.publish(taskStore.get(chatId)!);

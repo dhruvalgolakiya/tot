@@ -49,10 +49,17 @@ export function repoFolder(source: string): string {
   return `~/repos/${cloneFolder(githubFullName(text) ?? text)}`;
 }
 
-/** The repo part of a new task: its branch and worktree are named now, created when the task first runs. */
-export function planRepo(source: string, title: string, baseBranch?: string): TaskRepo {
+/**
+ * The repo part of a new task: its branch and worktree are named now, created when the task first runs.
+ * A task about a ticket (module 06) has its key first: tot/eng-123-fix-checkout-3f2a.
+ */
+export function planRepo(source: string, title: string, baseBranch?: string, ticketKey?: string | null): TaskRepo {
   const folder = repoFolder(source);
-  const branch = `tot/${slugify(title, 28)}-${randomBytes(2).toString("hex")}`;
+  const name = slugify(title, 28);
+  // "eng-123", "acme-web-42"; a title that already starts with it doesn't get it twice.
+  const key = ticketKey ? slugify(ticketKey, 20) : "";
+  const prefix = key && name !== key && !name.startsWith(`${key}-`) ? `${key}-` : "";
+  const branch = `tot/${prefix}${name}-${randomBytes(2).toString("hex")}`;
   return {
     source: source.trim(),
     folder,
