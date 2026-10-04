@@ -10,27 +10,20 @@ function EyeShape({ eyeStyle, ink }: { eyeStyle: MascotEyes; ink: string }) {
     case "happy":
       return <path d="M-7.5,2.5 Q0,-9.2 7.5,2.5" fill="none" stroke={ink} strokeWidth={5} strokeLinecap="round" />;
     case "wide":
+      // Googly: a white eye with a black pupil.
       return (
         <>
-          <circle cx={0} cy={0} r={10.4} fill={ink} />
-          <circle cx={-3.4} cy={-3.7} r={2.9} fill="#fff" opacity={0.92} />
+          <circle cx={0} cy={0} r={9.6} fill="#fff" />
+          <circle cx={1.4} cy={0.8} r={4.8} fill={ink} />
         </>
       );
     case "sleepy":
-      return (
-        <>
-          <rect x={-9} y={-2.9} width={18} height={5.8} rx={2.9} fill={ink} />
-          <circle cx={-4.4} cy={-2.9} r={1.7} fill="#fff" opacity={0.8} />
-        </>
-      );
+      // Content, eyes closed.
+      return <path d="M-7,-1.5 Q0,6.5 7,-1.5" fill="none" stroke={ink} strokeWidth={4.6} strokeLinecap="round" />;
     case "dots":
     default:
-      return (
-        <>
-          <ellipse cx={0} cy={0} rx={7.4} ry={9} fill={ink} />
-          <circle cx={-2.7} cy={-3.3} r={2.4} fill="#fff" opacity={0.92} />
-        </>
-      );
+      // Two plain capsules: no glints, no lashes.
+      return <rect x={-4.4} y={-8} width={8.8} height={16} rx={4.4} fill={ink} />;
   }
 }
 
@@ -50,7 +43,19 @@ export function Eyes({
   const dx = anchors.eyeSpread;
   const sc = anchors.faceScale;
 
-  // Sleeping always shows closed lids, regardless of the mascot's chosen eye style.
+  // Sleeping always shows closed lids, regardless of the mascot's chosen eye style; a happy mascot
+  // always squints (with no mouth, the eyes carry the expression).
+  if (state === "happy") {
+    return (
+      <g>
+        {[-1, 1].map((s) => (
+          <g key={s} transform={`translate(${cx + dx * s},${cy}) scale(${sc})`}>
+            <EyeShape eyeStyle="happy" ink={palette.ink} />
+          </g>
+        ))}
+      </g>
+    );
+  }
   if (state === "sleeping") {
     return (
       <g>
@@ -86,22 +91,6 @@ export function Eyes({
   );
 }
 
-/** Two soft cheek tints below-and-outside the eyes, for Dots-like charm. Skipped by the
- *  caller at small sizes (same "detailed" gate as accessories). */
-export function Cheeks({ anchors, palette }: { anchors: ShapeAnchors; palette: MascotPalette }) {
-  const sc = anchors.faceScale;
-  const cy = anchors.eyeLine + 7.5 * sc;
-  const dx = anchors.eyeSpread + 9.5 * sc;
-  const rx = 5.6 * sc;
-  const ry = 3.8 * sc;
-  return (
-    <g fill={palette.blush} opacity={0.5}>
-      <ellipse cx={50 - dx} cy={cy} rx={rx} ry={ry} />
-      <ellipse cx={50 + dx} cy={cy} rx={rx} ry={ry} />
-    </g>
-  );
-}
-
 export function Brows({ anchors, palette }: { anchors: ShapeAnchors; palette: MascotPalette }) {
   const y = anchors.eyeLine - 9 * anchors.faceScale;
   const dx = anchors.eyeSpread;
@@ -129,9 +118,6 @@ export function Mouth({
 
   if (state === "sleeping") return null; // closed eyes + z's already say it all
 
-  if (state === "happy")
-    return <path transform={t} d="M-9,-1 Q-8,8 0,8.5 Q8,8 9,-1 Q0,3.4 -9,-1 Z" fill={palette.ink} />;
-
   if (state === "speaking")
     // IMPORTANT: `mascot-talk` animates CSS `transform` (scaleY), which would replace
     // an SVG `transform` attribute on the same element outright — so positioning goes
@@ -154,11 +140,8 @@ export function Mouth({
       />
     );
 
-  if (state === "thinking" || state === "working")
-    return <ellipse transform={t} cx={0} cy={0} rx={4} ry={2} fill={palette.ink} opacity={0.85} />;
-
-  // idle
-  return <path transform={t} d="M-7,-1 Q0,5.4 7,-1" fill="none" stroke={palette.ink} strokeWidth={3.8} strokeLinecap="round" />;
+  // Like Dots and Grok Bot, the face is just the eyes; a mouth only shows while talking (or upset).
+  return null;
 }
 
 /** Three small dots pulsing above the head — "thinking". */
