@@ -9,6 +9,10 @@ import { taskStore, type TaskRecord } from "./store.ts";
  */
 
 const MAX_ID = 100;
+/** How long a top-level start's request id is remembered (module 09: double clicks and retried requests). */
+const TOP_LEVEL_MS = 60 * 60_000;
+/** "agentId:requestId" → the tasks it started from a project page or home: no chat to file them under, so kept in memory. */
+const topLevel = new Map<string, { ids: string[]; at: number }>();
 
 export function cleanRequestId(value: unknown): string | null {
   if (value === undefined || value === null || value === "") return null;
@@ -36,6 +40,19 @@ export const taskRequests = {
     const insert = db.prepare(`INSERT INTO task_requests (parent_id, request_id, idx, task_id, created_at) VALUES (?, ?, ?, ?, ?)`);
     const now = Date.now();
     started.forEach((task, idx) => insert.run(parentId, requestId, idx, task.id, now));
+    return { tasks: started, repeat: false };
+  },
+
+  /** The same for tasks started without a chat (POST /api/tasks, best-of from a project page): remembered for an hour, not across restarts. */
+  onceTopLevel(agentId: string, requestId: string | null, start: () => TaskRecord[]): { tasks: TaskRecord[]; repeat: boolean } {
+    if (!requestId) return { tasks: start(), repeat: false };
+    const now = Date.now();
+    for (const [key, entry] of topLevel) if (now - entry.at > TOP_LEVEL_MS) topLevel.delete(key);
+    const key = `${agentId}:${requestId}`;
+    const earlier = topLevel.get(key);
+    if (earlier) return { tasks: earlier.ids.map((id) => taskStore.get(id)).filter((task): task is TaskRecord => task !== null), repeat: true };
+    const started = start();
+    topLevel.set(key, { ids: started.map((task) => task.id), at: now });
     return { tasks: started, repeat: false };
   },
 };

@@ -35,10 +35,14 @@ import { applyRunEvent, createAssistantMessage, upsertMessage } from "./lib/redu
 import {
   agentIdFromPath,
   agentPath,
+  compareGroupFromPath,
+  comparePath,
   conversationIdFromPath,
   conversationPath,
   isSettingsPath,
   MASCOTS_PATH,
+  missionFromLocation,
+  missionPath,
   projectFromPath,
   projectPath,
   pushPath,
@@ -50,7 +54,8 @@ import {
   wikiFromPath,
   wikiPath,
 } from "./lib/router";
-import { buildSettingsPatch, EMPTY_SECRETS, isValidBudget, isValidIdleMinutes, isValidTaskLimit, TASK_LIMITS, type SecretDrafts } from "./lib/settings";
+import { buildSettingsPatch, EMPTY_SECRETS, isValidBudget, isValidCleanupDays, isValidIdleMinutes, isValidTaskLimit, TASK_LIMITS, type SecretDrafts } from "./lib/settings";
+import { newRequestId } from "./lib/mission";
 import { subscribeToRun } from "./lib/stream";
 import { isTask } from "./lib/tasks";
 
@@ -59,8 +64,8 @@ export type AgentSettingsTab = "profile" | "routines";
 export type TaskPanelTab = "plan" | "changes" | "activity";
 type LoadState = "loading" | "ready" | "error";
 
-/** Which top-level screen is showing; drives what `App` mounts. */
-export type Page = "home" | "chat" | "project" | "mascots" | "wiki" | "settings" | "trust-lab";
+/** Which top-level screen is showing; drives what `App` mounts. "mission" and "compare" are module 09's board and best-of view. */
+export type Page = "home" | "chat" | "project" | "mascots" | "wiki" | "settings" | "trust-lab" | "mission" | "compare";
 
 /** How long a just-finished reply keeps its mascot "happy" before it idles. */
 export const MASCOT_HAPPY_MS = 2200;
@@ -100,6 +105,10 @@ export interface TotState {
   wikiBrainId: string | null;
   /** The project whose page is open; only meaningful when `page === "project"`. */
   projectId: string | null;
+  /** Mission control's project filter (null = every project); only meaningful when `page === "mission"`. */
+  missionProjectId: string | null;
+  /** The best-of group being compared; only meaningful when `page === "compare"`. */
+  compareGroup: string | null;
   /** Bumped whenever a brain's pages change (an AppEvent), for the open WikiView to react to. */
   wikiEvent: { brainId: string; conversationId?: string; at: number } | null;
   /** Every brain (notebooks and shared ones); null while still loading. */
@@ -196,6 +205,8 @@ export const useStore = create<TotState>()(() => ({
   wikiPageId: null,
   wikiBrainId: null,
   projectId: null,
+  missionProjectId: null,
+  compareGroup: null,
   wikiEvent: null,
   brains: null,
   viewKey: 0,
@@ -687,6 +698,16 @@ export function syncWithLocation() {
     set({ page: "trust-lab" });
     return;
   }
+  const mission = missionFromLocation(pathname, window.location.search);
+  if (mission) {
+    set({ page: "mission", missionProjectId: mission.projectId, currentId: null, computerPanelOpen: false, taskPanelOpen: false });
+    return;
+  }
+  const compareGroup = compareGroupFromPath(pathname);
+  if (compareGroup) {
+    set({ page: "compare", compareGroup, currentId: null, computerPanelOpen: false, taskPanelOpen: false });
+    return;
+  }
   const wiki = wikiFromPath(pathname);
   if (wiki) {
     set({ page: "wiki" });
@@ -737,6 +758,28 @@ export function navigateToProject(projectId: string, preferredAgentId = selectAc
   pushPath(projectPath(agentId, projectId));
   set((s2) => ({ viewKey: s2.viewKey + 1, page: "project" }));
   showProject(agentId, projectId);
+}
+
+/** Mission control (module 09): the board of every task, or one project's (⌘⇧M, the sidebar's Tasks header, a project's page). */
+export function navigateToMission(projectId: string | null = null) {
+  if (!isDesktop()) set({ sidebarOpen: false });
+  const path = missionPath(projectId);
+  if (window.location.pathname + window.location.search !== path) window.history.pushState(null, "", path);
+  // Switching the project filter keeps the board mounted.
+  if (get().page === "mission") {
+    set({ missionProjectId: projectId });
+    return;
+  }
+  set((s) => ({ viewKey: s.viewKey + 1, page: "mission", missionProjectId: projectId, currentId: null, computerPanelOpen: false, taskPanelOpen: false }));
+}
+
+/** A best-of run's tasks side by side (module 09). */
+export function navigateToCompare(group: string) {
+  if (!isDesktop()) set({ sidebarOpen: false });
+  const s = get();
+  if (s.page === "compare" && s.compareGroup === group) return;
+  pushPath(comparePath(group));
+  set((s2) => ({ viewKey: s2.viewKey + 1, page: "compare", compareGroup: group, currentId: null, computerPanelOpen: false, taskPanelOpen: false }));
 }
 
 /** The agent rail: switch to an agent. On a project's page, stay on it (the next chat there starts with that agent). */
@@ -1096,6 +1139,64 @@ export async function sendMessage(
       setMessages(conversationId, (list) => list.filter((m) => m.id !== tempId));
     }
     if (fromProjectPage && conversationId && body) set({ composerDraft: body });
+    notifyError(error);
+    return false;
+  } finally {
+    set({ sending: false });
+  }
+}
+
+/**
+ * The composer's Task mode (⌘↩, /task; module 09): from a chat, a task under it (the request and its card
+ * show there); from a project's page, a task in that project (it shows in the page's list); from an agent's
+ * home, a task that opens. The request id makes a double click start it once.
+ */
+export async function startTask(goal: string, requestId = newRequestId()): Promise<boolean> {
+  const body = goal.trim();
+  if (!body || get().sending) return false;
+  set({ sending: true });
+  askForNotifications();
+  try {
+    const s = get();
+    const chat = selectCurrentConversation(s);
+    if (chat) {
+      const task = await api.startTaskFromChat(chat.id, { goal: body, requestId });
+      set((s2) => ({ conversations: upsertConversation(s2.conversations, task) }));
+      void loadConversation(chat.id);
+      return true;
+    }
+    const projectId = s.page === "project" ? s.projectId : null;
+    const task = await api.startTask({ agentId: selectActiveAgentId(s) ?? undefined, projectId, goal: body, requestId });
+    set((s2) => ({ conversations: upsertConversation(s2.conversations, task) }));
+    if (!projectId) navigateToConversation(task.id);
+    return true;
+  } catch (error) {
+    notifyError(error);
+    return false;
+  } finally {
+    set({ sending: false });
+  }
+}
+
+/** "/best-of": the same goal on each signed-in provider, from the open chat (cards there), a project's page (they show in its list) or home (the compare view opens). */
+export async function startBestOf(goal: string, requestId = newRequestId()): Promise<boolean> {
+  const body = goal.trim();
+  if (!body || get().sending) return false;
+  set({ sending: true });
+  askForNotifications();
+  try {
+    const s = get();
+    const chat = selectCurrentConversation(s);
+    const projectId = s.page === "project" ? s.projectId : null;
+    const runs = await api.startBestOf(
+      chat ? { conversationId: chat.id, goal: body, requestId } : { agentId: selectActiveAgentId(s) ?? undefined, projectId, goal: body, requestId },
+    );
+    set((s2) => ({ conversations: runs.reduce(upsertConversation, s2.conversations) }));
+    const group = runs[0]?.task?.group;
+    if (chat) void loadConversation(chat.id);
+    else if (!projectId && group) navigateToCompare(group);
+    return true;
+  } catch (error) {
     notifyError(error);
     return false;
   } finally {
@@ -1723,7 +1824,8 @@ export function selectSettingsValid(s: TotState): boolean {
     isValidTaskLimit(tasks.perAgentLimit, TASK_LIMITS.perAgent) &&
     isValidTaskLimit(tasks.globalLimit, TASK_LIMITS.global) &&
     isValidTaskLimit(tasks.maxChildren, TASK_LIMITS.children) &&
-    isValidBudget(tasks.missionTokenBudget)
+    isValidBudget(tasks.missionTokenBudget) &&
+    isValidCleanupDays(tasks.worktreeCleanupDays)
   );
 }
 

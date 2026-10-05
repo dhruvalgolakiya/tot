@@ -6,6 +6,7 @@ import { selectCurrentConversation, setTaskPanelOpen, setTaskPanelTab, useStore,
 import { SidePanel } from "../ui/SidePanel";
 import { ActivityTab } from "./ActivityTab";
 import { ChangesTab } from "./ChangesTab";
+import { LandBar } from "./LandBar";
 import { PlanTab } from "./PlanTab";
 
 const tabTrigger =
@@ -14,11 +15,24 @@ const tabTrigger =
 
 /**
  * The panel's tabs. Each stands alone, so later modules add theirs (checks, the pull request)
- * here without touching the others; `shown` hides a tab for tasks it doesn't apply to.
+ * here without touching the others; `shown` hides a tab for tasks it doesn't apply to, and
+ * `footer` stays put under the tab's scrolling content (the Changes tab's Land bar, module 09).
  */
-const TABS: { id: TaskPanelTab; label: string; shown?: (task: TaskConversation) => boolean; render: (task: TaskConversation) => ReactNode }[] = [
+const TABS: {
+  id: TaskPanelTab;
+  label: string;
+  shown?: (task: TaskConversation) => boolean;
+  render: (task: TaskConversation) => ReactNode;
+  footer?: (task: TaskConversation) => ReactNode;
+}[] = [
   { id: "plan", label: "Plan", render: (task) => <PlanTab task={task} /> },
-  { id: "changes", label: "Changes", shown: (task) => Boolean(task.task.repo), render: (task) => <ChangesTab task={task} /> },
+  {
+    id: "changes",
+    label: "Changes",
+    shown: (task) => Boolean(task.task.repo),
+    render: (task) => <ChangesTab task={task} />,
+    footer: (task) => <LandBar key={task.id} task={task} />,
+  },
   { id: "activity", label: "Activity", render: (task) => <ActivityTab task={task} /> },
 ];
 
@@ -42,8 +56,9 @@ export function TaskPanel() {
           ))}
         </Tabs.List>
         {tabs.map((t) => (
-          <Tabs.Content key={t.id} value={t.id} className="min-h-0 flex-1 overflow-y-auto p-4 outline-none">
-            {t.render(conversation)}
+          <Tabs.Content key={t.id} value={t.id} className="flex min-h-0 flex-1 flex-col outline-none">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">{t.render(conversation)}</div>
+            {t.footer?.(conversation)}
           </Tabs.Content>
         ))}
       </Tabs.Root>

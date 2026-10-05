@@ -261,6 +261,8 @@ export type MessagePart =
       pageIds?: string[];
       /** For a chat filed under a project ("Filed under web", module 06): the project, so the UI can offer Move. */
       projectId?: string;
+      /** For "Best of 2 finished" (module 09): the best-of group, so the UI can offer Compare. */
+      group?: string;
     }
   /** A file the user attached (images render inline). */
   | { type: "file"; id: string; attachment: Attachment }
@@ -1019,7 +1021,8 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //
 // Tasks (a task is a conversation with kind "task"; see TaskInfo)
 // GET    /api/tasks[?agentId=&status=]        -> Conversation[]  (queued ones in queue order first, then newest first)
-// POST   /api/tasks                           StartTaskRequest & { agentId?, projectId? } -> Conversation  (a top-level task)
+// POST   /api/tasks                           StartTaskRequest & { agentId?, projectId? } -> Conversation  (a top-level task; with a
+//                                              requestId it started in the last hour: 200 and that task, nothing new)
 // POST   /api/conversations/:id/tasks         StartTaskRequest -> Conversation  (started from this chat; its card shows there.
 //                                              201; with a requestId it started before: 200 and that task, nothing new)
 // POST   /api/conversations/:id/convert       ConvertToTaskRequest -> Conversation  (this chat becomes a task, transcript kept)
@@ -1038,7 +1041,26 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/conversations/:id/merge-back    -> Conversation  (module 05: a fork brings its new messages back to its source chat: a
 //                                              notice there, and a note for its next turn; returns the source)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
+// Module 09 · lane A (land a finished coding task; every change also goes out as a `task` event)
+// GET    /api/tasks/:id/land                  -> TaskLandOptions  (worked out now: merge into the folder's checked-out branch, or a draft PR;
+//                                              each with the reason it can't, e.g. uncommitted changes, a tot/* checkout, conflicts, writes off)
+// POST   /api/tasks/:id/land                  LandTaskRequest -> Conversation  (409 with the reason when it can't. merge: TOT merges --no-ff in
+//                                              your folder, then removes the worktree and the merged branch; pr: pushes the tot/* branch
+//                                              from the worktree and opens a draft PR as the agent's account; the worktree stays)
+// POST   /api/tasks/:id/update-from-base      -> Conversation  (rebases the branch onto its base in the worktree; on conflicts, or work left
+//                                              uncommitted, the rebase is undone and the task gets a turn to do it: status "running")
+// POST   /api/tasks/:id/discard               -> Conversation  (stops it, removes its worktree, deletes its branch unless it was pushed)
+// POST   /api/tasks/:id/checks                -> Conversation  (runs the repo profile's gates on the branch again: checks "running", the
+//                                              result arrives as a task event; "none" when the repo has no profile)
 // DELETE /api/conversations/:id?deleteBranch=1  (a task: also removes its worktree; its branch only with deleteBranch, and only if never pushed)
+//
+// Mission control (module 09, lane B; TaskInfo.stats is refreshed after every turn and when a task finishes)
+// GET    /api/mission[?projectId=&agentId=&group=]  -> MissionOverview  (open tasks, finished ones with code not yet landed,
+//                                              and those landed or finished without code in the last day; with group: every task
+//                                              in it. overlaps: other unlanded tasks on the same repo folder changing the same paths)
+// POST   /api/tasks/best-of                   BestOfRequest -> Conversation[]  (one task per provider, pinned, in one "best-of"
+//                                              group; 201, or 200 with a requestId it started before. They don't wake their chat
+//                                              one by one: it gets one "Best of N finished" notice (notice.group) when all end)
 //
 // POST   /api/uploads                         multipart/form-data, field "file" (≤ 25 MB) -> Attachment
 // GET    /api/uploads/:id/:name               -> the file
@@ -1148,6 +1170,12 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // DELETE /api/projects/:id                    -> Project  (archives it; its chats stay, filed under it)
 // POST   /api/projects/:id/grant              -> Project  (folder projects: the user's OK for agents to read the folder and make tot/… branches in it)
 // POST   /api/projects/:id/learn              { agentId } -> { conversationId, runId }  (Learn a repo into its brain; a folder project needs its grant and a local computer)
+//
+// Worktree lifecycle (module 09 · lane C; a project's setupCommand and copyFiles go through PATCH /api/projects/:id)
+// GET    /api/projects/:id/setup-detect       -> SetupDetection  (the setup command its lockfile implies, for the Worktree setup dialog)
+// POST   /api/tasks/:id/preview/stop          -> Conversation  (stops the task's preview; TaskInfo.preview becomes null)
+// POST   /api/worktrees/cleanup               -> { removed: number }  (removes worktrees of finished, unlanded tasks older than
+//                                              tasks.worktreeCleanupDays now, as the daily sweep does; their branches stay)
 //
 // Devices (module 07; this device, remote access, and the browsers and phones signed in to it)
 // GET    /.well-known/tot                     -> { id, name, protocol: 1 }  (open, no sign-in: lets another device check it reached TOT)
@@ -1285,6 +1313,21 @@ export interface TaskInfo {
   handoff: HandoffPacket | null;
   /** Paused for a usage limit: when it resumes by itself. */
   resumeAt: number | null;
+  // Mission control (module 09). Optional: tasks from before 09 don't have them.
+  /** Lines changed on its branch, refreshed after every turn. */
+  stats?: TaskDiffStats | null;
+  /** The project's test gates (module 03) on its branch. */
+  checks?: TaskChecks | null;
+  /** Merged into your folder, opened as a PR, or discarded. */
+  landing?: TaskLanding | null;
+  /** What its `group` is: tasks split from one job, or the same job on several providers. */
+  groupKind?: TaskGroupKind | null;
+  /** Its worktree's setup command (npm ci, …). */
+  setup?: TaskSetup | null;
+  /** Its port block on its computer. */
+  ports?: TaskPorts | null;
+  /** Its running preview (a dev server TOT manages). */
+  preview?: TaskPreview | null;
 }
 
 export interface TaskRepo {
@@ -1300,6 +1343,124 @@ export interface TaskRepo {
   worktree: string;
   /** The branch's newest commit, recorded after every turn; null before the worktree exists. */
   headSha: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Mission control (module 09): many coding tasks on one project, landed from TOT
+// ---------------------------------------------------------------------------
+
+/** A task's branch against where it left its base: committed and uncommitted changes, untracked files counted. */
+export interface TaskDiffStats {
+  files: number;
+  added: number;
+  removed: number;
+  /** Changed paths, at most 200. */
+  paths: string[];
+  headSha: string | null;
+  at: number;
+}
+
+export type TaskChecksState = "running" | "passing" | "failing" | "none";
+
+/** Module 03's gates on the task's branch: when it finishes, and on demand. "none" = the repo has no profile yet. */
+export interface TaskChecks {
+  state: TaskChecksState;
+  /** One line per gate, e.g. "typecheck passed", "test failed: 3 of 214". */
+  lines: string[];
+  headSha: string | null;
+  at: number;
+}
+
+export type TaskLandingKind = "merged" | "pr" | "discarded";
+
+export interface TaskLanding {
+  kind: TaskLandingKind;
+  at: number;
+  /** The branch it was merged into, or the PR's base; null when discarded. */
+  target: string | null;
+  /** The merge commit (merged) or the pushed head (pr). */
+  sha: string | null;
+  pr: { number: number; url: string } | null;
+}
+
+/** How a finished task can land right now (GET /api/tasks/:id/land). */
+export interface TaskLandOptions {
+  /** Folder projects: merge into the branch checked out in your folder, done by TOT on your click. */
+  merge: { available: boolean; target: string | null; reason: string | null };
+  /** GitHub projects with GitHub writes on: push the tot/* branch and open a draft PR. */
+  pr: { available: boolean; base: string; reason: string | null };
+  /** Commits on the base since the branch left it. */
+  behind: number;
+}
+
+export interface LandTaskRequest {
+  method: "merge" | "pr";
+  /** PR only: overrides for the generated title and body. */
+  title?: string;
+  body?: string;
+}
+
+/** The worktree's setup command, run once when the worktree is created. */
+export interface TaskSetup {
+  state: "running" | "done" | "failed" | "skipped";
+  /** What ran: the project's setupCommand, or one detected from a lockfile. */
+  command: string | null;
+  at: number;
+  /** The last lines of output when it failed. */
+  error: string | null;
+}
+
+/** GET /api/projects/:id/setup-detect: what new worktrees would run with no setupCommand set (null: no lockfile found, or none to look at). */
+export interface SetupDetection {
+  command: string | null;
+  lockfile: string | null;
+}
+
+/** A block of ports on the task's computer: PORT = base, TOT_PORTS = base..base+count-1. */
+export interface TaskPorts {
+  base: number;
+  count: number;
+}
+
+/** A dev server TOT runs for the task (task_preview_start), stopped when the task lands or is discarded. */
+export interface TaskPreview {
+  url: string;
+  port: number;
+  command: string;
+  startedAt: number;
+}
+
+export type TaskGroupKind = "parallel" | "best-of";
+
+/** Two unlanded tasks on the same repo changing the same files. */
+export interface MissionOverlap {
+  taskId: string;
+  paths: string[];
+}
+
+export interface MissionTask {
+  conversation: Conversation;
+  overlaps: MissionOverlap[];
+}
+
+/** GET /api/mission: open tasks, finished ones not yet landed, and those landed in the last day. */
+export interface MissionOverview {
+  tasks: MissionTask[];
+  /** Finished, unlanded task ids in the order to land them: fewest overlaps first, then the smallest. */
+  landOrder: string[];
+}
+
+/** The same job on several providers, each in its own worktree, compared side by side. */
+export interface BestOfRequest {
+  /** The chat it's started from (its project and repo are used); or agentId + projectId from a project page. */
+  conversationId?: string;
+  agentId?: string;
+  projectId?: string | null;
+  title?: string;
+  goal: string;
+  /** One task per entry; defaults to every logged-in provider (two runs when only one is). */
+  providers?: ProviderId[];
+  requestId?: string;
 }
 
 export interface StartTaskRequest {
@@ -1373,6 +1534,8 @@ export interface TaskSettings {
   notifySlackUserId: string | null;
   /** A chat picks up its tasks' results and replies on its own when they finish, instead of on the user's next message (module 05). */
   wakeChats: boolean;
+  /** Worktrees of finished tasks that weren't landed are removed this many days after they finished (branches stay); 0 = never (module 09). */
+  worktreeCleanupDays: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1684,6 +1847,10 @@ export interface Project {
   running: number;
   /** Set by the client for another device's project: the paired device it's on (module 07). */
   deviceId?: string;
+  /** Run in every new task worktree (module 09): null = detect from the lockfile, "" = nothing. */
+  setupCommand?: string | null;
+  /** Folder projects: files copied from the folder into each new worktree, e.g. ".env". */
+  copyFiles?: string[];
 }
 
 export interface CreateProjectRequest {
@@ -1709,6 +1876,9 @@ export interface UpdateProjectRequest {
   instructions?: string;
   defaultBranch?: string | null;
   intake?: Partial<ProjectIntake>;
+  /** Module 09: see Project.setupCommand and Project.copyFiles. */
+  setupCommand?: string | null;
+  copyFiles?: string[];
 }
 
 // ---------------------------------------------------------------------------

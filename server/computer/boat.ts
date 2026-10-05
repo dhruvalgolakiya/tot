@@ -179,17 +179,22 @@ export const boatBackend: ComputerBackend = {
 
   desktop,
 
-  async exec(sandboxId, command, { cwd, timeoutMs }): Promise<ExecResult> {
+  async exec(sandboxId, command, { cwd, timeoutMs, env }): Promise<ExecResult> {
     const api = client();
     const timeoutSeconds = Math.max(1, Math.min(MAX_TIMEOUT_SECONDS, Math.round(timeoutMs / 1000)));
     const dir = cwd ? absolute(cwd) : undefined;
+    // The command API takes no environment: extra variables (a task's ports) are exported first.
+    const exports = Object.entries(env ?? {})
+      .filter(([name]) => /^[A-Z_][A-Z0-9_]*$/.test(name))
+      .map(([name, value]) => `export ${name}=${quote(value)}; `)
+      .join("");
     const started = Date.now();
     // Right after a resume Boat may answer 409 boat_starting; it's safe to retry because the command never ran.
     for (let attempt = 0; ; attempt++) {
       try {
         const result = (await api.command({
           sandboxId,
-          command,
+          command: exports + command,
           cwd: dir?.startsWith(`${HOME}/`) ? dir.slice(HOME.length + 1) : dir,
           timeoutSeconds,
         })) as CommandResponse;

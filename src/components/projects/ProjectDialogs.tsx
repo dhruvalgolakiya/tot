@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Project } from "@shared/types";
-import { errorMessage } from "../../lib/api";
-import { isCodeProject, parseList, PROJECT_ICONS, sourceLabel, updateProject } from "../../lib/projects";
+import type { Project, SetupDetection } from "@shared/types";
+import { api, errorMessage } from "../../lib/api";
+import { isCodeProject, parseList, PROJECT_ICONS, sourceLabel, tildePath, updateProject } from "../../lib/projects";
+import { SettingRow } from "../settings/SettingRow";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { Field } from "../ui/Field";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
+import { Switch } from "../ui/Switch";
 
 type DialogProps = {
   project: Project;
@@ -202,6 +204,129 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: DialogPro
             Cancel
           </Button>
           <Button type="submit" variant="primary" disabled={saving || !name.trim()}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+/** One path per line (or comma): the folder project's files to copy into each new worktree. */
+const parseFiles = (text: string) =>
+  text
+    .split(/[\n,]+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+/**
+ * What every new task worktree in the project gets before its agent starts (module 09): a setup command
+ * (empty: the one its lockfile implies, shown as the placeholder), and for a folder project, files copied
+ * in from the folder, like .env.
+ */
+export function WorktreeSetupDialog({ project, open, onOpenChange }: DialogProps) {
+  const [enabled, setEnabled] = useState(project.setupCommand !== "");
+  const [command, setCommand] = useState(project.setupCommand ?? "");
+  const [files, setFiles] = useState("");
+  const [detected, setDetected] = useState<SetupDetection | null>(null);
+  const { saving, error, save } = useSave(onOpenChange, open);
+  const folder = project.kind === "folder";
+
+  useEffect(() => {
+    if (!open) return;
+    setEnabled(project.setupCommand !== "");
+    setCommand(project.setupCommand ?? "");
+    setFiles((project.copyFiles ?? []).join("\n"));
+  }, [open, project]);
+
+  // What its lockfile implies: the command's placeholder.
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    api
+      .detectProjectSetup(project.id)
+      .then((found) => live && setDetected(found))
+      .catch(() => live && setDetected(null));
+    return () => {
+      live = false;
+    };
+  }, [open, project.id]);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void save(() =>
+      updateProject(project.id, {
+        setupCommand: enabled ? command.trim() || null : "",
+        ...(folder ? { copyFiles: parseFiles(files) } : {}),
+      }),
+    );
+  }
+
+  const hint = detected?.command
+    ? `Leave it empty to run ${detected.command}, from ${detected.lockfile}.`
+    : "Leave it empty to run what each worktree's lockfile implies (npm ci for package-lock.json, uv sync for uv.lock…).";
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Worktree setup"
+      description={`What every new task worktree in ${project.name} gets before its agent starts.`}
+      className="max-w-md"
+    >
+      <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+        <ModalBody className="space-y-5">
+          <div className="space-y-3">
+            <SettingRow
+              className="py-0"
+              htmlFor="project-setup-on"
+              title="Run a setup command"
+              description="In the worktree, for up to 10 minutes. If it fails, the agent is told and starts anyway."
+              control={<Switch id="project-setup-on" checked={enabled} onCheckedChange={setEnabled} />}
+            />
+            <Field label="Command" htmlFor="project-setup-command" hint={enabled ? hint : "Off: new worktrees start as they are."}>
+              <input
+                id="project-setup-command"
+                value={enabled ? command : ""}
+                onChange={(event) => setCommand(event.target.value)}
+                disabled={!enabled}
+                autoFocus
+                maxLength={500}
+                placeholder={enabled ? (detected?.command ?? "npm ci") : "Nothing"}
+                autoComplete="off"
+                spellCheck={false}
+                className="input font-mono text-ui"
+              />
+            </Field>
+          </div>
+
+          {folder && (
+            <div className="border-t border-hairline pt-5">
+              <Field
+                label="Files to copy"
+                htmlFor="project-copy-files"
+                hint={`Copied from ${tildePath(project.source ?? "")} into each new worktree, one path per line. TOT never shows what's in them.`}
+              >
+                <textarea
+                  id="project-copy-files"
+                  value={files}
+                  onChange={(event) => setFiles(event.target.value)}
+                  rows={3}
+                  placeholder={".env\n.env.local"}
+                  spellCheck={false}
+                  className="input min-h-20 resize-y rounded-xl font-mono text-ui leading-relaxed"
+                />
+              </Field>
+            </div>
+          )}
+
+          {error && <Callout tone="danger">{error}</Callout>}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </ModalFooter>

@@ -13,6 +13,7 @@ import type {
   AppRule,
   AppsStatus,
   Attachment,
+  BestOfRequest,
   ComputerSummary,
   Conversation,
   ContinueOnRequest,
@@ -31,6 +32,7 @@ import type {
   GitHubDeviceStart,
   GitHubRepo,
   GitHubStatus,
+  LandTaskRequest,
   LearnRepoRequest,
   MailMessage,
   MailSummary,
@@ -41,6 +43,7 @@ import type {
   MemoryRepoSummary,
   MemorySyncStatus,
   Message,
+  MissionOverview,
   ModelOption,
   MailboxConnectRequest,
   Persona,
@@ -56,10 +59,13 @@ import type {
   SendMessageResponse,
   Settings,
   SettingsPatch,
+  SetupDetection,
   SlackPatch,
   SlackStatus,
   SlackTokens,
+  StartTaskRequest,
   TaskChanges,
+  TaskLandOptions,
   TaskPatch,
   TaskStatus,
   UpdateConversationRequest,
@@ -206,6 +212,44 @@ export const api = {
   /** Writes a handoff, then carries on in a fresh session on the other provider. */
   continueTaskOn: (id: string, provider: ContinueOnRequest["provider"]) =>
     request<Conversation>("POST", `/tasks/${seg(id)}/continue-on`, { provider }),
+
+  // Module 09 · lane A (land): checks, merge, draft PR, update from base, discard.
+  /** How a finished coding task can land right now: merge into the folder's branch, or a draft PR, each with why it can't. */
+  taskLandOptions: (id: string) => request<TaskLandOptions>("GET", `/tasks/${seg(id)}/land`),
+  /** Merges it into your folder (TOT does it there), or pushes its tot/* branch and opens a draft PR; 409 with the reason when it can't. */
+  landTask: (id: string, body: LandTaskRequest) => request<Conversation>("POST", `/tasks/${seg(id)}/land`, body),
+  /** Rebases its branch onto its base; on conflicts the task gets a turn to resolve them (it's "running" then). */
+  updateTaskFromBase: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/update-from-base`, {}),
+  /** Stops it, removes its worktree, and deletes its branch unless it was pushed. */
+  discardTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/discard`, {}),
+  /** Runs the repo's checks on its branch again; the result arrives as a task event. */
+  runTaskChecks: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/checks`, {}),
+
+  // Module 09 · lane B (mission control, spawning, best-of).
+  /** Mission control: open tasks, finished ones still to land (with their overlaps and land order), and the last day's landed ones. */
+  getMission: (opts: { projectId?: string | null; agentId?: string; group?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.projectId) params.set("projectId", opts.projectId);
+    if (opts.agentId) params.set("agentId", opts.agentId);
+    if (opts.group) params.set("group", opts.group);
+    const qs = params.toString();
+    return request<MissionOverview>("GET", `/mission${qs ? `?${qs}` : ""}`);
+  },
+  /** A task started from a chat (the composer's Task mode): the request and its card are added to the chat. */
+  startTaskFromChat: (conversationId: string, body: StartTaskRequest) =>
+    request<Conversation>("POST", `/conversations/${seg(conversationId)}/tasks`, body),
+  /** A top-level task, from a project's page (`projectId`) or an agent's home. */
+  startTask: (body: StartTaskRequest & { agentId?: string; projectId?: string | null }) => request<Conversation>("POST", "/tasks", body),
+  /** The same goal on Claude and ChatGPT (or twice on the one signed in), compared when they finish. */
+  startBestOf: (body: BestOfRequest) => request<Conversation[]>("POST", "/tasks/best-of", body),
+
+  // Module 09 · lane C (worktree lifecycle: previews, cleanup).
+  /** Stops the task's preview (the dev server TOT runs for it); resolves with the task, its preview gone. */
+  stopTaskPreview: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/preview/stop`, {}),
+  /** Removes worktrees of finished, unlanded tasks older than `days` (the saved setting when omitted); branches stay. */
+  cleanUpWorktrees: (days?: number) => request<{ removed: number }>("POST", "/worktrees/cleanup", days === undefined ? {} : { days }),
+  /** The setup command a project's lockfile implies: what its new worktrees run when it has none of its own. */
+  detectProjectSetup: (id: string) => request<SetupDetection>("GET", `/projects/${seg(id)}/setup-detect`),
 
   stopRun: (runId: string) => request<Ok>("POST", `/runs/${seg(runId)}/stop`, {}),
   /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */

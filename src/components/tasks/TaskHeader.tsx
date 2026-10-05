@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { ArrowLeftRight, Check, CircleStop, Copy, Ellipsis, FolderOpen, GitBranch, MessagesSquare, PanelRight, Pause, Pencil, Play, Trash } from "lucide-react";
-import type { Message } from "@shared/types";
+import { ArrowLeftRight, ArrowUpRight, Check, CircleStop, Copy, Ellipsis, FolderOpen, GitBranch, GitMerge, MessagesSquare, MonitorStop, PanelRight, Pause, Pencil, Play, Trash } from "lucide-react";
+import type { Message, TaskPreview } from "@shared/types";
 import { useCopy } from "../../hooks/useCopy";
 import { useNow } from "../../hooks/useNow";
+import { api } from "../../lib/api";
 import { answeredByLabel, modelLabel, PROVIDER_LABELS } from "../../lib/models";
 import { roleLine } from "../../lib/orchestration";
 import { formatTokens, isOpenTask, repoLabel, taskElapsed, type TaskConversation } from "../../lib/tasks";
-import { continueTaskOn, pauseTask, resumeTask, setComputerPanelOpen, setTaskPanelOpen, stopTask, taskToChat, useStore } from "../../store";
+import { continueTaskOn, notifyError, pauseTask, resumeTask, setComputerPanelOpen, setTaskPanelOpen, setTaskPanelTab, stopTask, taskToChat, useStore } from "../../store";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { Tip } from "../ui/Tip";
@@ -61,8 +62,29 @@ export function TaskHeaderInfo({ task }: { task: TaskConversation }) {
   );
 }
 
+/** "localhost:41000/" from "http://localhost:41000/": the preview's address, for its tooltip. */
+const previewHost = (url: string) => url.replace(/^https?:\/\//, "");
+
+/** "Preview ↗": the dev server TOT runs for the task (module 09), opening in a new tab. Phones have it in "…". */
+function PreviewChip({ preview }: { preview: TaskPreview }) {
+  return (
+    <Tip content={`Open ${previewHost(preview.url)}`}>
+      <a
+        href={preview.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-edge px-2.5 text-xs font-medium text-fg-muted transition-colors hover:border-edge-strong hover:bg-hover hover:text-fg max-sm:hidden"
+      >
+        Preview
+        <ArrowUpRight aria-hidden="true" className="size-3.5 shrink-0" />
+      </a>
+    </Tip>
+  );
+}
+
 export function TaskHeaderActions({ task }: { task: TaskConversation }) {
   const panelOpen = useStore((s) => s.taskPanelOpen);
+  const panelTab = useStore((s) => s.taskPanelTab);
   // The provider it's on (its last reply's, or the one it was moved to), and whether the other is signed in.
   const lastProvider = useStore((s) => s.messages[task.id]?.findLast((m) => m.role === "assistant" && m.provider)?.provider);
   const current = task.task.provider ?? lastProvider ?? "claude";
@@ -70,12 +92,27 @@ export function TaskHeaderActions({ task }: { task: TaskConversation }) {
   const otherReady = useStore((s) => Boolean(s.providers.find((p) => p.id === other)?.loggedIn));
   const [dialog, setDialog] = useState<"rename" | "delete" | null>(null);
   const { status, repo } = task.task;
+  const preview = task.task.preview ?? null;
   const { copy } = useCopy();
   const canPause = status === "running" || status === "queued" || status === "needs-input";
   const canResume = status === "paused" || status === "interrupted";
+  // A finished coding task's next step (module 09): its Land bar, at the bottom of the Changes tab.
+  const readyToLand = status === "done" && Boolean(repo?.headSha) && !task.task.landing;
+  const stopPreview = () => void api.stopTaskPreview(task.id).catch(notifyError);
+  const reviewAndLand = () => {
+    setTaskPanelTab("changes");
+    setTaskPanelOpen(true);
+  };
 
   return (
     <div className="flex items-center gap-1">
+      {preview && <PreviewChip preview={preview} />}
+      {readyToLand && !(panelOpen && panelTab === "changes") && (
+        <Button size="sm" variant="primary" onClick={reviewAndLand}>
+          <GitMerge />
+          Review & land
+        </Button>
+      )}
       {canPause && (
         <Button size="sm" variant="secondary" aria-label="Pause" className="max-sm:w-8 max-sm:px-0" onClick={() => void pauseTask(task.id)}>
           <Pause />
@@ -119,6 +156,16 @@ export function TaskHeaderActions({ task }: { task: TaskConversation }) {
               <DropdownMenu.Item className="menu-item sm:hidden" onSelect={() => void stopTask(task.id)}>
                 <CircleStop className="size-4 text-fg-muted" /> Stop the task
               </DropdownMenu.Item>
+            )}
+            {preview && (
+              <>
+                <DropdownMenu.Item className="menu-item sm:hidden" onSelect={() => window.open(preview.url, "_blank", "noopener,noreferrer")}>
+                  <ArrowUpRight className="size-4 text-fg-muted" /> Open preview
+                </DropdownMenu.Item>
+                <DropdownMenu.Item className="menu-item" onSelect={stopPreview}>
+                  <MonitorStop className="size-4 text-fg-muted" /> Stop preview
+                </DropdownMenu.Item>
+              </>
             )}
             <DropdownMenu.Item className="menu-item" onSelect={() => setDialog("rename")}>
               <Pencil className="size-4 text-fg-muted" /> Rename

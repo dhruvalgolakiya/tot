@@ -572,6 +572,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS memories_by_id ON memories(id);
 `);
 
+// Mission control (roadmap module 09, lane C): what every new task worktree in a project gets. setup_command:
+// NULL = detect it from the lockfile, '' = nothing; copy_files: a folder project's files copied in (a JSON list).
+if (!hasColumn("projects", "setup_command")) db.exec(`ALTER TABLE projects ADD COLUMN setup_command TEXT`);
+if (!hasColumn("projects", "copy_files")) db.exec(`ALTER TABLE projects ADD COLUMN copy_files TEXT NOT NULL DEFAULT '[]'`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

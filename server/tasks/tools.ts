@@ -7,6 +7,7 @@ import { handoffs } from "../orchestration/handoff.ts";
 import { ROLE_NAMES, toResult } from "../orchestration/roles.ts";
 import { spawnMany, type SpawnSpec } from "../orchestration/spawn.ts";
 import { runRegistry } from "../agent/runs.ts";
+import { registerPreviewTools } from "../worktrees/tools.ts";
 import { markResultsRead, MAX_DEPTH, resultBlock } from "./prompt.ts";
 import { taskRequests } from "./requests.ts";
 import { FINISHED, taskStore, type TaskRecord } from "./store.ts";
@@ -121,6 +122,8 @@ const toSpec = (input: SessionInput): SpawnSpec => ({
 export function registerTaskTools(server: McpServer, conversation: ConversationRecord): void {
   const inTask = conversation.kind === "task" && conversation.task;
   if (inTask) registerInsideTask(server, conversation.id);
+  // A coding task can show the user its app (module 09).
+  if (inTask && conversation.task!.repo) registerPreviewTools(server, conversation.id);
   // Tasks start tasks of their own only up to the depth limit.
   if (inTask && conversation.task!.depth >= MAX_DEPTH) return;
 

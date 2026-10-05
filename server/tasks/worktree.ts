@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { TaskChangedFile, TaskChanges, TaskRepo } from "../../shared/types.ts";
+import type { TaskChangedFile, TaskChanges, TaskDiffStats, TaskRepo } from "../../shared/types.ts";
 import { quote } from "../computer/github-login.ts";
 import { computerManager } from "../computer/manager.ts";
 import type { FolderGrant } from "../computer/types.ts";
@@ -21,6 +21,8 @@ const GIT_TIMEOUT_MS = 120_000;
 const CLONE_TIMEOUT_MS = 10 * 60_000;
 const PATCH_LIMIT = 300_000;
 const MAX_UNTRACKED = 50;
+/** Paths kept in a task's diff stats (module 09): enough to spot overlaps between tasks. */
+const MAX_STAT_PATHS = 200;
 
 /** "fix the flaky checkout test" → "fix-the-flaky-checkout-test" (short, safe in a branch name). */
 export function slugify(text: string, max = 32): string {
@@ -253,6 +255,45 @@ export const worktrees = {
       patch: patch.slice(0, PATCH_LIMIT),
       truncated: patch.length > PATCH_LIMIT,
     };
+  },
+
+  /**
+   * How much the task changed, cheaply enough to run after every turn (module 09): numstat against
+   * the merge-base, committed or not, with untracked files counted as added lines; at most
+   * `MAX_STAT_PATHS` paths are kept, the totals cover everything.
+   */
+  async stats(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<TaskDiffStats> {
+    const ref = await baseRef(agentId, repo, grant);
+    const script = [
+      "set -e",
+      `base=$(git merge-base ${quote(ref)} HEAD)`,
+      "echo '@@HEAD'; git rev-parse HEAD",
+      `echo '@@NUMSTAT'; git diff --numstat -M "$base"`,
+      "echo '@@UNTRACKED'; git ls-files --others --exclude-standard | wc -l | tr -d ' '",
+      `git ls-files --others --exclude-standard | head -n ${MAX_STAT_PATHS} | while IFS= read -r f; do printf '%s\\t%s\\n' "$(wc -l < "$f" 2>/dev/null | tr -d ' ')" "$f"; done`,
+    ].join("\n");
+    const out = await run(agentId, script, { cwd: repo.worktree, grant });
+    const [, head = "", numstat = "", untracked = ""] = out.split(/^@@(?:HEAD|NUMSTAT|UNTRACKED)\n/m);
+    const paths: string[] = [];
+    let files = 0;
+    let added = 0;
+    let removed = 0;
+    for (const line of numstat.split("\n").filter(Boolean)) {
+      const [plus = "0", minus = "0", ...rest] = line.split("\t");
+      files++;
+      added += Number(plus) || 0;
+      removed += Number(minus) || 0;
+      // Renames read "old => new" or "dir/{old => new}"; keep the new path.
+      if (paths.length < MAX_STAT_PATHS) paths.push(rest.join("\t").replace(/\{[^}]* => ([^}]*)\}/, "$1").replace(/^.* => /, ""));
+    }
+    const [count = "0", ...listed] = untracked.split("\n").filter(Boolean);
+    files += Number(count) || 0;
+    for (const line of listed) {
+      const [lines = "0", ...rest] = line.split("\t");
+      added += Number(lines) || 0;
+      if (paths.length < MAX_STAT_PATHS) paths.push(rest.join("\t"));
+    }
+    return { files, added, removed, paths, headSha: head.trim() || null, at: Date.now() };
   },
 
   /**

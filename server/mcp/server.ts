@@ -21,6 +21,7 @@ import { registerProjectTools } from "../projects/tools.ts";
 import { registerMemoryTools } from "../memory/tools.ts";
 import { registerTaskTools } from "../tasks/tools.ts";
 import { homeRelative } from "../tasks/worktree.ts";
+import { taskPorts } from "../worktrees/ports.ts";
 import type { ConversationRecord } from "../data/conversations.ts";
 import { clip, guarded, isoDay, reply } from "./results.ts";
 import { registerMailTools } from "./mail-tools.ts";
@@ -213,6 +214,8 @@ function buildServer(conversation: ConversationRecord): McpServer {
             cwd: cwd ? homeRelative(cwd) : (worktree ?? undefined),
             timeoutMs: (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
             grant: project.grant,
+            // A coding task's commands get its ports: PORT and TOT_PORTS (module 09).
+            env: taskPorts.envFor(conversationId),
           });
           computerManager.touch(agentId);
           const sections = [

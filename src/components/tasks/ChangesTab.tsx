@@ -29,11 +29,15 @@ function lineClass(line: string): string {
   return "text-fg-muted";
 }
 
-/** A coding task's changes against its base: files with +/− counts; open one to read its diff. Read-only. */
+/**
+ * A coding task's changes against its base: files with +/− counts; open one to read its diff. Read-only.
+ * Once it's merged or discarded its worktree is gone, and the Land bar under this tab says where the code went.
+ */
 export function ChangesTab({ task }: { task: TaskConversation }) {
   const [state, setState] = useState<{ status: "loading" } | { status: "error"; message: string } | { status: "ready"; changes: TaskChanges }>({ status: "loading" });
   const [openFile, setOpenFile] = useState<string | null>(null);
-  const headSha = task.task.repo?.headSha ?? null;
+  const landed = task.task.landing?.kind === "merged" || task.task.landing?.kind === "discarded" ? task.task.landing.kind : null;
+  const headSha = landed ? null : (task.task.repo?.headSha ?? null);
 
   const load = useCallback(async () => {
     setState((current) => (current.status === "ready" ? current : { status: "loading" }));
@@ -51,6 +55,8 @@ export function ChangesTab({ task }: { task: TaskConversation }) {
 
   const patches = useMemo(() => (state.status === "ready" ? splitPatch(state.changes.patch) : new Map<string, string>()), [state]);
 
+  if (landed === "merged") return <p className="text-sm text-fg-subtle">These changes are merged, and the task's worktree was removed.</p>;
+  if (landed === "discarded") return <p className="text-sm text-fg-subtle">These changes were discarded with the task's worktree.</p>;
   if (!headSha) return <p className="text-sm text-fg-subtle">The branch is set up when the task starts; its changes show up here.</p>;
   if (state.status === "loading") {
     return (

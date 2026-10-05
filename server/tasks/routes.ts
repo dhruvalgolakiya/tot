@@ -42,7 +42,10 @@ taskRoutes.post("/tasks", async (c) => {
   const request = await body<StartTaskRequest & { agentId?: string; projectId?: string | null }>(c);
   const agent = request.agentId ? agents.get(request.agentId) : agents.first();
   if (!agent) throw new HttpError(404, "Agent not found.");
-  return c.json(toPublic(tasks.create({ ...request, agentId: agent.id })), 201);
+  // The same requestId again (a double click in the composer, module 09) gets the task it started back.
+  const { tasks: started, repeat } = taskRequests.onceTopLevel(agent.id, cleanRequestId(request.requestId), () => [tasks.create({ ...request, agentId: agent.id })]);
+  if (!started[0]) throw new HttpError(409, "That request already started a task, which has since been deleted.");
+  return c.json(toPublic(started[0]), repeat ? 200 : 201);
 });
 
 taskRoutes.post("/conversations/:id/tasks", async (c) => {

@@ -13,6 +13,7 @@ import type {
   StartTaskRequest,
   TaskBrief,
   TaskChanges,
+  TaskGroupKind,
   TaskInfo,
   TaskPatch,
   TaskRepo,
@@ -32,9 +33,11 @@ import { ticketKeyOf } from "../projects/tickets.ts";
 import { messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
 import { settings } from "../data/settings.ts";
+import { taskChecks } from "../landing/checks.ts";
 import { checkSpawn, childDepth } from "../orchestration/budget.ts";
 import { otherProvider, ROLE_NAMES, ROLES } from "../orchestration/roles.ts";
 import { roleTier, TIERS } from "../orchestration/tiers.ts";
+import { previews } from "../worktrees/preview.ts";
 import { taskQueue } from "./queue.ts";
 import { runLoop } from "./run-loop.ts";
 import { steer } from "./steer.ts";
@@ -122,6 +125,8 @@ export interface CreateTaskInput extends StartTaskRequest {
   group?: string | null;
   then?: "synthesize" | null;
   brief?: TaskBrief | null;
+  /** What the group is (module 09): split from one job, or the same job on several providers. */
+  groupKind?: TaskGroupKind | null;
 }
 
 function cleanRole(value: unknown): Role | null {
@@ -195,15 +200,17 @@ function reportToParent(task: TaskRecord): void {
   const parent = task.parentId ? conversations.get(task.parentId) : null;
   if (!parent || removing.has(task.id)) return;
   conversations.update(parent.id, { childResults: [...new Set([...parent.childResults, task.id])] });
-  const text = endingNotice(task);
-  messages.insert({
-    id: randomUUID(),
-    conversationId: parent.id,
-    role: "assistant",
-    parts: [{ type: "notice", id: `n_${randomUUID().slice(0, 12)}`, kind: task.task.status === "done" ? "info" : "warning", text }],
-    status: "complete",
-    createdAt: Date.now(),
-  });
+  // A best-of run (module 09) ends with one notice for the whole group, once they've all finished (mission/best-of.ts).
+  if (task.task.groupKind !== "best-of") {
+    messages.insert({
+      id: randomUUID(),
+      conversationId: parent.id,
+      role: "assistant",
+      parts: [{ type: "notice", id: `n_${randomUUID().slice(0, 12)}`, kind: task.task.status === "done" ? "info" : "warning", text: endingNotice(task) }],
+      status: "complete",
+      createdAt: Date.now(),
+    });
+  }
   publishConversation(parent.id, true);
   chatWakes.flag(task);
 }
@@ -239,6 +246,7 @@ function create(input: CreateTaskInput): TaskRecord {
       group: input.group ?? null,
       then: input.then ?? null,
       brief: input.brief ?? null,
+      ...(input.groupKind ? { groupKind: input.groupKind } : {}),
     },
   });
   const task = taskStore.get(record.id)!;
@@ -415,6 +423,8 @@ export const tasks = {
     if (!FINISHED.has(task.task.status)) taskStore.transition(taskId, "stopped");
     runRegistry.activeFor(taskId)?.stop();
     await runLoop.settled(taskId);
+    // Its preview (module 09) goes before its worktree does.
+    await previews.stop(taskId);
     if (task.task.repo?.headSha) {
       const repo = task.task.repo;
       await Promise.resolve()
@@ -448,6 +458,8 @@ export const tasks = {
     taskQueue.start();
     const offChange = taskStore.onChange((task) => {
       if (FINISHED.has(task.task.status)) reportToParent(task);
+      // Module 09: a coding task that's done gets its repo's checks.
+      if (task.task.status === "done" && task.task.repo) taskChecks.afterDone(task.id);
     });
     const offApprovals = appEvents.subscribe((event) => {
       if (event.type !== "approval") return;
@@ -477,6 +489,7 @@ export const tasks = {
       }
     }
     taskQueue.pump();
+    taskChecks.recover();
   },
 
   /** The server is stopping: running turns get stopped, and their tasks resume (or show as interrupted) next time. */
