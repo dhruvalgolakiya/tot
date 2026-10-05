@@ -25,7 +25,8 @@ function check(name: string, ok: boolean, detail = "") {
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 const MAC_CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 
-const send = (path: string, init: RequestInit & { headers?: Record<string, string> } = {}, from = "127.0.0.1") =>
+// From another device by default: this computer itself never signs in.
+const send = (path: string, init: RequestInit & { headers?: Record<string, string> } = {}, from = "192.168.1.70") =>
   app.request(
     `http://127.0.0.1:8787${path}`,
     { ...init, headers: { host: "127.0.0.1:8787", ...init.headers } },

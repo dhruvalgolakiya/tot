@@ -1125,7 +1125,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/projects/:id/grant              -> Project  (folder projects: the user's OK for agents to read the folder and make tot/… branches in it)
 // POST   /api/projects/:id/learn              { agentId } -> { conversationId, runId }  (Learn a repo into its brain; a folder project needs its grant and a local computer)
 //
-// Devices (module 07; this device, and the browsers and phones signed in to it)
+// Devices (module 07; this device, remote access, and the browsers and phones signed in to it)
 // GET    /.well-known/tot                     -> { id, name, protocol: 1 }  (open, no sign-in: lets another device check it reached TOT)
 // GET    /api/devices                         -> DevicesStatus
 // PATCH  /api/devices/self                    RenameDeviceRequest -> DevicesStatus
@@ -1138,6 +1138,11 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // ALL    /api/d/:deviceId/<path>              -> the paired device's /api/<path>, streams included (502 when it's offline or refuses)
 // POST   /api/pair                            PairRequest -> PairResponse  (open: device to device, with a live one-time code)
 // GET    /pair                                -> a page saying where to paste the link (the code stays in the #fragment)
+// PATCH  /api/access                         UpdateRemoteAccessRequest -> DevicesStatus  (400 without a password; 409 when set in .env)
+// POST   /api/access/password                SetPasswordRequest -> DevicesStatus  (8+ characters; another device needs `current`, 403 when wrong; signs out every other browser)
+// POST   /api/access/sign-in-link            SignInLinkRequest -> SignInLink  (one-time, 5 minutes; a new one replaces the last; 400 while remote access is off)
+// POST   /api/access/check                   -> DevicesStatus  (looks at the network again now, e.g. after starting Tailscale)
+// POST   /login                              form: password | token (legacy) | code (from a sign-in link) -> 302 with a session cookie
 // GET    /api/sessions/current                -> { id: string | null }  (null for an access-token caller or with sign-in off)
 // DELETE /api/sessions/:id                    -> DevicesStatus  (signs that browser out: its next request gets 401 and its event streams close)
 // POST   /api/sessions/sign-out-others        -> DevicesStatus
@@ -1725,10 +1730,54 @@ export interface DevicesStatus {
   self: Device;
   /** Devices paired with this one (from M2). */
   devices: Device[];
-  /** Sign-in is on (an access token is set). When off, TOT only serves this machine and nobody signs in. */
+  /** Sign-in is set up (a password, or the legacy TOT_ACCESS_TOKEN). Until it is, only this computer can open TOT. */
   signIn: boolean;
-  /** Newest first; empty when sign-in is off. */
+  /** Newest first; empty until sign-in is set up. */
   sessions: SignInSession[];
+  /** Remote access: whether, and how, phones and other computers reach this device. */
+  access: RemoteAccess;
+}
+
+/** How other devices reach this one: not at all, over Tailscale (from anywhere), or on this network only. */
+export type RemoteAccessMode = "off" | "tailscale" | "lan";
+
+export interface RemoteAccess {
+  mode: RemoteAccessMode;
+  /** Fixed by .env (legacy), so the app's switch can't change it. */
+  setBy: "TOT_LAN" | "TOT_HOST" | null;
+  /** A password is set. It can be changed, never removed. */
+  passwordSet: boolean;
+  /** TOT_ACCESS_TOKEN in .env also signs in (legacy). */
+  envToken: boolean;
+  /** The browser asking is on this computer: it never needs to sign in, and may reset the password. */
+  onThisMachine: boolean;
+  /** This computer's Tailscale address, or null when Tailscale isn't running. */
+  tailscaleAddress: string | null;
+  /** Where other devices open TOT right now (Tailscale first); empty while remote access is off. */
+  addresses: { url: string; network: "tailscale" | "lan" | null }[];
+  /** Why remote access isn't working, e.g. "Tailscale isn't running on this computer." */
+  problem: string | null;
+}
+
+export interface UpdateRemoteAccessRequest {
+  mode: RemoteAccessMode;
+}
+
+export interface SetPasswordRequest {
+  password: string;
+  /** Needed from another device; this computer may set a new one without it. */
+  current?: string;
+}
+
+export interface SignInLinkRequest {
+  /** One of `RemoteAccess.addresses`; defaults to the first. */
+  address?: string;
+}
+
+/** A one-time link that signs a phone in: shown as a QR code, it works once, for 5 minutes. */
+export interface SignInLink {
+  url: string;
+  expiresAt: number;
 }
 
 export interface ConnectDeviceRequest {

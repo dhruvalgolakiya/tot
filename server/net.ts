@@ -9,6 +9,24 @@ export function hostnameOf(host: string): string {
   return value.split(":")[0];
 }
 
+/** Hosts named in TOT_ALLOWED_HOSTS (e.g. a reverse proxy's name), compared with the whole Host header. */
+const allowedHosts = () =>
+  new Set(
+    (process.env.TOT_ALLOWED_HOSTS ?? "")
+      .split(",")
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+/**
+ * A Host header this machine's own browser would send: a loopback name, or one allowed in TOT_ALLOWED_HOSTS.
+ * Not this machine's LAN or Tailscale address: a container or VM reaching that address, or a site rebinding
+ * DNS to it, must not count as this machine.
+ */
+export function isTrustedLocalHost(host: string): boolean {
+  return isLoopbackName(hostnameOf(host)) || allowedHosts().has(host.trim().toLowerCase());
+}
+
 export function isLoopbackName(hostname: string): boolean {
   return hostname === "localhost" || hostname === "::1" || /^127(\.\d{1,3}){3}$/.test(hostname);
 }
