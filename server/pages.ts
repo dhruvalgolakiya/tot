@@ -140,14 +140,19 @@ reveal.addEventListener("click", function () {
   field.focus();
 });
 // Opened from a phone's QR code: /login#code=…  The code is used once, then removed from the address bar.
-var match = /[#&]code=([\\w-]+)/.exec(location.hash);
-if (match) {
+// Also on hashchange: opening the link while this page is already showing doesn't reload it.
+function useCode() {
+  var match = /[#&]code=([\\w-]+)/.exec(location.hash);
+  if (!match) return;
   history.replaceState(null, "", location.pathname);
   document.getElementById("code").value = match[1];
   document.getElementById("form").hidden = true;
+  document.querySelectorAll(".error").forEach(function (el) { el.hidden = true; });
   document.getElementById("busy").hidden = false;
   document.getElementById("code-form").submit();
 }
+useCode();
+addEventListener("hashchange", useCode);
 document.getElementById("form").addEventListener("submit", function (event) {
   event.submitter && (event.submitter.disabled = true);
 });`,

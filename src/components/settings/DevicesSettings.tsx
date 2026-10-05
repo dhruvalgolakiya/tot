@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { toast } from "sonner";
-import { Check, Copy, Ellipsis, Laptop, Link2, LogOut, Pencil, RefreshCw, Smartphone, Unlink } from "lucide-react";
+import { Check, Copy, Ellipsis, KeyRound, Laptop, Link2, LogOut, Pencil, RefreshCw, Smartphone, Unlink, Wifi } from "lucide-react";
 import type { Device, DevicesStatus, SignInSession } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
@@ -10,6 +10,7 @@ import { setDevicesStatus, useDevices } from "../../lib/remote";
 import { useCopy } from "../../hooks/useCopy";
 import { notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { ChangePasswordDialog, RemoteAccessPanel, RemoteAccessSetup, type SetupStep } from "./RemoteAccess";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { cardClass } from "../ui/Card";
@@ -67,18 +68,55 @@ export function DevicesSettings() {
   }
 
   return (
+    <DevicesPage status={status} />
+  );
+}
+
+/** The page itself, with the remote-access setup that several sections open. */
+function DevicesPage({ status }: { status: DevicesStatus }) {
+  const [setup, setSetup] = useState<{ open: boolean; start: SetupStep; pairAfter: boolean }>({ open: false, start: "password", pairAfter: false });
+  const [pairing, setPairing] = useState(false);
+
+  /** Starts where it's needed: no password yet, then the network, then a phone. */
+  function openSetup(step?: SetupStep, pairAfter = false) {
+    const start = step ?? (!status.signIn ? "password" : status.access.mode === "off" ? "network" : "phone");
+    setSetup({ open: true, start, pairAfter });
+  }
+
+  return (
     <div className="space-y-8">
-      <ThisDevice status={status} onChange={setDevicesStatus} />
-      <PairedDevices status={status} />
-      <SignedIn status={status} onChange={setDevicesStatus} />
+      <ThisDevice status={status} onChange={setDevicesStatus} onSetUp={openSetup} />
+      <PairedDevices
+        status={status}
+        pairing={pairing}
+        onPairingChange={setPairing}
+        // Pairing needs sign-in on both computers: set it up here first, then pair.
+        onPair={() => (status.signIn ? setPairing(true) : openSetup("password", true))}
+      />
+      {status.signIn && <SignedIn status={status} onChange={setDevicesStatus} onAddPhone={() => openSetup("phone")} />}
+      <RemoteAccessSetup
+        status={status}
+        open={setup.open}
+        onOpenChange={(open) => setSetup((current) => ({ ...current, open }))}
+        start={setup.start}
+        afterNetwork={setup.pairAfter ? { label: "Turn on and pair", run: () => setPairing(true) } : undefined}
+      />
     </div>
   );
 }
 
-function ThisDevice({ status, onChange }: { status: DevicesStatus; onChange: (status: DevicesStatus) => void }) {
-  const { self } = status;
+function ThisDevice({
+  status,
+  onChange,
+  onSetUp,
+}: {
+  status: DevicesStatus;
+  onChange: (status: DevicesStatus) => void;
+  onSetUp: (step?: SetupStep) => void;
+}) {
+  const { self, access } = status;
   const [renaming, setRenaming] = useState(false);
-  const { copied, copy } = useCopy();
+  const [changingPassword, setChangingPassword] = useState(false);
 
   return (
     <section className="space-y-3">
@@ -96,7 +134,7 @@ function ThisDevice({ status, onChange }: { status: DevicesStatus; onChange: (st
                 : self.network === "tailscale"
                   ? "Reachable over Tailscale, from anywhere"
                   : self.network === "lan"
-                    ? "Reachable on your home network"
+                    ? "Reachable on this Wi‑Fi"
                     : "Reachable at its address"}
             </p>
           </div>
@@ -111,47 +149,43 @@ function ThisDevice({ status, onChange }: { status: DevicesStatus; onChange: (st
                 <DropdownMenu.Item className="menu-item" onSelect={() => setRenaming(true)}>
                   <Pencil className="size-4" /> Rename
                 </DropdownMenu.Item>
+                {status.signIn && (
+                  <DropdownMenu.Item className="menu-item" onSelect={() => setChangingPassword(true)}>
+                    <KeyRound className="size-4" /> {access.passwordSet ? "Change password" : "Set a password"}
+                  </DropdownMenu.Item>
+                )}
+                {access.mode !== "off" && !access.setBy && (
+                  <DropdownMenu.Item className="menu-item" onSelect={() => onSetUp("network")}>
+                    <Wifi className="size-4" /> Change network
+                  </DropdownMenu.Item>
+                )}
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
         </div>
 
         <div className="mt-4 border-t border-hairline pt-4">
-          {self.address ? (
-            <div className="space-y-2">
-              <p className="text-xs text-fg-subtle">Open TOT on your phone or another computer at</p>
-              <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 truncate rounded-lg bg-fill px-2.5 py-1.5 font-mono text-xs text-fg">{self.address}</code>
-                <Tip content={copied ? "Copied" : "Copy address"}>
-                  <IconButton label="Copy address" size="sm" onClick={() => void copy(self.address!)}>
-                    {copied ? <Check /> : <Copy />}
-                  </IconButton>
-                </Tip>
-              </div>
-              <p className="flex items-center gap-1.5 text-xs text-fg-subtle">
-                <Smartphone className="size-3.5 shrink-0" />
-                On a phone, choose Add to Home Screen to keep TOT as an app.
-              </p>
-            </div>
-          ) : (
-            <p className="text-xs leading-relaxed text-fg-subtle">
-              To use TOT from your phone or another computer, set{" "}
-              <code className="rounded bg-fill px-1 py-0.5 text-2xs text-fg">TOT_ACCESS_TOKEN</code> and{" "}
-              <code className="rounded bg-fill px-1 py-0.5 text-2xs text-fg">TOT_LAN=1</code> in{" "}
-              <code className="rounded bg-fill px-1 py-0.5 text-2xs text-fg">.env</code>, then restart TOT. With Tailscale on,
-              it works from anywhere.
-            </p>
-          )}
+          <RemoteAccessPanel status={status} onSetUp={onSetUp} />
         </div>
       </div>
       <RenameDialog name={self.name} open={renaming} onOpenChange={setRenaming} onRenamed={onChange} />
+      <ChangePasswordDialog status={status} open={changingPassword} onOpenChange={setChangingPassword} />
     </section>
   );
 }
 
 /** Other computers running TOT: their agents show in the rail here, and this device's agents there. */
-function PairedDevices({ status }: { status: DevicesStatus }) {
-  const [pairing, setPairing] = useState(false);
+function PairedDevices({
+  status,
+  pairing,
+  onPairingChange,
+  onPair,
+}: {
+  status: DevicesStatus;
+  pairing: boolean;
+  onPairingChange: (open: boolean) => void;
+  onPair: () => void;
+}) {
   const warnings = status.devices.flatMap((device) => device.warnings);
 
   return (
@@ -160,7 +194,7 @@ function PairedDevices({ status }: { status: DevicesStatus }) {
         title="Paired devices"
         description="Use their agents from here, and this device's agents from there."
         action={
-          <Button size="sm" onClick={() => setPairing(true)}>
+          <Button size="sm" onClick={onPair}>
             <Link2 /> Pair a device
           </Button>
         }
@@ -181,7 +215,7 @@ function PairedDevices({ status }: { status: DevicesStatus }) {
           {warning}
         </Callout>
       ))}
-      <PairDialog status={status} open={pairing} onOpenChange={setPairing} />
+      <PairDialog status={status} open={pairing} onOpenChange={onPairingChange} />
     </section>
   );
 }
@@ -428,7 +462,7 @@ function AddressDialog({ device, open, onOpenChange }: { device: Device; open: b
   );
 }
 
-function SignedIn({ status, onChange }: { status: DevicesStatus; onChange: (status: DevicesStatus) => void }) {
+function SignedIn({ status, onChange, onAddPhone }: { status: DevicesStatus; onChange: (status: DevicesStatus) => void; onAddPhone: () => void }) {
   const others = status.sessions.filter((session) => !session.current).length;
 
   async function signOutOthers() {
@@ -443,7 +477,7 @@ function SignedIn({ status, onChange }: { status: DevicesStatus; onChange: (stat
     <section className="space-y-3">
       <SectionHeader
         title="Signed in"
-        description={status.signIn ? "Browsers and phones that can open TOT on this device." : undefined}
+        description="Phones and browsers on other devices. This computer never needs to sign in."
         action={
           others > 1 && (
             <button type="button" onClick={() => void signOutOthers()} className="link-muted text-xs">
@@ -452,8 +486,15 @@ function SignedIn({ status, onChange }: { status: DevicesStatus; onChange: (stat
           )
         }
       />
-      {!status.signIn ? (
-        <p className="text-sm text-fg-muted">Sign-in is off, so only this computer can open TOT and nobody needs to sign in.</p>
+      {status.sessions.length === 0 ? (
+        <p className="text-sm text-fg-muted">
+          None yet.{" "}
+          {status.access.mode !== "off" && (
+            <button type="button" className="link-muted" onClick={onAddPhone}>
+              Add a phone
+            </button>
+          )}
+        </p>
       ) : (
         <ul className={cardClass({ padding: "none" })}>
           {status.sessions.map((session, index) => (
@@ -486,7 +527,14 @@ function SessionRow({ session, first, onChange }: { session: SignInSession; firs
         <p className="truncate text-sm text-fg">{session.label}</p>
         <p className="truncate text-xs text-fg-subtle">{session.current ? "This browser" : `Active ${relativeTime(session.lastSeenAt)}`}</p>
       </div>
-      {!session.current && (
+      {session.current ? (
+        // This browser, on another device: signing out goes to the sign-in page.
+        <form method="post" action="/logout">
+          <Button type="submit" variant="ghost" size="sm">
+            <LogOut /> Sign out
+          </Button>
+        </form>
+      ) : (
         <Button
           variant="ghost"
           size="sm"

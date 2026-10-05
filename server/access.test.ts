@@ -102,7 +102,10 @@ check("an unknown connection counts as another device", res.status === 401);
 // --- Signing in ----------------------------------------------------------------------------------------
 console.log("\n# Signing in");
 res = await send("/login", form({ password: "wrong horse battery", next: "/" }), PHONE);
-check("a wrong password is refused, on a clean page", res.status === 401 && (await res.text()).includes("That password didn"));
+const page = await res.text();
+check("a wrong password is refused, on a clean page", res.status === 401 && page.includes("That password didn"));
+// Opening a phone's link while this page is already showing only changes the #fragment: no reload.
+check("…which still signs in from a phone's link opened over it", page.includes('addEventListener("hashchange", useCode)'));
 res = await send("/login", form({ password: "correct horse battery", next: "/a/x" }), PHONE);
 const phone = cookieOf(res);
 check("the password signs a device in", res.status === 302 && res.headers.get("location") === "/a/x" && phone.startsWith("tot_session="));

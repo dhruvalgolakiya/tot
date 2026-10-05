@@ -68,8 +68,8 @@ Don't copy `.env` either: without `TOT_ACCESS_TOKEN` the app stays local-only, w
 ```bash
 # Worktree A (use 8802 / 5182 / 4802 for worktree B, 8803 / 5183 / 4803 and ~/.tot-dev-c for worktree C,
 # 8804 / 5184 / 4804 and ~/.tot-dev-d for worktree D, 8805 / 5185 / 4805 and ~/.tot-dev-e for worktree E)
-TOT_DATA_DIR=$HOME/.tot-dev-a TOT_PORT=8801 TOT_EXECUTOR_PORT=4801 npm run dev:server
-TOT_PORT=8801 npx vite --port 5181 --strictPort
+TOT_DATA_DIR=$HOME/.tot-dev-a TOT_PORT=8801 TOT_WEB_PORT=5181 TOT_EXECUTOR_PORT=4801 npm run dev:server
+TOT_PORT=8801 TOT_WEB_PORT=5181 npx vite
 ```
 
 ## Avoiding merge conflicts
