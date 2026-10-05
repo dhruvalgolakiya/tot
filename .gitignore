@@ -6,3 +6,5 @@ dist
 .DS_Store
 .tot-data
 .scratch
+dist-app
+release

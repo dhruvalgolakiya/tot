@@ -35,7 +35,7 @@ export function Header() {
   const task = isTask(conversation) ? conversation : null;
 
   return (
-    <header className="absolute inset-x-0 top-0 z-10 flex h-14 shrink-0 items-center gap-1 bg-canvas px-3">
+    <header className="app-drag-region absolute inset-x-0 top-0 z-10 flex h-14 shrink-0 items-center gap-1 bg-canvas px-3">
       {!sidebarOpen && (
         <>
           <Tip content="Open sidebar" side="bottom">

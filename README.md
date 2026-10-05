@@ -37,6 +37,17 @@ Restart `npm run dev` after editing `.env`. With a key present, new agent comput
 
 Production-style run: `npm run build && npm start` (serves the built UI from the API server on :8787).
 
+## Mac app
+
+TOT also runs as **TOT.app** (Apple silicon). It starts the TOT server itself, with the Node built into the app, and opens it in its own window, signed in like any browser on this computer. Close the window and TOT keeps running in the menu bar, so your phone and paired devices keep working; **Quit TOT** in the menu bar (or Cmd+Q) stops it and everything it started. If a TOT is already running on the port (say `npm run dev`), the app opens that one instead of starting a second. It uses the same port (8787) and data (`~/.tot`) as `npm start`, and you still log in to Claude and Codex once in a terminal.
+
+```bash
+npm run app:build    # release/TOT-0.1.0-arm64.dmg and .zip (and release/mac-arm64/TOT.app)
+npm run app:dev      # from this checkout: opens a running dev TOT, or starts the bundled server (run npm run build once first)
+```
+
+The build is signed ad hoc, so it runs on the Mac that built it; on another Mac, right-click → Open the first time (a signed and notarized build needs an Apple Developer account). The menu bar menu has **Open at login**, so TOT is always reachable, and **Show log** (`~/Library/Logs/TOT/server.log`). Apps opened from Finder don't see your shell's PATH, so TOT reads it from your login shell and adds `node`, `npm` and `npx` of its own after yours. Details in [08 · Mac app](docs/roadmap/08-mac-app.md).
+
 ## Landing page
 
 The public page for TOT lives in `site/`, built from the app's own design tokens and mascots. It's a static site with no API and no sign-in.
@@ -118,6 +129,7 @@ server/
   computer/              Boat + local backends, lifecycle manager (lazy start, idle stop), screenshots
   data/                  SQLite repositories
 src/                     React app (sidebar, chat, model picker, computer panel, memory, settings)
+electron/                the Mac app: main process, bundled server, menu bar, packaging
 ```
 
 Data lives in `~/.tot` (override with `TOT_DATA_DIR`). All settings can go in `.env` — see `.env.example`: `BOAT_API_KEY`, `ANTHROPIC_API_KEY` (only for Claude API-key mode), `TOT_PORT` (8787), `TOT_WEB_PORT` (5173, the dev web server), `TOT_CLAUDE_CONFIG_DIR`, `TOT_CODEX_PATH`.

@@ -2,6 +2,7 @@ import { Fragment, useMemo } from "react";
 import clsx from "clsx";
 import { Laptop, Moon, Plus, Settings, Sun } from "lucide-react";
 import type { Agent, Device, MascotState } from "@shared/types";
+import { totDesktop } from "../lib/desktop";
 import { relativeTime } from "../lib/format";
 import { useDevices } from "../lib/remote";
 import { setThemePreference, useResolvedTheme } from "../lib/theme";
@@ -40,8 +41,17 @@ export function AgentRail({ className }: { className?: string }) {
   );
 
   return (
-    <nav aria-label="Agents" className={clsx("flex h-full w-16 shrink-0 flex-col items-center border-r border-hairline bg-rail py-3", className)}>
-      <Logo className="mb-3 size-7 shrink-0" />
+    <nav
+      aria-label="Agents"
+      className={clsx(
+        "app-drag-region flex h-full shrink-0 flex-col items-center border-r border-hairline bg-rail pb-3",
+        // In the Mac app the window's traffic lights take the logo's place: centered in a wider rail,
+        // level with the 56px header row next to it (electron/main.ts trafficLightPosition).
+        totDesktop ? "w-20" : "w-16 pt-3",
+        className,
+      )}
+    >
+      {totDesktop ? <div aria-hidden="true" className="h-14 w-full shrink-0" /> : <Logo className="mb-3 size-7 shrink-0" />}
 
       <ul className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto">
         {agents

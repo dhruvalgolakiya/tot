@@ -617,3 +617,29 @@ html [data-sonner-toast][data-styled="true"] [data-description] {
   color: var(--color-zinc-400);
   line-height: 18px;
 }
+
+/* ---------------------------------------------------------------------------
+   Mac app title bar (main.tsx adds `.desktop` to <html> when electron/'s
+   preload bridge is present; electron/ sets titleBarStyle: "hiddenInset", so
+   there's no native title bar and the traffic lights float over the page's
+   top-left corner instead). Scoped under `html.desktop` so the web and phone
+   builds are untouched: `-webkit-app-region` is inert there anyway, but
+   scoping keeps it opt-in rather than relying on that.
+   `.app-drag-region` marks a strip the user can grab to move the window;
+   the second rule keeps real controls inside it — buttons, inputs, links,
+   menus — clickable, wherever a drag region happens to wrap them.
+   --------------------------------------------------------------------------- */
+
+html.desktop .app-drag-region {
+  -webkit-app-region: drag;
+}
+
+html.desktop button,
+html.desktop input,
+html.desktop textarea,
+html.desktop select,
+html.desktop a,
+html.desktop [role="menu"],
+html.desktop [data-radix-popper-content-wrapper] {
+  -webkit-app-region: no-drag;
+}

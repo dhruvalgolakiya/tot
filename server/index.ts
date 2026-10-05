@@ -24,6 +24,10 @@ import { taskNotifications } from "./tasks/notify.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { chatWakes } from "./tasks/wake.ts";
 
+// The Mac app (module 08) runs TOT with Electron's Node, which ELECTRON_RUN_AS_NODE=1 switches on. Children
+// mustn't inherit it: an agent running another Electron app's CLI would get a bare Node instead.
+delete process.env.ELECTRON_RUN_AS_NODE;
+
 // Never put TOT on the network without sign-in: it drives paid subscriptions and runs commands. Remote
 // access (Settings → Devices, or legacy TOT_LAN / TOT_HOST=tailscale) waits for a password by itself; only a
 // TOT_HOST address puts the main listener out there, so that one needs sign-in before TOT starts.
