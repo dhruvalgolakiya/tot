@@ -1,5 +1,4 @@
 import { serve } from "@hono/node-server";
-import { hostname } from "node:os";
 import { stopCodex } from "./agent/providers/chatgpt.ts";
 import { runRegistry } from "./agent/runs.ts";
 import { scheduler } from "./agent/scheduler.ts";
@@ -7,12 +6,14 @@ import { wikiKeeper } from "./agent/wiki-keeper.ts";
 import { createApp } from "./app.ts";
 import { apps } from "./apps.ts";
 import { computerManager } from "./computer/manager.ts";
-import { ACCESS_TOKEN, DATA_DIR, HOST, LAN, PORT, TAILSCALE, VERSION } from "./config.ts";
+import { effectiveMode, signInReady } from "./access.ts";
+import { ACCESS_TOKEN, DATA_DIR, ENV_REMOTE, HOST, PORT, RAW_HOST_EXPOSED, VERSION } from "./config.ts";
 import { mailboxes } from "./mail/mailbox.ts";
 import { emailTasks } from "./mail/tasks.ts";
-import { isLoopbackBind, lanUrls, tailscaleAddress } from "./net.ts";
+import { appEvents } from "./app-events.ts";
 import { relay } from "./devices/relay.ts";
-import { webPort } from "./devices/identity.ts";
+import { addresses, selfDevice, webPort } from "./devices/identity.ts";
+import { listeners } from "./listeners.ts";
 import { migrateRepoBrains } from "./projects/projects.ts";
 import { tokenProblem } from "./session.ts";
 import { slack } from "./slack.ts";
@@ -23,13 +24,14 @@ import { taskNotifications } from "./tasks/notify.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { chatWakes } from "./tasks/wake.ts";
 
-// Never put TOT on the network without sign-in: it drives paid subscriptions and runs commands.
-const exposed = LAN || TAILSCALE || !isLoopbackBind(HOST);
+// Never put TOT on the network without sign-in: it drives paid subscriptions and runs commands. Remote
+// access (Settings → Devices, or legacy TOT_LAN / TOT_HOST=tailscale) waits for a password by itself; only a
+// TOT_HOST address puts the main listener out there, so that one needs sign-in before TOT starts.
 const accessProblem =
-  exposed && !ACCESS_TOKEN
-    ? "TOT_LAN / TOT_HOST would open TOT to other devices, but TOT_ACCESS_TOKEN is empty. Set one in .env first (e.g. `openssl rand -hex 16`)."
+  RAW_HOST_EXPOSED && !signInReady()
+    ? `TOT_HOST=${HOST} would open TOT to other devices before it has a password. Start it without TOT_HOST and set one in Settings → Devices first (or set TOT_ACCESS_TOKEN).`
     : ACCESS_TOKEN && tokenProblem(ACCESS_TOKEN);
-if (TAILSCALE && !tailscaleAddress()) console.warn("TOT_HOST=tailscale, but Tailscale isn't up: only this machine can open TOT until it is.");
+if (ENV_REMOTE && !signInReady()) console.warn(`${ENV_REMOTE.variable} is set, but there's no password yet: set one in Settings → Devices.`);
 if (accessProblem) {
   console.error(`\n✖ ${accessProblem}\n`);
   process.exit(1);
@@ -38,13 +40,20 @@ if (accessProblem) {
 const app = createApp();
 
 const server = serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
-  const port = webPort();
   console.log(`TOT ${VERSION} · API on http://${HOST}:${info.port} · data in ${DATA_DIR}`);
-  console.log(`Open the app at http://localhost:${port}`);
-  if (LAN) for (const url of lanUrls(port, hostname())) console.log(`On your network:  ${url}`);
-  if (TAILSCALE && tailscaleAddress()) console.log(`On your tailnet:  http://${tailscaleAddress()}:${port}`);
-  if (ACCESS_TOKEN) console.log("Sign-in is on: use TOT_ACCESS_TOKEN from .env.");
+  console.log(`Open the app at http://localhost:${webPort()}`);
+  if (effectiveMode() === "off") console.log("Remote access: off. Turn it on in Settings → Devices to use TOT from your phone.");
 });
+// Read the peer's address as each connection opens, so a request never finds it gone (auth.ts trusts it).
+server.on("connection", (socket) => void socket.remoteAddress);
+
+// Remote access (module 07): listeners on the Tailscale or home-network address, opened and closed as the
+// setting and the network change. Every screen hears about it (the Devices page shows the address).
+listeners.onChange(() => {
+  for (const { url } of addresses()) console.log(`Other devices can open TOT at ${url}`);
+  appEvents.publish({ type: "device", device: selfDevice() });
+});
+void listeners.start(app);
 
 // Repo brains learned before projects existed become GitHub projects (once).
 migrateRepoBrains();
@@ -73,6 +82,7 @@ async function shutdown(signal: string) {
   scheduler.stop();
   wikiKeeper.stop();
   relay.stopAll();
+  void listeners.stop();
   emailTasks.stop();
   // Running tasks show as interrupted next time (and resume by themselves, unless that's turned off).
   tasks.shutdown();

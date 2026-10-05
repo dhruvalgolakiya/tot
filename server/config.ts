@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { tailscaleAddress } from "./net.ts";
+import { isLoopbackBind } from "./net.ts";
 
 // Keys and options can live in a .env file next to package.json (see .env.example).
 // Real environment variables win over the file.
@@ -17,27 +17,35 @@ export const VERSION = "0.1.0";
 export const PORT = Number(process.env.TOT_PORT ?? 8787);
 export const IS_PROD = process.env.NODE_ENV === "production";
 
-/** Sign-in token for reaching TOT from other devices (see auth.ts). Unset = this machine only. */
+/**
+ * Legacy sign-in token (see auth.ts, access.ts). Sign-in is normally a password set in the app
+ * (Settings → Devices); this still works as a password at /login and as a Bearer token for scripts.
+ */
 export const ACCESS_TOKEN = process.env.TOT_ACCESS_TOKEN?.trim() || undefined;
 
+/** The port another machine opens: the web server's (Vite in development), not the API's. */
+export const WEB_PORT = IS_PROD ? PORT : Number(process.env.TOT_WEB_PORT ?? 5173);
+
 /**
- * Serve other devices on the local network. In dev the Vite server listens on the
- * network and the API stays on loopback behind its proxy; in production the API
- * server itself listens on the network. Requires ACCESS_TOKEN.
+ * Legacy: remote access set in .env instead of the app (Settings → Devices). TOT_LAN=1 serves the home
+ * network (and Tailscale); TOT_HOST=tailscale serves Tailscale only. Either one fixes the app's switch.
  */
 export const LAN = /^(1|true|yes|on)$/i.test(process.env.TOT_LAN?.trim() ?? "");
+export const TAILSCALE = process.env.TOT_HOST?.trim().toLowerCase() === "tailscale";
+export const ENV_REMOTE: { mode: "lan" | "tailscale"; variable: "TOT_LAN" | "TOT_HOST" } | null = TAILSCALE
+  ? { mode: "tailscale", variable: "TOT_HOST" }
+  : LAN
+    ? { mode: "lan", variable: "TOT_LAN" }
+    : null;
 
 /**
- * TOT_HOST=tailscale: serve other devices over Tailscale only (from anywhere on your tailnet, and nowhere
- * else). In dev the Vite server listens on the Tailscale address and the API stays on loopback, as with LAN.
+ * The main listener: loopback, unless TOT_HOST names an address (advanced: e.g. 0.0.0.0 behind your own
+ * firewall). Remote access otherwise adds listeners on specific addresses at runtime (listeners.ts).
+ * IPv4 only: many networks hand out public IPv6 addresses, which would put TOT on the internet.
  */
-export const TAILSCALE = process.env.TOT_HOST?.trim().toLowerCase() === "tailscale";
-
-// IPv4 only: many networks hand out public IPv6 addresses, and "all addresses"
-// would put TOT on the internet rather than just the LAN.
-export const HOST = TAILSCALE
-  ? (IS_PROD && tailscaleAddress()) || "127.0.0.1"
-  : process.env.TOT_HOST?.trim() || (LAN && IS_PROD ? "0.0.0.0" : "127.0.0.1");
+export const HOST = (!TAILSCALE && process.env.TOT_HOST?.trim()) || "127.0.0.1";
+/** TOT_HOST put the main listener itself on the network. */
+export const RAW_HOST_EXPOSED = !isLoopbackBind(HOST);
 
 /** Everything TOT persists lives here: the SQLite db, secrets, local computer workspaces. */
 export const DATA_DIR = process.env.TOT_DATA_DIR ?? join(homedir(), ".tot");
@@ -77,7 +85,8 @@ export const MCP_TOKEN = randomBytes(24).toString("hex");
 
 /**
  * `mailPassword:<personaId>` is a persona's mailbox (app) password; `personaGitHubToken:<personaId>` its GitHub token;
- * `deviceToken:<deviceId>` the token for calling a paired device (module 07).
+ * `deviceToken:<deviceId>` the token for calling a paired device (module 07); `signInPassword` the scrypt hash
+ * of the password other devices sign in with.
  */
 type SecretName =
   | "boatApiKey"
@@ -87,7 +96,8 @@ type SecretName =
   | "slackBotToken"
   | `mailPassword:${string}`
   | `personaGitHubToken:${string}`
-  | `deviceToken:${string}`;
+  | `deviceToken:${string}`
+  | "signInPassword";
 
 // No env fallback for the GitHub token: env vars reach the harness processes TOT spawns.
 const ENV_FALLBACK: Partial<Record<SecretName, string>> = {

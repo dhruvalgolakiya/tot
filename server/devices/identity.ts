@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { hostname, networkInterfaces } from "node:os";
 import type { Device } from "../../shared/types.ts";
-import { HOST, IS_PROD, LAN, PORT, TAILSCALE } from "../config.ts";
+import { HOST, IS_PROD, PORT, RAW_HOST_EXPOSED, WEB_PORT } from "../config.ts";
 import { db, parseJson, type Row } from "../db.ts";
-import { isLoopbackBind, isTailscaleAddress } from "../net.ts";
+import { listeners } from "../listeners.ts";
+import { isTailscaleAddress } from "../net.ts";
 
 /**
  * This device: the computer running this TOT (roadmap module 07). Its id is made once and never
@@ -71,14 +72,14 @@ export function renameDevice(name: string) {
 /** TOT_PUBLIC_URL: the address to give other devices when it can't be found out (a tunnel, a custom name). */
 const publicUrl = () => process.env.TOT_PUBLIC_URL?.trim().replace(/\/+$/, "") || null;
 
-/** Whether TOT accepts other machines at all: the dev web server on the network, or the production server not on loopback. */
+/** Whether other devices can reach TOT at all: remote access is listening, TOT_HOST put it on the network, or TOT_PUBLIC_URL names it. */
 export function reachable(): boolean {
-  return Boolean(publicUrl()) || (IS_PROD ? !isLoopbackBind(HOST) : LAN || TAILSCALE);
+  return Boolean(publicUrl()) || listeners.bound().length > 0 || (IS_PROD && RAW_HOST_EXPOSED);
 }
 
 /** The port another machine opens: the web server's (Vite in development), not the API's. */
 export function webPort(): number {
-  return IS_PROD ? PORT : Number(process.env.TOT_WEB_PORT ?? 5173);
+  return WEB_PORT;
 }
 
 const isPrivate = (ip: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip);
@@ -100,15 +101,15 @@ export function addresses(): { url: string; network: "tailscale" | "lan" | null 
   const found: { url: string; network: "tailscale" | "lan" | null }[] = [];
   const pinned = publicUrl();
   if (pinned) found.push({ url: pinned, network: networkOf(pinned) });
-  if (!reachable()) return found;
-  const port = webPort();
-  // A production server bound to one address is only reachable there.
-  const bound = IS_PROD && HOST !== "0.0.0.0" ? HOST : null;
-  for (const list of Object.values(networkInterfaces())) {
-    for (const entry of list ?? []) {
-      if (entry.family !== "IPv4" || entry.internal || (bound && entry.address !== bound)) continue;
-      const network = isTailscaleAddress(entry.address) ? "tailscale" : isPrivate(entry.address) && !TAILSCALE ? "lan" : null;
-      if (network) found.push({ url: `http://${entry.address}:${port}`, network });
+  for (const { address, network } of listeners.bound()) found.push({ url: `http://${address}:${WEB_PORT}`, network });
+  // TOT_HOST put the server itself on the network (advanced): one address, or every interface for 0.0.0.0.
+  if (IS_PROD && RAW_HOST_EXPOSED) {
+    for (const list of Object.values(networkInterfaces())) {
+      for (const entry of list ?? []) {
+        if (entry.family !== "IPv4" || entry.internal || (HOST !== "0.0.0.0" && entry.address !== HOST)) continue;
+        const network = isTailscaleAddress(entry.address) ? "tailscale" : isPrivate(entry.address) ? "lan" : null;
+        if (network) found.push({ url: `http://${entry.address}:${PORT}`, network });
+      }
     }
   }
   return found.sort((a, b) => Number(b.network === "tailscale") - Number(a.network === "tailscale") || Number(b.url === pinned) - Number(a.url === pinned));

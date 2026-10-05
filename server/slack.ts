@@ -6,12 +6,12 @@ import { answerApproval } from "./agent/approvals.ts";
 import { HttpError, sendMessage } from "./agent/orchestrator.ts";
 import { runRegistry } from "./agent/runs.ts";
 import { appEvents } from "./app-events.ts";
-import { IS_PROD, LAN, PORT, getSecret, setSecret } from "./config.ts";
+import { WEB_PORT, getSecret, setSecret } from "./config.ts";
+import { addresses } from "./devices/identity.ts";
 import { agents } from "./data/agents.ts";
 import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { messageText } from "./data/messages.ts";
 import { db, parseJson, type Row } from "./db.ts";
-import { lanUrls } from "./net.ts";
 import { intake } from "./projects/intake.ts";
 import { isTask } from "./tasks/store.ts";
 import { tasks } from "./tasks/tasks.ts";
@@ -158,10 +158,9 @@ function changed(): void {
 
 const allowed = (userId: string) => readStored().allowedUsers.some((person) => person.id === userId);
 
-/** Where TOT's web app is reachable, for "open in TOT" links (the Wi-Fi address when shared on the LAN). */
+/** Where TOT's web app is reachable, for "open in TOT" links: the remote-access address when it's on (module 07). */
 function webUrl(path: string): string {
-  const port = IS_PROD ? PORT : 5173;
-  return `${(LAN && lanUrls(port)[0]) || `http://localhost:${port}`}${path}`;
+  return `${addresses()[0]?.url ?? `http://localhost:${WEB_PORT}`}${path}`;
 }
 
 /** A short "TOT ↗" link to a chat in TOT. */

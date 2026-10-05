@@ -2,8 +2,8 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
-import { tailscaleAddress } from "./server/net.ts";
-import { SESSION_COOKIE, readCookie, tokenProblem } from "./server/session.ts";
+import { isThisMachine, isTrustedLocalHost } from "./server/net.ts";
+import { SESSION_COOKIE, readCookie } from "./server/session.ts";
 
 // The same .env the server reads (real environment variables win).
 try {
@@ -13,22 +13,18 @@ try {
 }
 
 const apiPort = Number(process.env.TOT_PORT ?? 8787);
-const accessToken = process.env.TOT_ACCESS_TOKEN?.trim() || undefined;
-const lan = /^(1|true|yes|on)$/i.test(process.env.TOT_LAN?.trim() ?? "");
-// TOT_HOST=tailscale: listen on the Tailscale address only (module 07).
-const tailscale = process.env.TOT_HOST?.trim().toLowerCase() === "tailscale";
+/** Must match the server's WEB_PORT: remote access, paired devices and the agents' sandbox all assume it. */
+const webPort = Number(process.env.TOT_WEB_PORT ?? 5173);
 
-if ((lan || tailscale) && !accessToken) {
-  throw new Error("TOT_LAN / TOT_HOST is on but TOT_ACCESS_TOKEN is empty. Set one in .env first (e.g. `openssl rand -hex 16`).");
-}
-const weakToken = accessToken && tokenProblem(accessToken);
-if (weakToken) throw new Error(weakToken);
-
-// With sign-in on, TOT may also be reached through an ngrok tunnel (`ngrok http 5173`)
-// or hosts listed in TOT_ALLOWED_HOSTS; Vite refuses unknown Host headers otherwise.
-const tunnelHosts = accessToken
-  ? [".ngrok-free.app", ".ngrok-free.dev", ".ngrok.app", ".ngrok.dev", ...(process.env.TOT_ALLOWED_HOSTS?.split(",").map((h) => h.trim()).filter(Boolean) ?? [])]
-  : [];
+// Tunnels pointed straight at the dev server (`ngrok http 5173`) and hosts in TOT_ALLOWED_HOSTS. Vite refuses
+// unknown Host headers otherwise; their visitors still sign in (requireSignIn below).
+const tunnelHosts = [
+  ".ngrok-free.app",
+  ".ngrok-free.dev",
+  ".ngrok.app",
+  ".ngrok.dev",
+  ...(process.env.TOT_ALLOWED_HOSTS?.split(",").map((h) => h.trim()).filter(Boolean) ?? []),
+];
 
 /** Recently confirmed sign-in cookies, so page loads don't each ask the API. */
 const confirmed = new Map<string, number>();
@@ -52,10 +48,10 @@ async function signedIn(cookie: string | undefined): Promise<boolean> {
 }
 
 /**
- * With an access token set, the dev server requires sign-in as well (the API checks
- * it too), so nothing Vite serves reaches a visitor who hasn't signed in. The icon,
- * the web app manifest, /.well-known/tot and the pairing page are open (browsers fetch
- * the manifest without cookies; another device checks /.well-known/tot before pairing).
+ * The dev server only listens on this computer (localhost), and other devices reach the app through TOT's
+ * own remote-access listeners (server/dev-web.ts). Anything else reaching Vite (a tunnel pointed straight
+ * at it) must have signed in, so nothing Vite serves reaches a visitor who hasn't. This computer itself
+ * never signs in. The icon, the web app manifest, /.well-known/tot and the pairing page are open.
  */
 function requireSignIn(): Plugin {
   const open = /^\/(api\/|login(\?|$)|logout(\?|$)|pair(\?|$)|tot\.svg|manifest\.webmanifest|icons\/|\.well-known\/tot)/;
@@ -64,7 +60,8 @@ function requireSignIn(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const url = req.url ?? "/";
-        if (open.test(url) || (await signedIn(readCookie(req.headers.cookie, SESSION_COOKIE)))) return next();
+        const local = isThisMachine(req.socket.remoteAddress) && !req.headers["x-forwarded-for"] && isTrustedLocalHost(req.headers.host ?? "");
+        if (local || open.test(url) || (await signedIn(readCookie(req.headers.cookie, SESSION_COOKIE)))) return next();
         const pageLoad = req.headers["sec-fetch-dest"] === "document" || req.headers.accept?.includes("text/html");
         if (req.method === "GET" && pageLoad) {
           res.writeHead(302, { Location: `/login?next=${encodeURIComponent(url)}` }).end();
@@ -81,17 +78,15 @@ function requireSignIn(): Plugin {
 const api = { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false, xfwd: true };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), ...(accessToken ? [requireSignIn()] : [])],
+  plugins: [react(), tailwindcss(), requireSignIn()],
   resolve: {
     alias: { "@shared": fileURLToPath(new URL("./shared", import.meta.url)) },
   },
   server: {
-    port: 5173,
-    // IPv4 only: many networks hand out public IPv6 addresses, and "all addresses"
-    // would put TOT on the internet rather than just the LAN.
-    host: tailscale ? (tailscaleAddress() ?? "127.0.0.1") : lan ? "0.0.0.0" : undefined,
-    // Bonjour names (e.g. my-mac.local) and tunnels; IP addresses are always allowed.
-    allowedHosts: [...(lan ? [".local"] : []), ...tunnelHosts],
+    port: webPort,
+    strictPort: true,
+    // Localhost only: other devices come through TOT's remote access (Settings → Devices).
+    allowedHosts: tunnelHosts,
     // The API compares Origin with the Host header to block cross-site requests,
     // so the proxy passes the browser's Host through unchanged.
     proxy: {

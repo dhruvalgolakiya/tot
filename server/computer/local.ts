@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { DATA_DIR, EXECUTOR_PORT, IS_PROD, PORT, paths } from "../config.ts";
+import { DATA_DIR, EXECUTOR_PORT, PORT, WEB_PORT, paths } from "../config.ts";
 import { githubAccessFor } from "../persona-github.ts";
 import { verifyGrant } from "../projects/folders.ts";
 import type { ComputerBackend, ExecResult, FolderGrant } from "./types.ts";
@@ -34,8 +34,11 @@ const workspaceOf = (externalId: string) => join(paths.computers, externalId);
 
 const sbplString = (value: string) => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 
-/** TOT's own server, Executor (apps), and in development the web server in front of TOT. */
-const TOT_PORTS = [...new Set([PORT, EXECUTOR_PORT, ...(IS_PROD ? [] : [5173])])];
+/**
+ * TOT's own server, Executor (apps), and in development the web server in front of TOT. Remote access
+ * (listeners.ts) listens on the web port too, on this computer's own addresses: blocked on any address.
+ */
+const TOT_PORTS = [...new Set([PORT, EXECUTOR_PORT, WEB_PORT])];
 
 /**
  * What a folder grant adds to the profile. Reading: the whole folder. Writing, for a task only: its

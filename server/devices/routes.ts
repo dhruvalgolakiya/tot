@@ -1,11 +1,23 @@
 import { Hono, type Context } from "hono";
-import type { ConnectDeviceRequest, DevicesStatus, RenameDeviceRequest, UpdateDeviceRequest } from "../../shared/types.ts";
+import type {
+  ConnectDeviceRequest,
+  DevicesStatus,
+  RemoteAccess,
+  RenameDeviceRequest,
+  SetPasswordRequest,
+  SignInLinkRequest,
+  UpdateDeviceRequest,
+  UpdateRemoteAccessRequest,
+} from "../../shared/types.ts";
+import { AccessError, checkGuess, effectiveMode, newSignInCode, passwordSet, setBy, setMode, setPassword, signInReady } from "../access.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
-import { ACCESS_TOKEN, callerOf, currentSessionId } from "../auth.ts";
-import { deviceId, deviceName, renameDevice, selfDevice } from "./identity.ts";
+import { ACCESS_TOKEN, callerOf, currentSessionId, onThisMachine } from "../auth.ts";
+import { listeners } from "../listeners.ts";
+import { tailscaleAddress } from "../net.ts";
+import { addresses, deviceId, deviceName, reachable, renameDevice, selfDevice } from "./identity.ts";
 import { deviceInfo } from "./info.ts";
-import { acceptPairing, changeAddress, connect, forget, newPairingLink, PairingError, unpair } from "./pairing.ts";
+import { acceptPairing, cancelPairingLink, changeAddress, connect, forget, newPairingLink, PairingError, unpair } from "./pairing.ts";
 import { proxy } from "./proxy.ts";
 import { relay } from "./relay.ts";
 import { endOtherSessions, endSession, listSessions } from "./sessions.ts";
@@ -13,13 +25,37 @@ import { endOtherSessions, endSession, listSessions } from "./sessions.ts";
 /** This device, the devices paired with it, and the browsers signed in to it (roadmap module 07). Mounted under /api. */
 export const deviceRoutes = new Hono();
 
+function accessStatus(c: Context): RemoteAccess {
+  return {
+    mode: effectiveMode(),
+    setBy: setBy(),
+    passwordSet: passwordSet(),
+    envToken: Boolean(ACCESS_TOKEN),
+    onThisMachine: onThisMachine(c),
+    tailscaleAddress: tailscaleAddress(),
+    addresses: addresses(),
+    problem: listeners.problem(),
+  };
+}
+
 function status(c: Context): DevicesStatus {
   return {
     self: selfDevice(),
     devices: relay.devices(),
-    signIn: Boolean(ACCESS_TOKEN),
-    sessions: ACCESS_TOKEN ? listSessions(currentSessionId(c)) : [],
+    signIn: signInReady(),
+    sessions: signInReady() ? listSessions(currentSessionId(c)) : [],
+    access: accessStatus(c),
   };
+}
+
+/** AccessError → the same status and message over HTTP. */
+async function guarded<T>(run: () => Promise<T> | T): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (err instanceof AccessError) throw new PairingError(err.message, err.status);
+    throw err;
+  }
 }
 
 async function json<T>(c: Context): Promise<T> {
@@ -44,6 +80,50 @@ deviceRoutes.patch("/devices/self", async (c) => {
 });
 
 deviceRoutes.post("/devices/pairing-link", (c) => c.json(newPairingLink()));
+
+// ---------------------------------------------------------------------------
+// Remote access: the switch, the password, and sign-in links for phones
+// ---------------------------------------------------------------------------
+
+deviceRoutes.patch("/access", async (c) => {
+  const input = await json<UpdateRemoteAccessRequest>(c);
+  if (input.mode !== "off" && input.mode !== "tailscale" && input.mode !== "lan") throw new HttpError(400, 'Expected { mode: "off" | "tailscale" | "lan" }.');
+  await guarded(() => setMode(input.mode));
+  if (input.mode === "off") cancelPairingLink();
+  // Listeners follow by themselves (listeners.ts); turning on, wait for them so the answer has the address.
+  if (input.mode !== "off") await listeners.reconcile();
+  return c.json(status(c));
+});
+
+deviceRoutes.post("/access/password", async (c) => {
+  const input = await json<SetPasswordRequest>(c);
+  if (typeof input.password !== "string") throw new HttpError(400, "Expected { password }.");
+  // This computer may set a new one without the old (that's how a forgotten password is reset); anyone else needs it.
+  if (passwordSet() && !onThisMachine(c)) {
+    const guess = await checkGuess(input.current);
+    // 403, not 401: the app takes a 401 to mean its own sign-in ended.
+    if (guess === "locked") throw new PairingError("Too many wrong tries. Wait a minute.", 429);
+    if (guess === "wrong") throw new PairingError("Your current password didn't match.", 403);
+  }
+  await guarded(() => setPassword(input.password));
+  endOtherSessions(currentSessionId(c));
+  await listeners.reconcile();
+  return c.json(status(c));
+});
+
+deviceRoutes.post("/access/sign-in-link", async (c) => {
+  const input = (await c.req.json().catch(() => ({}))) as SignInLinkRequest;
+  const offered = addresses();
+  if (!reachable() || !offered.length) throw new PairingError("Turn on remote access first, so your phone can reach this computer.");
+  const address = offered.find((a) => a.url === input.address)?.url ?? offered[0].url;
+  const { code, expiresAt } = newSignInCode();
+  return c.json({ url: `${address}/login#code=${code}`, expiresAt });
+});
+
+deviceRoutes.post("/access/check", async (c) => {
+  await listeners.reconcile();
+  return c.json(status(c));
+});
 
 deviceRoutes.post("/devices/connect", async (c) => {
   const input = await json<ConnectDeviceRequest>(c);

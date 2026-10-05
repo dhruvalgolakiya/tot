@@ -48,22 +48,26 @@ npm run site:build    # static files in site/dist, ready for any host
 
 ## Use TOT from your phone
 
-TOT only serves this machine until you give it an access token.
+TOT only serves this computer until you turn on remote access, and this computer never asks you to sign in.
 
-**On your Wi-Fi** (phone, tablet, other computers):
+1. Open **Settings → Devices → Set up**.
+2. Choose a password. Other devices sign in with it; you can reset it from this computer if you forget it.
+3. Pick how other devices reach this one: **Anywhere, with Tailscale** (recommended: install [Tailscale](https://tailscale.com) on this computer and your phone, signed in to the same account) or **Only on this Wi‑Fi**. If macOS asks whether to accept incoming connections, choose Allow.
+4. Scan the QR code with your phone's camera. It opens TOT signed in, no password needed.
+5. To keep TOT as an app, choose **Add to Home Screen** (Safari's Share menu, or Chrome's ⋮ menu). It opens full screen with the TOT icon.
 
-1. In `.env`, set `TOT_ACCESS_TOKEN` (e.g. `openssl rand -hex 16`) and `TOT_LAN=1`.
-2. Restart `npm run dev`. The startup log prints your network URLs, e.g. `http://192.168.1.21:5173` and `http://<your-mac>.local:5173`.
-3. Open one on your phone and sign in with the token (dashes and capitals don't matter). The session lasts 30 days.
-4. To keep TOT as an app, choose **Add to Home Screen** (Safari's Share menu, or Chrome's ⋮ menu). It opens full screen with the TOT icon.
+**Settings → Devices** shows the address, a switch to turn remote access off, and every phone and browser signed in. Sign any one out there and it's out at once; changing the password signs out all of them.
 
-**Settings → Devices** shows this computer's address, and every browser and phone signed in to it. Sign any one out there, and it's out at once. Changing the token signs out all of them.
+How it's kept safe:
 
-In dev, only the web app listens on the network; the API stays private behind it. With `npm run build && npm start`, the server itself listens on your network (port 8787). TOT binds IPv4 only — networks often hand out public IPv6 addresses, which would otherwise put it on the internet. Voice input needs HTTPS, so the mic button hides over plain `http://`.
+- Other devices need a session (from the password or a phone's one-time code), and wrong guesses are rate-limited.
+- Cross-site requests are blocked, and the agents' tool endpoint answers only this computer.
+- TOT listens only on the addresses you chose (the Tailscale or home-network address, IPv4), never on all of them, and stops the moment you turn it off. In development, the Vite dev server stays on this computer; other devices get the app through TOT.
+- Voice input needs HTTPS, so the mic button hides over plain `http://`.
 
-**From anywhere:** keep the token, run `npm run build && npm start`, and expose port 8787 over HTTPS with a tunnel, e.g. `cloudflared tunnel --url http://localhost:8787`.
+**From anywhere without Tailscale:** run `npm run build && npm start` and expose port 8787 over HTTPS with a tunnel, e.g. `cloudflared tunnel --url http://localhost:8787`, then set `TOT_PUBLIC_URL` to the tunnel's address. Visitors through a tunnel always sign in.
 
-With a token set, every page and API call requires sign-in (a cookie, or `Authorization: Bearer <token>` for scripts), cross-site requests are blocked, wrong-token guesses are rate-limited, and the agents' tool endpoint answers only this machine. TOT refuses to start on the network without a token.
+**Older setups:** `TOT_ACCESS_TOKEN`, `TOT_LAN=1` and `TOT_HOST=tailscale` in `.env` still work. The token is accepted as a password and as `Authorization: Bearer <token>` for scripts, and the other two fix the remote-access setting (the Devices page says so). Remove them to manage everything in the app.
 
 ## Install TOT on another Mac, and pair them
 
@@ -71,8 +75,8 @@ Each computer runs its own TOT, with its own agents, chats and logins. Pair two 
 
 1. Install Node and log in to Claude and/or Codex on that Mac, as in [Quick start](#quick-start).
 2. `git clone` this repo there, then `npm install`.
-3. Make its own `.env` with a fresh `TOT_ACCESS_TOKEN` (`openssl rand -hex 16`), plus `TOT_HOST=tailscale` (or `TOT_LAN=1` for your Wi-Fi only). Don't copy this Mac's `.env`: tokens and keys belong to one computer.
-4. `npm run dev` on both.
+3. `npm run dev` there. Don't copy this Mac's `.env`: tokens and keys belong to one computer.
+4. Turn on remote access on both computers (**Settings → Devices → Set up**: a password each, then Tailscale).
 5. On one, open **Settings → Devices → Pair a device** and copy the link. On the other, open the same dialog and paste it. One paste pairs them both ways.
 
 [Tailscale](https://tailscale.com) on both is the way to go: it works from anywhere, not just your Wi-Fi, and it's encrypted. Plain Wi-Fi works too, at home only. If a computer has a name or tunnel of its own, set `TOT_PUBLIC_URL` to it.
@@ -116,7 +120,7 @@ server/
 src/                     React app (sidebar, chat, model picker, computer panel, memory, settings)
 ```
 
-Data lives in `~/.tot` (override with `TOT_DATA_DIR`). All settings can go in `.env` — see `.env.example`: `BOAT_API_KEY`, `ANTHROPIC_API_KEY` (only for Claude API-key mode), `TOT_PORT` (8787), `TOT_HOST` (127.0.0.1), `TOT_CLAUDE_CONFIG_DIR`, `TOT_CODEX_PATH`.
+Data lives in `~/.tot` (override with `TOT_DATA_DIR`). All settings can go in `.env` — see `.env.example`: `BOAT_API_KEY`, `ANTHROPIC_API_KEY` (only for Claude API-key mode), `TOT_PORT` (8787), `TOT_WEB_PORT` (5173, the dev web server), `TOT_CLAUDE_CONFIG_DIR`, `TOT_CODEX_PATH`.
 
 ## Subscriptions, and "everyone can use it"
 

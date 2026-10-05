@@ -90,7 +90,7 @@ Agents don't see or call agents on other devices (that's later, in M5).
 - **The home LAN** (`http://192.168.x.x:5173`) works at home only, and isn't encrypted. The Devices page says so.
 - We don't build a relay, accounts or a cloud service.
 
-To be pairable, a device must accept connections from other machines. Today that's `TOT_LAN=1` plus `TOT_ACCESS_TOKEN`. M2 adds `TOT_HOST=tailscale`, which listens on the Tailscale address only.
+To be pairable, a device must accept connections from other machines: **remote access**, turned on in Settings → Devices (a password, then Tailscale or this Wi‑Fi). Pairing needs it set up on both computers. This computer never signs in; other devices do, with the password or a phone's one-time QR code. Legacy `TOT_LAN=1` / `TOT_HOST=tailscale` / `TOT_ACCESS_TOKEN` in `.env` still work. (Built after M4: `server/access.ts`, `server/listeners.ts`, `server/dev-web.ts`, `server/pages.ts`, `src/components/settings/RemoteAccess.tsx`, `server/access.test.ts`.)
 
 ## Today
 

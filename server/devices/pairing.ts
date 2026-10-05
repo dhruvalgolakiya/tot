@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { signInReady } from "../access.ts";
 import { appEvents } from "../app-events.ts";
 import { addresses, deviceId, deviceName, reachable } from "./identity.ts";
 import { newDeviceToken, peers } from "./peers.ts";
@@ -26,7 +27,7 @@ const CALL_TIMEOUT_MS = 5000;
 export class PairingError extends Error {
   constructor(
     message: string,
-    readonly status: 400 | 403 | 404 | 429 | 502 = 400,
+    readonly status: 400 | 403 | 404 | 409 | 429 | 502 = 400,
   ) {
     super(message);
   }
@@ -36,16 +37,27 @@ let liveCode: { code: string; expiresAt: number } | null = null;
 
 const normalizeCode = (code: string) => code.toUpperCase().replace(/[^0-9A-Z]/g, "");
 
+/** Both computers need sign-in set up before they pair: each is then reached by the other with its own token. */
+function requireSignIn() {
+  if (!signInReady()) throw new PairingError("Set up remote access on this computer first: Settings → Devices → Set up. The other computer needs it too.");
+}
+
 /** A new link replaces the previous one. */
 export function newPairingLink(): { link: string; expiresAt: number } {
+  requireSignIn();
   const address = addresses()[0]?.url;
   if (!reachable() || !address) {
-    throw new PairingError("Other computers can't reach this device yet. Paste the other device's link here instead, or make this one reachable (see below).");
+    throw new PairingError("Turn on remote access first, so the other computer can reach this one. Or paste the other computer's link here instead.");
   }
   const code = Array.from({ length: CODE_LENGTH }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
   liveCode = { code, expiresAt: Date.now() + CODE_TTL_MS };
   const shown = code.match(/.{4}/g)!.join("-");
   return { link: `${address}/pair#${shown}`, expiresAt: liveCode.expiresAt };
+}
+
+/** Remote access was turned off: the link stops working. */
+export function cancelPairingLink() {
+  liveCode = null;
 }
 
 // Wrong codes are counted globally, like wrong sign-in tokens.
@@ -108,6 +120,7 @@ const cleanName = (name: string) => name.replace(/\s+/g, " ").trim().slice(0, 40
 export async function acceptPairing(input: Partial<PairRequest> | null): Promise<PairResponse> {
   if (lockedOut()) throw new PairingError("Too many wrong codes. Wait a minute and try again.", 429);
   if (input?.protocol !== PROTOCOL) throw new PairingError("These two devices run different versions of TOT. Update both, then pair again.");
+  if (!signInReady()) throw new PairingError(`${deviceName()} hasn't set up remote access yet.`, 403);
   const live = liveCode && liveCode.expiresAt > Date.now() ? liveCode : null;
   if (!live || typeof input.code !== "string" || normalizeCode(input.code) !== live.code) {
     failures.count++;
@@ -137,6 +150,7 @@ export async function acceptPairing(input: Partial<PairRequest> | null): Promise
 
 /** MacBook's side: the user pasted the Mac mini's link. */
 export async function connect(link: string): Promise<{ deviceId: string; canReachYou: boolean }> {
+  requireSignIn();
   const trimmed = link.trim();
   const hashAt = trimmed.indexOf("#");
   if (!isHttpUrl(trimmed) || hashAt < 0) throw new PairingError("Paste the whole link from the other device, e.g. http://100.101.4.2:5173/pair#K7QM-4RXP-2HWD.");

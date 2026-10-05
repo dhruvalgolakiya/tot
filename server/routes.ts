@@ -33,13 +33,14 @@ import { HttpError, sendMessage } from "./agent/orchestrator.ts";
 import { appEvents } from "./app-events.ts";
 import { apps, ExecutorError } from "./apps.ts";
 import { appsCatalog, AppsError } from "./apps-catalog.ts";
-import { ACCESS_TOKEN, callerKey, callerOf } from "./auth.ts";
+import { signInReady } from "./access.ts";
+import { callerKey, callerOf } from "./auth.ts";
 import { deviceRoutes } from "./devices/routes.ts";
 import { PairingError } from "./devices/pairing.ts";
 import { relay } from "./devices/relay.ts";
 import { onSignOut } from "./devices/sessions.ts";
 import { github, GitHubError } from "./github.ts";
-import { clientAddress, hostnameOf, isLoopbackName, isThisMachine } from "./net.ts";
+import { clientAddress, isThisMachine, isTrustedLocalHost } from "./net.ts";
 import { slack } from "./slack.ts";
 import { modelOptions, providerStatuses, providers } from "./agent/providers/index.ts";
 import { runRegistry } from "./agent/runs.ts";
@@ -80,11 +81,11 @@ export const api = new Hono();
 // Local-only guard. The API can run agents on the user's subscriptions, so a
 // random website must not be able to drive it: pin the Host header (defeats DNS
 // rebinding) and reject cross-site Origins (defeats CSRF, incl. no-cors POSTs).
-// With TOT_ACCESS_TOKEN set (remote access), sign-in replaces the Host pin.
+// Once sign-in is set up (remote access), signing in replaces the Host pin for other devices; this
+// computer's own requests still need a loopback Host (auth.ts).
 // ---------------------------------------------------------------------------
 
 const extra = (name: string) => (process.env[name] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-const EXTRA_HOSTS = new Set(extra("TOT_ALLOWED_HOSTS").map((h) => h.toLowerCase()));
 const EXTRA_ORIGINS = new Set(extra("TOT_ALLOWED_ORIGINS"));
 
 const sameOrigin = (origin: string, host: string) => {
@@ -97,9 +98,9 @@ const sameOrigin = (origin: string, host: string) => {
 
 api.use("*", async (c, next) => {
   const host = c.req.header("host") ?? "";
-  // Loopback names on any port (the Vite dev proxy passes the browser's Host through). With an
-  // access token set, sign-in protects the API, so any hostname (LAN IP, tunnel) may reach it.
-  if (!ACCESS_TOKEN && !isLoopbackName(hostnameOf(host)) && !EXTRA_HOSTS.has(host.toLowerCase())) {
+  // Loopback names on any port (the Vite dev proxy passes the browser's Host through). Once sign-in is
+  // set up, it protects the API, so any hostname (LAN IP, Tailscale, a tunnel) may reach it.
+  if (!signInReady() && !isTrustedLocalHost(host)) {
     return c.json({ error: "Forbidden host." }, 403);
   }
   const origin = c.req.header("origin");
@@ -109,7 +110,7 @@ api.use("*", async (c, next) => {
 
 // A paired device (module 07) works with this device's agents, chats and projects, but can't manage devices or
 // sign-ins, reach a third device through this one, or change this device's logins and settings.
-const DEVICE_NEVER = /^\/api\/(devices|sessions|d)(\/|$)/;
+const DEVICE_NEVER = /^\/api\/(devices|sessions|d|access)(\/|$)/;
 const DEVICE_READ_ONLY = /^\/api\/(settings|github|slack|apps|personas|plugins)(\/|$)/;
 api.use("*", async (c, next) => {
   if (callerOf(c).kind !== "device" || c.req.path === "/api/devices/unpaired") return next();
