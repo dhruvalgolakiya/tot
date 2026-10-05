@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
-import { SESSION_COOKIE, readCookie, safeEqual, sessionValue, tokenProblem } from "./server/session.ts";
+import { SESSION_COOKIE, readCookie, tokenProblem } from "./server/session.ts";
 
 // The same .env the server reads (real environment variables win).
 try {
@@ -27,20 +27,41 @@ const tunnelHosts = accessToken
   ? [".ngrok-free.app", ".ngrok-free.dev", ".ngrok.app", ".ngrok.dev", ...(process.env.TOT_ALLOWED_HOSTS?.split(",").map((h) => h.trim()).filter(Boolean) ?? [])]
   : [];
 
+/** Recently confirmed sign-in cookies, so page loads don't each ask the API. */
+const confirmed = new Map<string, number>();
+const CONFIRMED_FOR_MS = 5000;
+
+/** Whether the API knows this browser's sign-in (sessions live in its database; module 07). */
+async function signedIn(cookie: string | undefined): Promise<boolean> {
+  if (!cookie) return false;
+  if ((confirmed.get(cookie) ?? 0) > Date.now()) return true;
+  try {
+    const res = await fetch(`http://127.0.0.1:${apiPort}/api/sessions/current`, {
+      headers: { cookie: `${SESSION_COOKIE}=${cookie}` },
+    });
+    const ok = res.ok && Boolean(((await res.json()) as { id: string | null }).id);
+    if (ok) confirmed.set(cookie, Date.now() + CONFIRMED_FOR_MS);
+    else confirmed.delete(cookie);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * With an access token set, the dev server requires sign-in as well (the API checks
- * it too), so nothing Vite serves reaches a visitor who hasn't signed in.
+ * it too), so nothing Vite serves reaches a visitor who hasn't signed in. The icon,
+ * the web app manifest and /.well-known/tot are open (browsers fetch the manifest
+ * without cookies).
  */
-function requireSignIn(token: string): Plugin {
-  const session = sessionValue(token);
-  const open = /^\/(api\/|login(\?|$)|logout(\?|$)|tot\.svg)/;
+function requireSignIn(): Plugin {
+  const open = /^\/(api\/|login(\?|$)|logout(\?|$)|tot\.svg|manifest\.webmanifest|icons\/|\.well-known\/tot)/;
   return {
     name: "tot-require-sign-in",
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
+      server.middlewares.use(async (req, res, next) => {
         const url = req.url ?? "/";
-        const cookie = readCookie(req.headers.cookie, SESSION_COOKIE);
-        if (open.test(url) || (cookie && safeEqual(cookie, session))) return next();
+        if (open.test(url) || (await signedIn(readCookie(req.headers.cookie, SESSION_COOKIE)))) return next();
         const pageLoad = req.headers["sec-fetch-dest"] === "document" || req.headers.accept?.includes("text/html");
         if (req.method === "GET" && pageLoad) {
           res.writeHead(302, { Location: `/login?next=${encodeURIComponent(url)}` }).end();
@@ -57,7 +78,7 @@ function requireSignIn(token: string): Plugin {
 const api = { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false, xfwd: true };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), ...(accessToken ? [requireSignIn(accessToken)] : [])],
+  plugins: [react(), tailwindcss(), ...(accessToken ? [requireSignIn()] : [])],
   resolve: {
     alias: { "@shared": fileURLToPath(new URL("./shared", import.meta.url)) },
   },
@@ -73,6 +94,7 @@ export default defineConfig({
     proxy: {
       "/api": api,
       "^/(login|logout)(\\?|$)": api,
+      "/.well-known/tot": api,
     },
   },
   build: { outDir: "dist" },

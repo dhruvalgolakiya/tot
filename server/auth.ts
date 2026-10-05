@@ -1,20 +1,23 @@
+import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { ACCESS_TOKEN } from "./config.ts";
-import { SESSION_COOKIE, safeEqual, sessionValue, tokenMatches } from "./session.ts";
+import { checkSession, createSession, describeBrowser, endSession } from "./devices/sessions.ts";
+import { clientAddress, isThisMachine } from "./net.ts";
+import { SESSION_COOKIE, tokenMatches } from "./session.ts";
 
 /**
  * Sign-in for reaching TOT beyond this machine. With TOT_ACCESS_TOKEN set, every
  * page and API call needs that token — as a login cookie (browsers, via /login)
- * or an `Authorization: Bearer` header (scripts). Without it, TOT only serves
- * this machine (see the host/origin guard in routes.ts).
+ * or an `Authorization: Bearer` header (scripts). Each browser that signs in gets
+ * its own session (devices/sessions.ts), so it can be signed out on its own.
+ * Without a token, TOT only serves this machine (see the host/origin guard in routes.ts).
  */
 
 export { ACCESS_TOKEN };
 
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
-const SESSION = ACCESS_TOKEN ? sessionValue(ACCESS_TOKEN) : "";
 
 // Wrong guesses are counted globally: per-client keys would come from spoofable headers.
 // With a 12+ character token this makes guessing hopeless while a real user can retry.
@@ -39,11 +42,21 @@ function check(c: Context): AuthResult {
     recordFailure();
     return "wrong-token";
   }
-  const cookie = getCookie(c, SESSION_COOKIE);
-  return cookie && safeEqual(cookie, SESSION) ? "ok" : "missing";
+  return checkSession(getCookie(c, SESSION_COOKIE)) ? "ok" : "missing";
 }
 
 export const isAuthenticated = (c: Context) => check(c) === "ok";
+
+/** The signed-in browser asking, or null (an access-token caller, or sign-in is off). */
+export const currentSessionId = (c: Context): string | null => (ACCESS_TOKEN ? checkSession(getCookie(c, SESSION_COOKIE)) : null);
+
+function onThisMachine(c: Context): boolean {
+  try {
+    return isThisMachine(clientAddress(getConnInfo(c).remote.address, c.req.header("x-forwarded-for")));
+  } catch {
+    return false;
+  }
+}
 
 /** Guards pages and the API when an access token is set. */
 export const requireAuth: MiddlewareHandler = async (c, next) => {
@@ -148,7 +161,7 @@ authRoutes.post("/login", async (c) => {
     recordFailure();
     return c.html(loginPage("That token didn't match.", next), 401);
   }
-  setCookie(c, SESSION_COOKIE, SESSION, {
+  setCookie(c, SESSION_COOKIE, createSession(describeBrowser(c.req.header("user-agent"), onThisMachine(c))), {
     httpOnly: true,
     sameSite: "Strict",
     secure: new URL(c.req.url).protocol === "https:" || c.req.header("x-forwarded-proto") === "https",
@@ -159,6 +172,8 @@ authRoutes.post("/login", async (c) => {
 });
 
 authRoutes.post("/logout", (c) => {
+  const session = currentSessionId(c);
+  if (session) endSession(session);
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
   return c.redirect("/login", 302);
 });

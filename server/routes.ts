@@ -33,7 +33,9 @@ import { HttpError, sendMessage } from "./agent/orchestrator.ts";
 import { appEvents } from "./app-events.ts";
 import { apps, ExecutorError } from "./apps.ts";
 import { appsCatalog, AppsError } from "./apps-catalog.ts";
-import { ACCESS_TOKEN } from "./auth.ts";
+import { ACCESS_TOKEN, currentSessionId } from "./auth.ts";
+import { deviceRoutes } from "./devices/routes.ts";
+import { onSignOut } from "./devices/sessions.ts";
 import { github, GitHubError } from "./github.ts";
 import { clientAddress, hostnameOf, isLoopbackName, isThisMachine } from "./net.ts";
 import { slack } from "./slack.ts";
@@ -328,6 +330,7 @@ api.post("/conversations/:id/computer/stop", async (c) => {
 api.route("/", taskRoutes);
 api.route("/", chatRoutes);
 api.route("/", projectRoutes);
+api.route("/", deviceRoutes);
 api.route("/", orchestrationRoutes);
 
 // ---------------------------------------------------------------------------
@@ -407,7 +410,10 @@ api.get("/events", (c) =>
       writes = writes.then(() => stream.write(": ping\n\n"));
     }, HEARTBEAT_MS);
     stream.onAbort(finish);
+    // A browser that's signed out (Settings → Devices) stops getting events at once.
+    const forget = onSignOut(currentSessionId(c), finish);
     await finished;
+    forget();
     clearInterval(heartbeat);
     unsubscribe();
   }),
@@ -432,7 +438,9 @@ api.get("/runs/:runId/events", (c) => {
       writes = writes.then(() => stream.write(": ping\n\n"));
     }, HEARTBEAT_MS);
     stream.onAbort(finish);
+    const forget = onSignOut(currentSessionId(c), finish);
     await finished;
+    forget();
     clearInterval(heartbeat);
     unsubscribe();
     await writes.catch(() => {});

@@ -131,7 +131,7 @@ The code sits in the link's `#fragment`. Opening the link in a browser shows "Pa
 - `/mcp`;
 - the routes that are already this-machine-only.
 
-**Sign-in sessions (screens).** Signing in creates a row with a random token. The cookie holds that token, and the device stores only its hash. A label comes from the browser ("Safari on iPhone"), plus last-seen. Signing one out ends its requests at once and closes its open event streams.
+**Sign-in sessions (screens).** Signing in creates a row with a random secret. The cookie holds `<id>.<secret>`, and the device stores only the secret's hash. Sessions belong to the access token they were made with, so changing the token still signs everyone out. A label comes from the browser ("Safari on iPhone"), plus last-seen. Signing one out ends its requests at once and closes its open event streams.
 
 ## Data model
 
@@ -139,7 +139,7 @@ The code sits in the link's `#fragment`. Opening the link in a browser shows "Pa
 -- 07 · Devices
 CREATE TABLE IF NOT EXISTS sessions (           -- browsers and phones signed in to this device
   id           TEXT PRIMARY KEY,
-  token_hash   TEXT NOT NULL UNIQUE,
+  secret_hash  TEXT NOT NULL,                   -- the cookie is "<id>.<secret>"
   label        TEXT NOT NULL,
   created_at   INTEGER NOT NULL,
   last_seen_at INTEGER NOT NULL
@@ -188,7 +188,7 @@ All new code goes in `server/devices/`.
   - `GET /api/devices` returns self, paired devices and sign-in sessions;
   - `POST /api/devices/pairing-code`;
   - `POST /api/devices/connect`;
-  - `PATCH /api/devices/:id` (name, address);
+  - `PATCH /api/devices/self` (rename this device) and `PATCH /api/devices/:id` (name, address);
   - `DELETE /api/devices/:id`;
   - `DELETE /api/sessions/:id`;
   - `POST /api/sessions/sign-out-others`.
@@ -222,7 +222,7 @@ All new code goes in `server/devices/`.
 
 ## Milestones
 
-- [ ] **M1 · This device and who's signed in.**
+- [x] **M1 · This device and who's signed in.**
   - What to build:
     - device identity and `/.well-known/tot`;
     - real sign-in sessions (table, cookie, `check()`, revoke closes streams);
@@ -234,6 +234,7 @@ All new code goes in `server/devices/`.
     - A cookie from before M1 asks you to sign in once.
     - The device id survives a restart; renaming shows everywhere.
     - Chrome reports the app as installable.
+  - *Shipped:* `server/devices/` (`identity.ts`: the id in `settings`, the name from `scutil`, addresses with Tailscale first; `sessions.ts`: per-browser sessions, labels like "Safari on iPhone", 30-day expiry, a new access token clears them; `routes.ts`), sessions in `auth.ts` (logout ends the session), event and run streams closing on sign-out, `/.well-known/tot`, the dev server asking the API about a cookie (sessions live in the database), Settings → Devices (`DevicesSettings.tsx`: this device with its address and Rename, signed-in browsers with Sign out), the web app manifest and icons, and the README's "Install TOT on another Mac" (`server/devices.test.ts`).
 - [ ] **M2 · Pair two devices.**
   - What to build:
     - pairing links and codes, `/api/pair`, connect, the `devices` table and device tokens;

@@ -20,6 +20,7 @@ import type {
   ForkRequest,
   CreateConversationRequest,
   CreateProjectRequest,
+  DevicesStatus,
   GitHubConnectRequest,
   GitHubDevicePoll,
   GitHubDeviceStart,
@@ -279,6 +280,12 @@ export const api = {
     request<AppRule[]>("PUT", `/apps/${seg(appId)}/rules`, body),
 
   /** Slack: TOT's own bot, connected over Socket Mode. */
+  /** Devices (module 07): this device, and the browsers and phones signed in to it. */
+  getDevices: () => request<DevicesStatus>("GET", "/devices"),
+  renameDevice: (name: string) => request<DevicesStatus>("PATCH", "/devices/self", { name }),
+  signOutSession: (id: string) => request<DevicesStatus>("DELETE", `/sessions/${seg(id)}`),
+  signOutOtherSessions: () => request<DevicesStatus>("POST", "/sessions/sign-out-others", {}),
+
   getSlack: () => request<SlackStatus>("GET", "/slack"),
   setSlackTokens: (tokens: SlackTokens) => request<SlackStatus>("PUT", "/slack/tokens", tokens),
   patchSlack: (patch: SlackPatch) => request<SlackStatus>("PATCH", "/slack", patch),

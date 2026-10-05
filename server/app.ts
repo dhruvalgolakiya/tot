@@ -2,6 +2,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { ACCESS_TOKEN, authRoutes, requireAuth } from "./auth.ts";
 import { IS_PROD } from "./config.ts";
+import { wellKnownRoutes } from "./devices/routes.ts";
 import { mcpRoutes } from "./mcp/server.ts";
 import { api } from "./routes.ts";
 
@@ -11,7 +12,13 @@ export function createApp(): Hono {
   // Order matters: MCP has its own bearer token, and the login page must be reachable signed out.
   app.route("/mcp", mcpRoutes);
   app.route("/", authRoutes);
-  if (IS_PROD) app.get("/tot.svg", serveStatic({ path: "./dist/tot.svg" }));
+  app.route("/", wellKnownRoutes);
+  // The icon and the web app manifest load without sign-in (browsers fetch the manifest without cookies).
+  if (IS_PROD) {
+    app.get("/tot.svg", serveStatic({ path: "./dist/tot.svg" }));
+    app.get("/manifest.webmanifest", serveStatic({ path: "./dist/manifest.webmanifest" }));
+    app.get("/icons/*", serveStatic({ root: "./dist" }));
+  }
   if (ACCESS_TOKEN) app.use("*", requireAuth);
   app.route("/api", api);
 

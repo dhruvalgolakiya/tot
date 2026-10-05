@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Brain, IdCard, LayoutGrid, ListChecks, Monitor, Plug, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Brain, IdCard, LayoutGrid, ListChecks, Monitor, MonitorSmartphone, Plug, SlidersHorizontal, Sparkles } from "lucide-react";
 import type { SettingsSection } from "../../lib/router";
 import { GitHubMark } from "../ui/GitHubMark";
 import { SlackMark } from "../ui/SlackMark";
@@ -22,6 +22,13 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     description: "Your name, custom instructions, default model, and appearance.",
     icon: SlidersHorizontal,
     hasDraft: true,
+  },
+  {
+    id: "devices",
+    label: "Devices",
+    description: "This computer's name and address, and the browsers and phones signed in to it.",
+    icon: MonitorSmartphone,
+    hasDraft: false,
   },
   {
     id: "models",
