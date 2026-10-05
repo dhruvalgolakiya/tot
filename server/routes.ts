@@ -68,6 +68,9 @@ import { personaGitHub } from "./persona-github.ts";
 import { orchestrationRoutes } from "./orchestration/routes.ts";
 import { taskQueue } from "./tasks/queue.ts";
 import { taskRoutes } from "./tasks/routes.ts";
+import { landingRoutes } from "./landing/routes.ts";
+import { missionRoutes } from "./mission/routes.ts";
+import { worktreeRoutes } from "./worktrees/routes.ts";
 import { chatRoutes } from "./chats/routes.ts";
 import { projectRoutes } from "./projects/routes.ts";
 import { projects } from "./projects/projects.ts";
@@ -344,6 +347,10 @@ api.post("/conversations/:id/computer/stop", async (c) => {
 });
 
 api.route("/", taskRoutes);
+// Module 09: mission control (lanes A, B, C).
+api.route("/", landingRoutes);
+api.route("/", missionRoutes);
+api.route("/", worktreeRoutes);
 api.route("/", chatRoutes);
 api.route("/", projectRoutes);
 api.route("/", deviceRoutes);

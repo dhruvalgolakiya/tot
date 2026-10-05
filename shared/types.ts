@@ -1261,6 +1261,21 @@ export interface TaskInfo {
   handoff: HandoffPacket | null;
   /** Paused for a usage limit: when it resumes by itself. */
   resumeAt: number | null;
+  // Mission control (module 09). Optional: tasks from before 09 don't have them.
+  /** Lines changed on its branch, refreshed after every turn. */
+  stats?: TaskDiffStats | null;
+  /** The project's test gates (module 03) on its branch. */
+  checks?: TaskChecks | null;
+  /** Merged into your folder, opened as a PR, or discarded. */
+  landing?: TaskLanding | null;
+  /** What its `group` is: tasks split from one job, or the same job on several providers. */
+  groupKind?: TaskGroupKind | null;
+  /** Its worktree's setup command (npm ci, …). */
+  setup?: TaskSetup | null;
+  /** Its port block on its computer. */
+  ports?: TaskPorts | null;
+  /** Its running preview (a dev server TOT manages). */
+  preview?: TaskPreview | null;
 }
 
 export interface TaskRepo {
@@ -1276,6 +1291,118 @@ export interface TaskRepo {
   worktree: string;
   /** The branch's newest commit, recorded after every turn; null before the worktree exists. */
   headSha: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Mission control (module 09): many coding tasks on one project, landed from TOT
+// ---------------------------------------------------------------------------
+
+/** A task's branch against where it left its base: committed and uncommitted changes, untracked files counted. */
+export interface TaskDiffStats {
+  files: number;
+  added: number;
+  removed: number;
+  /** Changed paths, at most 200. */
+  paths: string[];
+  headSha: string | null;
+  at: number;
+}
+
+export type TaskChecksState = "running" | "passing" | "failing" | "none";
+
+/** Module 03's gates on the task's branch: when it finishes, and on demand. "none" = the repo has no profile yet. */
+export interface TaskChecks {
+  state: TaskChecksState;
+  /** One line per gate, e.g. "typecheck passed", "test failed: 3 of 214". */
+  lines: string[];
+  headSha: string | null;
+  at: number;
+}
+
+export type TaskLandingKind = "merged" | "pr" | "discarded";
+
+export interface TaskLanding {
+  kind: TaskLandingKind;
+  at: number;
+  /** The branch it was merged into, or the PR's base; null when discarded. */
+  target: string | null;
+  /** The merge commit (merged) or the pushed head (pr). */
+  sha: string | null;
+  pr: { number: number; url: string } | null;
+}
+
+/** How a finished task can land right now (GET /api/tasks/:id/land). */
+export interface TaskLandOptions {
+  /** Folder projects: merge into the branch checked out in your folder, done by TOT on your click. */
+  merge: { available: boolean; target: string | null; reason: string | null };
+  /** GitHub projects with GitHub writes on: push the tot/* branch and open a draft PR. */
+  pr: { available: boolean; base: string; reason: string | null };
+  /** Commits on the base since the branch left it. */
+  behind: number;
+}
+
+export interface LandTaskRequest {
+  method: "merge" | "pr";
+  /** PR only: overrides for the generated title and body. */
+  title?: string;
+  body?: string;
+}
+
+/** The worktree's setup command, run once when the worktree is created. */
+export interface TaskSetup {
+  state: "running" | "done" | "failed" | "skipped";
+  /** What ran: the project's setupCommand, or one detected from a lockfile. */
+  command: string | null;
+  at: number;
+  /** The last lines of output when it failed. */
+  error: string | null;
+}
+
+/** A block of ports on the task's computer: PORT = base, TOT_PORTS = base..base+count-1. */
+export interface TaskPorts {
+  base: number;
+  count: number;
+}
+
+/** A dev server TOT runs for the task (task_preview_start), stopped when the task lands or is discarded. */
+export interface TaskPreview {
+  url: string;
+  port: number;
+  command: string;
+  startedAt: number;
+}
+
+export type TaskGroupKind = "parallel" | "best-of";
+
+/** Two unlanded tasks on the same repo changing the same files. */
+export interface MissionOverlap {
+  taskId: string;
+  paths: string[];
+}
+
+export interface MissionTask {
+  conversation: Conversation;
+  overlaps: MissionOverlap[];
+}
+
+/** GET /api/mission: open tasks, finished ones not yet landed, and those landed in the last day. */
+export interface MissionOverview {
+  tasks: MissionTask[];
+  /** Finished, unlanded task ids in the order to land them: fewest overlaps first, then the smallest. */
+  landOrder: string[];
+}
+
+/** The same job on several providers, each in its own worktree, compared side by side. */
+export interface BestOfRequest {
+  /** The chat it's started from (its project and repo are used); or agentId + projectId from a project page. */
+  conversationId?: string;
+  agentId?: string;
+  projectId?: string | null;
+  title?: string;
+  goal: string;
+  /** One task per entry; defaults to every logged-in provider (two runs when only one is). */
+  providers?: ProviderId[];
+  requestId?: string;
 }
 
 export interface StartTaskRequest {
@@ -1660,6 +1787,10 @@ export interface Project {
   running: number;
   /** Set by the client for another device's project: the paired device it's on (module 07). */
   deviceId?: string;
+  /** Run in every new task worktree (module 09): null = detect from the lockfile, "" = nothing. */
+  setupCommand?: string | null;
+  /** Folder projects: files copied from the folder into each new worktree, e.g. ".env". */
+  copyFiles?: string[];
 }
 
 export interface CreateProjectRequest {
@@ -1685,6 +1816,9 @@ export interface UpdateProjectRequest {
   instructions?: string;
   defaultBranch?: string | null;
   intake?: Partial<ProjectIntake>;
+  /** Module 09: see Project.setupCommand and Project.copyFiles. */
+  setupCommand?: string | null;
+  copyFiles?: string[];
 }
 
 // ---------------------------------------------------------------------------

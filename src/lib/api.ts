@@ -202,6 +202,12 @@ export const api = {
   continueTaskOn: (id: string, provider: ContinueOnRequest["provider"]) =>
     request<Conversation>("POST", `/tasks/${seg(id)}/continue-on`, { provider }),
 
+  // Module 09 · lane A (land): checks, merge, draft PR, update from base, discard.
+
+  // Module 09 · lane B (mission control, spawning, best-of).
+
+  // Module 09 · lane C (worktree lifecycle: previews, cleanup).
+
   stopRun: (runId: string) => request<Ok>("POST", `/runs/${seg(runId)}/stop`, {}),
   /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */
   answerApproval: (runId: string, partId: string, answer: ApprovalAnswer) =>
