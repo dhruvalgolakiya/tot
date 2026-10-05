@@ -109,8 +109,8 @@ To be pairable, a device must accept connections from other machines. Today that
 
 **Pairing (mutual, one paste).**
 
-1. **On the Mac mini:** Settings → Devices → **Add a device**. It shows one link, such as `http://100.101.4.2:5173/pair#K7QM-4RXP-2HWD`. The link holds the address plus a one-time code (12 characters, no look-alikes). It works once, for 5 minutes.
-2. **On the MacBook:** Settings → Devices → **Connect to a device**, then paste the link.
+1. **On the Mac mini:** Settings → Devices → **Pair a device**. It shows one link, such as `http://100.101.4.2:5173/pair#K7QM-4RXP-2HWD`. The link holds the address plus a one-time code (12 characters, no look-alikes). It works once, for 5 minutes.
+2. **On the MacBook:** the same **Pair a device**, then paste the link into its field. (The dialog shows both: this device's link, and a field for the other's. Either direction works.)
 3. **The MacBook's server calls the Mac mini** with the code, its own id, name and address, and a fresh token the Mac mini can use to call it back. The Mac mini checks the code, saves the MacBook, and answers with its own id, name and a token for the MacBook.
 
 Both now hold a token for the other: two-way, in one step. Each side then checks that it can reach the other. If the Mac mini can't reach the MacBook's address, pairing still works one way. The MacBook says: "Paired. Mac mini can't reach this MacBook at 192.168.1.30, so you can use Mac mini from here, but not the other way. Turn on Tailscale to fix it."
@@ -157,39 +157,41 @@ CREATE TABLE IF NOT EXISTS devices (            -- devices paired with this one
 - **This device's identity:** `settings` key `device` = `{ id, name }`. The id is created once and never changes. The name defaults to the Mac's name, and you can rename it.
 - **Pairing codes** live in memory only, so a restart voids them.
 - **`shared/types.ts`:**
-  - `Device` = `{ id, name, address, self, online, lastSeenAt, pairedAt, canReachBack }`.
+  - `Device` = `{ id, name, address, network, self, online, canReachUs, lastSeenAt, pairedAt, problem, warnings }`. `online`: this device reaches it now; `canReachUs`: it has its own stream open to us (false = one way).
   - `SignInSession` = `{ id, label, current, createdAt, lastSeenAt }`.
-  - `Agent` and `Project` gain `deviceId` (filled in by the server), so the client always knows where a thing lives.
-  - AppEvents gain `{ type: "device"; device }` and `{ type: "remote"; deviceId; event: AppEvent }`.
+  - `Agent` and `Project` gain an optional `deviceId`, set by the client for another device's things (the server never needs it).
+  - AppEvents gain `{ type: "device"; device }`, `{ type: "device-deleted"; deviceId }` and `{ type: "remote"; deviceId; event: AppEvent }`.
 
 ## Server design
 
 All new code goes in `server/devices/`.
 
 - **`identity.ts`:**
-  - `self()` returns `{ id, name, version }`.
-  - `addresses()` returns the Tailscale address first, then LAN addresses, with the port another machine would use.
+  - `deviceId()`, `deviceName()`, `selfDevice()`.
+  - `addresses()` returns `TOT_PUBLIC_URL` if set, then the Tailscale address, then LAN addresses, with the port another machine would use.
   - `GET /.well-known/tot` is open and returns `{ id, name, protocol: 1 }`, used for reachability checks.
+- **`peers.ts`:** the `devices` table and both tokens of each pair (the hash of theirs, the secret of ours).
 - **`sessions.ts`:** create, check, list, revoke. `auth.ts`'s `check()` accepts a session cookie or a device token and records which one it was. Revoking closes that caller's open SSE streams.
 - **`pairing.ts`:**
-  - `newCode()`;
+  - `newPairingLink()`;
   - `POST /api/pair`, which is open, but only works with a live code and is rate-limited;
   - `connect(link)`, the MacBook side;
   - `unpair(id)`, which forgets the device locally and then tells the other side (best effort).
 - **`proxy.ts`:**
   - `ALL /api/d/:deviceId/*` forwards method, body and query with the device token.
   - SSE responses are streamed through, passing `Last-Event-ID` for run streams.
-  - It times out a dead device in 10 s with a clear "MacBook is offline" error.
+  - A dead device gets a clear "MacBook is offline" error (502), and a device that refuses our token a "pair them again" one: never a 401, which the app would read as its own sign-in expiring.
 - **`relay.ts`:**
   - one event stream per paired device, re-emitted locally as `remote` events;
   - a `device` event whenever one goes online or offline;
-  - reconnects with backoff up to 30 s.
+  - reconnects with backoff up to 30 s, and at once when the other device connects to us;
+  - checks each device when it connects (`info.ts`: `GET /api/device-info`) for the same Slack bot or mailbox on both.
 - **`routes.ts`:**
   - `GET /api/devices` returns self, paired devices and sign-in sessions;
-  - `POST /api/devices/pairing-code`;
+  - `POST /api/devices/pairing-link`;
   - `POST /api/devices/connect`;
-  - `PATCH /api/devices/self` (rename this device) and `PATCH /api/devices/:id` (name, address);
-  - `DELETE /api/devices/:id`;
+  - `PATCH /api/devices/self` (rename this device) and `PATCH /api/devices/:id` (a new address, or just "try again");
+  - `DELETE /api/devices/:id`, and `POST /api/devices/unpaired` (the only management call a paired device may make);
   - `DELETE /api/sessions/:id`;
   - `POST /api/sessions/sign-out-others`.
 - **`prompt.ts`:** the `# Device` line, added in `prepareTurn` only when this device has paired devices.
@@ -200,23 +202,23 @@ All new code goes in `server/devices/`.
 
 ```
  Devices
- This device   Mac mini   http://100.101.4.2:5173 (Tailscale)         [ … ]
- Paired        MacBook    online                                       [ … ]   Rename · Change address · Unpair
-               Studio     asleep · seen 3 days ago                     [ … ]
-                                        [ Connect to a device ]  [ Add a device ]
- Signed in     Chrome on this Mac       now · this browser
-               Safari on iPhone         2 h ago                        [ Sign out ]
+ This device   Mac mini   http://100.101.4.2:5173 (Tailscale)         [ … ]   Rename
+ Paired        MacBook    online                                       [ … ]   Change address · Unpair
+               Studio     offline · seen 3 days ago                    [ … ]   Try again · Change address · Unpair
+                                                                [ Pair a device ]
+ Signed in     Chrome on this Mac       this browser
+               Safari on iPhone         active 2h ago                  [ Sign out ]
 ```
 
-**Add a device:** the link, a Copy button, and "Works once, for 5 minutes."
+A paired device's name is its own (rename it on that device), so there's no Rename for it here.
 
-**Connect to a device:** one field ("Paste the link from the other device") and **Connect**. Success says "Paired with Mac mini. Its agents are in your rail."
+**Pair a device:** one dialog for both directions: this device's link with a Copy button ("Works once, for 5 minutes"), "or", and a field to paste the other device's link. Success says "Paired with Mac mini. Its agents are in your rail." It closes by itself when the other side pastes this device's link.
 
 **Elsewhere:**
 
 - the rail, hover card, chat header and **Lives on** field described above;
-- the project picker in a chat shows the projects on the chat's agent's device;
-- the Projects section groups by device only when there's more than one.
+- the Projects section, the project picker and New project all follow the active agent's device: a MacBook agent sees, files into and makes the MacBook's projects (New project lists the MacBook's GitHub repos and folders);
+- this device's settings (Slack, personas) list only this device's agents.
 
 **Phone install:** a web app manifest and icons. "Add to Home Screen" then opens TOT full screen, with the TOT icon and no browser bar.
 
@@ -235,7 +237,7 @@ All new code goes in `server/devices/`.
     - The device id survives a restart; renaming shows everywhere.
     - Chrome reports the app as installable.
   - *Shipped:* `server/devices/` (`identity.ts`: the id in `settings`, the name from `scutil`, addresses with Tailscale first; `sessions.ts`: per-browser sessions, labels like "Safari on iPhone", 30-day expiry, a new access token clears them; `routes.ts`), sessions in `auth.ts` (logout ends the session), event and run streams closing on sign-out, `/.well-known/tot`, the dev server asking the API about a cookie (sessions live in the database), Settings → Devices (`DevicesSettings.tsx`: this device with its address and Rename, signed-in browsers with Sign out), the web app manifest and icons, and the README's "Install TOT on another Mac" (`server/devices.test.ts`).
-- [ ] **M2 · Pair two devices.**
+- [x] **M2 · Pair two devices.**
   - What to build:
     - pairing links and codes, `/api/pair`, connect, the `devices` table and device tokens;
     - limits on what a paired device may do;
@@ -248,7 +250,8 @@ All new code goes in `server/devices/`.
     - A used code, or one older than 5 minutes, is refused.
     - A device token can't reach device management, `/mcp` or `/api/d/*`.
     - After unpairing, both forget each other and the old tokens get 401.
-- [ ] **M3 · Use the other device's agents.**
+  - *Shipped:* `peers.ts`, `pairing.ts` (links, mutual pairing with a reach-back check, one-way pairing when the other can't reach back, unpair on both sides, change address), `relay.ts` (online/offline, reaches-us, backoff and a 45 s quiet limit), device tokens in `auth.ts` with the limits in `routes.ts`, `TOT_HOST=tailscale` and `TOT_PUBLIC_URL`, the `/pair` page, and the Paired devices section with the Pair a device dialog (`server/devices-pair.test.ts`: two real TOTs, one in-process and one a child process).
+- [x] **M3 · Use the other device's agents.**
   - What to build:
     - the proxy (JSON, the event stream, run streams with replay) and the event relay;
     - `deviceId` on agents and projects;
@@ -259,7 +262,8 @@ All new code goes in `server/devices/`.
     - B's own window shows that chat appear and stream live, and the same works from B to A.
     - Stop B mid-turn: A shows "offline". Start B again, and A shows the chat's real state.
     - With nothing paired, the app looks and behaves exactly as before.
-- [ ] **M4 · The whole app across devices.**
+  - *Shipped:* `proxy.ts`, events forwarded as `remote` (agents, chats, runs, tasks, projects; never settings, logins or mail), `src/lib/devices.ts` (whatever a device sends is that device's: its ids route later calls there, its file URLs point through this device), `src/lib/remote.ts` (paired devices' agents, chats, projects and models merged into the lists; offline devices' agents shown faded from this browser's last copy), the rail group with a laptop badge, the "on MacBook" chip, and Kiwi's offline note. Tested: a reply streams through, the chat stays on B, B's own screens see it live, B lists A's agents, offline and back. Not tested: B going down mid-turn (on restart B marks the cut-off reply stopped, as it does on one device).
+- [x] **M4 · The whole app across devices.**
   - What to build:
     - tasks and task cards, project pages and the project picker;
     - uploads and screenshots (their URLs go through the device);
@@ -271,6 +275,7 @@ All new code goes in `server/devices/`.
     - From A, start a task in one of B's projects. Its card updates live on A and B.
     - Approve B's tool request from a phone signed in to A.
     - An image attached from A shows in B's chat.
+  - *Shipped:* uploads and screenshots through the device, tasks and projects made from A living on B (with B's GitHub repos and folders in New project), Lives on in New agent (personas stay with their device), per-device model lists, the `# Device` prompt line (`devices/prompt.ts`), and Slack/mailbox warnings (`info.ts`). Approvals use the same routing (the run is B's); they weren't exercised with a real tool request.
 - [ ] **M5 · Later.**
   - Move an agent to another device (agent, mascot, persona and notebook).
   - Memory that follows you across devices.

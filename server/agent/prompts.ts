@@ -257,6 +257,8 @@ export function buildSystemPrompt(opts: {
   tasks?: string;
   /** The project the chat is in (module 06; see projects/prompt.ts). */
   project?: string | null;
+  /** Which device the agent runs on, once there are paired devices (module 07; see devices/prompt.ts). */
+  device?: string | null;
   now?: Date;
 }): string {
   const { settings, agent } = opts;
@@ -283,6 +285,7 @@ Your name is ${name}. Under the hood, TOT sends each message to a model from the
 - When the user wants something done regularly or at a set time (daily briefings, recurring checks), schedule it with routine_create; each run starts its own chat.`,
     agent.instructions.trim() && `# Your personality\n${agent.instructions.trim()}`,
     computerSection(settings.computer.mode),
+    opts.device,
     githubSection(opts.github ?? null, settings.computer.mode !== "off"),
     opts.persona && personaSection(opts.persona),
     opts.tasks,

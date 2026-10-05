@@ -1,4 +1,5 @@
 import type { RunEvent } from "@shared/types";
+import { adopt, apiUrl, deviceOf } from "./devices";
 
 export interface RunListener {
   onEvent: (event: RunEvent) => void;
@@ -18,7 +19,7 @@ interface Channel {
 const channels = new Map<string, Channel>();
 
 export function runEventsUrl(runId: string): string {
-  return `/api/runs/${encodeURIComponent(runId)}/events`;
+  return apiUrl(`/runs/${encodeURIComponent(runId)}/events`, deviceOf(runId));
 }
 
 /**
@@ -48,6 +49,9 @@ function openChannel(runId: string): Channel {
     } catch {
       return; // Not a RunEvent (e.g. a keep-alive payload).
     }
+    // Another device's run (module 07): its ids and file URLs belong to it.
+    const device = deviceOf(runId);
+    if (device) adopt(device, event);
     if (event.type === "run-end") closeChannel(runId, channel);
     for (const listener of [...channel.listeners]) listener.onEvent(event);
   };

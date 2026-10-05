@@ -28,6 +28,9 @@ const { getSecret } = await import("./config.ts");
 const { createApp } = await import("./app.ts");
 const { deviceId } = await import("./devices/identity.ts");
 const { relay } = await import("./devices/relay.ts");
+const { deviceName } = await import("./devices/identity.ts");
+const { conversations } = await import("./data/conversations.ts");
+const { queueHolds } = await import("./data/queue-holds.ts");
 type AgentProvider = import("./agent/providers/types.ts").AgentProvider;
 
 let failures = 0;
@@ -209,6 +212,35 @@ try {
   check("the MacBook's own screens see the chat appear live", bookEvents.events.some((e) => e.type === "conversation" && e.conversation.id === chat.id));
   check("settings and mail events stay on their device", !miniEvents.events.some((e) => e.type === "remote" && ["slack", "github", "apps", "mail", "persona"].includes(e.event.type)));
 
+  const prompt = conversations.get(chat.id)?.systemPrompt ?? "";
+  check("the agent's prompt says which device it runs on", prompt.includes(`# Device\nYou run on ${deviceName()}.`), prompt.slice(0, 80));
+
+  // --- M4 · Files, projects and tasks across devices ------------------------------------------------
+  console.log("\n# Files, projects and tasks across devices");
+  const form = new FormData();
+  form.append("file", new File([new Uint8Array([137, 80, 78, 71, 1, 2, 3])], "shot.png", { type: "image/png" }));
+  const upload = await fetch(`${MINI}/api/d/${bookId}/uploads`, { method: "POST", headers: { authorization: `Bearer ${MINI_TOKEN}` }, body: form });
+  const attachment = (await upload.json()) as { id: string; url: string };
+  check("a file attached on the Mac mini is uploaded to the MacBook", upload.status === 201 && typeof attachment.url === "string", JSON.stringify(attachment));
+  const file = await fetch(`${MINI}/api/d/${bookId}${attachment.url.slice(4)}`, { headers: { authorization: `Bearer ${MINI_TOKEN}` } });
+  check("…and shows on the Mac mini through it", file.ok && (await file.arrayBuffer()).byteLength === 7);
+  res = await onMini("POST", `/api/d/${bookId}/conversations/${chat.id}/messages`, { text: "Look at this", attachments: [attachment.id] });
+  check("…and goes with a message to the MacBook's agent", typeof res.data?.runId === "string", res.text.slice(0, 160));
+  await until(async () => !(await onBook("GET", `/api/conversations/${chat.id}`)).data.activeRunId);
+
+  res = await onMini("POST", `/api/d/${bookId}/projects`, { kind: "none", name: "Q4 launch" });
+  const launch = res.data as { id: string; name: string };
+  check("a project made from the Mac mini lives on the MacBook", res.status === 201 || res.status === 200, res.text.slice(0, 160));
+  check("…and isn't the Mac mini's", !(await onMini("GET", "/api/projects")).data.some((p: { id: string }) => p.id === launch.id));
+  queueHolds.set(kiwi.id, null, "test"); // filed, never run
+  res = await onMini("POST", `/api/d/${bookId}/tasks`, { agentId: kiwi.id, goal: "Draft the launch post", projectId: launch.id });
+  const task = res.data as Conversation;
+  check("a task started from the Mac mini runs on the MacBook, in its project", res.status === 201 && task.kind === "task" && task.projectId === launch.id, res.text.slice(0, 160));
+  check(
+    "…and its card reaches the Mac mini's screens live",
+    await until(() => miniEvents.events.some((e) => e.type === "remote" && e.event.type === "task" && e.event.conversation.id === task.id)),
+  );
+
   res = await onBook("GET", `/api/d/${miniId}/agents`);
   check("it works the other way too: the MacBook lists the Mac mini's agents", res.status === 200 && res.data.length >= 1 && !res.data.some((a: { id: string }) => a.id === kiwi.id));
 
@@ -252,6 +284,17 @@ try {
   res = await onMini("DELETE", `/api/devices/${bookId}`);
   check("unpairing from the side that can't reach the other still forgets it here", res.status === 200 && (res.data as DevicesStatus).devices.length === 0);
   process.env.TOT_PUBLIC_URL = BOOK;
+
+  // --- An expired link ------------------------------------------------------------------------------
+  res = await onBook("POST", "/api/devices/pairing-link");
+  const realNow = Date.now;
+  Date.now = () => realNow() + 6 * 60_000; // the MacBook's clock: six minutes later
+  try {
+    const late = await onMini("POST", "/api/devices/connect", { link: res.data.link });
+    check("a link older than 5 minutes is refused", late.status === 400 && /expired/.test(late.data?.error), late.text);
+  } finally {
+    Date.now = realNow;
+  }
 
   // --- Wrong codes ----------------------------------------------------------------------------------
   let last = 0;

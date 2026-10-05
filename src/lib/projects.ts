@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { Folder, FolderGit, Layers, type LucideIcon } from "lucide-react";
 import type { Conversation, CreateProjectRequest, Project, ProjectKind, UpdateProjectRequest } from "@shared/types";
 import { api } from "./api";
+import { deviceOf, onDevice } from "./devices";
 import { toMs } from "./format";
 
 /**
@@ -53,11 +54,24 @@ export async function loadProjects(): Promise<void> {
     throw active.reason;
   }
   const list = [...active.value, ...(archived.status === "fulfilled" ? archived.value : [])];
-  set({ projects: list.sort(byName), state: "ready" });
+  // Paired devices' projects (module 07) are loaded with their device.
+  set((s) => ({ projects: [...list, ...s.projects.filter((p) => p.deviceId)].sort(byName), state: "ready" }));
+}
+
+/** A paired device's projects, tagged with it (module 07); replaces what was there from that device. */
+export function mergeRemoteProjects(deviceId: string, projects: Project[]) {
+  set((s) => ({ projects: [...s.projects.filter((p) => p.deviceId !== deviceId), ...projects].sort(byName) }));
+}
+
+export function removeDeviceProjects(deviceId: string) {
+  set((s) => ({ projects: s.projects.filter((p) => p.deviceId !== deviceId) }));
 }
 
 /** A project the server just returned, or one from the `project` AppEvent (archived ones stay, marked). */
-export function upsertProject(project: Project) {
+export function upsertProject(serverProject: Project) {
+  // A paired device's project (module 07) stays tagged with its device.
+  const deviceId = deviceOf(serverProject.id);
+  const project = deviceId ? { ...serverProject, deviceId } : serverProject;
   set((s) => ({ projects: [project, ...s.projects.filter((p) => p.id !== project.id)].sort(byName) }));
 }
 
@@ -83,8 +97,9 @@ export function toggleProjectExpanded(id: string, open?: boolean) {
 // Actions: they throw the server's message, for the dialogs to show inline.
 // ---------------------------------------------------------------------------
 
-export async function createProject(body: CreateProjectRequest & { grant?: boolean }): Promise<Project> {
-  const project = await api.createProject(body);
+/** Makes a project here, or on a paired device (`deviceId`, module 07). */
+export async function createProject(body: CreateProjectRequest & { grant?: boolean }, deviceId: string | null = null): Promise<Project> {
+  const project = await onDevice(deviceId, () => api.createProject(body));
   upsertProject(project);
   return project;
 }

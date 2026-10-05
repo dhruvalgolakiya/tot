@@ -7,7 +7,7 @@ import { PROJECT_ICONS, setNewProjectOpen, toggleProjectExpanded, useProjects } 
 import { projectPath } from "../../lib/router";
 import { isOpenTask, isTask } from "../../lib/tasks";
 import { toMs } from "../../lib/format";
-import { navigateToProject, selectActiveAgentId, selectCurrentConversation, useStore } from "../../store";
+import { navigateToProject, selectActiveAgent, selectActiveAgentId, selectCurrentConversation, useStore } from "../../store";
 import { ConversationItem } from "../ConversationItem";
 import { TaskRow } from "../tasks/TaskRow";
 import { listRowClass } from "../ui/ListRow";
@@ -32,7 +32,9 @@ export function ProjectsSection({ query }: { query: string }) {
 
   const currentId = useStore((s) => s.currentId);
 
-  const live = useMemo(() => projects.filter((p) => !p.archived), [projects]);
+  // The active agent's device's projects (module 07): an agent works on what's on its own device.
+  const agentDevice = useStore((s) => selectActiveAgent(s)?.deviceId);
+  const live = useMemo(() => projects.filter((p) => !p.archived && p.deviceId === agentDevice), [projects, agentDevice]);
   /** This agent's conversations in each project, newest first; and the open tasks under each chat or task. */
   const { byProject, childrenOf } = useMemo(() => {
     const byProject = new Map<string, Conversation[]>();

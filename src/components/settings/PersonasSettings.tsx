@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { IdCard, Plus } from "lucide-react";
-import { loadPersonas, useStore } from "../../store";
+import { loadPersonas, useLocalAgents, useStore } from "../../store";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
@@ -13,7 +13,7 @@ import { PersonaRow } from "./PersonaRow";
 export function PersonasSettings() {
   const personas = useStore((s) => s.personas);
   const personasState = useStore((s) => s.personasState);
-  const agents = useStore((s) => s.agents);
+  const agents = useLocalAgents();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 

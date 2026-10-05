@@ -116,6 +116,8 @@ export interface Agent {
   queueHold: QueueHold | null;
   createdAt: number;
   updatedAt: number;
+  /** Set by the client for another device's agent: the paired device it lives on (module 07). */
+  deviceId?: string;
 }
 
 export interface AgentInput {
@@ -1651,6 +1653,8 @@ export interface Project {
   chats: number;
   /** Its tasks that are queued or running. */
   running: number;
+  /** Set by the client for another device's project: the paired device it's on (module 07). */
+  deviceId?: string;
 }
 
 export interface CreateProjectRequest {

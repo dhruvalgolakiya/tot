@@ -22,7 +22,7 @@ The plan has seven modules. Each has its own doc, written so an agent can pick i
 | 06 | **Projects**: agent → project → chat; GitHub repos, folders on this Mac (with consent) and topics; one folder per project; tickets linked to branches | [06-projects.md](06-projects.md) | 01; after 04 (both change `server/tasks/worktree.ts`) | **D** |
 | 07 | **Devices**: install TOT on another computer, pair once, use both from either side; agents live on one device and are reachable from any screen; signed-in browsers you can sign out | [07-devices.md](07-devices.md) | 06 | **E** |
 
-01, 02, 03 (M1–M4), 05 and 06 (M1–M4) are merged into `main`. 07 M1 is built on `feat/devices`. 04 and 07 M2 are next.
+01, 02, 03 (M1–M4), 05 and 06 (M1–M4) are merged into `main`. 07 (M1–M4) is built on `feat/devices`. 04 is next.
 
 ## Parallel plan: two worktrees
 

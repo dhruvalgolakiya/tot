@@ -60,7 +60,7 @@ export function ProjectPage() {
 }
 
 function ProjectContent({ project, agent }: { project: Project; agent: Agent | undefined }) {
-  const attachments = useAttachments();
+  const attachments = useAttachments(project.deviceId ?? null);
   const [consentOpen, setConsentOpen] = useState(false);
   const Icon = PROJECT_ICONS[project.kind];
 

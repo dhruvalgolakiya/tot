@@ -12,6 +12,7 @@ import { ChatMenu } from "./ChatMenu";
 import { ComputerChip } from "./ComputerChip";
 import { Mascot } from "./mascot";
 import { ModelPicker } from "./ModelPicker";
+import { DeviceChip } from "./DeviceChip";
 import { ChatProjectCrumb, TicketChip } from "./projects/ChatProjectCrumb";
 import { IconButton } from "./ui/IconButton";
 import { Kbd } from "./ui/Kbd";
@@ -70,12 +71,14 @@ export function Header() {
       )}
       {task ? (
         <>
+          <DeviceChip agent={agent} />
           <ChatProjectCrumb chat={task} withTitle={false} />
           <TaskHeaderInfo task={task} />
         </>
       ) : (
         <>
           <ModelPicker />
+          <DeviceChip agent={agent} />
           {conversation && <ChatProjectCrumb chat={conversation} />}
         </>
       )}

@@ -20,6 +20,7 @@ import type {
   ForkRequest,
   CreateConversationRequest,
   CreateProjectRequest,
+  ConnectDeviceRequest,
   DevicesStatus,
   GitHubConnectRequest,
   GitHubDevicePoll,
@@ -53,6 +54,7 @@ import type {
   TaskPatch,
   TaskStatus,
   UpdateConversationRequest,
+  UpdateDeviceRequest,
   UpdateProjectRequest,
   WikiPage,
   WikiPageInput,
@@ -61,6 +63,7 @@ import type {
   WikiRevision,
   WikiSearchHit,
 } from "@shared/types";
+import { adopt, apiUrl, deviceFor, deviceOf } from "./devices";
 
 /** A failed API call. `status` is 0 when the server couldn't be reached at all. */
 export class ApiError extends Error {
@@ -88,9 +91,11 @@ type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 type Ok = { ok: true };
 
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
+  // Decided before the first await: `onDevice` pins the device only while the call starts.
+  const device = deviceFor(path, body);
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, {
+    response = await fetch(apiUrl(path, device), {
       method,
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -102,7 +107,7 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   if (response.status === 401) redirectToSignIn();
   const data = parseBody(await response.text());
   if (!response.ok) throw new ApiError(serverError(data, response.status), response.status);
-  return data as T;
+  return (device ? adopt(device, data) : data) as T;
 }
 
 function parseBody(text: string): unknown {
@@ -148,7 +153,7 @@ export const api = {
   stopAgentComputer: (id: string) =>
     request<ComputerSummary | null>("POST", `/agents/${seg(id)}/computer/stop`, {}),
   /** Opens (302s) to a fresh desktop-stream URL; call this to get a same-origin link to open in a new tab. */
-  agentDesktopUrl: (id: string) => `/api/agents/${seg(id)}/computer/desktop`,
+  agentDesktopUrl: (id: string) => apiUrl(`/agents/${seg(id)}/computer/desktop`, deviceOf(id)),
 
   listConversations: (agentId?: string) =>
     request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}` : "/conversations"),
@@ -285,6 +290,11 @@ export const api = {
   renameDevice: (name: string) => request<DevicesStatus>("PATCH", "/devices/self", { name }),
   signOutSession: (id: string) => request<DevicesStatus>("DELETE", `/sessions/${seg(id)}`),
   signOutOtherSessions: () => request<DevicesStatus>("POST", "/sessions/sign-out-others", {}),
+  pairingLink: () => request<{ link: string; expiresAt: number }>("POST", "/devices/pairing-link", {}),
+  connectDevice: (link: string) =>
+    request<DevicesStatus & { deviceId: string; canReachYou: boolean }>("POST", "/devices/connect", { link } satisfies ConnectDeviceRequest),
+  updateDevice: (id: string, patch: UpdateDeviceRequest) => request<DevicesStatus>("PATCH", `/devices/${seg(id)}`, patch),
+  unpairDevice: (id: string) => request<DevicesStatus>("DELETE", `/devices/${seg(id)}`),
 
   getSlack: () => request<SlackStatus>("GET", "/slack"),
   setSlackTokens: (tokens: SlackTokens) => request<SlackStatus>("PUT", "/slack/tokens", tokens),
@@ -331,16 +341,17 @@ export const api = {
 
 /** Multipart upload; bypasses the JSON `request()` helper since the body isn't JSON. */
 async function uploadFile(file: File): Promise<Attachment> {
+  const device = deviceFor("/uploads");
   const form = new FormData();
   form.append("file", file);
   let response: Response;
   try {
-    response = await fetch("/api/uploads", { method: "POST", body: form });
+    response = await fetch(apiUrl("/uploads", device), { method: "POST", body: form });
   } catch {
     throw new ApiError(UNREACHABLE, 0);
   }
   if (response.status === 401) redirectToSignIn();
   const data = parseBody(await response.text());
   if (!response.ok) throw new ApiError(serverError(data, response.status), response.status);
-  return data as Attachment;
+  return (device ? adopt(device, data) : data) as Attachment;
 }

@@ -1,11 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
+import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
-import { Check, Copy, Ellipsis, Laptop, LogOut, Pencil, Smartphone } from "lucide-react";
-import type { DevicesStatus, SignInSession } from "@shared/types";
+import { toast } from "sonner";
+import { Check, Copy, Ellipsis, Laptop, Link2, LogOut, Pencil, RefreshCw, Smartphone, Unlink } from "lucide-react";
+import type { Device, DevicesStatus, SignInSession } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
+import { setDevicesStatus, useDevices } from "../../lib/remote";
 import { useCopy } from "../../hooks/useCopy";
 import { notifyError } from "../../store";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { cardClass } from "../ui/Card";
@@ -14,21 +18,21 @@ import { IconButton } from "../ui/IconButton";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { SectionHeader } from "../ui/SectionHeader";
 import { Skeleton } from "../ui/Skeleton";
+import { StatusDot } from "../ui/StatusDot";
 import { Tip } from "../ui/Tip";
 
 /**
- * This device and the browsers and phones signed in to it (roadmap module 07). Pairing with
- * other computers comes next (M2); until then this is where you find TOT's address and sign
- * a browser out.
+ * This device, the devices paired with it, and the browsers and phones signed in to it (roadmap
+ * module 07): TOT's address here, pairing, and signing a browser out.
  */
 export function DevicesSettings() {
-  const [status, setStatus] = useState<DevicesStatus | null>(null);
+  const status = useDevices((s) => s.status);
   const [failed, setFailed] = useState(false);
 
   async function load() {
     setFailed(false);
     try {
-      setStatus(await api.getDevices());
+      setDevicesStatus(await api.getDevices());
     } catch {
       setFailed(true);
     }
@@ -38,7 +42,7 @@ export function DevicesSettings() {
     void load();
   }, []);
 
-  if (failed) {
+  if (failed && !status) {
     return (
       <Callout
         tone="danger"
@@ -64,8 +68,9 @@ export function DevicesSettings() {
 
   return (
     <div className="space-y-8">
-      <ThisDevice status={status} onChange={setStatus} />
-      <SignedIn status={status} onChange={setStatus} />
+      <ThisDevice status={status} onChange={setDevicesStatus} />
+      <PairedDevices status={status} />
+      <SignedIn status={status} onChange={setDevicesStatus} />
     </div>
   );
 }
@@ -86,7 +91,13 @@ function ThisDevice({ status, onChange }: { status: DevicesStatus; onChange: (st
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-fg">{self.name}</p>
             <p className="truncate text-xs text-fg-subtle">
-              {self.address ? (self.network === "tailscale" ? "Reachable over Tailscale" : "Reachable on your home network") : "Only this computer can open TOT"}
+              {!self.address
+                ? "Only this computer can open TOT"
+                : self.network === "tailscale"
+                  ? "Reachable over Tailscale, from anywhere"
+                  : self.network === "lan"
+                    ? "Reachable on your home network"
+                    : "Reachable at its address"}
             </p>
           </div>
           <DropdownMenu.Root modal={false}>
@@ -135,6 +146,285 @@ function ThisDevice({ status, onChange }: { status: DevicesStatus; onChange: (st
       </div>
       <RenameDialog name={self.name} open={renaming} onOpenChange={setRenaming} onRenamed={onChange} />
     </section>
+  );
+}
+
+/** Other computers running TOT: their agents show in the rail here, and this device's agents there. */
+function PairedDevices({ status }: { status: DevicesStatus }) {
+  const [pairing, setPairing] = useState(false);
+  const warnings = status.devices.flatMap((device) => device.warnings);
+
+  return (
+    <section className="space-y-3">
+      <SectionHeader
+        title="Paired devices"
+        description="Use their agents from here, and this device's agents from there."
+        action={
+          <Button size="sm" onClick={() => setPairing(true)}>
+            <Link2 /> Pair a device
+          </Button>
+        }
+      />
+      {status.devices.length === 0 ? (
+        <p className="text-sm text-fg-muted">
+          None yet. Install TOT on your other computer, then pair them here: one link, pasted once, works both ways.
+        </p>
+      ) : (
+        <ul className={cardClass({ padding: "none" })}>
+          {status.devices.map((device, index) => (
+            <PairedRow key={device.id} device={device} first={index === 0} />
+          ))}
+        </ul>
+      )}
+      {warnings.map((warning) => (
+        <Callout key={warning} tone="warning">
+          {warning}
+        </Callout>
+      ))}
+      <PairDialog status={status} open={pairing} onOpenChange={setPairing} />
+    </section>
+  );
+}
+
+function deviceLine(device: Device): string {
+  if (device.problem) return device.problem;
+  if (device.online) return device.canReachUs ? "Online" : `Online · it can't reach this device`;
+  return `Offline${device.lastSeenAt ? ` · seen ${relativeTime(device.lastSeenAt)}` : ""}`;
+}
+
+function PairedRow({ device, first }: { device: Device; first: boolean }) {
+  const [moving, setMoving] = useState(false);
+  const [unpairing, setUnpairing] = useState(false);
+
+  async function act(run: () => Promise<DevicesStatus>) {
+    try {
+      setDevicesStatus(await run());
+    } catch (error) {
+      notifyError(error);
+    }
+  }
+
+  return (
+    <li className={clsx("flex min-h-14 items-center gap-3 px-4 py-2.5", !first && "border-t border-hairline")}>
+      <span className="relative shrink-0">
+        <Laptop className="size-4 text-fg-subtle" />
+        <span className="absolute -right-1 -bottom-0.5">
+          <StatusDot tone={device.online ? "green" : "gray"} />
+        </span>
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-fg">{device.name}</p>
+        <p className={clsx("text-xs", device.problem ? "text-danger" : "text-fg-subtle")}>{deviceLine(device)}</p>
+      </div>
+      <DropdownMenu.Root modal={false}>
+        <DropdownMenu.Trigger asChild>
+          <IconButton label={`More options for ${device.name}`} size="sm">
+            <Ellipsis />
+          </IconButton>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content align="end" sideOffset={4} className="menu w-48">
+            {!device.online && device.address && (
+              <DropdownMenu.Item className="menu-item" onSelect={() => void act(() => api.updateDevice(device.id, {}))}>
+                <RefreshCw className="size-4" /> Try again
+              </DropdownMenu.Item>
+            )}
+            <DropdownMenu.Item className="menu-item" onSelect={() => setMoving(true)}>
+              <Pencil className="size-4" /> Change address
+            </DropdownMenu.Item>
+            <DropdownMenu.Item className="menu-item menu-item-danger" onSelect={() => setUnpairing(true)}>
+              <Unlink className="size-4" /> Unpair
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      <AddressDialog device={device} open={moving} onOpenChange={setMoving} />
+      <ConfirmDialog
+        open={unpairing}
+        onOpenChange={setUnpairing}
+        title={`Unpair ${device.name}?`}
+        description={`Its agents leave this device's rail, and this device's agents leave its rail. Nothing is deleted: every chat stays on the device it's on.`}
+        confirmLabel="Unpair"
+        onConfirm={() => void act(() => api.unpairDevice(device.id))}
+      />
+    </li>
+  );
+}
+
+/**
+ * One dialog for both directions: this device's link to paste over there, or the other device's link
+ * pasted here. Either way one paste pairs them both ways. Closes on its own when the other side
+ * pastes this device's link (a `device` event adds it to the list).
+ */
+function PairDialog({ status, open, onOpenChange }: { status: DevicesStatus; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [link, setLink] = useState<string | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [pasted, setPasted] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [known] = useState(() => new Set(status.devices.map((d) => d.id)));
+  const { copied, copy } = useCopy();
+
+  useEffect(() => {
+    if (!open) return;
+    setPasted("");
+    setError(null);
+    setLink(null);
+    setLinkError(null);
+    for (const device of status.devices) known.add(device.id);
+    api
+      .pairingLink()
+      .then((made) => setLink(made.link))
+      .catch((err) => setLinkError(errorMessage(err)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when it opens: a new link replaces the last one
+  }, [open]);
+
+  // The other device pasted our link.
+  const joined = status.devices.find((device) => !known.has(device.id));
+  useEffect(() => {
+    if (!open || !joined) return;
+    known.add(joined.id);
+    toast.success(`Paired with ${joined.name}. Its agents are in your rail.`);
+    onOpenChange(false);
+  }, [open, joined, known, onOpenChange]);
+
+  async function connect(event: FormEvent) {
+    event.preventDefault();
+    if (!pasted.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.connectDevice(pasted.trim());
+      known.add(result.deviceId);
+      setDevicesStatus(result);
+      const name = result.devices.find((d) => d.id === result.deviceId)?.name ?? "the other device";
+      if (result.canReachYou) toast.success(`Paired with ${name}. Its agents are in your rail.`);
+      else {
+        toast.warning(`Paired with ${name}, one way: you can use ${name} from here, but it can't reach this device. Turn on Tailscale on both to fix it.`, {
+          duration: 10_000,
+        });
+      }
+      onOpenChange(false);
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange} title="Pair a device" className="max-w-md">
+      <form onSubmit={connect} className="flex min-h-0 flex-1 flex-col">
+        <ModalBody className="space-y-5">
+          <div className="space-y-2">
+            <p className="text-sm text-fg-muted">
+              On the other device, open <strong className="font-medium text-fg">Settings → Devices → Pair a device</strong> and paste
+              this link:
+            </p>
+            {linkError ? (
+              <p className="text-xs leading-relaxed text-fg-subtle">{linkError}</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-lg bg-fill px-2.5 py-1.5 font-mono text-xs text-fg">{link ?? "Making a link…"}</code>
+                  <Tip content={copied ? "Copied" : "Copy link"}>
+                    <IconButton label="Copy link" size="sm" disabled={!link} onClick={() => link && void copy(link)}>
+                      {copied ? <Check /> : <Copy />}
+                    </IconButton>
+                  </Tip>
+                </div>
+                <p className="text-xs text-fg-subtle">Works once, for 5 minutes. This dialog closes when they're paired.</p>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 text-xs text-fg-subtle">
+            <span className="h-px flex-1 bg-hairline" />
+            or
+            <span className="h-px flex-1 bg-hairline" />
+          </div>
+
+          <Field label="Paste the link from the other device" htmlFor="pair-link">
+            <input
+              id="pair-link"
+              value={pasted}
+              onChange={(event) => {
+                setPasted(event.target.value);
+                setError(null);
+              }}
+              placeholder="http://100.101.4.2:5173/pair#K7QM-4RXP-2HWD"
+              autoComplete="off"
+              spellCheck={false}
+              className="input font-mono text-xs"
+            />
+          </Field>
+          {error && <Callout tone="danger">{error}</Callout>}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" disabled={!pasted.trim() || busy}>
+            {busy ? "Pairing…" : "Pair"}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+function AddressDialog({ device, open, onOpenChange }: { device: Device; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [value, setValue] = useState(device.address ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setValue(device.address ?? "");
+    setSaving(false);
+    setError(null);
+  }, [open, device.address]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      setDevicesStatus(await api.updateDevice(device.id, { address: value.trim() }));
+      onOpenChange(false);
+    } catch (err) {
+      setError(errorMessage(err));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange} title={`Where to reach ${device.name}`} className="max-w-md">
+      <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+        <ModalBody className="space-y-4">
+          <Field label="Address" htmlFor="device-address" hint={`The address its Settings → Devices page shows. TOT checks it's ${device.name} before saving.`}>
+            <input
+              id="device-address"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              placeholder="http://100.101.4.2:5173"
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              className="input font-mono text-xs"
+            />
+          </Field>
+          {error && <Callout tone="danger">{error}</Callout>}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" disabled={saving || !value.trim() || value.trim() === device.address}>
+            {saving ? "Checking…" : "Save"}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }
 
