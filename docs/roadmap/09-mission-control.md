@@ -74,11 +74,11 @@ Client functions go under the lane's anchor comment in `src/lib/api.ts`.
 
 ## Milestones
 
-- [ ] **M0 · Contract** (lead): types, stub route files, api anchors, this doc.
+- [x] **M0 · Contract** (lead): types, stub route files, api anchors, this doc.
 - [x] **M1 · Land** (lane A). `server/landing/` (checks on done via 03's gates, also through a folder grant; land options; merge by TOT in your folder; push + draft PR; update from base; discard), the Land bar under the Changes tab, `server/landing.test.ts`.
 - [x] **M2 · Mission control + spawning** (lane B). Diff stats after every turn and on finish; `GET /api/mission` (overlaps, land order; a best-of run's alternatives don't overlap each other); `/mission` board (sidebar Tasks and Projects headers, project page, ⌘⇧M); composer Task mode (⌘↩) and `/task` `/parallel` `/best-of` with request ids (`POST /api/tasks` dedupes them too); best-of with one "Best of N finished · Compare" notice; `/tasks/compare/:group` with Keep this one (lane A's land + discard).
-- [ ] **M3 · Worktree lifecycle** (lane C).
-- [ ] **M4 · Merge lanes, review, live run** (lead): one project, three parallel tasks from the composer, one best-of, land them in order, screenshots light/dark.
+- [x] **M3 · Worktree lifecycle** (lane C). `server/worktrees/` (setup from the project's command or the lockfile, copy-files with symlink-safe writes, port blocks from 41000, `task_preview_start/stop` as managed background processes recorded on disk and stopped after a crash, a daily cleanup that never removes a worktree with uncommitted work), Settings → Tasks (cleanup days, Clean up now), the project's Worktree setup dialog, limits 4 per agent and 8 in total.
+- [x] **M4 · Merge lanes, review, live run** (lead). Lanes merged; an independent review found 15 issues, 14 fixed with a regression test each (landing never drops uncommitted files, never overwrites ignored files, only lands the reviewed head; merges serialized per folder; safer cleanup and previews); #15 (paired devices may land) kept, by 07's rules. Live run with real Claude and ChatGPT on a folder project: five tasks at once (one from the composer with ⌘↩, two overlapping on one file, a best-of), checks from a profile read off the worktree, the best-of kept from the compare view, the rest landed in order, one after its agent resolved a conflict through Update from main. Found and fixed there: checks without a saved profile, and **Review & land** in the task header.
 
 ## Out of scope
 
