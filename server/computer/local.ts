@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { DATA_DIR, EXECUTOR_PORT, PORT, WEB_PORT, paths } from "../config.ts";
@@ -231,6 +231,36 @@ const GRANTED_GIT = {
   GIT_CONFIG_VALUE_2: "false",
 };
 
+/**
+ * What `exec` and `background` run: bash under the sandbox profile, in its working directory, with the
+ * computer's environment plus `extra` (a task's ports). Throws when the grant or the cwd can't be used.
+ */
+function commandLine(
+  externalId: string,
+  command: string,
+  { cwd, grant, extra }: { cwd?: string; grant?: FolderGrant | null; extra?: Record<string, string> },
+): { file: string; args: string[]; dir: string; env: Record<string, string> } {
+  const workspace = realpathSync(workspaceOf(externalId));
+  if (grant) {
+    if (!SANDBOXED) throw new Error("Folders on this Mac need the macOS sandbox, which this computer doesn't have.");
+    verifyGrant(grant);
+  }
+  const dir = cwd ? workingDir(workspace, cwd, grant) : workspace;
+  const [file, args] = SANDBOXED
+    ? ["/usr/bin/sandbox-exec", ["-p", profile(workspace, grant), "/bin/bash", "-c", command]]
+    : ["/bin/bash", ["-c", command]];
+  return { file, args, dir, env: { ...environment(workspace, externalId), ...(grant ? GRANTED_GIT : {}), ...extra } };
+}
+
+/** Signals a whole process group; quiet when it's already gone. */
+function signalGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    // already gone
+  }
+}
+
 /** A local computer's id is its agent's (see create). */
 function environment(workspace: string, agentId: string): Record<string, string> {
   const github = githubAccessFor(agentId);
@@ -290,22 +320,14 @@ export const localBackend: ComputerBackend = {
     return workspaceOf(externalId);
   },
 
-  exec(externalId, command, { cwd, timeoutMs, grant }) {
-    const workspace = realpathSync(workspaceOf(externalId));
-    let dir: string;
+  exec(externalId, command, { cwd, timeoutMs, grant, env: extra }) {
+    let line: ReturnType<typeof commandLine>;
     try {
-      if (grant) {
-        if (!SANDBOXED) throw new Error("Folders on this Mac need the macOS sandbox, which this computer doesn't have.");
-        verifyGrant(grant);
-      }
-      dir = cwd ? workingDir(workspace, cwd, grant) : workspace;
+      line = commandLine(externalId, command, { cwd, grant, extra });
     } catch (err) {
       return Promise.reject(err);
     }
-    const [file, args] = SANDBOXED
-      ? ["/usr/bin/sandbox-exec", ["-p", profile(workspace, grant), "/bin/bash", "-c", command]]
-      : ["/bin/bash", ["-c", command]];
-    const env = { ...environment(workspace, externalId), ...(grant ? GRANTED_GIT : {}) };
+    const { file, args, dir, env } = line;
 
     return new Promise<ExecResult>((done) => {
       const started = Date.now();
@@ -358,6 +380,41 @@ export const localBackend: ComputerBackend = {
         finish(127);
       });
     });
+  },
+
+  async background(externalId, command, { cwd, grant, env: extra, log }) {
+    const { file, args, dir, env } = commandLine(externalId, command, { cwd, grant, extra });
+    mkdirSync(dirname(log), { recursive: true });
+    // TOT opens the log, outside the sandbox: the command writes to it without being able to open anything there.
+    const fd = openSync(log, "a", 0o600);
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(file, args, { cwd: dir, env, detached: true, stdio: ["ignore", fd, fd] });
+    } finally {
+      closeSync(fd);
+    }
+    const exited = new Promise<number | null>((resolve) => {
+      child.once("exit", (code) => resolve(code));
+      child.once("error", () => resolve(127));
+    });
+    const pid = child.pid;
+    if (!pid) {
+      await exited;
+      throw new Error("The command couldn't be started.");
+    }
+    child.unref();
+    return {
+      pid,
+      exited,
+      async stop() {
+        signalGroup(pid, "SIGTERM");
+        const kill = setTimeout(() => signalGroup(pid, "SIGKILL"), 2000);
+        await exited;
+        clearTimeout(kill);
+        // Whatever it left running in its group goes too.
+        signalGroup(pid, "SIGKILL");
+      },
+    };
   },
 
   async readFile(externalId, path, { grant } = {}) {

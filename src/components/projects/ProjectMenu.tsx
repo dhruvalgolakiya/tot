@@ -1,17 +1,17 @@
 import { useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Archive, Brain, Ellipsis, GraduationCap, ScrollText, SlidersHorizontal } from "lucide-react";
+import { Archive, Brain, Ellipsis, GraduationCap, ScrollText, SlidersHorizontal, Wrench } from "lucide-react";
 import type { Agent, Project } from "@shared/types";
 import { api } from "../../lib/api";
 import { archiveProject, isCodeProject } from "../../lib/projects";
 import { navigateToAgentHome, navigateToConversation, navigateToWiki, notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { IconButton } from "../ui/IconButton";
-import { InstructionsDialog, ProjectSettingsDialog } from "./ProjectDialogs";
+import { InstructionsDialog, ProjectSettingsDialog, WorktreeSetupDialog } from "./ProjectDialogs";
 
-type Dialog = "instructions" | "settings" | "archive";
+type Dialog = "instructions" | "settings" | "worktree" | "archive";
 
-/** The project page's one menu: Instructions, Brain, Learn this project, Settings, Archive. */
+/** The project page's one menu: Instructions, Brain, Learn this project, Worktree setup, Settings, Archive. */
 export function ProjectMenu({ project, agent }: { project: Project; agent: Agent | undefined }) {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [learning, setLearning] = useState(false);
@@ -78,6 +78,11 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
                 <span className="min-w-0 flex-1 truncate">{learning ? "Starting…" : "Learn this project"}</span>
               </DropdownMenu.Item>
             )}
+            {isCodeProject(project) && (
+              <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "worktree")}>
+                <Wrench className="size-4 text-fg-muted" /> Worktree setup
+              </DropdownMenu.Item>
+            )}
             <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "settings")}>
               <SlidersHorizontal className="size-4 text-fg-muted" /> Settings
             </DropdownMenu.Item>
@@ -91,6 +96,7 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
 
       <InstructionsDialog project={project} open={dialog === "instructions"} onOpenChange={close} />
       <ProjectSettingsDialog project={project} open={dialog === "settings"} onOpenChange={close} />
+      {isCodeProject(project) && <WorktreeSetupDialog project={project} open={dialog === "worktree"} onOpenChange={close} />}
       <ConfirmDialog
         open={dialog === "archive"}
         onOpenChange={close}

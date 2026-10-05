@@ -18,14 +18,15 @@ function defaults(): StoredSettings {
     claude: { authMode: "subscription", useConnectedApps: true },
     chatgpt: { useConnectedApps: true },
     tasks: {
-      perAgentLimit: 2,
-      globalLimit: 4,
+      perAgentLimit: 4,
+      globalLimit: 8,
       resumeInterrupted: true,
       notifySlackUserId: null,
       wakeChats: true,
       switchProviders: true,
       missionTokenBudget: 5_000_000,
       maxChildren: 6,
+      worktreeCleanupDays: 14,
     },
     models: {
       tiers: { fast: { claude: null, chatgpt: null }, standard: { claude: null, chatgpt: null }, deep: { claude: null, chatgpt: null } },

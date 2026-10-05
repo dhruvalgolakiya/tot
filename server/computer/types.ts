@@ -34,6 +34,15 @@ export interface DesktopControl {
   openUrl(externalId: string, url: string): Promise<void>;
 }
 
+/** A long-running command (module 09's previews): its process group, ended by `stop`. */
+export interface BackgroundProcess {
+  pid: number;
+  /** Resolves with its exit code (null when a signal ended it) once it's gone. */
+  exited: Promise<number | null>;
+  /** SIGTERM to its whole process group, SIGKILL after a moment; resolves once it has exited. */
+  stop(): Promise<void>;
+}
+
 /** One way of providing computers (Boat cloud VMs, sandboxed local folders). */
 export interface ComputerBackend {
   kind: ComputerKind;
@@ -50,8 +59,24 @@ export interface ComputerBackend {
   /** Stop billing / pause (Boat: snapshot + stop). Files must survive. */
   stop(externalId: string): Promise<void>;
   destroy(externalId: string): Promise<void>;
-  /** `grant` lets a local computer use a folder on this Mac for this one command (others ignore it). */
-  exec(externalId: string, command: string, opts: { cwd?: string; timeoutMs: number; grant?: FolderGrant | null }): Promise<ExecResult>;
+  /**
+   * `grant` lets a local computer use a folder on this Mac for this one command (others ignore it).
+   * `env` adds variables to the command's environment (a task's PORT and TOT_PORTS, module 09).
+   */
+  exec(
+    externalId: string,
+    command: string,
+    opts: { cwd?: string; timeoutMs: number; grant?: FolderGrant | null; env?: Record<string, string> },
+  ): Promise<ExecResult>;
+  /**
+   * Starts a command that keeps running (a dev server), the way `exec` runs one: same sandbox, grant and
+   * environment. Its output goes to `log`, a file on this Mac. Local computers only (module 09's previews).
+   */
+  background?(
+    externalId: string,
+    command: string,
+    opts: { cwd?: string; grant?: FolderGrant | null; env?: Record<string, string>; log: string },
+  ): Promise<BackgroundProcess>;
   readFile(externalId: string, path: string, opts?: { grant?: FolderGrant | null }): Promise<string>;
   writeFile(externalId: string, path: string, content: string, opts?: { grant?: FolderGrant | null }): Promise<void>;
   /** Writes binary data (e.g. a user's attachment); creates parent folders. */

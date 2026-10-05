@@ -58,6 +58,7 @@ export function buildSettingsPatch(saved: Settings, draft: Settings, secrets: Se
     "switchProviders",
     "missionTokenBudget",
     "maxChildren",
+    "worktreeCleanupDays",
   ]);
   if (tasks) patch.tasks = tasks;
   // Model tiers are small nested tables: send them whole when anything in them changed.
@@ -84,6 +85,13 @@ export const TASK_LIMITS = { perAgent: 10, global: 20, children: 20 };
 
 export function isValidTaskLimit(value: number, max: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= max;
+}
+
+/** Days before a finished, unlanded task's worktree is removed: 0 (never) to 365. */
+export const CLEANUP_DAYS = { min: 0, max: 365 };
+
+export function isValidCleanupDays(value: number): boolean {
+  return Number.isInteger(value) && value >= CLEANUP_DAYS.min && value <= CLEANUP_DAYS.max;
 }
 
 /** A mission's token budget: whole tokens, 0 for no limit. */

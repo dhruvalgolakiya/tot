@@ -35,6 +35,7 @@ import { settings } from "../data/settings.ts";
 import { checkSpawn, childDepth } from "../orchestration/budget.ts";
 import { otherProvider, ROLE_NAMES, ROLES } from "../orchestration/roles.ts";
 import { roleTier, TIERS } from "../orchestration/tiers.ts";
+import { previews } from "../worktrees/preview.ts";
 import { taskQueue } from "./queue.ts";
 import { runLoop } from "./run-loop.ts";
 import { steer } from "./steer.ts";
@@ -415,6 +416,8 @@ export const tasks = {
     if (!FINISHED.has(task.task.status)) taskStore.transition(taskId, "stopped");
     runRegistry.activeFor(taskId)?.stop();
     await runLoop.settled(taskId);
+    // Its preview (module 09) goes before its worktree does.
+    await previews.stop(taskId);
     if (task.task.repo?.headSha) {
       const repo = task.task.repo;
       await Promise.resolve()

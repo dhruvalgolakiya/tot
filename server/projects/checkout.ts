@@ -10,6 +10,7 @@ import type { ConversationRecord } from "../data/conversations.ts";
 import { redactGitHubTokens } from "../github.ts";
 import type { TaskRecord } from "../tasks/store.ts";
 import { cloneUrl, worktrees } from "../tasks/worktree.ts";
+import { worktreeSetup } from "../worktrees/setup.ts";
 import { FolderRefused, gitState, resolveFolder, tildePath } from "./folders.ts";
 import { projects } from "./projects.ts";
 
@@ -249,9 +250,15 @@ export async function forTools(
   }
 }
 
-/** A task's repo made ready to work in: its project's folder on the computer first, then the task's own worktree. */
+/**
+ * A task's repo made ready to work in: its project's folder on the computer first, then the task's own
+ * worktree, then (module 09) its ports, and for a worktree made just now its project's files and setup.
+ */
 export async function prepareTask(task: TaskRecord): Promise<TaskRepo> {
   const project = projects.get(task.projectId);
   if (project && project.kind !== "none") await checkout.ensure(task.agentId, project);
-  return worktrees.ensure(task.agentId, task.task.repo!, grantFor(task));
+  const grant = grantFor(task);
+  const repo = await worktrees.ensure(task.agentId, task.task.repo!, grant);
+  await worktreeSetup.prepared(task, repo, grant, { fresh: !task.task.repo!.headSha });
+  return repo;
 }

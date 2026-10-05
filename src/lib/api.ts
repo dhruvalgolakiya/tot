@@ -51,6 +51,7 @@ import type {
   SendMessageResponse,
   Settings,
   SettingsPatch,
+  SetupDetection,
   SlackPatch,
   SlackStatus,
   SlackTokens,
@@ -207,6 +208,12 @@ export const api = {
   // Module 09 · lane B (mission control, spawning, best-of).
 
   // Module 09 · lane C (worktree lifecycle: previews, cleanup).
+  /** Stops the task's preview (the dev server TOT runs for it); resolves with the task, its preview gone. */
+  stopTaskPreview: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/preview/stop`, {}),
+  /** Removes worktrees of finished, unlanded tasks older than `days` (the saved setting when omitted); branches stay. */
+  cleanUpWorktrees: (days?: number) => request<{ removed: number }>("POST", "/worktrees/cleanup", days === undefined ? {} : { days }),
+  /** The setup command a project's lockfile implies: what its new worktrees run when it has none of its own. */
+  detectProjectSetup: (id: string) => request<SetupDetection>("GET", `/projects/${seg(id)}/setup-detect`),
 
   stopRun: (runId: string) => request<Ok>("POST", `/runs/${seg(runId)}/stop`, {}),
   /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */

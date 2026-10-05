@@ -1125,6 +1125,12 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/projects/:id/grant              -> Project  (folder projects: the user's OK for agents to read the folder and make tot/… branches in it)
 // POST   /api/projects/:id/learn              { agentId } -> { conversationId, runId }  (Learn a repo into its brain; a folder project needs its grant and a local computer)
 //
+// Worktree lifecycle (module 09 · lane C; a project's setupCommand and copyFiles go through PATCH /api/projects/:id)
+// GET    /api/projects/:id/setup-detect       -> SetupDetection  (the setup command its lockfile implies, for the Worktree setup dialog)
+// POST   /api/tasks/:id/preview/stop          -> Conversation  (stops the task's preview; TaskInfo.preview becomes null)
+// POST   /api/worktrees/cleanup               -> { removed: number }  (removes worktrees of finished, unlanded tasks older than
+//                                              tasks.worktreeCleanupDays now, as the daily sweep does; their branches stay)
+//
 // Devices (module 07; this device, remote access, and the browsers and phones signed in to it)
 // GET    /.well-known/tot                     -> { id, name, protocol: 1 }  (open, no sign-in: lets another device check it reached TOT)
 // GET    /api/devices                         -> DevicesStatus
@@ -1358,6 +1364,12 @@ export interface TaskSetup {
   error: string | null;
 }
 
+/** GET /api/projects/:id/setup-detect: what new worktrees would run with no setupCommand set (null: no lockfile found, or none to look at). */
+export interface SetupDetection {
+  command: string | null;
+  lockfile: string | null;
+}
+
 /** A block of ports on the task's computer: PORT = base, TOT_PORTS = base..base+count-1. */
 export interface TaskPorts {
   base: number;
@@ -1476,6 +1488,8 @@ export interface TaskSettings {
   notifySlackUserId: string | null;
   /** A chat picks up its tasks' results and replies on its own when they finish, instead of on the user's next message (module 05). */
   wakeChats: boolean;
+  /** Worktrees of finished tasks that weren't landed are removed this many days after they finished (branches stay); 0 = never (module 09). */
+  worktreeCleanupDays: number;
 }
 
 // ---------------------------------------------------------------------------
