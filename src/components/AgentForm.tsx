@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import type { Agent, AgentInput, MascotSpec } from "@shared/types";
 import { AUTO_MODEL_ID, modelSelectOptions } from "../lib/models";
+import { useDevices } from "../lib/remote";
 import { createAgent, deleteAgent, goToSettings, setNewAgentDialogOpen, updateAgent, useStore } from "../store";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { MascotPicker, randomMascot, suggestName } from "./mascot";
@@ -20,7 +21,13 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const models = useStore((s) => s.models);
+  // Where it lives (module 07): picked once, for a new agent, and only when there are paired devices.
+  const devices = useDevices((s) => s.status);
+  const [livesOn, setLivesOn] = useState<string | null>(target?.deviceId ?? null);
+  const onlinePaired = devices?.devices.filter((device) => device.online) ?? [];
+  const localModels = useStore((s) => s.models);
+  const deviceModels = useStore((s) => s.deviceModels);
+  const models = livesOn ? (deviceModels[livesOn] ?? localModels) : localModels;
   const personas = useStore((s) => s.personas);
   const trimmedName = name.trim();
 
@@ -28,11 +35,12 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
     event.preventDefault();
     if (!trimmedName || saving) return;
     setSaving(true);
-    const input: AgentInput = { name: trimmedName, mascot, instructions: instructions.trim(), modelId, personaId };
+    // Personas are a device's own (its mailboxes and logins), so another device's agent keeps the one it has.
+    const input: AgentInput = { name: trimmedName, mascot, instructions: instructions.trim(), modelId, ...(livesOn ? {} : { personaId }) };
     if (target) {
       if (await updateAgent(target.id, input)) toast.success("Saved");
     } else {
-      await createAgent(input);
+      await createAgent(input, livesOn);
     }
     setSaving(false);
   }
@@ -64,29 +72,49 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
           <MascotPicker value={mascot} onChange={setMascot} />
         </Field>
 
-        <Field
-          label="Works as"
-          htmlFor="agent-persona"
-          hint={
-            <>
-              Gives it its own email, git author and GitHub account instead of yours.{" "}
-              <button type="button" onClick={() => goToSettings("personas")} className="link-muted">
-                Manage personas
-              </button>
-            </>
-          }
-        >
-          <Select
-            id="agent-persona"
-            value={personaId ?? ""}
-            onValueChange={(next) => setPersonaId(next || null)}
-            className="h-10 rounded-xl"
-            options={[
-              { value: "", label: "Me" },
-              ...personas.map((persona) => ({ value: persona.id, label: `${persona.name} · ${persona.email}` })),
-            ]}
-          />
-        </Field>
+        {!target && onlinePaired.length > 0 && devices && (
+          <Field label="Lives on" htmlFor="agent-device" hint="Its computer, files and logins are on that device. You can talk to it from any of them.">
+            <Select
+              id="agent-device"
+              value={livesOn ?? ""}
+              onValueChange={(next) => {
+                setLivesOn(next || null);
+                setModelId(AUTO_MODEL_ID);
+              }}
+              className="h-10 rounded-xl"
+              options={[
+                { value: "", label: `${devices.self.name} (this device)` },
+                ...onlinePaired.map((device) => ({ value: device.id, label: device.name })),
+              ]}
+            />
+          </Field>
+        )}
+
+        {!livesOn && (
+          <Field
+            label="Works as"
+            htmlFor="agent-persona"
+            hint={
+              <>
+                Gives it its own email, git author and GitHub account instead of yours.{" "}
+                <button type="button" onClick={() => goToSettings("personas")} className="link-muted">
+                  Manage personas
+                </button>
+              </>
+            }
+          >
+            <Select
+              id="agent-persona"
+              value={personaId ?? ""}
+              onValueChange={(next) => setPersonaId(next || null)}
+              className="h-10 rounded-xl"
+              options={[
+                { value: "", label: "Me" },
+                ...personas.map((persona) => ({ value: persona.id, label: `${persona.name} · ${persona.email}` })),
+              ]}
+            />
+          </Field>
+        )}
 
         <Field
           label="Instructions"

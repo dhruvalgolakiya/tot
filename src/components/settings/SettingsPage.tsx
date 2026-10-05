@@ -36,6 +36,7 @@ import { Tip } from "../ui/Tip";
 import { WorkflowsSettings } from "../trust/WorkflowsSettings";
 import { AppsSettings } from "./AppsSettings";
 import { ComputerSettings } from "./ComputerSettings";
+import { DevicesSettings } from "./DevicesSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { GitHubSettings } from "./GitHubSettings";
 import { ModelsSettings } from "./ModelsSettings";
@@ -222,6 +223,8 @@ function SectionBody({
   switch (section) {
     case "general":
       return <GeneralSettings draft={draft} onChange={setSettingsDraft} secrets={secrets} onSecretsChange={setSettingsSecrets} />;
+    case "devices":
+      return <DevicesSettings />;
     case "models":
       return <ModelsSettings draft={draft} onChange={setSettingsDraft} secrets={secrets} onSecretsChange={setSettingsSecrets} />;
     case "computer":

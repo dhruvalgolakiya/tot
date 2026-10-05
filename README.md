@@ -55,12 +55,29 @@ TOT only serves this machine until you give it an access token.
 1. In `.env`, set `TOT_ACCESS_TOKEN` (e.g. `openssl rand -hex 16`) and `TOT_LAN=1`.
 2. Restart `npm run dev`. The startup log prints your network URLs, e.g. `http://192.168.1.21:5173` and `http://<your-mac>.local:5173`.
 3. Open one on your phone and sign in with the token (dashes and capitals don't matter). The session lasts 30 days.
+4. To keep TOT as an app, choose **Add to Home Screen** (Safari's Share menu, or Chrome's ⋮ menu). It opens full screen with the TOT icon.
+
+**Settings → Devices** shows this computer's address, and every browser and phone signed in to it. Sign any one out there, and it's out at once. Changing the token signs out all of them.
 
 In dev, only the web app listens on the network; the API stays private behind it. With `npm run build && npm start`, the server itself listens on your network (port 8787). TOT binds IPv4 only — networks often hand out public IPv6 addresses, which would otherwise put it on the internet. Voice input needs HTTPS, so the mic button hides over plain `http://`.
 
 **From anywhere:** keep the token, run `npm run build && npm start`, and expose port 8787 over HTTPS with a tunnel, e.g. `cloudflared tunnel --url http://localhost:8787`.
 
 With a token set, every page and API call requires sign-in (a cookie, or `Authorization: Bearer <token>` for scripts), cross-site requests are blocked, wrong-token guesses are rate-limited, and the agents' tool endpoint answers only this machine. TOT refuses to start on the network without a token.
+
+## Install TOT on another Mac, and pair them
+
+Each computer runs its own TOT, with its own agents, chats and logins. Pair two once, and each shows the other's agents: talk to the MacBook's agents from the Mac mini and the other way round, live on both. Nothing is copied: an agent's chats, files and logins stay on the computer it lives on. ([07 · Devices](docs/roadmap/07-devices.md) has the details.)
+
+1. Install Node and log in to Claude and/or Codex on that Mac, as in [Quick start](#quick-start).
+2. `git clone` this repo there, then `npm install`.
+3. Make its own `.env` with a fresh `TOT_ACCESS_TOKEN` (`openssl rand -hex 16`), plus `TOT_HOST=tailscale` (or `TOT_LAN=1` for your Wi-Fi only). Don't copy this Mac's `.env`: tokens and keys belong to one computer.
+4. `npm run dev` on both.
+5. On one, open **Settings → Devices → Pair a device** and copy the link. On the other, open the same dialog and paste it. One paste pairs them both ways.
+
+[Tailscale](https://tailscale.com) on both is the way to go: it works from anywhere, not just your Wi-Fi, and it's encrypted. Plain Wi-Fi works too, at home only. If a computer has a name or tunnel of its own, set `TOT_PUBLIC_URL` to it.
+
+Each computer keeps its own logins, GitHub, Slack, mail and apps. If both run the same Slack bot or mailbox, Settings → Devices warns you, since both would answer.
 
 ## How it works
 

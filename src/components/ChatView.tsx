@@ -1,7 +1,7 @@
 import { useRef, useState, type DragEvent } from "react";
 import { Paperclip } from "lucide-react";
 import { useAttachments } from "../hooks/useAttachments";
-import { useStore } from "../store";
+import { selectActiveAgent, useStore } from "../store";
 import { AgentHome } from "./AgentHome";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
@@ -22,7 +22,7 @@ const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files"
  */
 export function ChatView() {
   const currentId = useStore((s) => s.currentId);
-  const attachments = useAttachments();
+  const attachments = useAttachments(useStore((s) => selectActiveAgent(s)?.deviceId ?? null));
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
 

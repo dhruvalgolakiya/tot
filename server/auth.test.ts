@@ -1,7 +1,6 @@
 // Remote-access sign-in, exercised in-process against the real app.
 // Run: TOT_DATA_DIR=/tmp/tot-auth-test npx tsx server/auth.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
-import { sessionValue } from "./session.ts";
 
 process.env.TOT_ACCESS_TOKEN = "Test-Token-1234";
 const { createApp } = await import("./app.ts");
@@ -19,7 +18,6 @@ const send = (path: string, init: RequestInit & { headers?: Record<string, strin
     { ...init, headers: { host: "127.0.0.1:8787", ...init.headers } },
     from ? { incoming: { socket: { remoteAddress: from, remotePort: 50000, remoteFamily: "IPv4" } } } : undefined,
   );
-const cookie = { cookie: `tot_session=${sessionValue("Test-Token-1234")}` };
 const form = (body: Record<string, string>) => ({
   method: "POST",
   body: new URLSearchParams(body).toString(),
@@ -38,6 +36,8 @@ res = await send("/login", form({ token: " testtoken1234 ", next: "/a/x" }));
 const setCookie = res.headers.get("set-cookie") ?? "";
 check("token ignores case, dashes and spaces", res.status === 302 && res.headers.get("location") === "/a/x", String(res.status));
 check("cookie is HttpOnly + SameSite=Strict and holds no token", setCookie.includes("HttpOnly") && setCookie.includes("SameSite=Strict") && !/test-?token/i.test(setCookie), setCookie);
+// Each sign-in is its own session (module 07): the cookie is "<id>.<secret>".
+const cookie = { cookie: setCookie.split(";")[0] };
 res = await send("/login", form({ token: "Test-Token-1234", next: "//evil.example" }));
 check("no open redirect", res.headers.get("location") === "/");
 res = await send("/api/agents", { headers: { ...cookie, host: "192.168.1.21:5173" } });

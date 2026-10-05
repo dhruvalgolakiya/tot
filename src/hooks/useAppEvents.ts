@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { AppEvent } from "@shared/types";
+import { adopt } from "../lib/devices";
 
 /**
  * App-wide live updates: one shared EventSource for GET /api/events across
@@ -8,8 +9,11 @@ import type { AppEvent } from "@shared/types";
  * whatever list/detail you're caching.
  */
 
+/** `deviceId` is set for a paired device's event (module 07): its agents, chats and projects. */
+type OnEvent = (event: AppEvent, deviceId: string | null) => void;
+
 interface Listener {
-  onEvent: (event: AppEvent) => void;
+  onEvent: OnEvent;
   onReconnect?: () => void;
 }
 
@@ -30,7 +34,10 @@ function openChannel(): EventSource {
     } catch {
       return;
     }
-    for (const listener of [...listeners]) listener.onEvent(event);
+    // A paired device's event arrives wrapped; unwrapped here, its ids and file URLs become that device's.
+    const deviceId = event.type === "remote" ? event.deviceId : null;
+    if (event.type === "remote") event = adopt(event.deviceId, event.event);
+    for (const listener of [...listeners]) listener.onEvent(event, deviceId);
   };
 
   es.onerror = () => {
@@ -67,7 +74,7 @@ function subscribe(listener: Listener): () => void {
  * function identities on every render never tears down or reopens the
  * shared connection.
  */
-export function useAppEvents(onEvent: (event: AppEvent) => void, onReconnect?: () => void): void {
+export function useAppEvents(onEvent: OnEvent, onReconnect?: () => void): void {
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
   const onReconnectRef = useRef(onReconnect);
@@ -75,7 +82,7 @@ export function useAppEvents(onEvent: (event: AppEvent) => void, onReconnect?: (
 
   useEffect(() => {
     const listener: Listener = {
-      onEvent: (event) => onEventRef.current(event),
+      onEvent: (event, deviceId) => onEventRef.current(event, deviceId),
       onReconnect: () => onReconnectRef.current?.(),
     };
     return subscribe(listener);

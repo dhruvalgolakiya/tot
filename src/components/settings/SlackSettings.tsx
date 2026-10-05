@@ -4,7 +4,7 @@ import { Ellipsis, LoaderCircle, Unplug, X } from "lucide-react";
 import type { SlackPatch, SlackStatus } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { useCopy } from "../../hooks/useCopy";
-import { notifyError, setSlackStatus, useStore } from "../../store";
+import { notifyError, setSlackStatus, useLocalAgents, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
@@ -165,7 +165,7 @@ function SetupGuide({ status }: { status: SlackStatus }) {
 
 /** Connected: who it's connected as, default agent, allowed people, and pending requests. */
 function ConnectedView({ status }: { status: SlackStatus }) {
-  const agents = useStore((s) => s.agents);
+  const agents = useLocalAgents();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [agentSaving, setAgentSaving] = useState(false);
   const [busyPersonId, setBusyPersonId] = useState<string | null>(null);

@@ -4,7 +4,7 @@ import { ArrowLeft, Camera, Ellipsis, ImageMinus, Pencil, RefreshCw, Trash, Unpl
 import type { Persona } from "@shared/types";
 import { api } from "../../lib/api";
 import { mailboxStatus } from "../../lib/personas";
-import { notifyError, removePersona, setPersona, useStore } from "../../store";
+import { notifyError, removePersona, setPersona, useLocalAgents } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { IconButton } from "../ui/IconButton";
 import { StatusDot } from "../ui/StatusDot";
@@ -24,7 +24,7 @@ type PersonaDetailProps = {
 
 /** A persona's own sub-page: mailbox, email tasks, GitHub, and the agents using it. */
 export function PersonaDetail({ persona, onBack }: PersonaDetailProps) {
-  const agents = useStore((s) => s.agents);
+  const agents = useLocalAgents();
   const status = mailboxStatus(persona.mailbox);
   const [renaming, setRenaming] = useState(false);
   const [refreshing, setRefreshing] = useState(false);

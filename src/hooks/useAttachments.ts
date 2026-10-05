@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Attachment } from "@shared/types";
 import { api } from "../lib/api";
+import { onDevice } from "../lib/devices";
 import { notifyError } from "../store";
 
 /** Matches the server's `SendMessageRequest.attachments` limit. */
@@ -18,12 +19,17 @@ export interface PendingAttachment {
 let seq = 0;
 const nextLocalId = () => `att-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
-/** Composer file attachments: pick/drop/paste, upload immediately, track per-file state. */
-export function useAttachments() {
+/**
+ * Composer file attachments: pick/drop/paste, upload immediately, track per-file state. Files go to
+ * `deviceId`, the paired device the chat's agent lives on (module 07), or this device when null.
+ */
+export function useAttachments(deviceId: string | null = null) {
   const [items, setItems] = useState<PendingAttachment[]>([]);
+  const device = useRef(deviceId);
+  device.current = deviceId;
 
   const upload = useCallback((localId: string, file: File) => {
-    api.uploadFile(file).then(
+    onDevice(device.current, () => api.uploadFile(file)).then(
       (attachment) => {
         setItems((current) => current.map((it) => (it.localId === localId ? { ...it, status: "done", attachment } : it)));
       },

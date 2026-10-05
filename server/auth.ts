@@ -1,20 +1,24 @@
+import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { ACCESS_TOKEN } from "./config.ts";
-import { SESSION_COOKIE, safeEqual, sessionValue, tokenMatches } from "./session.ts";
+import { DEVICE_TOKEN_PREFIX, peers } from "./devices/peers.ts";
+import { checkSession, createSession, describeBrowser, endSession } from "./devices/sessions.ts";
+import { clientAddress, isThisMachine } from "./net.ts";
+import { SESSION_COOKIE, tokenMatches } from "./session.ts";
 
 /**
  * Sign-in for reaching TOT beyond this machine. With TOT_ACCESS_TOKEN set, every
  * page and API call needs that token — as a login cookie (browsers, via /login)
- * or an `Authorization: Bearer` header (scripts). Without it, TOT only serves
- * this machine (see the host/origin guard in routes.ts).
+ * or an `Authorization: Bearer` header (scripts). Each browser that signs in gets
+ * its own session (devices/sessions.ts), so it can be signed out on its own.
+ * Without a token, TOT only serves this machine (see the host/origin guard in routes.ts).
  */
 
 export { ACCESS_TOKEN };
 
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
-const SESSION = ACCESS_TOKEN ? sessionValue(ACCESS_TOKEN) : "";
 
 // Wrong guesses are counted globally: per-client keys would come from spoofable headers.
 // With a 12+ character token this makes guessing hopeless while a real user can retry.
@@ -28,27 +32,69 @@ function lockedOut(): boolean {
 
 const recordFailure = () => void failures.count++;
 
-type AuthResult = "ok" | "missing" | "wrong-token" | "locked";
+/**
+ * Who a request is from: this machine with sign-in off, a script with the access token, a signed-in
+ * browser (its session), or a paired device (module 07; its own token, never the access token).
+ */
+export type Caller = { kind: "local" } | { kind: "token" } | { kind: "session"; id: string } | { kind: "device"; id: string };
+
+type AuthResult = Caller | "missing" | "wrong-token" | "locked";
 
 function check(c: Context): AuthResult {
-  if (!ACCESS_TOKEN) return "ok";
+  if (!ACCESS_TOKEN) return { kind: "local" };
   const header = c.req.header("authorization");
   if (header?.startsWith("Bearer ")) {
     if (lockedOut()) return "locked";
-    if (tokenMatches(header.slice(7), ACCESS_TOKEN)) return "ok";
+    const token = header.slice(7).trim();
+    const device = peers.byToken(token);
+    if (device) return { kind: "device", id: device };
+    if (!token.startsWith(DEVICE_TOKEN_PREFIX) && tokenMatches(token, ACCESS_TOKEN)) return { kind: "token" };
     recordFailure();
     return "wrong-token";
   }
-  const cookie = getCookie(c, SESSION_COOKIE);
-  return cookie && safeEqual(cookie, SESSION) ? "ok" : "missing";
+  const session = checkSession(getCookie(c, SESSION_COOKIE));
+  return session ? { kind: "session", id: session } : "missing";
 }
 
-export const isAuthenticated = (c: Context) => check(c) === "ok";
+const callers = new WeakMap<Request, Caller>();
+
+/** Who's asking. Only meaningful behind sign-in (requireAuth), or with sign-in off. */
+export function callerOf(c: Context): Caller {
+  const known = callers.get(c.req.raw);
+  if (known) return known;
+  const result = check(c);
+  return typeof result === "object" ? result : { kind: "token" };
+}
+
+export const isAuthenticated = (c: Context) => typeof check(c) === "object";
+
+/** The signed-in browser asking, or null (an access-token caller, a paired device, or sign-in is off). */
+export const currentSessionId = (c: Context): string | null => {
+  const caller = callerOf(c);
+  return caller.kind === "session" ? caller.id : null;
+};
+
+/** What closes this caller's event streams when it's signed out or unpaired: its session, or `device:<id>`. */
+export const callerKey = (c: Context): string | null => {
+  const caller = callerOf(c);
+  return caller.kind === "session" ? caller.id : caller.kind === "device" ? `device:${caller.id}` : null;
+};
+
+function onThisMachine(c: Context): boolean {
+  try {
+    return isThisMachine(clientAddress(getConnInfo(c).remote.address, c.req.header("x-forwarded-for")));
+  } catch {
+    return false;
+  }
+}
 
 /** Guards pages and the API when an access token is set. */
 export const requireAuth: MiddlewareHandler = async (c, next) => {
   const result = check(c);
-  if (result === "ok") return next();
+  if (typeof result === "object") {
+    callers.set(c.req.raw, result);
+    return next();
+  }
   if (result === "locked") return c.json({ error: "Too many wrong tokens — wait a minute." }, 429);
   if (c.req.path.startsWith("/api/")) return c.json({ error: "Sign in to TOT first." }, 401);
   const target = encodeURIComponent(c.req.path + (new URL(c.req.url).search || ""));
@@ -148,7 +194,7 @@ authRoutes.post("/login", async (c) => {
     recordFailure();
     return c.html(loginPage("That token didn't match.", next), 401);
   }
-  setCookie(c, SESSION_COOKIE, SESSION, {
+  setCookie(c, SESSION_COOKIE, createSession(describeBrowser(c.req.header("user-agent"), onThisMachine(c))), {
     httpOnly: true,
     sameSite: "Strict",
     secure: new URL(c.req.url).protocol === "https:" || c.req.header("x-forwarded-proto") === "https",
@@ -159,6 +205,8 @@ authRoutes.post("/login", async (c) => {
 });
 
 authRoutes.post("/logout", (c) => {
+  const session = currentSessionId(c);
+  if (session) endSession(session);
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
   return c.redirect("/login", 302);
 });

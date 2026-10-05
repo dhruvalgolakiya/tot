@@ -72,6 +72,7 @@ export const TRUST_LAB_PATH = "/dev/trust";
 
 export type SettingsSection =
   | "general"
+  | "devices"
   | "models"
   | "memory"
   | "computer"
@@ -85,6 +86,7 @@ export type SettingsSection =
 
 const SETTINGS_SECTION_IDS: readonly SettingsSection[] = [
   "general",
+  "devices",
   "models",
   "memory",
   "computer",

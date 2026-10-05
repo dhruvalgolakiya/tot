@@ -3,10 +3,12 @@ import clsx from "clsx";
 import { RadioGroup } from "radix-ui";
 import { toast } from "sonner";
 import { Check, LoaderCircle, Lock } from "lucide-react";
-import type { GitHubRepo, Project, ProjectKind } from "@shared/types";
+import type { GitHubRepo, GitHubStatus, Project, ProjectKind } from "@shared/types";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { api, ApiError, errorMessage } from "../../lib/api";
+import { onDevice } from "../../lib/devices";
 import { relativeTime } from "../../lib/format";
+import { selectDevice, useDevices } from "../../lib/remote";
 import {
   createProject,
   grantProjectFolder,
@@ -45,8 +47,19 @@ export function NewProjectDialog() {
   const open = useProjects((s) => s.newProjectOpen);
   const projects = useProjects((s) => s.projects);
   const agent = useStore(selectActiveAgent);
-  const githubLogin = useStore((s) => s.github?.connection?.login ?? null);
-  const githubKnown = useStore((s) => s.github !== null);
+  // Made on the active agent's device (module 07), with that device's GitHub and folders.
+  const device = agent?.deviceId ?? null;
+  const deviceName = useDevices(selectDevice(device))?.name ?? null;
+  const localGithub = useStore((s) => s.github);
+  const [remoteGithub, setRemoteGithub] = useState<GitHubStatus | null>(null);
+  useEffect(() => {
+    setRemoteGithub(null);
+    if (!device || !open) return;
+    onDevice(device, () => api.getGithubStatus()).then(setRemoteGithub, () => {});
+  }, [device, open]);
+  const github = device ? remoteGithub : localGithub;
+  const githubLogin = github?.connection?.login ?? null;
+  const githubKnown = github !== null;
 
   const [kind, setKind] = useState<ProjectKind>("github");
   const [repoQuery, setRepoQuery] = useState("");
@@ -98,12 +111,15 @@ export function NewProjectDialog() {
     setSubmitting(true);
     setError(null);
     try {
-      let project = await createProject({
-        kind,
-        name: shownName.trim(),
-        ...(kind === "none" ? {} : { source }),
-        ...(kind === "folder" ? { grant: true } : {}),
-      });
+      let project = await createProject(
+        {
+          kind,
+          name: shownName.trim(),
+          ...(kind === "none" ? {} : { source }),
+          ...(kind === "folder" ? { grant: true } : {}),
+        },
+        device,
+      );
       // A server from before `grant` on create: allow it in a second call (quietly, if that's not there either).
       if (kind === "folder" && !project.folderGranted) project = await grantProjectFolder(project.id).catch(() => project);
       setNewProjectOpen(false);
@@ -173,7 +189,9 @@ export function NewProjectDialog() {
                       </span>
                       <Icon aria-hidden="true" className="size-4 shrink-0 text-fg-muted group-data-[state=checked]:text-fg" />
                       <span className="flex min-w-0 flex-1 flex-col gap-x-3 sm:flex-row sm:items-baseline sm:justify-between">
-                        <span className="text-sm font-medium text-fg">{option.label}</span>
+                        <span className="text-sm font-medium text-fg">
+                          {option.kind === "folder" && deviceName ? `A folder on ${deviceName}` : option.label}
+                        </span>
                         <span className="truncate text-xs text-fg-subtle">{option.hint}</span>
                       </span>
                     </RadioGroup.Item>
@@ -185,6 +203,7 @@ export function NewProjectDialog() {
             {kind === "github" &&
               (githubLogin ? (
                 <RepoPicker
+                  device={device}
                   login={githubLogin}
                   query={repoQuery}
                   onQueryChange={(value) => {
@@ -227,7 +246,7 @@ export function NewProjectDialog() {
                 </div>
               ))}
 
-            {kind === "folder" && <FolderPicker value={folder} onChange={setFolder} projects={projects} />}
+            {kind === "folder" && <FolderPicker device={device} value={folder} onChange={setFolder} projects={projects} />}
 
             <Field label="Name" htmlFor="new-project-name">
               <input
@@ -330,6 +349,8 @@ function findExisting(projects: Project[], kind: ProjectKind, source: string): P
 type RepoList = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; repos: GitHubRepo[] };
 
 type RepoPickerProps = {
+  /** The paired device whose GitHub to list (module 07); null for this device's. */
+  device: string | null;
   login: string;
   query: string;
   onQueryChange: (value: string) => void;
@@ -337,7 +358,7 @@ type RepoPickerProps = {
   onSelect: (fullName: string) => void;
 };
 
-function RepoPicker({ login, query, onQueryChange, selected, onSelect }: RepoPickerProps) {
+function RepoPicker({ device, login, query, onQueryChange, selected, onSelect }: RepoPickerProps) {
   const text = query.trim();
   const isUrl = GIT_URL.test(text);
   const search = useDebouncedValue(isUrl ? "" : text, 250);
@@ -351,7 +372,7 @@ function RepoPicker({ login, query, onQueryChange, selected, onSelect }: RepoPic
     if (isUrl) return;
     let cancelled = false;
     setList({ state: "loading" });
-    api.listGithubRepos(search || undefined).then(
+    onDevice(device, () => api.listGithubRepos(search || undefined)).then(
       (repos) => {
         if (cancelled) return;
         setList({ state: "ready", repos });
@@ -482,13 +503,23 @@ function RepoOption({ repo, index, selected, onSelect }: { repo: GitHubRepo; ind
 
 type RecentFolder = { path: string; label: string };
 
-function FolderPicker({ value, onChange, projects }: { value: string; onChange: (value: string) => void; projects: Project[] }) {
+function FolderPicker({
+  device,
+  value,
+  onChange,
+  projects,
+}: {
+  device: string | null;
+  value: string;
+  onChange: (value: string) => void;
+  projects: Project[];
+}) {
   const [recent, setRecent] = useState<RecentFolder[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     // Quiet when the server can't list them (yet): the path field is enough.
-    api.recentProjectFolders().then(
+    onDevice(device, () => api.recentProjectFolders()).then(
       (folders) => !cancelled && setRecent(Array.isArray(folders) ? folders : []),
       () => !cancelled && setRecent([]),
     );

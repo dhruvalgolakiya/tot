@@ -1,12 +1,12 @@
 import { DropdownMenu } from "radix-ui";
 import { ChevronDown } from "lucide-react";
 import { groupModels, modelLabel } from "../lib/models";
-import { selectCurrentModelId, setModel, useStore } from "../store";
+import { selectActiveModels, selectCurrentModelId, setModel, useStore } from "../store";
 import { ModelMenuItem } from "./ModelMenuItem";
 
 /** Header model menu: TOT Auto, then Claude models, then ChatGPT models. */
 export function ModelPicker() {
-  const models = useStore((s) => s.models);
+  const models = useStore(selectActiveModels);
   const currentModelId = useStore(selectCurrentModelId);
   const groups = groupModels(models);
 

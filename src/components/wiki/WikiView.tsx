@@ -31,8 +31,11 @@ import { WikiTree } from "./WikiTree";
 export function WikiView() {
   const agent = useStore(selectActiveAgent);
   const agentId = agent?.id ?? null;
-  const agents = useStore((s) => s.agents);
-  const brains = useStore((s) => s.brains);
+  // An agent on a paired device (module 07) has its brains there, shared only with that device's agents.
+  const deviceId = agent?.deviceId;
+  const allAgents = useStore((s) => s.agents);
+  const agents = useMemo(() => allAgents.filter((a) => a.deviceId === deviceId), [allAgents, deviceId]);
+  const brains = useStore((s) => (deviceId ? (s.deviceBrains[deviceId] ?? null) : s.brains));
   const wikiPageId = useStore((s) => s.wikiPageId);
   const wikiBrainId = useStore((s) => s.wikiBrainId);
   const wikiEvent = useStore((s) => s.wikiEvent);

@@ -43,6 +43,7 @@ import { CLAUDE_SONNET, parseModelId, resolveRoute, type Complexity, type Route 
 import { runRegistry, type Run } from "./runs.ts";
 import { intake } from "../projects/intake.ts";
 import { projects } from "../projects/projects.ts";
+import { deviceSection } from "../devices/prompt.ts";
 import { projectList, projectNote, projectSection } from "../projects/prompt.ts";
 
 export class HttpError extends Error {
@@ -466,6 +467,7 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
       // A task is told its goal and where to work; a chat, when to start tasks.
       tasks: conversation.kind === "task" && conversation.task ? taskSection(conversation.task) : chatTasksSection(),
       project: section,
+      device: deviceSection(),
     });
     conversations.update(conversation.id, { systemPrompt });
   }

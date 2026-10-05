@@ -33,7 +33,11 @@ import { HttpError, sendMessage } from "./agent/orchestrator.ts";
 import { appEvents } from "./app-events.ts";
 import { apps, ExecutorError } from "./apps.ts";
 import { appsCatalog, AppsError } from "./apps-catalog.ts";
-import { ACCESS_TOKEN } from "./auth.ts";
+import { ACCESS_TOKEN, callerKey, callerOf } from "./auth.ts";
+import { deviceRoutes } from "./devices/routes.ts";
+import { PairingError } from "./devices/pairing.ts";
+import { relay } from "./devices/relay.ts";
+import { onSignOut } from "./devices/sessions.ts";
 import { github, GitHubError } from "./github.ts";
 import { clientAddress, hostnameOf, isLoopbackName, isThisMachine } from "./net.ts";
 import { slack } from "./slack.ts";
@@ -103,8 +107,21 @@ api.use("*", async (c, next) => {
   await next();
 });
 
+// A paired device (module 07) works with this device's agents, chats and projects, but can't manage devices or
+// sign-ins, reach a third device through this one, or change this device's logins and settings.
+const DEVICE_NEVER = /^\/api\/(devices|sessions|d)(\/|$)/;
+const DEVICE_READ_ONLY = /^\/api\/(settings|github|slack|apps|personas|plugins)(\/|$)/;
+api.use("*", async (c, next) => {
+  if (callerOf(c).kind !== "device" || c.req.path === "/api/devices/unpaired") return next();
+  if (DEVICE_NEVER.test(c.req.path) || (c.req.method !== "GET" && DEVICE_READ_ONLY.test(c.req.path))) {
+    return c.json({ error: "Another device can't do that here. Use this device itself." }, 403);
+  }
+  await next();
+});
+
 api.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
+  if (err instanceof PairingError) return c.json({ error: err.message }, err.status);
   if (err instanceof WikiError || err instanceof BrainError || err instanceof GitHubError || err instanceof AppsError) return c.json({ error: err.message }, 400);
   if (err instanceof ExecutorError) return c.json({ error: err.message }, err.status === 404 ? 404 : 400);
   console.error("[tot] request failed:", err);
@@ -328,6 +345,7 @@ api.post("/conversations/:id/computer/stop", async (c) => {
 api.route("/", taskRoutes);
 api.route("/", chatRoutes);
 api.route("/", projectRoutes);
+api.route("/", deviceRoutes);
 api.route("/", orchestrationRoutes);
 
 // ---------------------------------------------------------------------------
@@ -407,7 +425,13 @@ api.get("/events", (c) =>
       writes = writes.then(() => stream.write(": ping\n\n"));
     }, HEARTBEAT_MS);
     stream.onAbort(finish);
+    // A browser that's signed out, or a device that's unpaired (Settings → Devices), stops getting events at once.
+    const forget = onSignOut(callerKey(c), finish);
+    const caller = callerOf(c);
+    const leave = caller.kind === "device" ? relay.connected(caller.id) : () => {};
     await finished;
+    forget();
+    leave();
     clearInterval(heartbeat);
     unsubscribe();
   }),
@@ -432,7 +456,9 @@ api.get("/runs/:runId/events", (c) => {
       writes = writes.then(() => stream.write(": ping\n\n"));
     }, HEARTBEAT_MS);
     stream.onAbort(finish);
+    const forget = onSignOut(callerKey(c), finish);
     await finished;
+    forget();
     clearInterval(heartbeat);
     unsubscribe();
     await writes.catch(() => {});

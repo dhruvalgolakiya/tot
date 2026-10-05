@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import { toast } from "sonner";
 import type {
@@ -26,7 +27,9 @@ import type {
 import { api, ApiError, errorMessage } from "./lib/api";
 import { toMs, truncate } from "./lib/format";
 import { AUTO_MODEL_ID, PROVIDER_LABELS } from "./lib/models";
+import { deviceOf, onDevice } from "./lib/devices";
 import { loadProjects, upsertProject, useProjects } from "./lib/projects";
+import { handleDeviceDeleted, handleDeviceEvent, loadDevices, whenDevicesLoaded } from "./lib/remote";
 import { applyRunEvent, createAssistantMessage, upsertMessage } from "./lib/reducer";
 import {
   agentIdFromPath,
@@ -112,6 +115,10 @@ export interface TotState {
   /** Conversations whose run just completed; mascot stays "happy" briefly. */
   justFinished: Record<string, boolean>;
   models: ModelOption[];
+  /** Paired devices' models (module 07): another device's agent picks from its own device's. */
+  deviceModels: Record<string, ModelOption[]>;
+  /** Paired devices' brains (module 07): another device's agent's notebook and brains are on its device. */
+  deviceBrains: Record<string, Brain[]>;
   providers: ProviderStatus[];
   settings: Settings | null;
   settingsState: LoadState;
@@ -198,6 +205,8 @@ export const useStore = create<TotState>()(() => ({
   composerDraft: null,
   justFinished: {},
   models: [],
+  deviceModels: {},
+  deviceBrains: {},
   providers: [],
   settings: null,
   settingsState: "loading",
@@ -246,12 +255,32 @@ export function selectActiveAgent(s: TotState): Agent | undefined {
   return id ? s.agents.find((a) => a.id === id) : undefined;
 }
 
+/** The models the active agent can use: its own device's (module 07). */
+export const selectActiveModels = (s: TotState): ModelOption[] => {
+  const deviceId = selectActiveAgent(s)?.deviceId;
+  return deviceId ? (s.deviceModels[deviceId] ?? s.models) : s.models;
+};
+
+export function setDeviceModels(deviceId: string, models: ModelOption[]) {
+  set((s) => ({ deviceModels: { ...s.deviceModels, [deviceId]: models } }));
+}
+
+export function setDeviceBrains(deviceId: string, brains: Brain[]) {
+  set((s) => ({ deviceBrains: { ...s.deviceBrains, [deviceId]: brains } }));
+}
+
 export const selectCurrentModelId = (s: TotState): string =>
   selectCurrentConversation(s)?.modelId ??
   s.draftModelId ??
   selectActiveAgent(s)?.modelId ??
   s.settings?.defaultModelId ??
   AUTO_MODEL_ID;
+
+/** This device's own agents, not a paired device's (module 07): for this device's settings, like Slack and personas. */
+export function useLocalAgents(): Agent[] {
+  const agents = useStore((s) => s.agents);
+  return useMemo(() => agents.filter((a) => !a.deviceId), [agents]);
+}
 
 /** True while any of an agent's chats has a run in flight (sidebar/mascot indicator). */
 export function selectAgentWorking(s: TotState, agentId: string): boolean {
@@ -316,6 +345,14 @@ export function initApp() {
   void loadSlackStatus();
   void loadPersonas();
   void loadProjects().catch(notifyError);
+  // Paired devices' agents, chats and projects join the lists (module 07); then a home agent from one resolves.
+  void loadDevices().then(resolveHome);
+}
+
+/** The home agent named in the URL doesn't exist (anymore): go to the first agent. */
+function resolveHome() {
+  const s = get();
+  if (s.page === "home" && s.agents.length > 0 && (s.homeAgentId === null || !s.agents.some((a) => a.id === s.homeAgentId))) redirectHome();
 }
 
 export async function loadAgents() {
@@ -323,11 +360,12 @@ export async function loadAgents() {
   set({ agentsState: hadAgents ? "ready" : "loading" });
   try {
     const agents = await api.listAgents();
-    set({ agents, agentsState: "ready" });
+    // Paired devices' agents (module 07) are loaded with their device.
+    set((s) => ({ agents: [...agents, ...s.agents.filter((a) => a.deviceId)], agentsState: "ready" }));
     const s = get();
-    const homeUnresolved =
-      s.page === "home" && (s.homeAgentId === null || !agents.some((a) => a.id === s.homeAgentId));
-    if (homeUnresolved && agents.length > 0) redirectHome();
+    // The home agent may live on a paired device that hasn't loaded yet.
+    if (s.page === "home" && s.homeAgentId !== null && !s.agents.some((a) => a.id === s.homeAgentId)) void whenDevicesLoaded().then(resolveHome);
+    else resolveHome();
   } catch (error) {
     set({ agentsState: hadAgents ? "ready" : "error" });
     notifyError(error);
@@ -337,7 +375,10 @@ export async function loadAgents() {
 export async function loadConversations({ quiet = false } = {}) {
   try {
     const conversations = await api.listConversations();
-    set({ conversations: sortConversations(conversations), conversationsState: "ready" });
+    set((s) => ({
+      conversations: sortConversations([...conversations, ...s.conversations.filter((c) => deviceOf(c.agentId))]),
+      conversationsState: "ready",
+    }));
   } catch (error) {
     if (get().conversationsState !== "ready") set({ conversationsState: "error" });
     if (!quiet) notifyError(error);
@@ -533,10 +574,17 @@ export function setAgentSettingsTab(tab: AgentSettingsTab) {
   set({ agentSettingsTab: tab });
 }
 
-export async function createAgent(input: AgentInput): Promise<Agent | null> {
+/** An agent as the server sent it, tagged with its paired device when it lives on one (module 07). */
+function withDevice(agent: Agent): Agent {
+  const deviceId = deviceOf(agent.id);
+  return deviceId ? { ...agent, deviceId } : agent;
+}
+
+/** Makes an agent here, or on a paired device (`deviceId`, module 07). */
+export async function createAgent(input: AgentInput, deviceId: string | null = null): Promise<Agent | null> {
   try {
-    const agent = await api.createAgent(input);
-    set((s) => ({ agents: [...s.agents, agent] }));
+    const agent = withDevice(await onDevice(deviceId, () => api.createAgent(input)));
+    set((s) => ({ agents: s.agents.some((a) => a.id === agent.id) ? s.agents : [...s.agents, agent] }));
     setNewAgentDialogOpen(false);
     return agent;
   } catch (error) {
@@ -548,7 +596,7 @@ export async function createAgent(input: AgentInput): Promise<Agent | null> {
 export async function updateAgent(id: string, input: Partial<AgentInput>): Promise<boolean> {
   try {
     const agent = await api.updateAgent(id, input);
-    set((s) => ({ agents: s.agents.map((a) => (a.id === id ? agent : a)) }));
+    set((s) => ({ agents: s.agents.map((a) => (a.id === id ? withDevice(agent) : a)) }));
     return true;
   } catch (error) {
     notifyError(error);
@@ -676,7 +724,11 @@ export function navigateToAgentHome(agentId: string) {
 }
 
 /** Open a project's page, seen from an agent (the active one by default): new chats there start with it. */
-export function navigateToProject(projectId: string, agentId = selectActiveAgentId(get())) {
+export function navigateToProject(projectId: string, preferredAgentId = selectActiveAgentId(get())) {
+  // A project is worked on by agents on its own device (module 07): seen from another device's agent, use one of its.
+  const projectDevice = useProjects.getState().projects.find((p) => p.id === projectId)?.deviceId;
+  const preferred = get().agents.find((a) => a.id === preferredAgentId);
+  const agentId = preferred && preferred.deviceId === projectDevice ? preferred.id : get().agents.find((a) => a.deviceId === projectDevice)?.id;
   if (!agentId) return;
   if (!isDesktop()) set({ sidebarOpen: false });
   const s = get();
@@ -689,7 +741,9 @@ export function navigateToProject(projectId: string, agentId = selectActiveAgent
 /** The agent rail: switch to an agent. On a project's page, stay on it (the next chat there starts with that agent). */
 export function selectAgent(agentId: string) {
   const s = get();
-  if (s.page === "project" && s.projectId && s.currentId === null) navigateToProject(s.projectId, agentId);
+  const projectDevice = s.projectId ? useProjects.getState().projects.find((p) => p.id === s.projectId)?.deviceId : undefined;
+  const sameDevice = s.agents.find((a) => a.id === agentId)?.deviceId === projectDevice;
+  if (s.page === "project" && s.projectId && s.currentId === null && sameDevice) navigateToProject(s.projectId, agentId);
   else navigateToAgentHome(agentId);
 }
 
@@ -753,6 +807,8 @@ async function openConversation(id: string) {
 async function loadConversation(id: string, { attach = true } = {}) {
   set((s) => ({ detailState: { ...s.detailState, [id]: s.messages[id] ? "ready" : "loading" } }));
   try {
+    // Opened by URL before the paired devices' chats loaded: it may be one of theirs (module 07).
+    if (!deviceOf(id) && !get().conversations.some((c) => c.id === id)) await whenDevicesLoaded();
     const detail = await api.getConversation(id);
     if (streams.has(id)) {
       // A message was sent while we were loading: keep the live messages and
@@ -1150,7 +1206,8 @@ export function setRunningAgents(ids: Set<string>) {
   set({ runningAgents: ids });
 }
 
-function handleAgentEvent(agent: Agent) {
+function handleAgentEvent(serverAgent: Agent) {
+  const agent = withDevice(serverAgent);
   set((s) => ({
     agents: s.agents.some((a) => a.id === agent.id)
       ? s.agents.map((a) => (a.id === agent.id ? agent : a))
@@ -1259,8 +1316,19 @@ function handleApprovalEvent(event: Extract<AppEvent, { type: "approval" }>) {
 }
 
 /** Dispatch one app-wide SSE event into the store. Pass to `useAppEvents`. */
-export function handleAppEvent(event: AppEvent) {
+export function handleAppEvent(event: AppEvent, deviceId: string | null = null) {
+  // A paired device's brains (module 07) are kept apart: they belong to its agents, not to this device's.
+  if (deviceId && event.type === "brains") {
+    setDeviceBrains(deviceId, event.brains);
+    return;
+  }
   switch (event.type) {
+    case "device":
+      handleDeviceEvent(event.device);
+      break;
+    case "device-deleted":
+      handleDeviceDeleted(event.deviceId);
+      break;
     case "agent":
       handleAgentEvent(event.agent);
       break;
@@ -1480,6 +1548,28 @@ export function handleAppReconnect() {
   void loadConversations({ quiet: true });
   void loadPersonas();
   void loadProjects().catch(() => {});
+  void loadDevices();
+}
+
+/** A paired device's agents and chats (module 07); `conversations` null keeps what's there (an offline device). */
+export function mergeRemote(deviceId: string, agents: Agent[], conversations: Conversation[] | null) {
+  set((s) => ({
+    agents: [...s.agents.filter((a) => a.deviceId !== deviceId), ...agents],
+    conversations: conversations
+      ? sortConversations([...s.conversations.filter((c) => deviceOf(c.agentId) !== deviceId), ...conversations])
+      : s.conversations,
+  }));
+}
+
+/** A device was unpaired: its agents and chats leave this screen. */
+export function removeDevice(deviceId: string) {
+  const s = get();
+  const active = selectActiveAgent(s);
+  set({
+    agents: s.agents.filter((a) => a.deviceId !== deviceId),
+    conversations: s.conversations.filter((c) => deviceOf(c.agentId) !== deviceId),
+  });
+  if (active?.deviceId === deviceId) redirectHome();
 }
 
 // ---------------------------------------------------------------------------

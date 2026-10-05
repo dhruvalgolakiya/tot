@@ -3,12 +3,14 @@ import { DropdownMenu } from "radix-ui";
 import { Check, ChevronRight, FolderInput, Minus } from "lucide-react";
 import type { Conversation, Project } from "@shared/types";
 import { PROJECT_ICONS, useProjects } from "../../lib/projects";
+import { deviceOf } from "../../lib/devices";
 import { moveToProject } from "../../store";
 
-/** Projects a chat can move to (archived ones aren't offered). */
-function useLiveProjects(): Project[] {
+/** Projects a chat can move to: on its agent's device (module 07), and not archived. */
+function useLiveProjects(chat: Conversation): Project[] {
   const projects = useProjects((s) => s.projects);
-  return useMemo(() => projects.filter((p) => !p.archived), [projects]);
+  const device = deviceOf(chat.agentId) ?? undefined;
+  return useMemo(() => projects.filter((p) => !p.archived && p.deviceId === device), [projects, device]);
 }
 
 /** Not for tasks (they move with their chat), nor while there's nowhere to move the chat to. */
@@ -20,7 +22,7 @@ const choicesClass = "menu max-h-[min(20rem,var(--radix-dropdown-menu-content-av
 
 /** "Move to project" in a chat's "…" menu: a submenu of projects plus "No project". */
 export function MoveToProjectSub({ chat }: { chat: Conversation }) {
-  const live = useLiveProjects();
+  const live = useLiveProjects(chat);
   if (!canMove(chat, live)) return null;
 
   return (
@@ -41,7 +43,7 @@ export function MoveToProjectSub({ chat }: { chat: Conversation }) {
 
 /** The same choices behind a quiet text action, e.g. "Move" on a "Filed under web" notice. */
 export function MoveToProjectButton({ chat, children, className }: { chat: Conversation; children: ReactNode; className?: string }) {
-  const live = useLiveProjects();
+  const live = useLiveProjects(chat);
   if (!canMove(chat, live)) return null;
 
   return (
