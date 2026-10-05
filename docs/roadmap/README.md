@@ -10,7 +10,7 @@ TOT should become a daily driver for running many agents at once, for code and f
 - can be steered, paused and queued;
 - pass tests and an independent review before you see a PR.
 
-The plan has seven modules. Each has its own doc, written so an agent can pick it up and build it.
+The plan has eight modules. Each has its own doc, written so an agent can pick it up and build it.
 
 | # | Module | Doc | Depends on | Worktree |
 |---|--------|-----|------------|----------|
@@ -21,8 +21,9 @@ The plan has seven modules. Each has its own doc, written so an agent can pick i
 | 05 | **Coordination**: chats woken when their tasks finish, context that fits on a provider switch, retry-safe task tools, nothing ending silently, wait for a task, fork and merge back, attach a chat | [05-coordination.md](05-coordination.md) | 01, 02 (both merged) | **C** |
 | 06 | **Projects**: agent → project → chat; GitHub repos, folders on this Mac (with consent) and topics; one folder per project; tickets linked to branches | [06-projects.md](06-projects.md) | 01; after 04 (both change `server/tasks/worktree.ts`) | **D** |
 | 07 | **Devices**: install TOT on another computer, pair once, use both from either side; agents live on one device and are reachable from any screen; signed-in browsers you can sign out | [07-devices.md](07-devices.md) | 06 | **E** |
+| 08 | **Mac app**: TOT.app starts and stops the server itself, lives in the menu bar when its window is closed, opens a TOT already running; ad-hoc signed `.dmg` | [08-mac-app.md](08-mac-app.md) | 07 | `tot-mac` |
 
-01, 02, 03 (M1–M4), 05 and 06 (M1–M4) are merged into `main`. 07 (M1–M4) is built on `feat/devices`. 04 is next.
+01, 02, 03 (M1–M4), 05 and 06 (M1–M4) are merged into `main`. 07 (M1–M4) is built on `feat/devices`. 08 (M1) is built on `feat/mac-app`. 04 is next.
 
 ## Parallel plan: two worktrees
 

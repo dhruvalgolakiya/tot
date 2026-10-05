@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
+import { totDesktop } from "../../lib/desktop";
 import { modelSelectOptions } from "../../lib/models";
 import type { SettingsSectionProps } from "../../lib/settings";
-import { goToSettings, useStore } from "../../store";
+import { goToSettings, notifyError, useStore } from "../../store";
 import { Field } from "../ui/Field";
 import { Select } from "../ui/Select";
 import { Switch } from "../ui/Switch";
@@ -72,6 +74,46 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
           Manage memories →
         </button>
       </div>
+
+      {totDesktop && (
+        <div className="border-t border-hairline pt-5">
+          <OpenAtLoginRow />
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Mac app only: the menu-bar "open at login" OS setting, read and set through electron/'s bridge. */
+function OpenAtLoginRow() {
+  const [checked, setChecked] = useState(false);
+  const [busy, setBusy] = useState(true); // starts true: loading the current state before it can be toggled
+
+  useEffect(() => {
+    totDesktop
+      ?.getOpenAtLogin()
+      .then(setChecked)
+      .catch(notifyError)
+      .finally(() => setBusy(false));
+  }, []);
+
+  async function toggle(next: boolean) {
+    setBusy(true);
+    try {
+      setChecked(await totDesktop!.setOpenAtLogin(next));
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <SettingRow
+      htmlFor="settings-open-at-login"
+      title="Open at login"
+      description="Keeps TOT in the menu bar, so your phone and other devices can reach this computer."
+      control={<Switch id="settings-open-at-login" checked={checked} disabled={busy} onCheckedChange={(next) => void toggle(next)} />}
+    />
   );
 }

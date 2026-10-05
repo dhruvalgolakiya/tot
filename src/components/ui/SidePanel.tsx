@@ -53,7 +53,7 @@ export function SidePanel({ label, icon, title, onClose, width = "w-[380px]", ch
             : "fixed inset-y-0 right-0 z-40 h-full border-l border-hairline bg-panel shadow-dialog",
         )}
       >
-        <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline pr-2 pl-4">
+        <header className="app-drag-region flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline pr-2 pl-4">
           <span className="grid shrink-0 place-items-center text-fg-muted [&_svg]:size-4">{icon}</span>
           <h2 className="min-w-0 truncate text-heading text-fg">{title}</h2>
           <IconButton label={`Close ${label.toLowerCase()} panel`} className="ml-auto" onClick={onClose}>

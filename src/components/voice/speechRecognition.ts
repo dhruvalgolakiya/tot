@@ -5,6 +5,8 @@
  * VoiceInputButton actually uses, under names that can't collide with lib.dom.
  */
 
+import { totDesktop } from "../../lib/desktop";
+
 export interface SpeechRecognitionAlternativeLike {
   readonly transcript: string;
   readonly confidence: number;
@@ -46,10 +48,11 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 /**
  * Returns the browser's (possibly vendor-prefixed) constructor, or null when unsupported.
- * Browsers only grant the microphone on HTTPS or localhost, so plain-http LAN access has no voice.
+ * Browsers only grant the microphone on HTTPS or localhost, so plain-http LAN access has no voice. The Mac
+ * app has none either: Electron declares the API but lacks Chrome's speech service, so it never transcribes.
  */
 export function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
-  if (typeof window === "undefined" || !window.isSecureContext) return null;
+  if (typeof window === "undefined" || !window.isSecureContext || totDesktop) return null;
   const w = window as unknown as {
     SpeechRecognition?: SpeechRecognitionConstructor;
     webkitSpeechRecognition?: SpeechRecognitionConstructor;

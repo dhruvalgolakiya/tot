@@ -15,7 +15,7 @@ export function SettingsNav() {
 
   return (
     <>
-      <div className="group/header flex h-14 shrink-0 items-center gap-1 pr-1.5 pl-1.5">
+      <div className="app-drag-region group/header flex h-14 shrink-0 items-center gap-1 pr-1.5 pl-1.5">
         <IconButton label="Back" onClick={exitSettings}>
           <ArrowLeft />
         </IconButton>

@@ -137,7 +137,7 @@ function SidebarPanel({ agent, query, onQueryChange }: SidebarPanelProps) {
 /** The agent menu, plus a collapse button that only shows on hover (always on touch screens). */
 function PanelHeader({ agent }: { agent: Agent | undefined }) {
   return (
-    <div className="group/header flex h-14 shrink-0 items-center gap-1 pr-1.5 pl-2">
+    <div className="app-drag-region group/header flex h-14 shrink-0 items-center gap-1 pr-1.5 pl-2">
       {agent && <AgentMenu agent={agent} />}
       <Tip content="Close sidebar" side="bottom">
         <IconButton
