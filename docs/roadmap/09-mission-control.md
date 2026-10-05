@@ -76,7 +76,7 @@ Client functions go under the lane's anchor comment in `src/lib/api.ts`.
 
 - [ ] **M0 · Contract** (lead): types, stub route files, api anchors, this doc.
 - [x] **M1 · Land** (lane A). `server/landing/` (checks on done via 03's gates, also through a folder grant; land options; merge by TOT in your folder; push + draft PR; update from base; discard), the Land bar under the Changes tab, `server/landing.test.ts`.
-- [ ] **M2 · Mission control + spawning** (lane B).
+- [x] **M2 · Mission control + spawning** (lane B). Diff stats after every turn and on finish; `GET /api/mission` (overlaps, land order; a best-of run's alternatives don't overlap each other); `/mission` board (sidebar Tasks and Projects headers, project page, ⌘⇧M); composer Task mode (⌘↩) and `/task` `/parallel` `/best-of` with request ids (`POST /api/tasks` dedupes them too); best-of with one "Best of N finished · Compare" notice; `/tasks/compare/:group` with Keep this one (lane A's land + discard).
 - [ ] **M3 · Worktree lifecycle** (lane C).
 - [ ] **M4 · Merge lanes, review, live run** (lead): one project, three parallel tasks from the composer, one best-of, land them in order, screenshots light/dark.
 

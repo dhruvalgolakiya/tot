@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Lightbulb, LoaderCircle, MessageSquare, Plus, Square } from "lucide-react";
+import { ArrowUp, Columns2, Lightbulb, ListTodo, LoaderCircle, MessageSquare, Plus, Split, Square } from "lucide-react";
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
+import { bestOfLabel, bestOfProviders, newRequestId, parallelMessage, parseSlash, SLASH_COMMANDS, slashQuery, type SlashCommandName } from "../lib/mission";
 import { isSteerable, isTask } from "../lib/tasks";
 import {
   clearComposerDraft,
@@ -10,12 +11,15 @@ import {
   selectActiveAgentId,
   selectCurrentConversation,
   sendMessage,
+  startBestOf,
+  startTask,
   steerTask,
   stopRun,
   useStore,
 } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
+import { Kbd } from "./ui/Kbd";
 import { Tip } from "./ui/Tip";
 import { VoiceInputButton } from "./voice";
 
@@ -26,8 +30,21 @@ const touchOnly = () => window.matchMedia("(pointer: coarse)").matches;
 const pill =
   "flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-selected aria-pressed:text-fg";
 
-/** `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page. */
-export function Composer({ attachments, placeholder: newChatPlaceholder }: { attachments: UseAttachments; placeholder?: string }) {
+const SLASH_ICONS: Record<SlashCommandName, typeof ListTodo> = { task: ListTodo, parallel: Split, "best-of": Columns2 };
+
+/**
+ * `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page;
+ * `taskPlaceholder` is its Task mode's (module 09: Task, ⌘↩, and the /task, /parallel, /best-of commands).
+ */
+export function Composer({
+  attachments,
+  placeholder: newChatPlaceholder,
+  taskPlaceholder,
+}: {
+  attachments: UseAttachments;
+  placeholder?: string;
+  taskPlaceholder?: string;
+}) {
   const currentId = useStore((s) => s.currentId);
   const run = useStore((s) => (s.currentId ? s.activeRuns[s.currentId] : undefined));
   const sending = useStore((s) => s.sending);
@@ -43,6 +60,13 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
   // so it can't clobber anything the user has typed.
   const [interim, setInterim] = useState("");
   const [thinkHarder, setThinkHarder] = useState(false);
+  // Module 09: send as a task (a toggle, or ⌘↩ once), and the slash commands' menu.
+  const [taskMode, setTaskMode] = useState(false);
+  const [slashHighlight, setSlashHighlight] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState<string | null>(null);
+  /** The last task start's text and request id: sending the same text again after a failure reuses the id, so it starts once. */
+  const pendingRequest = useRef<{ text: string; id: string } | null>(null);
+  const providers = useStore((s) => s.providers);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // A message sent from a project's page that failed once its chat had opened: put its text back here.
@@ -61,7 +85,15 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [chatOver, setChatOver] = useState(false);
   useEffect(() => setContextChats([]), [currentId]);
-  const canAttachChats = !task;
+  // Slash commands and Task mode are for chats, project pages and home; a task's composer steers or replies.
+  const command = task ? null : parseSlash(text);
+  const query = task ? null : slashQuery(text);
+  const slashMatches = query !== null && text !== slashDismissed ? SLASH_COMMANDS.filter((c) => c.name.startsWith(query)) : [];
+  const slashing = slashMatches.length > 0;
+  useEffect(() => setSlashHighlight(0), [query]);
+  const bestOf = bestOfProviders(providers);
+  const sendsTask = !task && (command ? command.command !== "parallel" : taskMode);
+  const canAttachChats = !task && !sendsTask;
   const mention = canAttachChats && contextChats.length < MAX_ATTACHED_CHATS ? mentionAt(text, caret) : null;
   const matches =
     mention && mention.start !== dismissedAt
@@ -84,9 +116,14 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
       setCaret(before.length);
     });
   }
+  const hasText = command ? command.body.length > 0 : text.trim().length > 0;
   const canSend = steering
     ? text.trim().length > 0 && attachments.items.length === 0
-    : (text.trim().length > 0 || attachments.ready.length > 0) && !run && !sending && !attachments.uploading;
+    : slashing
+      ? false
+      : sendsTask
+        ? hasText && attachments.items.length === 0 && !run && !sending
+        : (hasText || attachments.ready.length > 0) && !run && !sending && !attachments.uploading;
   const agentName = agent?.name ?? "TOT";
   const placeholder = steering
     ? "Steer this task…"
@@ -94,7 +131,9 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
       ? "Answer the task…"
       : task
         ? "Reply to pick this task up again…"
-        : (newChatPlaceholder ?? `Ask ${agentName} anything`);
+        : taskMode
+          ? (taskPlaceholder ?? `Describe a task for ${agentName}…`)
+          : (newChatPlaceholder ?? `Ask ${agentName} anything`);
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -107,15 +146,34 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
     if (!touchOnly()) inputRef.current?.focus();
   }, []);
 
-  async function submit() {
-    if (!canSend) return;
+  async function submit(asTask = false) {
     const value = text;
     if (steering && currentId) {
+      if (!canSend) return;
       setText("");
       setInterim("");
       if (!(await steerTask(currentId, value))) setText((current) => current || value);
       return;
     }
+    // Still picking a command in the slash menu.
+    if (slashing) return;
+    // ⌘↩ sends this one as a task, whatever the toggle says.
+    const kind = task ? null : (command?.command ?? (asTask || taskMode ? "task" : null));
+    if (kind === "task" || kind === "best-of") {
+      const goal = command ? command.body : value.trim();
+      if (!goal || run || sending || attachments.items.length > 0) return;
+      const requestId = pendingRequest.current?.text === value ? pendingRequest.current.id : newRequestId();
+      pendingRequest.current = { text: value, id: requestId };
+      setText("");
+      setInterim("");
+      const started = kind === "task" ? await startTask(goal, requestId) : await startBestOf(goal, requestId);
+      if (started) pendingRequest.current = null;
+      else setText((current) => current || value);
+      return;
+    }
+    if (!canSend) return;
+    // /parallel: a normal message, asking the agent to split the job into tasks.
+    const message = kind === "parallel" && command ? parallelMessage(command.body) : value;
     const harder = thinkHarder;
     const files = attachments.ready.map((it) => it.attachment);
     const previousItems = attachments.items;
@@ -125,7 +183,7 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
     setThinkHarder(false); // "Think harder" applies to one message only.
     setContextChats([]);
     attachments.clear();
-    const sent = await sendMessage(value, { thinkHarder: harder, attachments: files, contextChats: chats });
+    const sent = await sendMessage(message, { thinkHarder: harder, attachments: files, contextChats: chats });
     if (!sent) {
       setContextChats(chats);
       setText((current) => current || value);
@@ -134,7 +192,37 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
     }
   }
 
+  /** Swaps the command being typed for the whole command and a space: "/be" → "/best-of ". */
+  function pickSlash(name: SlashCommandName) {
+    const next = `/${name} `;
+    setText(next);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.length, next.length);
+      setCaret(next.length);
+    });
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // The slash menu takes the arrows, Enter / Tab and Escape while it's open.
+    if (slashing && !event.metaKey && !event.ctrlKey) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setSlashHighlight((current) => (current + step + slashMatches.length) % slashMatches.length);
+        return;
+      }
+      if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+        event.preventDefault();
+        pickSlash(slashMatches[Math.min(slashHighlight, slashMatches.length - 1)]!.name);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSlashDismissed(text);
+        return;
+      }
+    }
     // The @ chat picker takes the arrows, Enter / Tab and Escape while it's open.
     if (picking) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -155,6 +243,12 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
       }
     }
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return;
+    // ⌘↩ / Ctrl+Enter: send it as a task (a note, in a task that's working).
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      void submit(!task);
+      return;
+    }
     if (touchOnly()) return;
     event.preventDefault();
     void submit();
@@ -162,7 +256,8 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
 
   function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(event.clipboardData.files);
-    if (files.length === 0) return;
+    // A task starts from text only.
+    if (files.length === 0 || sendsTask) return;
     event.preventDefault();
     attachments.addFiles(files);
   }
@@ -205,6 +300,33 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
         chatOver ? "border-accent-edge" : "border-edge",
       )}
     >
+      {slashing && (
+        <div role="listbox" aria-label="Commands" className="menu absolute bottom-full left-0 mb-2 w-96 max-w-full">
+          {slashMatches.map((item, index) => {
+            const Icon = SLASH_ICONS[item.name];
+            const description =
+              item.name === "best-of" && bestOf.length ? `On ${bestOfLabel(bestOf)}, then compare` : item.description;
+            return (
+              <div
+                key={item.name}
+                role="option"
+                aria-selected={index === slashHighlight}
+                data-highlighted={index === slashHighlight ? "" : undefined}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  pickSlash(item.name);
+                }}
+                onMouseEnter={() => setSlashHighlight(index)}
+                className="menu-item"
+              >
+                <Icon className="size-4 shrink-0 text-fg-muted" />
+                <span className="shrink-0 font-medium">/{item.name}</span>
+                <span className="min-w-0 flex-1 truncate text-fg-subtle">{description}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {picking && (
         <div role="listbox" aria-label="Attach a chat" className="menu absolute bottom-full left-0 mb-2 w-80 max-w-full">
           <p className="menu-label">Attach a chat for reference</p>
@@ -271,7 +393,7 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
         </p>
       )}
       <div className="flex items-center gap-1.5 px-3 pt-1 pb-3">
-        {!steering && (
+        {!steering && !sendsTask && (
           <Tip content="Attach files">
             <button
               type="button"
@@ -284,7 +406,29 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
           </Tip>
         )}
         <VoiceInputButton onTranscript={onTranscript} />
-        {!steering && (
+        {!task && (
+          <Tip
+            content={
+              <span className="flex items-center gap-2">
+                Run it as a task in the background <Kbd keys={["mod", "↩"]} />
+              </span>
+            }
+          >
+            <button
+              type="button"
+              aria-pressed={taskMode || command?.command === "task"}
+              onClick={() => {
+                setTaskMode((value) => !value);
+                inputRef.current?.focus();
+              }}
+              className={pill}
+            >
+              <ListTodo className="size-3.5" />
+              <span className="hidden sm:inline">Task</span>
+            </button>
+          </Tip>
+        )}
+        {!steering && !sendsTask && (
           <Tip content="Use the strongest model with extra effort, for your next message only">
             <button type="button" aria-pressed={thinkHarder} onClick={() => setThinkHarder((value) => !value)} className={pill}>
               <Lightbulb className="size-3.5" />
@@ -293,7 +437,13 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
           </Tip>
         )}
 
-        <div className="ml-auto">
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          {/* What the command will do, e.g. "Best of 2 · Claude and ChatGPT". */}
+          {command && command.command !== "task" && (
+            <span className="hidden truncate text-xs text-fg-subtle sm:inline">
+              {command.command === "parallel" ? "Split into tasks" : `Best of ${bestOf.length || 2}${bestOf.length ? ` · ${bestOfLabel(bestOf)}` : ""}`}
+            </span>
+          )}
           {run && currentId && !steering ? (
             <Tip content="Stop">
               <button
@@ -301,7 +451,7 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
                 onClick={() => void stopRun(currentId)}
                 disabled={run.stopping}
                 aria-label="Stop"
-                className="grid size-9 place-items-center rounded-full bg-fg text-canvas transition-colors hover:bg-fg/90 disabled:opacity-50"
+                className="grid size-9 shrink-0 place-items-center rounded-full bg-fg text-canvas transition-colors hover:bg-fg/90 disabled:opacity-50"
               >
                 <Square className="size-3.5 fill-current" />
               </button>
@@ -310,9 +460,9 @@ export function Composer({ attachments, placeholder: newChatPlaceholder }: { att
             <button
               type="submit"
               disabled={!canSend}
-              aria-label={steering ? "Send note" : "Send"}
+              aria-label={steering ? "Send note" : command?.command === "best-of" ? "Start best of" : sendsTask ? "Start task" : "Send"}
               className={clsx(
-                "grid size-9 place-items-center rounded-full transition-colors",
+                "grid size-9 shrink-0 place-items-center rounded-full transition-colors",
                 canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-faint",
               )}
             >

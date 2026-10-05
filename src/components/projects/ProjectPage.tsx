@@ -1,5 +1,6 @@
 import { useMemo, useState, type MouseEvent } from "react";
 import clsx from "clsx";
+import { SquareKanban } from "lucide-react";
 import type { Agent, Conversation, Project } from "@shared/types";
 import { useAttachments } from "../../hooks/useAttachments";
 import { useNow } from "../../hooks/useNow";
@@ -8,7 +9,7 @@ import { toMs } from "../../lib/format";
 import { PROJECT_ICONS, shortTime, sourceLabel, useProjects } from "../../lib/projects";
 import { conversationPath } from "../../lib/router";
 import { isOpenTask, isTask, TASK_STATUS_LABELS } from "../../lib/tasks";
-import { navigateToAgentHome, navigateToConversation, selectActiveAgent, useStore } from "../../store";
+import { navigateToAgentHome, navigateToConversation, navigateToMission, selectActiveAgent, useStore } from "../../store";
 import { Composer } from "../Composer";
 import { Mascot } from "../mascot";
 import { TaskDot } from "../tasks/TaskStatus";
@@ -16,7 +17,10 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
+import { IconButton } from "../ui/IconButton";
+import { Kbd } from "../ui/Kbd";
 import { Skeleton } from "../ui/Skeleton";
+import { Tip } from "../ui/Tip";
 import { FolderConsentDialog } from "./FolderConsent";
 import { ProjectMenu } from "./ProjectMenu";
 
@@ -79,6 +83,18 @@ function ProjectContent({ project, agent }: { project: Project; agent: Agent | u
             <span className="truncate">{sourceLabel(project)}</span>
           </span>
         </div>
+        {/* Mission control (module 09): this project's tasks on one board. */}
+        <Tip
+          content={
+            <span className="flex items-center gap-2">
+              Mission control <Kbd keys={["mod", "shift", "M"]} />
+            </span>
+          }
+        >
+          <IconButton label="Mission control" onClick={() => navigateToMission(project.id)}>
+            <SquareKanban />
+          </IconButton>
+        </Tip>
         <ProjectMenu project={project} agent={agent} />
       </header>
 
@@ -102,7 +118,7 @@ function ProjectContent({ project, agent }: { project: Project; agent: Agent | u
 
       {!project.archived && (
         <div className="mt-6">
-          <Composer attachments={attachments} placeholder={`New chat in ${project.name}…`} />
+          <Composer attachments={attachments} placeholder={`New chat in ${project.name}…`} taskPlaceholder={`New task in ${project.name}…`} />
         </div>
       )}
 

@@ -13,6 +13,7 @@ import type {
   StartTaskRequest,
   TaskBrief,
   TaskChanges,
+  TaskGroupKind,
   TaskInfo,
   TaskPatch,
   TaskRepo,
@@ -124,6 +125,8 @@ export interface CreateTaskInput extends StartTaskRequest {
   group?: string | null;
   then?: "synthesize" | null;
   brief?: TaskBrief | null;
+  /** What the group is (module 09): split from one job, or the same job on several providers. */
+  groupKind?: TaskGroupKind | null;
 }
 
 function cleanRole(value: unknown): Role | null {
@@ -197,15 +200,17 @@ function reportToParent(task: TaskRecord): void {
   const parent = task.parentId ? conversations.get(task.parentId) : null;
   if (!parent || removing.has(task.id)) return;
   conversations.update(parent.id, { childResults: [...new Set([...parent.childResults, task.id])] });
-  const text = endingNotice(task);
-  messages.insert({
-    id: randomUUID(),
-    conversationId: parent.id,
-    role: "assistant",
-    parts: [{ type: "notice", id: `n_${randomUUID().slice(0, 12)}`, kind: task.task.status === "done" ? "info" : "warning", text }],
-    status: "complete",
-    createdAt: Date.now(),
-  });
+  // A best-of run (module 09) ends with one notice for the whole group, once they've all finished (mission/best-of.ts).
+  if (task.task.groupKind !== "best-of") {
+    messages.insert({
+      id: randomUUID(),
+      conversationId: parent.id,
+      role: "assistant",
+      parts: [{ type: "notice", id: `n_${randomUUID().slice(0, 12)}`, kind: task.task.status === "done" ? "info" : "warning", text: endingNotice(task) }],
+      status: "complete",
+      createdAt: Date.now(),
+    });
+  }
   publishConversation(parent.id, true);
   chatWakes.flag(task);
 }
@@ -241,6 +246,7 @@ function create(input: CreateTaskInput): TaskRecord {
       group: input.group ?? null,
       then: input.then ?? null,
       brief: input.brief ?? null,
+      ...(input.groupKind ? { groupKind: input.groupKind } : {}),
     },
   });
   const task = taskStore.get(record.id)!;

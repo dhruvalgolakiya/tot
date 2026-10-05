@@ -45,7 +45,8 @@ export async function failover(taskId: string, limited: ProviderId): Promise<"sw
   const other = otherProvider(limited);
   const signedIn = await statuses.get();
   const otherUp = Boolean(tierModel(task.task.tier ?? "deep", other, signedIn)) && !limits.active().has(other);
-  if (settings.get().tasks.switchProviders && otherUp) {
+  // A best-of run (module 09) stays on its provider: switching would spoil the comparison.
+  if (settings.get().tasks.switchProviders && otherUp && task.task.groupKind !== "best-of") {
     await switchProvider(taskId, other, `${LABELS[limited]} hit its usage limit, so this continues on ${LABELS[other]}`, limited);
     return "switched";
   }

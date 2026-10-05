@@ -18,6 +18,7 @@ import { migrateRepoBrains } from "./projects/projects.ts";
 import { tokenProblem } from "./session.ts";
 import { slack } from "./slack.ts";
 import { fanIn } from "./orchestration/fanin.ts";
+import { missionWatch } from "./mission/watch.ts";
 import { taskFailover } from "./orchestration/failover.ts";
 import { handoffs } from "./orchestration/handoff.ts";
 import { taskNotifications } from "./tasks/notify.ts";
@@ -78,6 +79,7 @@ tasks.start();
 worktreeLifecycle.start();
 taskNotifications.start();
 fanIn.start();
+missionWatch.start();
 taskFailover.start();
 handoffs.start();
 

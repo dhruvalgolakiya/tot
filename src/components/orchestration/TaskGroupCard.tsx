@@ -4,7 +4,8 @@ import { ChevronRight } from "lucide-react";
 import { useNow } from "../../hooks/useNow";
 import { roleLine } from "../../lib/orchestration";
 import { isOpenTask, isTask, taskElapsed } from "../../lib/tasks";
-import { navigateToConversation, useStore } from "../../store";
+import { comparePath } from "../../lib/router";
+import { navigateToCompare, navigateToConversation, useStore } from "../../store";
 import { cardClass } from "../ui/Card";
 import { TaskDot, TaskStatusBadge } from "../tasks/TaskStatus";
 
@@ -16,9 +17,11 @@ export function TaskGroupCard({ taskIds }: { taskIds: string[] }) {
   const running = group.filter((task) => task.task.status === "running" || task.task.status === "needs-input").length;
   const finished = group.filter((task) => !isOpenTask(task.task.status)).length;
   const combining = group.some((task) => task.task.then === "synthesize");
+  // A best-of run (module 09): the same job on several providers, compared side by side.
+  const bestOf = group[0]?.task.groupKind === "best-of" ? group[0].task.group : null;
   const now = useNow(running > 0);
   const summary = [
-    `${group.length} tasks`,
+    bestOf ? `Best of ${group.length}` : `${group.length} tasks`,
     running ? `${running} running` : null,
     finished === group.length ? "all finished" : finished ? `${finished} finished` : null,
     combining ? "combined here when done" : null,
@@ -28,15 +31,30 @@ export function TaskGroupCard({ taskIds }: { taskIds: string[] }) {
 
   return (
     <div className={cardClass({ padding: "none", className: "max-w-xl overflow-hidden" })}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-hover focus-visible:-outline-offset-2"
-      >
-        <ChevronRight className={clsx("size-3.5 shrink-0 text-fg-subtle transition-transform", open && "rotate-90")} />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{summary}</span>
-      </button>
+      <div className="flex items-center">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-hover focus-visible:-outline-offset-2"
+        >
+          <ChevronRight className={clsx("size-3.5 shrink-0 text-fg-subtle transition-transform", open && "rotate-90")} />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{summary}</span>
+        </button>
+        {bestOf && (
+          <a
+            href={comparePath(bestOf)}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+              event.preventDefault();
+              navigateToCompare(bestOf);
+            }}
+            className="shrink-0 px-3 text-ui link-muted"
+          >
+            Compare
+          </a>
+        )}
+      </div>
       {open && (
         <ul className="divide-y divide-hairline border-t border-hairline">
           {group.map((task) => {
