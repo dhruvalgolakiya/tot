@@ -38,9 +38,9 @@ const heldBack = new Map<string, number>();
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-/** Whether a finished task's result wakes the chat that started it. */
+/** Whether a finished task's result wakes the chat that started it. Not a best-of run's (module 09): its chat gets one notice for the group. */
 export function wakes(task: TaskRecord): boolean {
-  if (!started || !settings.get().tasks.wakeChats || task.task.then === "synthesize" || !task.parentId) return false;
+  if (!started || !settings.get().tasks.wakeChats || task.task.then === "synthesize" || task.task.groupKind === "best-of" || !task.parentId) return false;
   return conversations.get(task.parentId)?.kind === "chat";
 }
 

@@ -260,6 +260,8 @@ export type MessagePart =
       pageIds?: string[];
       /** For a chat filed under a project ("Filed under web", module 06): the project, so the UI can offer Move. */
       projectId?: string;
+      /** For "Best of 2 finished" (module 09): the best-of group, so the UI can offer Compare. */
+      group?: string;
     }
   /** A file the user attached (images render inline). */
   | { type: "file"; id: string; attachment: Attachment }
@@ -1005,7 +1007,8 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //
 // Tasks (a task is a conversation with kind "task"; see TaskInfo)
 // GET    /api/tasks[?agentId=&status=]        -> Conversation[]  (queued ones in queue order first, then newest first)
-// POST   /api/tasks                           StartTaskRequest & { agentId?, projectId? } -> Conversation  (a top-level task)
+// POST   /api/tasks                           StartTaskRequest & { agentId?, projectId? } -> Conversation  (a top-level task; with a
+//                                              requestId it started in the last hour: 200 and that task, nothing new)
 // POST   /api/conversations/:id/tasks         StartTaskRequest -> Conversation  (started from this chat; its card shows there.
 //                                              201; with a requestId it started before: 200 and that task, nothing new)
 // POST   /api/conversations/:id/convert       ConvertToTaskRequest -> Conversation  (this chat becomes a task, transcript kept)
@@ -1025,6 +1028,14 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //                                              notice there, and a note for its next turn; returns the source)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
 // DELETE /api/conversations/:id?deleteBranch=1  (a task: also removes its worktree; its branch only with deleteBranch, and only if never pushed)
+//
+// Mission control (module 09, lane B; TaskInfo.stats is refreshed after every turn and when a task finishes)
+// GET    /api/mission[?projectId=&agentId=&group=]  -> MissionOverview  (open tasks, finished ones with code not yet landed,
+//                                              and those landed or finished without code in the last day; with group: every task
+//                                              in it. overlaps: other unlanded tasks on the same repo folder changing the same paths)
+// POST   /api/tasks/best-of                   BestOfRequest -> Conversation[]  (one task per provider, pinned, in one "best-of"
+//                                              group; 201, or 200 with a requestId it started before. They don't wake their chat
+//                                              one by one: it gets one "Best of N finished" notice (notice.group) when all end)
 //
 // POST   /api/uploads                         multipart/form-data, field "file" (≤ 25 MB) -> Attachment
 // GET    /api/uploads/:id/:name               -> the file

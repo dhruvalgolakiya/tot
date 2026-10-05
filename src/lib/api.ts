@@ -13,6 +13,7 @@ import type {
   AppRule,
   AppsStatus,
   Attachment,
+  BestOfRequest,
   ComputerSummary,
   Conversation,
   ContinueOnRequest,
@@ -31,11 +32,13 @@ import type {
   GitHubDeviceStart,
   GitHubRepo,
   GitHubStatus,
+  LandTaskRequest,
   LearnRepoRequest,
   MailMessage,
   MailSummary,
   Memory,
   Message,
+  MissionOverview,
   ModelOption,
   MailboxConnectRequest,
   Persona,
@@ -54,7 +57,9 @@ import type {
   SlackPatch,
   SlackStatus,
   SlackTokens,
+  StartTaskRequest,
   TaskChanges,
+  TaskLandOptions,
   TaskPatch,
   TaskStatus,
   UpdateConversationRequest,
@@ -205,6 +210,26 @@ export const api = {
   // Module 09 · lane A (land): checks, merge, draft PR, update from base, discard.
 
   // Module 09 · lane B (mission control, spawning, best-of).
+  /** Mission control: open tasks, finished ones still to land (with their overlaps and land order), and the last day's landed ones. */
+  getMission: (opts: { projectId?: string | null; agentId?: string; group?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.projectId) params.set("projectId", opts.projectId);
+    if (opts.agentId) params.set("agentId", opts.agentId);
+    if (opts.group) params.set("group", opts.group);
+    const qs = params.toString();
+    return request<MissionOverview>("GET", `/mission${qs ? `?${qs}` : ""}`);
+  },
+  /** A task started from a chat (the composer's Task mode): the request and its card are added to the chat. */
+  startTaskFromChat: (conversationId: string, body: StartTaskRequest) =>
+    request<Conversation>("POST", `/conversations/${seg(conversationId)}/tasks`, body),
+  /** A top-level task, from a project's page (`projectId`) or an agent's home. */
+  startTask: (body: StartTaskRequest & { agentId?: string; projectId?: string | null }) => request<Conversation>("POST", "/tasks", body),
+  /** The same goal on Claude and ChatGPT (or twice on the one signed in), compared when they finish. */
+  startBestOf: (body: BestOfRequest) => request<Conversation[]>("POST", "/tasks/best-of", body),
+  /** Lane A's land routes, for the compare view's "Keep this one" (lane A's own client calls arrive with its merge). */
+  landOptionsForCompare: (id: string) => request<TaskLandOptions>("GET", `/tasks/${seg(id)}/land`),
+  landTaskForCompare: (id: string, body: LandTaskRequest) => request<Conversation>("POST", `/tasks/${seg(id)}/land`, body),
+  discardTaskForCompare: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/discard`, {}),
 
   // Module 09 · lane C (worktree lifecycle: previews, cleanup).
 

@@ -2,7 +2,8 @@ import type { LucideIcon } from "lucide-react";
 import { BookOpen, Brain, Info, Monitor, Sparkles, TriangleAlert } from "lucide-react";
 import clsx from "clsx";
 import type { MessagePart } from "@shared/types";
-import { navigateToWiki, selectActiveAgentId, selectCurrentConversation, useStore } from "../store";
+import { comparePath } from "../lib/router";
+import { navigateToCompare, navigateToWiki, selectActiveAgentId, selectCurrentConversation, useStore } from "../store";
 import { MoveToProjectButton } from "./projects/MoveToProjectMenu";
 
 type Notice = Extract<MessagePart, { type: "notice" }>;
@@ -18,7 +19,8 @@ const ICONS: Record<Notice["kind"], LucideIcon> = {
 
 /**
  * A small muted status line, e.g. "Auto → Opus 5.5 · complex task". A "wiki" notice opens the page it refers to;
- * "Filed under web" (it has a `projectId`) offers Move, to undo the filing in one step.
+ * "Filed under web" (it has a `projectId`) offers Move, to undo the filing in one step; "Best of 2 finished"
+ * (it has a `group`, module 09) offers Compare.
  */
 export function NoticePart({ part }: { part: Notice }) {
   const Icon = ICONS[part.kind] ?? Info;
@@ -32,6 +34,26 @@ export function NoticePart({ part }: { part: Notice }) {
       <span className="min-w-0 text-left">{part.text}</span>
     </>
   );
+
+  if (part.group) {
+    const group = part.group;
+    return (
+      <div className={clsx("flex items-start gap-2 text-xs leading-5", part.kind === "warning" ? "text-warning" : "text-fg-subtle")}>
+        {content}
+        <a
+          href={comparePath(group)}
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+            event.preventDefault();
+            navigateToCompare(group);
+          }}
+          className="link-muted shrink-0"
+        >
+          Compare
+        </a>
+      </div>
+    );
+  }
 
   if (part.projectId && chat) {
     return (

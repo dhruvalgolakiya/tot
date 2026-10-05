@@ -170,15 +170,21 @@ function folderGrant(task: TaskRecord) {
   }
 }
 
-/** After a turn: add up its tokens and note where the branch is now. */
+/** After a turn: add up its tokens and note where the branch is now, and how much it changed (module 09). */
 async function recordTurn(task: TaskRecord, reply: Message | undefined): Promise<Snapshot> {
   const usage = {
     inputTokens: task.task.usage.inputTokens + (reply?.usage?.inputTokens ?? 0),
     outputTokens: task.task.usage.outputTokens + (reply?.usage?.outputTokens ?? 0),
   };
   const repo = task.task.repo;
-  const headSha = repo ? await worktrees.head(task.agentId, repo, folderGrant(task)) : null;
-  const updated = taskStore.patch(task.id, { usage, ...(repo ? { repo: { ...repo, headSha: headSha ?? repo.headSha } } : {}) });
+  const grant = repo ? folderGrant(task) : null;
+  const headSha = repo ? await worktrees.head(task.agentId, repo, grant) : null;
+  const stats = repo && headSha ? await worktrees.stats(task.agentId, repo, grant).catch(() => null) : null;
+  const updated = taskStore.patch(task.id, {
+    usage,
+    ...(repo ? { repo: { ...repo, headSha: headSha ?? repo.headSha } } : {}),
+    ...(stats ? { stats } : {}),
+  });
   return snapshot(updated ?? task);
 }
 

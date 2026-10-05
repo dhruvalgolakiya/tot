@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { useProjects } from "../../lib/projects";
 import { isTask, sortTasks, type TaskConversation } from "../../lib/tasks";
 import { selectActiveAgent, selectActiveAgentId, useStore } from "../../store";
+import { MissionButton } from "../mission/MissionButton";
 import { QueueHoldLine } from "./QueueHold";
 import { QueuePopover } from "./QueuePopover";
 import { TaskRow } from "./TaskRow";
@@ -56,9 +57,11 @@ export function TaskList({ query }: { query: string }) {
 
   return (
     <section className="mt-2">
-      <div className="flex h-6 items-center justify-between pr-1 pl-2.5">
-        <h2 className="group-label">Tasks</h2>
+      <div className="group/tasks flex h-6 items-center gap-1 pr-1 pl-2.5">
+        <h2 className="group-label mr-auto">Tasks</h2>
         {queued.length > 0 && <QueuePopover queued={queued} hold={hold} />}
+        {/* Mission control (module 09): every task on one board. */}
+        <MissionButton group="tasks" />
       </div>
       {hold && agentId && <QueueHoldLine agentId={agentId} hold={hold} className="px-2.5" />}
       <ul className="space-y-px">
