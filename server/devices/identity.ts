@@ -2,9 +2,9 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { hostname, networkInterfaces } from "node:os";
 import type { Device } from "../../shared/types.ts";
-import { HOST, IS_PROD, LAN, PORT } from "../config.ts";
+import { HOST, IS_PROD, LAN, PORT, TAILSCALE } from "../config.ts";
 import { db, parseJson, type Row } from "../db.ts";
-import { isLoopbackBind } from "../net.ts";
+import { isLoopbackBind, isTailscaleAddress } from "../net.ts";
 
 /**
  * This device: the computer running this TOT (roadmap module 07). Its id is made once and never
@@ -68,37 +68,50 @@ export function renameDevice(name: string) {
 // Where other computers reach it
 // ---------------------------------------------------------------------------
 
+/** TOT_PUBLIC_URL: the address to give other devices when it can't be found out (a tunnel, a custom name). */
+const publicUrl = () => process.env.TOT_PUBLIC_URL?.trim().replace(/\/+$/, "") || null;
+
 /** Whether TOT accepts other machines at all: the dev web server on the network, or the production server not on loopback. */
 export function reachable(): boolean {
-  return IS_PROD ? !isLoopbackBind(HOST) : LAN;
+  return Boolean(publicUrl()) || (IS_PROD ? !isLoopbackBind(HOST) : LAN || TAILSCALE);
 }
 
 /** The port another machine opens: the web server's (Vite in development), not the API's. */
-function webPort(): number {
+export function webPort(): number {
   return IS_PROD ? PORT : Number(process.env.TOT_WEB_PORT ?? 5173);
 }
 
-const isTailscale = (ip: string) => {
-  const [a, b] = ip.split(".").map(Number);
-  return a === 100 && b >= 64 && b <= 127; // 100.64.0.0/10
-};
 const isPrivate = (ip: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip);
 
+/** What an address goes over, from its host: Tailscale, the home network, or something else (a tunnel). */
+export function networkOf(address: string): "tailscale" | "lan" | null {
+  try {
+    const host = new URL(address).hostname;
+    if (isTailscaleAddress(host) || host.endsWith(".ts.net")) return "tailscale";
+    if (isPrivate(host) || host.endsWith(".local")) return "lan";
+  } catch {
+    // not a URL
+  }
+  return null;
+}
+
 /** Addresses another computer could use, Tailscale first (it works from anywhere and is encrypted), then the home network. */
-export function addresses(): { url: string; network: "tailscale" | "lan" }[] {
-  if (!reachable()) return [];
+export function addresses(): { url: string; network: "tailscale" | "lan" | null }[] {
+  const found: { url: string; network: "tailscale" | "lan" | null }[] = [];
+  const pinned = publicUrl();
+  if (pinned) found.push({ url: pinned, network: networkOf(pinned) });
+  if (!reachable()) return found;
   const port = webPort();
   // A production server bound to one address is only reachable there.
   const bound = IS_PROD && HOST !== "0.0.0.0" ? HOST : null;
-  const found: { url: string; network: "tailscale" | "lan" }[] = [];
   for (const list of Object.values(networkInterfaces())) {
     for (const entry of list ?? []) {
       if (entry.family !== "IPv4" || entry.internal || (bound && entry.address !== bound)) continue;
-      const network = isTailscale(entry.address) ? "tailscale" : isPrivate(entry.address) ? "lan" : null;
+      const network = isTailscaleAddress(entry.address) ? "tailscale" : isPrivate(entry.address) && !TAILSCALE ? "lan" : null;
       if (network) found.push({ url: `http://${entry.address}:${port}`, network });
     }
   }
-  return found.sort((a, b) => Number(b.network === "tailscale") - Number(a.network === "tailscale"));
+  return found.sort((a, b) => Number(b.network === "tailscale") - Number(a.network === "tailscale") || Number(b.url === pinned) - Number(a.url === pinned));
 }
 
 export function selfDevice(): Device {
@@ -110,7 +123,10 @@ export function selfDevice(): Device {
     network: best?.network ?? null,
     self: true,
     online: true,
+    canReachUs: true,
     lastSeenAt: Date.now(),
     pairedAt: null,
+    problem: null,
+    warnings: [],
   };
 }

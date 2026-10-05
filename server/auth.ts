@@ -3,6 +3,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { ACCESS_TOKEN } from "./config.ts";
+import { DEVICE_TOKEN_PREFIX, peers } from "./devices/peers.ts";
 import { checkSession, createSession, describeBrowser, endSession } from "./devices/sessions.ts";
 import { clientAddress, isThisMachine } from "./net.ts";
 import { SESSION_COOKIE, tokenMatches } from "./session.ts";
@@ -31,24 +32,53 @@ function lockedOut(): boolean {
 
 const recordFailure = () => void failures.count++;
 
-type AuthResult = "ok" | "missing" | "wrong-token" | "locked";
+/**
+ * Who a request is from: this machine with sign-in off, a script with the access token, a signed-in
+ * browser (its session), or a paired device (module 07; its own token, never the access token).
+ */
+export type Caller = { kind: "local" } | { kind: "token" } | { kind: "session"; id: string } | { kind: "device"; id: string };
+
+type AuthResult = Caller | "missing" | "wrong-token" | "locked";
 
 function check(c: Context): AuthResult {
-  if (!ACCESS_TOKEN) return "ok";
+  if (!ACCESS_TOKEN) return { kind: "local" };
   const header = c.req.header("authorization");
   if (header?.startsWith("Bearer ")) {
     if (lockedOut()) return "locked";
-    if (tokenMatches(header.slice(7), ACCESS_TOKEN)) return "ok";
+    const token = header.slice(7).trim();
+    const device = peers.byToken(token);
+    if (device) return { kind: "device", id: device };
+    if (!token.startsWith(DEVICE_TOKEN_PREFIX) && tokenMatches(token, ACCESS_TOKEN)) return { kind: "token" };
     recordFailure();
     return "wrong-token";
   }
-  return checkSession(getCookie(c, SESSION_COOKIE)) ? "ok" : "missing";
+  const session = checkSession(getCookie(c, SESSION_COOKIE));
+  return session ? { kind: "session", id: session } : "missing";
 }
 
-export const isAuthenticated = (c: Context) => check(c) === "ok";
+const callers = new WeakMap<Request, Caller>();
 
-/** The signed-in browser asking, or null (an access-token caller, or sign-in is off). */
-export const currentSessionId = (c: Context): string | null => (ACCESS_TOKEN ? checkSession(getCookie(c, SESSION_COOKIE)) : null);
+/** Who's asking. Only meaningful behind sign-in (requireAuth), or with sign-in off. */
+export function callerOf(c: Context): Caller {
+  const known = callers.get(c.req.raw);
+  if (known) return known;
+  const result = check(c);
+  return typeof result === "object" ? result : { kind: "token" };
+}
+
+export const isAuthenticated = (c: Context) => typeof check(c) === "object";
+
+/** The signed-in browser asking, or null (an access-token caller, a paired device, or sign-in is off). */
+export const currentSessionId = (c: Context): string | null => {
+  const caller = callerOf(c);
+  return caller.kind === "session" ? caller.id : null;
+};
+
+/** What closes this caller's event streams when it's signed out or unpaired: its session, or `device:<id>`. */
+export const callerKey = (c: Context): string | null => {
+  const caller = callerOf(c);
+  return caller.kind === "session" ? caller.id : caller.kind === "device" ? `device:${caller.id}` : null;
+};
 
 function onThisMachine(c: Context): boolean {
   try {
@@ -61,7 +91,10 @@ function onThisMachine(c: Context): boolean {
 /** Guards pages and the API when an access token is set. */
 export const requireAuth: MiddlewareHandler = async (c, next) => {
   const result = check(c);
-  if (result === "ok") return next();
+  if (typeof result === "object") {
+    callers.set(c.req.raw, result);
+    return next();
+  }
   if (result === "locked") return c.json({ error: "Too many wrong tokens — wait a minute." }, 429);
   if (c.req.path.startsWith("/api/")) return c.json({ error: "Sign in to TOT first." }, 401);
   const target = encodeURIComponent(c.req.path + (new URL(c.req.url).search || ""));

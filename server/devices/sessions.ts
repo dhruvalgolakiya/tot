@@ -71,24 +71,29 @@ export function checkSession(cookie: string | undefined): string | null {
 
 const streams = new Map<string, Set<() => void>>();
 
-/** Runs `close` when this session is signed out (for open event streams). Returns the unsubscribe. */
-export function onSignOut(sessionId: string | null, close: () => void): () => void {
-  if (!sessionId) return () => {};
-  const set = streams.get(sessionId) ?? new Set();
-  streams.set(sessionId, set);
+/** Runs `close` when this caller is signed out or unpaired (for open event streams). Returns the unsubscribe. */
+export function onSignOut(key: string | null, close: () => void): () => void {
+  if (!key) return () => {};
+  const set = streams.get(key) ?? new Set();
+  streams.set(key, set);
   set.add(close);
   return () => {
     set.delete(close);
-    if (!set.size) streams.delete(sessionId);
+    if (!set.size && streams.get(key) === set) streams.delete(key);
   };
+}
+
+/** Closes every open stream of a caller: a session id, or `device:<id>` for a paired device. */
+export function closeStreams(key: string) {
+  const closers = streams.get(key);
+  streams.delete(key);
+  for (const close of closers ?? []) close();
 }
 
 export function endSession(id: string) {
   db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
   lastTouched.delete(id);
-  const closers = streams.get(id);
-  streams.delete(id);
-  for (const close of closers ?? []) close();
+  closeStreams(id);
 }
 
 export function endOtherSessions(currentId: string | null) {

@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
+import { tailscaleAddress } from "./server/net.ts";
 import { SESSION_COOKIE, readCookie, tokenProblem } from "./server/session.ts";
 
 // The same .env the server reads (real environment variables win).
@@ -14,9 +15,11 @@ try {
 const apiPort = Number(process.env.TOT_PORT ?? 8787);
 const accessToken = process.env.TOT_ACCESS_TOKEN?.trim() || undefined;
 const lan = /^(1|true|yes|on)$/i.test(process.env.TOT_LAN?.trim() ?? "");
+// TOT_HOST=tailscale: listen on the Tailscale address only (module 07).
+const tailscale = process.env.TOT_HOST?.trim().toLowerCase() === "tailscale";
 
-if (lan && !accessToken) {
-  throw new Error("TOT_LAN is on but TOT_ACCESS_TOKEN is empty. Set one in .env first (e.g. `openssl rand -hex 16`).");
+if ((lan || tailscale) && !accessToken) {
+  throw new Error("TOT_LAN / TOT_HOST is on but TOT_ACCESS_TOKEN is empty. Set one in .env first (e.g. `openssl rand -hex 16`).");
 }
 const weakToken = accessToken && tokenProblem(accessToken);
 if (weakToken) throw new Error(weakToken);
@@ -51,11 +54,11 @@ async function signedIn(cookie: string | undefined): Promise<boolean> {
 /**
  * With an access token set, the dev server requires sign-in as well (the API checks
  * it too), so nothing Vite serves reaches a visitor who hasn't signed in. The icon,
- * the web app manifest and /.well-known/tot are open (browsers fetch the manifest
- * without cookies).
+ * the web app manifest, /.well-known/tot and the pairing page are open (browsers fetch
+ * the manifest without cookies; another device checks /.well-known/tot before pairing).
  */
 function requireSignIn(): Plugin {
-  const open = /^\/(api\/|login(\?|$)|logout(\?|$)|tot\.svg|manifest\.webmanifest|icons\/|\.well-known\/tot)/;
+  const open = /^\/(api\/|login(\?|$)|logout(\?|$)|pair(\?|$)|tot\.svg|manifest\.webmanifest|icons\/|\.well-known\/tot)/;
   return {
     name: "tot-require-sign-in",
     configureServer(server) {
@@ -86,7 +89,7 @@ export default defineConfig({
     port: 5173,
     // IPv4 only: many networks hand out public IPv6 addresses, and "all addresses"
     // would put TOT on the internet rather than just the LAN.
-    host: lan ? "0.0.0.0" : undefined,
+    host: tailscale ? (tailscaleAddress() ?? "127.0.0.1") : lan ? "0.0.0.0" : undefined,
     // Bonjour names (e.g. my-mac.local) and tunnels; IP addresses are always allowed.
     allowedHosts: [...(lan ? [".local"] : []), ...tunnelHosts],
     // The API compares Origin with the Host header to block cross-site requests,
@@ -95,6 +98,8 @@ export default defineConfig({
       "/api": api,
       "^/(login|logout)(\\?|$)": api,
       "/.well-known/tot": api,
+      // The page a pairing link opens (module 07); the code stays in the #fragment.
+      "^/pair(\\?|$)": api,
     },
   },
   build: { outDir: "dist" },

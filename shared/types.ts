@@ -413,7 +413,12 @@ export type AppEvent =
   /** A task's state changed (status, progress, plan, branch, summary); same payload as "conversation". */
   | { type: "task"; conversation: Conversation }
   /** A project was created or changed (module 06); archived ones come with `archived: true`. */
-  | { type: "project"; project: Project };
+  | { type: "project"; project: Project }
+  /** This device was renamed, or a paired device was paired, changed, went online or offline (module 07). */
+  | { type: "device"; device: Device }
+  | { type: "device-deleted"; deviceId: string }
+  /** Something changed on a paired device: one of the events above, about its agents, chats or projects (module 07). */
+  | { type: "remote"; deviceId: string; event: AppEvent };
 
 // ---------------------------------------------------------------------------
 // Computers (one per agent, created lazily on first tool use)
@@ -1122,6 +1127,15 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /.well-known/tot                     -> { id, name, protocol: 1 }  (open, no sign-in: lets another device check it reached TOT)
 // GET    /api/devices                         -> DevicesStatus
 // PATCH  /api/devices/self                    RenameDeviceRequest -> DevicesStatus
+// POST   /api/devices/pairing-link            -> { link, expiresAt }  (one-time, 5 minutes; a new one replaces the last; 400 when other devices can't reach this one)
+// POST   /api/devices/connect                 ConnectDeviceRequest -> DevicesStatus & { deviceId, canReachYou }  (pairs both ways; 400/502 with the reason)
+// PATCH  /api/devices/:id                     UpdateDeviceRequest -> DevicesStatus  (a new address is checked first)
+// DELETE /api/devices/:id                     -> DevicesStatus  (unpairs on both sides; the other side is told when it can be reached)
+// POST   /api/devices/unpaired                -> { ok: true }  (paired devices only: the caller unpaired this device)
+// GET    /api/device-info                     -> { slack: { workspace, bot } | null, mailboxes: string[] }  (for a paired device's warnings)
+// ALL    /api/d/:deviceId/<path>              -> the paired device's /api/<path>, streams included (502 when it's offline or refuses)
+// POST   /api/pair                            PairRequest -> PairResponse  (open: device to device, with a live one-time code)
+// GET    /pair                                -> a page saying where to paste the link (the code stays in the #fragment)
 // GET    /api/sessions/current                -> { id: string | null }  (null for an access-token caller or with sign-in off)
 // DELETE /api/sessions/:id                    -> DevicesStatus  (signs that browser out: its next request gets 401 and its event streams close)
 // POST   /api/sessions/sign-out-others        -> DevicesStatus
@@ -1679,10 +1693,17 @@ export interface Device {
   network: "tailscale" | "lan" | null;
   /** The device this screen is signed in to. */
   self: boolean;
+  /** This device can reach it right now (its live event stream is up). */
   online: boolean;
+  /** It can reach this device: it has its own event stream open to us. When false, pairing only works one way. */
+  canReachUs: boolean;
   lastSeenAt: number | null;
   /** When it was paired with this device; null for this device. */
   pairedAt: number | null;
+  /** Why it can't be used, e.g. "MacBook doesn't accept this device anymore. Pair them again." */
+  problem: string | null;
+  /** Things to fix that aren't errors, e.g. both devices answering the same Slack workspace. */
+  warnings: string[];
 }
 
 /** A browser or phone signed in to this device. */
@@ -1704,6 +1725,16 @@ export interface DevicesStatus {
   signIn: boolean;
   /** Newest first; empty when sign-in is off. */
   sessions: SignInSession[];
+}
+
+export interface ConnectDeviceRequest {
+  /** The pairing link from the other device: its address plus a one-time code, e.g. http://100.101.4.2:5173/pair#K7QM-4RXP-2HWD. */
+  link: string;
+}
+
+export interface UpdateDeviceRequest {
+  /** Where to reach it now. Omit to just try reaching it again. */
+  address?: string;
 }
 
 export interface RenameDeviceRequest {

@@ -493,8 +493,8 @@ db.exec(`
 if (!hasColumn("conversations", "project_id")) db.exec(`ALTER TABLE conversations ADD COLUMN project_id TEXT`);
 db.exec(`CREATE INDEX IF NOT EXISTS conversations_project ON conversations (project_id, agent_id)`);
 
-// Devices (roadmap module 07): browsers and phones signed in to this device. The cookie holds
-// "<id>.<secret>"; only the secret's hash is kept here.
+// Devices (roadmap module 07): browsers and phones signed in to this device (the cookie holds
+// "<id>.<secret>"; only the secret's hash is kept here), and the devices paired with it.
 db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
@@ -502,6 +502,17 @@ db.exec(`
     label TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     last_seen_at INTEGER NOT NULL
+  );
+
+  -- Devices paired with this one. token_hash is the hash of the token *it* uses to call us; the token we
+  -- use to call it is the secret "deviceToken:<id>".
+  CREATE TABLE IF NOT EXISTS devices (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    address TEXT NOT NULL DEFAULT '',
+    token_hash TEXT NOT NULL UNIQUE,
+    paired_at INTEGER NOT NULL,
+    last_seen_at INTEGER
   );
 `);
 

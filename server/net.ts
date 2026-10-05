@@ -57,3 +57,17 @@ export function lanUrls(port: number, bonjourName?: string): string[] {
   if (bonjourName?.endsWith(".local")) urls.push(`http://${bonjourName}:${port}`);
   return urls;
 }
+
+/** 100.64.0.0/10: the addresses Tailscale hands out. */
+export function isTailscaleAddress(ip: string): boolean {
+  const [a, b] = ip.split(".").map(Number);
+  return a === 100 && b >= 64 && b <= 127;
+}
+
+/** This machine's Tailscale IPv4 address, or null when Tailscale isn't up. */
+export function tailscaleAddress(): string | null {
+  for (const list of Object.values(networkInterfaces())) {
+    for (const entry of list ?? []) if (entry.family === "IPv4" && isTailscaleAddress(entry.address)) return entry.address;
+  }
+  return null;
+}

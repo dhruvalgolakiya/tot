@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { tailscaleAddress } from "./net.ts";
 
 // Keys and options can live in a .env file next to package.json (see .env.example).
 // Real environment variables win over the file.
@@ -26,9 +27,17 @@ export const ACCESS_TOKEN = process.env.TOT_ACCESS_TOKEN?.trim() || undefined;
  */
 export const LAN = /^(1|true|yes|on)$/i.test(process.env.TOT_LAN?.trim() ?? "");
 
+/**
+ * TOT_HOST=tailscale: serve other devices over Tailscale only (from anywhere on your tailnet, and nowhere
+ * else). In dev the Vite server listens on the Tailscale address and the API stays on loopback, as with LAN.
+ */
+export const TAILSCALE = process.env.TOT_HOST?.trim().toLowerCase() === "tailscale";
+
 // IPv4 only: many networks hand out public IPv6 addresses, and "all addresses"
 // would put TOT on the internet rather than just the LAN.
-export const HOST = process.env.TOT_HOST?.trim() || (LAN && IS_PROD ? "0.0.0.0" : "127.0.0.1");
+export const HOST = TAILSCALE
+  ? (IS_PROD && tailscaleAddress()) || "127.0.0.1"
+  : process.env.TOT_HOST?.trim() || (LAN && IS_PROD ? "0.0.0.0" : "127.0.0.1");
 
 /** Everything TOT persists lives here: the SQLite db, secrets, local computer workspaces. */
 export const DATA_DIR = process.env.TOT_DATA_DIR ?? join(homedir(), ".tot");
@@ -66,7 +75,10 @@ export const MCP_TOKEN = randomBytes(24).toString("hex");
 // Secrets: write-only from the UI, stored in a 0600 file, env vars as fallback.
 // ---------------------------------------------------------------------------
 
-/** `mailPassword:<personaId>` is a persona's mailbox (app) password; `personaGitHubToken:<personaId>` its GitHub token. */
+/**
+ * `mailPassword:<personaId>` is a persona's mailbox (app) password; `personaGitHubToken:<personaId>` its GitHub token;
+ * `deviceToken:<deviceId>` the token for calling a paired device (module 07).
+ */
 type SecretName =
   | "boatApiKey"
   | "anthropicApiKey"
@@ -74,7 +86,8 @@ type SecretName =
   | "slackAppToken"
   | "slackBotToken"
   | `mailPassword:${string}`
-  | `personaGitHubToken:${string}`;
+  | `personaGitHubToken:${string}`
+  | `deviceToken:${string}`;
 
 // No env fallback for the GitHub token: env vars reach the harness processes TOT spawns.
 const ENV_FALLBACK: Partial<Record<SecretName, string>> = {
