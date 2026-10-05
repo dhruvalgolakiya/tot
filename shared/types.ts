@@ -1024,6 +1024,17 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/conversations/:id/merge-back    -> Conversation  (module 05: a fork brings its new messages back to its source chat: a
 //                                              notice there, and a note for its next turn; returns the source)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
+// Module 09 · lane A (land a finished coding task; every change also goes out as a `task` event)
+// GET    /api/tasks/:id/land                  -> TaskLandOptions  (worked out now: merge into the folder's checked-out branch, or a draft PR;
+//                                              each with the reason it can't, e.g. uncommitted changes, a tot/* checkout, conflicts, writes off)
+// POST   /api/tasks/:id/land                  LandTaskRequest -> Conversation  (409 with the reason when it can't. merge: TOT merges --no-ff in
+//                                              your folder, then removes the worktree and the merged branch; pr: pushes the tot/* branch
+//                                              from the worktree and opens a draft PR as the agent's account; the worktree stays)
+// POST   /api/tasks/:id/update-from-base      -> Conversation  (rebases the branch onto its base in the worktree; on conflicts, or work left
+//                                              uncommitted, the rebase is undone and the task gets a turn to do it: status "running")
+// POST   /api/tasks/:id/discard               -> Conversation  (stops it, removes its worktree, deletes its branch unless it was pushed)
+// POST   /api/tasks/:id/checks                -> Conversation  (runs the repo profile's gates on the branch again: checks "running", the
+//                                              result arrives as a task event; "none" when the repo has no profile)
 // DELETE /api/conversations/:id?deleteBranch=1  (a task: also removes its worktree; its branch only with deleteBranch, and only if never pushed)
 //
 // POST   /api/uploads                         multipart/form-data, field "file" (≤ 25 MB) -> Attachment

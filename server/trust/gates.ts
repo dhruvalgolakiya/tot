@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GateName, GateReport, GateResult, RepoProfileInput } from "../../shared/types.ts";
+import type { FolderGrant } from "../computer/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { checkScope, type Plan } from "./scope.ts";
 import { exec, folderArg, output, repoState, sections, sh, stripAnsi, tail } from "./shell.ts";
@@ -33,6 +34,11 @@ export interface GateRun {
   readOnly?: boolean;
   /** The reproduce step's failing test or script: it must fail before the fix and pass after it. */
   repro?: { command: string; expect: "fail" | "pass" };
+  /**
+   * A task's folder grant, when its worktree is in a folder project on this Mac (module 09). The
+   * sandbox lets it write that worktree only, so base results can't be made there (no comparison).
+   */
+  grant?: FolderGrant | null;
 }
 
 /** A failure blocks unless the base branch fails the same way. Anything waiting for the user's OK blocks too. */
@@ -107,14 +113,16 @@ async function runOnBase(run: GateRun, scope: string, baseSha: string, gates: Co
   const made = await sections(
     run.agentId,
     `mkdir -p .tot-baselines && git -C ${folderArg(run.cwd)} worktree add --detach "$PWD/${name}" ${sh(baseSha)} >/dev/null 2>&1 && cd ${sh(name)} && echo "@@@ dir" && pwd -P`,
+    undefined,
+    run.grant,
   );
   const dir = made.dir?.trim();
   if (!dir) return found;
   try {
-    if (run.profile.commands.install) await exec(run.agentId, run.profile.commands.install, { cwd: dir, timeoutMs });
+    if (run.profile.commands.install) await exec(run.agentId, run.profile.commands.install, { cwd: dir, timeoutMs, grant: run.grant });
     for (const gate of todo) {
       const command = run.profile.commands[gate]!;
-      const result = await exec(run.agentId, command, { cwd: dir, timeoutMs });
+      const result = await exec(run.agentId, command, { cwd: dir, timeoutMs, grant: run.grant });
       const baseline: Baseline = { status: result.exitCode === 0 ? "pass" : "fail", failures: result.exitCode === 0 ? [] : failureLines(output(result), [dir]) };
       db.prepare(
         `INSERT INTO gate_baselines (scope, base_sha, gate, command, status, failures, output_tail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -125,6 +133,7 @@ async function runOnBase(run: GateRun, scope: string, baseSha: string, gates: Co
   } finally {
     await exec(run.agentId, `git -C ${folderArg(run.cwd)} worktree remove --force ${sh(dir)} >/dev/null 2>&1; rm -rf ${sh(dir)}; git -C ${folderArg(run.cwd)} worktree prune`, {
       timeoutMs: 60_000,
+      grant: run.grant,
     }).catch(() => {});
   }
   return found;
@@ -132,7 +141,7 @@ async function runOnBase(run: GateRun, scope: string, baseSha: string, gates: Co
 
 /** Runs every command gate on the base commit now (cached), so a task knows up front which checks already fail there. */
 export async function baseline(run: Omit<GateRun, "gates">): Promise<{ baseSha: string; results: Partial<Record<CommandGate, Baseline>> }> {
-  const { baseSha } = await repoState(run.agentId, run.cwd, run.baseRef);
+  const { baseSha } = await repoState(run.agentId, run.cwd, run.baseRef, run.grant);
   const gates = COMMAND_GATES.filter((gate) => run.profile.commands[gate]);
   const timeoutMs = run.profile.limits.commandTimeoutMinutes * 60_000;
   const found = await runOnBase({ ...run, gates: [] }, scopeOf(run), baseSha, gates, timeoutMs);
@@ -146,12 +155,12 @@ const scopeOf = (run: Pick<GateRun, "brainId" | "agentId" | "cwd">) => run.brain
 const LABEL: Record<CommandGate, string> = { typecheck: "typecheck", lint: "lint", test: "test", build: "build", e2e: "end-to-end" };
 
 export async function runGates(run: GateRun): Promise<GateReport> {
-  const { headSha, baseSha } = await repoState(run.agentId, run.cwd, run.baseRef);
+  const { headSha, baseSha } = await repoState(run.agentId, run.cwd, run.baseRef, run.grant);
   const cwd = run.cwd.replace(/^~\/?/, "") || ".";
   const timeoutMs = run.profile.limits.commandTimeoutMinutes * 60_000;
   const wanted = GATE_ORDER.filter((gate) => run.gates.includes(gate));
   const results: GateResult[] = [];
-  const dir = (await sections(run.agentId, `echo "@@@ dir"; pwd -P`, cwd)).dir?.trim() ?? "";
+  const dir = (await sections(run.agentId, `echo "@@@ dir"; pwd -P`, cwd, run.grant)).dir?.trim() ?? "";
 
   // The branch first; then, only for what failed, the base commit to compare with.
   const failed: { gate: CommandGate; result: GateResult; failures: string[] }[] = [];
@@ -161,7 +170,7 @@ export async function runGates(run: GateRun): Promise<GateReport> {
       results.push({ gate, status: "skipped", note: `No ${LABEL[gate]} command in the repo profile.` });
       continue;
     }
-    const ran = await exec(run.agentId, command, { cwd, timeoutMs });
+    const ran = await exec(run.agentId, command, { cwd, timeoutMs, grant: run.grant });
     const result: GateResult = {
       gate,
       status: ran.exitCode === 0 ? "pass" : "fail",
@@ -205,7 +214,7 @@ export async function runGates(run: GateRun): Promise<GateReport> {
     if (!run.repro) {
       results.push({ gate: "repro", status: "skipped", note: "Nothing reproduces the bug yet." });
     } else {
-      const ran = await exec(run.agentId, run.repro.command, { cwd, timeoutMs });
+      const ran = await exec(run.agentId, run.repro.command, { cwd, timeoutMs, grant: run.grant });
       const fails = ran.exitCode !== 0;
       const ok = run.repro.expect === "fail" ? fails : !fails;
       results.push({
@@ -228,7 +237,7 @@ export async function runGates(run: GateRun): Promise<GateReport> {
   }
 
   if (wanted.some((gate) => gate === "scope" || gate === "deps" || gate === "size")) {
-    const scoped = await checkScope({ agentId: run.agentId, cwd, baseSha, profile: run.profile, plan: run.plan, readOnly: run.readOnly });
+    const scoped = await checkScope({ agentId: run.agentId, cwd, baseSha, profile: run.profile, plan: run.plan, readOnly: run.readOnly, grant: run.grant });
     for (const result of scoped) {
       if (result.gate === "test") {
         // Skipped or deleted tests make a passing test run meaningless: it needs the user's OK.

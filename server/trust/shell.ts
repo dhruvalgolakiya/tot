@@ -1,6 +1,6 @@
 import { HttpError } from "../agent/orchestrator.ts";
 import { computerManager } from "../computer/manager.ts";
-import type { ExecResult } from "../computer/types.ts";
+import type { ExecResult, FolderGrant } from "../computer/types.ts";
 import { getSecret, secretValues } from "../config.ts";
 import { redactGitHubTokens } from "../github.ts";
 
@@ -48,10 +48,17 @@ export function tail(text: string, limit = TAIL_BYTES): string {
 /** Single-quotes a value for bash. */
 export const sh = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
 
-/** Runs a command on the agent's computer; stdout and stderr come back scrubbed. */
-export async function exec(agentId: string, command: string, opts: { cwd?: string; timeoutMs?: number } = {}): Promise<ExecResult> {
+/**
+ * Runs a command on the agent's computer; stdout and stderr come back scrubbed. `grant` lets it use a
+ * folder project's folder on this Mac (a task's checks run in its worktree there, module 09).
+ */
+export async function exec(
+  agentId: string,
+  command: string,
+  opts: { cwd?: string; timeoutMs?: number; grant?: FolderGrant | null } = {},
+): Promise<ExecResult> {
   const active = await computerManager.ensure(agentId);
-  const result = await active.backend.exec(active.externalId, command, { cwd: opts.cwd, timeoutMs: opts.timeoutMs ?? 60_000 });
+  const result = await active.backend.exec(active.externalId, command, { cwd: opts.cwd, timeoutMs: opts.timeoutMs ?? 60_000, grant: opts.grant });
   computerManager.touch(agentId);
   return { ...result, stdout: scrub(result.stdout), stderr: scrub(result.stderr) };
 }
@@ -68,9 +75,9 @@ export const folderArg = (folder: string) => sh(folder.trim().replace(/^~\/?/, "
  * Lets one round trip to the computer collect everything a check needs. With `folder`, the script
  * runs there, and a folder that doesn't exist comes back as a "missing" section (it isn't created).
  */
-export async function sections(agentId: string, script: string, folder?: string): Promise<Record<string, string>> {
+export async function sections(agentId: string, script: string, folder?: string, grant?: FolderGrant | null): Promise<Record<string, string>> {
   const prefix = folder ? `cd ${folderArg(folder)} 2>/dev/null || { echo "@@@ missing"; exit 0; }\n` : "";
-  const result = await exec(agentId, prefix + script, { timeoutMs: 120_000 });
+  const result = await exec(agentId, prefix + script, { timeoutMs: 120_000, grant });
   const found: Record<string, string> = {};
   let name: string | null = null;
   let lines: string[] = [];
@@ -89,7 +96,7 @@ export async function sections(agentId: string, script: string, folder?: string)
 }
 
 /** The commit HEAD points at, and where the branch left `baseRef` (the merge-base), in a repo folder. */
-export async function repoState(agentId: string, cwd: string, baseRef: string): Promise<{ headSha: string | null; baseSha: string }> {
+export async function repoState(agentId: string, cwd: string, baseRef: string, grant?: FolderGrant | null): Promise<{ headSha: string | null; baseSha: string }> {
   if (!/^[\w./@^~{}+-]+$/.test(baseRef) || baseRef.startsWith("-")) throw new HttpError(400, `“${baseRef}” isn't a branch, tag or commit name.`);
   const found = await sections(
     agentId,
@@ -97,6 +104,7 @@ export async function repoState(agentId: string, cwd: string, baseRef: string): 
 echo "@@@ head"; git rev-parse HEAD 2>/dev/null
 echo "@@@ base"; git merge-base HEAD ${sh(baseRef)} 2>/dev/null || git rev-parse --verify --quiet ${sh(`${baseRef}^{commit}`)}`,
     cwd,
+    grant,
   ).catch((err: unknown) => {
     throw new HttpError(400, `Couldn't reach the agent's computer: ${err instanceof Error ? err.message : String(err)}`);
   });
