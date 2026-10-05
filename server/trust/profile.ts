@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Brain, CommandRun, RepoCommandName, RepoLimits, RepoProfile, RepoProfileInput } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
+import type { FolderGrant } from "../computer/types.ts";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { brains, cloneFolder } from "../data/brains.ts";
@@ -154,13 +155,14 @@ const MANIFESTS = [
   "Makefile",
 ];
 
-async function scanRepo(agentId: string, folder: string): Promise<RepoScan> {
+async function scanRepo(agentId: string, folder: string, grant?: FolderGrant | null): Promise<RepoScan> {
   const found = await sections(
     agentId,
     `for f in ${MANIFESTS.join(" ")}; do [ -f "$f" ] && { echo "@@@ file:$f"; head -c 30000 "$f"; echo; }; done
 echo "@@@ files"
 git ls-files 2>/dev/null | head -20000 | grep . || find . -maxdepth 4 -type f -not -path '*/node_modules/*' -not -path './.git/*' | sed 's|^\\./||' | head -5000`,
     folder,
+    grant,
   );
   if ("missing" in found) throw missingFolder(agentId, folder);
   const manifests: Record<string, string> = {};
@@ -518,6 +520,11 @@ export async function runProfileCommand(brainId: string, command: string, agentI
 export async function draftAfterLearning(brainId: string, agentId: string): Promise<void> {
   if (repoProfiles.get(brainId)?.updatedBy === "user") return;
   repoProfiles.save(brainId, await draftProfile(brainId, agentId), "agent");
+}
+
+/** A profile read from a folder now (not saved): a task's worktree whose repo has no saved profile yet (module 09). */
+export async function detectProfileIn(agentId: string, folder: string, grant?: FolderGrant | null): Promise<RepoProfileInput> {
+  return cleanProfile(detectProfile(await scanRepo(agentId, folder, grant)));
 }
 
 /** The profile for a repo folder: its brain's saved one, or one read from the folder now (not saved). */

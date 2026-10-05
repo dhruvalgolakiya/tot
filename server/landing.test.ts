@@ -208,7 +208,12 @@ let opts = await options(conflicting.id);
 check("a running task can't land yet", !opts.merge.available && opts.merge.reason === "Wait for the task to finish, or stop it.", JSON.stringify(opts));
 
 const greet = await doneTask(shopChat.id, "Add a greeting", (wt) => commit(wt, { "hello.txt": "hello\n" }, "Add a greeting"));
-check("no repo profile: the checks are “none”", greet.task.checks?.state === "none" && greet.task.checks.lines.length === 0, JSON.stringify(greet.task.checks));
+// No saved profile (no Learn a repo): the checks read one from the worktree. This repo has no test command, so only scope, deps and size run.
+check(
+  "no saved profile: the checks read the repo and run what they find",
+  greet.task.checks?.state === "passing" && greet.task.checks.lines.join() === "scope passed,deps passed,size passed",
+  JSON.stringify(greet.task.checks),
+);
 opts = await options(greet.id);
 check(
   "a done task in a folder project: Merge into main, no PR, not behind",

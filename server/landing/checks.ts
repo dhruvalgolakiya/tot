@@ -6,7 +6,7 @@ import { projects } from "../projects/projects.ts";
 import { isTask, taskStore, type TaskRecord } from "../tasks/store.ts";
 import { cloneUrl } from "../tasks/worktree.ts";
 import { blocks, COMMAND_GATES, runGates } from "../trust/gates.ts";
-import { repoProfiles } from "../trust/profile.ts";
+import { detectProfileIn, repoProfiles } from "../trust/profile.ts";
 import { baseRefScript, onComputerOrThrow } from "./git.ts";
 
 /**
@@ -24,15 +24,19 @@ const running = new Map<string, Promise<void>>();
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** The repo profile for a task's repo: its project's brain's, else the repo brain learned from the same source. */
-export function profileFor(task: TaskRecord): { brainId: string; profile: RepoProfileInput } | null {
+/**
+ * The brain a coding task's checks belong to, with its repo's saved profile. `profile` is null when none
+ * was saved yet (no Learn a repo): run() then reads one from the worktree, so a repo with `npm test`
+ * gets checks out of the box. Null when the repo has no brain at all.
+ */
+export function profileFor(task: TaskRecord): { brainId: string; profile: RepoProfileInput | null } | null {
   const repo = task.task.repo;
   if (!repo) return null;
   const project = projects.get(task.projectId);
   const brainId = project && project.kind !== "none" ? project.brainId : brains.forSource(cloneUrl(repo.source) ?? repo.source)?.id;
   if (!brainId) return null;
   try {
-    const profile = repoProfiles.get(brainId);
-    return profile ? { brainId, profile } : null;
+    return { brainId, profile: repoProfiles.get(brainId) ?? null };
   } catch {
     // Not a repo's brain: no profile.
     return null;
@@ -57,7 +61,7 @@ function save(taskId: string, checks: TaskChecks): void {
   taskStore.patch(taskId, { checks });
 }
 
-async function run(taskId: string, found: { brainId: string; profile: RepoProfileInput }): Promise<void> {
+async function run(taskId: string, found: { brainId: string; profile: RepoProfileInput | null }): Promise<void> {
   const task = taskStore.get(taskId);
   const repo = task?.task.repo;
   if (!task || !repo) return;
@@ -65,8 +69,9 @@ async function run(taskId: string, found: { brainId: string; profile: RepoProfil
     const grant = grantFor(task);
     // The base it's compared with, as the worktree knows it: origin/<base> on a clone, the user's own <base> in a folder.
     const baseRef = (await onComputerOrThrow(task, `${baseRefScript(repo.baseBranch, Boolean(grant))}; echo "$ref"`, repo.folder, grant)).trim();
-    const gates: GateName[] = [...COMMAND_GATES.filter((gate) => found.profile.commands[gate]), "scope", "deps", "size"];
-    const report = await runGates({ agentId: task.agentId, cwd: repo.worktree, profile: found.profile, brainId: found.brainId, gates, baseRef, grant });
+    const profile = found.profile ?? (await detectProfileIn(task.agentId, repo.worktree, grant));
+    const gates: GateName[] = [...COMMAND_GATES.filter((gate) => profile.commands[gate]), "scope", "deps", "size"];
+    const report = await runGates({ agentId: task.agentId, cwd: repo.worktree, profile, brainId: found.brainId, gates, baseRef, grant });
     save(taskId, { state: report.ok ? "passing" : "failing", lines: report.results.map(checkLine), headSha: report.headSha, at: Date.now() });
   } catch (err) {
     save(taskId, { state: "failing", lines: [`Couldn't run the checks: ${errorText(err)}`.slice(0, LINE_MAX)], headSha: repo.headSha, at: Date.now() });

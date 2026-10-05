@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { ArrowLeftRight, ArrowUpRight, Check, CircleStop, Copy, Ellipsis, FolderOpen, GitBranch, MessagesSquare, MonitorStop, PanelRight, Pause, Pencil, Play, Trash } from "lucide-react";
+import { ArrowLeftRight, ArrowUpRight, Check, CircleStop, Copy, Ellipsis, FolderOpen, GitBranch, GitMerge, MessagesSquare, MonitorStop, PanelRight, Pause, Pencil, Play, Trash } from "lucide-react";
 import type { Message, TaskPreview } from "@shared/types";
 import { useCopy } from "../../hooks/useCopy";
 import { useNow } from "../../hooks/useNow";
@@ -8,7 +8,7 @@ import { api } from "../../lib/api";
 import { answeredByLabel, modelLabel, PROVIDER_LABELS } from "../../lib/models";
 import { roleLine } from "../../lib/orchestration";
 import { formatTokens, isOpenTask, repoLabel, taskElapsed, type TaskConversation } from "../../lib/tasks";
-import { continueTaskOn, notifyError, pauseTask, resumeTask, setComputerPanelOpen, setTaskPanelOpen, stopTask, taskToChat, useStore } from "../../store";
+import { continueTaskOn, notifyError, pauseTask, resumeTask, setComputerPanelOpen, setTaskPanelOpen, setTaskPanelTab, stopTask, taskToChat, useStore } from "../../store";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { Tip } from "../ui/Tip";
@@ -84,6 +84,7 @@ function PreviewChip({ preview }: { preview: TaskPreview }) {
 
 export function TaskHeaderActions({ task }: { task: TaskConversation }) {
   const panelOpen = useStore((s) => s.taskPanelOpen);
+  const panelTab = useStore((s) => s.taskPanelTab);
   // The provider it's on (its last reply's, or the one it was moved to), and whether the other is signed in.
   const lastProvider = useStore((s) => s.messages[task.id]?.findLast((m) => m.role === "assistant" && m.provider)?.provider);
   const current = task.task.provider ?? lastProvider ?? "claude";
@@ -95,11 +96,23 @@ export function TaskHeaderActions({ task }: { task: TaskConversation }) {
   const { copy } = useCopy();
   const canPause = status === "running" || status === "queued" || status === "needs-input";
   const canResume = status === "paused" || status === "interrupted";
+  // A finished coding task's next step (module 09): its Land bar, at the bottom of the Changes tab.
+  const readyToLand = status === "done" && Boolean(repo?.headSha) && !task.task.landing;
   const stopPreview = () => void api.stopTaskPreview(task.id).catch(notifyError);
+  const reviewAndLand = () => {
+    setTaskPanelTab("changes");
+    setTaskPanelOpen(true);
+  };
 
   return (
     <div className="flex items-center gap-1">
       {preview && <PreviewChip preview={preview} />}
+      {readyToLand && !(panelOpen && panelTab === "changes") && (
+        <Button size="sm" variant="primary" onClick={reviewAndLand}>
+          <GitMerge />
+          Review & land
+        </Button>
+      )}
       {canPause && (
         <Button size="sm" variant="secondary" aria-label="Pause" className="max-sm:w-8 max-sm:px-0" onClick={() => void pauseTask(task.id)}>
           <Pause />
