@@ -186,6 +186,33 @@ await request("POST", `/tasks/${stopped.id}/stop`);
 await until(() => statsOf(stopped.id)?.paths.includes("midway.txt") === true);
 check("stats refreshed when a task is stopped", statsOf(stopped.id)?.files === 1 && statsOf(stopped.id)?.added === 1, JSON.stringify(statsOf(stopped.id)));
 
+// Recording a turn reads git first; a change to the task's repo made meanwhile isn't overwritten with the copy from before.
+const keeper = coding("Keep the record");
+const exec = computer.backend.exec;
+let changeDuringRecord: string | null = null;
+computer.backend.exec = async (externalId, command, options) => {
+  if (changeDuringRecord && command === "git rev-parse HEAD" && options.cwd === worktreeOf(changeDuringRecord)) {
+    const id = changeDuringRecord;
+    changeDuringRecord = null;
+    taskStore.patch(id, { repo: { ...taskStore.get(id)!.task.repo!, baseBranch: "release" } });
+  }
+  return exec(externalId, command, options);
+};
+scripts.set(keeper.id, async (t) => {
+  await sh(`printf 'k\\n' > keep.txt && git add keep.txt && ${GIT} commit -qm keep`, worktreeOf(t.id));
+  t.tool("computer_exec");
+  changeDuringRecord = t.id;
+  tasks.finish(t.id, "done", "Kept.");
+});
+await until(() => status(keeper.id) === "done" && changeDuringRecord === null && taskStore.get(keeper.id)?.task.repo?.headSha === taskStore.get(keeper.id)?.task.stats?.headSha, 20_000);
+computer.backend.exec = exec;
+const kept = taskStore.get(keeper.id)!.task.repo!;
+check(
+  "after a turn only the head and stats are written: the repo as it is now keeps what changed meanwhile",
+  kept.baseBranch === "release" && kept.headSha === (await sh("git rev-parse HEAD", worktreeOf(keeper.id))),
+  JSON.stringify(kept),
+);
+
 // =============================================================================
 // Overlaps and land order
 // =============================================================================

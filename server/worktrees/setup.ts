@@ -1,14 +1,30 @@
 import { execFileSync } from "node:child_process";
-import { appendFileSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  appendFileSync,
+  closeSync,
+  constants,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+  type Stats,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type { Project, SetupDetection, TaskRepo, TaskSetup } from "../../shared/types.ts";
 import { computerManager } from "../computer/manager.ts";
 import type { FolderGrant } from "../computer/types.ts";
 import { paths } from "../config.ts";
-import { redactGitHubTokens } from "../github.ts";
+import { hostGitEnv } from "../git-env.ts";
 import { projects } from "../projects/projects.ts";
 import { taskStore, type TaskRecord } from "../tasks/store.ts";
 import { homeRelative } from "../tasks/worktree.ts";
+import { scrub } from "../trust/shell.ts";
 import { taskPorts } from "./ports.ts";
 
 /**
@@ -72,11 +88,29 @@ function staysIn(path: string, root: string): boolean {
   return real === root || real.startsWith(`${root}/`);
 }
 
+function lstatOrNull(path: string): Stats | null {
+  try {
+    return lstatSync(path);
+  } catch {
+    return null;
+  }
+}
+
+/** Writes a file that mustn't exist yet, never through a symlink (one swapped in meanwhile makes it fail). */
+function writeNew(path: string, data: Buffer, mode: number): void {
+  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, mode);
+  try {
+    writeFileSync(fd, data);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /** Keeps copied files out of commits: any git doesn't already ignore goes in the repo's info/exclude. */
 function ignoreCopied(folder: string, worktree: string, copied: string[]): void {
   const unignored = copied.filter((file) => {
     try {
-      execFileSync("git", ["-c", "core.fsmonitor=false", "check-ignore", "-q", "--no-index", "--", file], { cwd: worktree, stdio: "ignore" });
+      execFileSync("git", ["-c", "core.fsmonitor=false", "check-ignore", "-q", "--no-index", "--", file], { cwd: worktree, stdio: "ignore", env: hostGitEnv() });
       return false;
     } catch {
       return true;
@@ -112,12 +146,15 @@ export function copyProjectFiles(project: Project, worktree: string): { copied: 
         continue;
       }
       const to = join(target, file);
-      if (!staysIn(dirname(to), target) || (existsSync(to) && lstatSync(to).isSymbolicLink())) {
+      // lstat, not exists: a symlink the branch put there (pointing nowhere yet, too) is never written through.
+      const there = lstatOrNull(to);
+      if (!staysIn(dirname(to), target) || (there && !there.isFile())) {
         skipped.push(file);
         continue;
       }
       mkdirSync(dirname(to), { recursive: true });
-      copyFileSync(from, to);
+      if (there) unlinkSync(to);
+      writeNew(to, readFileSync(from), statSync(from).mode & 0o777);
       copied.push(file);
     } catch {
       skipped.push(file);
@@ -133,10 +170,10 @@ export function copyProjectFiles(project: Project, worktree: string): { copied: 
   return { copied, skipped };
 }
 
-/** The last lines of a command's output (stdout, then stderr), without tokens. */
+/** The last lines of a command's output (stdout, then stderr), without secrets (it goes into the agent's prompt and the UI). */
 function lastLines(...outputs: string[]): string {
   const text = outputs.map((output) => output.trimEnd()).filter(Boolean).join("\n");
-  const lines = redactGitHubTokens(text).split("\n");
+  const lines = scrub(text).split("\n");
   return lines.slice(-ERROR_LINES).join("\n").slice(-ERROR_CHARS).replace(/^\s*\n/, "");
 }
 

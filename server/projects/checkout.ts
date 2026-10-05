@@ -8,7 +8,7 @@ import type { FolderGrant } from "../computer/types.ts";
 import { cloneFolder, githubFullName } from "../data/brains.ts";
 import type { ConversationRecord } from "../data/conversations.ts";
 import { redactGitHubTokens } from "../github.ts";
-import type { TaskRecord } from "../tasks/store.ts";
+import { taskStore, type TaskRecord } from "../tasks/store.ts";
 import { cloneUrl, worktrees } from "../tasks/worktree.ts";
 import { worktreeSetup } from "../worktrees/setup.ts";
 import { FolderRefused, gitState, resolveFolder, tildePath } from "./folders.ts";
@@ -253,12 +253,19 @@ export async function forTools(
 /**
  * A task's repo made ready to work in: its project's folder on the computer first, then the task's own
  * worktree, then (module 09) its ports, and for a worktree made just now its project's files and setup.
+ * One at a time per task (worktrees.forTask), with picking it up again, landing it and cleanup.
  */
-export async function prepareTask(task: TaskRecord): Promise<TaskRepo> {
+export function prepareTask(task: TaskRecord): Promise<TaskRepo> {
+  return worktrees.forTask(task.id, () => prepareTaskNow(taskStore.get(task.id) ?? task));
+}
+
+/** prepareTask, for a caller that's already running alone for the task (inside worktrees.forTask). */
+export async function prepareTaskNow(task: TaskRecord): Promise<TaskRepo> {
   const project = projects.get(task.projectId);
   if (project && project.kind !== "none") await checkout.ensure(task.agentId, project);
   const grant = grantFor(task);
-  const repo = await worktrees.ensure(task.agentId, task.task.repo!, grant);
-  await worktreeSetup.prepared(task, repo, grant, { fresh: !task.task.repo!.headSha });
+  const { repo, created } = await worktrees.ensure(task.agentId, task.task.repo!, grant);
+  // Set up only when this call made the worktree: two replies at once don't both run the setup.
+  await worktreeSetup.prepared(task, repo, grant, { fresh: created });
   return repo;
 }

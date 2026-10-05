@@ -27,7 +27,7 @@ import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
-import { checkout, grantFor, prepareTask } from "../projects/checkout.ts";
+import { checkout, grantFor, prepareTaskNow } from "../projects/checkout.ts";
 import { projects } from "../projects/projects.ts";
 import { ticketKeyOf } from "../projects/tickets.ts";
 import { messages } from "../data/messages.ts";
@@ -399,11 +399,24 @@ export const tasks = {
       if (request.attachments?.length) throw new HttpError(409, "Attach files once the task has stopped, or send the note as text.");
       return { steered: steer(taskId, request.text ?? "") };
     }
-    // Picking a coding task up again: its worktree must be there before the turn.
-    if (task.task.repo && !task.task.repo.headSha) {
-      taskStore.patch(taskId, { repo: await prepareTask(task) });
-    }
-    if (!taskStore.transition(taskId, "running")) throw new HttpError(409, `A ${status} task can't take messages.`);
+    // Picking it up again, alone for the task (worktrees.forTask): cleanup can't take its worktree meanwhile.
+    const pickedUp = await worktrees.forTask(taskId, async () => {
+      const current = taskStore.require(taskId);
+      // Someone else picked it up first: this message goes to it as theirs does.
+      if (current.task.status !== status) return false;
+      const { landing } = current.task;
+      // Merged or discarded, its worktree is gone: new work gets a new one (from the base when its branch went too), and can land again.
+      const reopened = landing?.kind === "merged" || landing?.kind === "discarded";
+      const repo = current.task.repo && reopened ? { ...current.task.repo, headSha: null } : current.task.repo;
+      // A coding task's worktree must be there before the turn.
+      if (repo && !repo.headSha) {
+        const prepared = await prepareTaskNow({ ...current, task: { ...current.task, repo } });
+        taskStore.patch(taskId, { repo: prepared, ...(reopened ? { landing: null } : {}) });
+      }
+      if (!taskStore.transition(taskId, "running")) throw new HttpError(409, `A ${status} task can't take messages.`);
+      return true;
+    });
+    if (!pickedUp) return tasks.message(taskId, request);
     let started: SendMessageResponse;
     try {
       started = await runLoop.send(taskId, request, runLoop.turnOptions(task));
@@ -428,7 +441,7 @@ export const tasks = {
     if (task.task.repo?.headSha) {
       const repo = task.task.repo;
       await Promise.resolve()
-        .then(() => worktrees.remove(task.agentId, repo, { deleteBranch, grant: grantFor(task) }))
+        .then(() => worktrees.remove(task.agentId, repo, { deleteBranch, force: true, grant: grantFor(task) }))
         .catch((err) => {
           console.warn(`[tot] couldn't remove the worktree of task ${taskId}:`, err instanceof Error ? err.message : err);
         });

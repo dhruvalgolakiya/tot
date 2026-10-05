@@ -117,7 +117,7 @@ function ancestors(path: string): string[] {
   return [...dirs, "/"];
 }
 
-/** Process groups started per workspace, so stop/destroy can end background servers. */
+/** Process groups started per workspace (commands, and previews: `background`), so stop/destroy can end background servers. */
 const groups = new Map<string, Set<number>>();
 
 function killGroups(externalId: string): void {
@@ -403,6 +403,11 @@ export const localBackend: ComputerBackend = {
       throw new Error("The command couldn't be started.");
     }
     child.unref();
+    // Stopping or destroying the computer ends it too, like any server its commands started.
+    const set = groups.get(externalId) ?? new Set<number>();
+    set.add(pid);
+    groups.set(externalId, set);
+    void exited.then(() => groups.get(externalId)?.delete(pid));
     return {
       pid,
       exited,
