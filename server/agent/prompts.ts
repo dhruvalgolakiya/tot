@@ -1,6 +1,7 @@
-import type { Agent, Memory, Settings, WikiPage, WikiPageSummary } from "../../shared/types.ts";
+import type { Agent, Settings, WikiPage, WikiPageSummary } from "../../shared/types.ts";
 import type { AgentBrain } from "../data/brains.ts";
 import { cloneFolder, githubFullName } from "../data/brains.ts";
+import { memoryPromptSection, type PromptMemory } from "../memory/prompt.ts";
 
 function computerSection(mode: Settings["computer"]["mode"]): string {
   if (mode === "off") {
@@ -124,9 +125,10 @@ export function personaNote(frozenPrompt: string | null, persona: PersonaAccess)
   return outdated ? `[Your persona changed since this chat started; this replaces your earlier persona instructions:\n${personaSection(persona)}]` : "";
 }
 
-/** What a new chat starts with: memory about the user, the agent's brains, and recent chats. */
+/** What a new chat starts with: memory (about the user, and its project's), the agent's brains, and recent chats. */
 export interface WorkspaceContext {
-  userMemories: Memory[];
+  /** Memory repo (module 10): the MEMORY.md files and related entries (see memory/prompt.ts). */
+  memory?: PromptMemory;
   wiki: {
     /** Every brain the agent can use, its notebook first; a project's brain with the project's folder on the computer. */
     brains: (Pick<AgentBrain, "id" | "name" | "kind" | "description" | "source" | "keywords" | "access" | "pageCount"> & { folder?: string | null })[];
@@ -152,15 +154,7 @@ function truncate(text: string, max: number, note: string): string {
 }
 
 function memorySection(workspace: WorkspaceContext): string {
-  return `# Memory about the user
-You have long-term memory about the user, shared by all of their agents.
-- Call memory_save when the user shares durable preferences, facts about themselves or their goals, or asks you to remember something about them. One short sentence each (e.g. "Prefers TypeScript over Python").
-- memory_search recalls details not listed below; memory_update fixes one that's out of date; memory_delete forgets one (search first for its id) — do it whenever the user asks you to forget something.
-- Don't save secrets or one-off details. Use what you know naturally; don't recite it.
-- When the user asks you to remember something, or to put something in the wiki, do exactly that right away: don't debate where it belongs, pick the page yourself, and say in a few words where it went.
-
-What you know about the user:
-${bullets(workspace.userMemories.map((m) => `- ${m.content}`))}`;
+  return memoryPromptSection(workspace.memory);
 }
 
 function brainCard(brain: WorkspaceContext["wiki"]["brains"][number]): string {

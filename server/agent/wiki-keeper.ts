@@ -255,13 +255,14 @@ export function applyUpdates(
   return { changed, created };
 }
 
-async function defaultComplete(prompt: string, system: string): Promise<string> {
+/** The light model (Sonnet, then ChatGPT), for background jobs: the keeper, and memory's Dreaming (module 10). */
+export async function defaultComplete(prompt: string, system: string): Promise<string> {
   const statuses = await providerStatuses();
   const limited = limits.active();
   const candidates = (["claude", "chatgpt"] as const).filter(
     (id) => statuses.find((s) => s.id === id)?.loggedIn && !limited.has(id),
   );
-  if (!candidates.length) throw new Error("No provider available for the wiki keeper.");
+  if (!candidates.length) throw new Error("No provider available for a background job (the wiki keeper or Dreaming).");
   let lastError: unknown;
   for (const id of candidates) {
     try {

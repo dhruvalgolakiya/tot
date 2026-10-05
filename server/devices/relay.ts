@@ -47,6 +47,8 @@ const inbound = new Map<string, number>();
 /** Things to fix found when it connects, e.g. both answering the same Slack workspace (M4). */
 const warnings = new Map<string, string[]>();
 let infoCheck: ((peer: Peer) => Promise<string[]>) | null = null;
+/** Memory repo (module 10): who hears every event a paired device sends, forwarded or not (memory sync). */
+const listeners: ((deviceId: string, event: AppEvent) => void)[] = [];
 
 function toDevice(peer: Peer): Device {
   const link = links.get(peer.id);
@@ -71,6 +73,7 @@ function announce(id: string) {
 }
 
 function forward(id: string, event: AppEvent) {
+  for (const listener of listeners) listener(id, event);
   if (event.type === "device") {
     // It renamed itself.
     if (event.device.self && event.device.name !== peers.get(id)?.name) {
@@ -233,6 +236,11 @@ export const relay = {
       else inbound.delete(id);
       if (now === 0) announce(id);
     };
+  },
+
+  /** Memory repo (module 10): hears every event a paired device sends (its own memory changed, say). */
+  onEvent(listener: (deviceId: string, event: AppEvent) => void) {
+    listeners.push(listener);
   },
 
   /** How to find warnings about a device when it connects (set by M4's device-info check). */

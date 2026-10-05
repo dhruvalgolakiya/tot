@@ -121,7 +121,8 @@ if (!hasColumn("conversations", "routine_id")) db.exec(`ALTER TABLE conversation
 
 // v3: memories briefly belonged to agent workspaces (agent_id); those moved into each
 // workspace's wiki (see data/wiki.ts), and memories are now only about the user.
-if (!hasColumn("memories", "agent_id")) {
+// (Module 10 rebuilt `memories` as an index without this column; its old rows are in memories_legacy.)
+if (!hasColumn("memories", "agent_id") && !hasColumn("memories", "repo")) {
   db.exec(`ALTER TABLE memories ADD COLUMN agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE`);
 }
 
@@ -514,6 +515,61 @@ db.exec(`
     paired_at INTEGER NOT NULL,
     last_seen_at INTEGER
   );
+`);
+
+// Memory repo (roadmap module 10, server/memory/): memory lives in git repos of markdown (DATA_DIR/memory), and
+// `memories` becomes an index of their entries, rebuilt from the files after every commit and at startup. An
+// entry's id is unique within its repo only, so the table is rebuilt once without the old primary key; the rows
+// from before move to `memories_legacy`, which memory/migrate.ts imports into the "you" repo once (and keeps).
+const MEMORY_TRIGGERS = `
+  CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+    INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
+  END;
+  CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+  END;
+  CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+    INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
+  END;`;
+if (!hasColumn("memories", "repo")) {
+  db.exec("BEGIN");
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS memories_legacy (
+        id TEXT PRIMARY KEY, content TEXT NOT NULL, source TEXT NOT NULL, conversation_id TEXT,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, agent_id TEXT
+      );
+      INSERT OR IGNORE INTO memories_legacy (id, content, source, conversation_id, created_at, updated_at, agent_id)
+        SELECT id, content, source, conversation_id, created_at, updated_at, agent_id FROM memories;
+      DROP TABLE memories;
+      CREATE TABLE memories (
+        id TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        path TEXT NOT NULL,
+        line INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        -- 'agent' or 'user'; source_ref is the entry's own source ("tot://c/<id>", "you", "dreaming").
+        source TEXT NOT NULL,
+        source_ref TEXT,
+        conversation_id TEXT,
+        -- A line someone wrote without an id: its id is derived from its file and text.
+        derived INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      ${MEMORY_TRIGGERS}
+      INSERT INTO memories_fts(memories_fts) VALUES ('rebuild');
+    `);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+db.exec(`
+  CREATE INDEX IF NOT EXISTS memories_by_repo ON memories(repo, path, line);
+  CREATE INDEX IF NOT EXISTS memories_by_id ON memories(id);
 `);
 
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;

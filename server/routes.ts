@@ -55,7 +55,6 @@ import { agents, validateAgent } from "./data/agents.ts";
 import { BrainError, brains } from "./data/brains.ts";
 import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { mail, toMailMessage, toSummary } from "./data/mail.ts";
-import { memories } from "./data/memories.ts";
 import { messages } from "./data/messages.ts";
 import { personas, validatePersona } from "./data/personas.ts";
 import { plugins, validatePlugin } from "./data/plugins.ts";
@@ -74,6 +73,10 @@ import { projects } from "./projects/projects.ts";
 import { isTask } from "./tasks/store.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { trustRoutes } from "./trust/routes.ts";
+// Memory repo (module 10)
+import { MemoryError } from "./memory/repo.ts";
+import { checkMemorySettings, memoryRoutes, memorySettingsChanged } from "./memory/routes.ts";
+import { BUNDLE_PATH } from "./memory/sync.ts";
 
 export const api = new Hono();
 
@@ -110,10 +113,11 @@ api.use("*", async (c, next) => {
 
 // A paired device (module 07) works with this device's agents, chats and projects, but can't manage devices or
 // sign-ins, reach a third device through this one, or change this device's logins and settings.
-const DEVICE_NEVER = /^\/api\/(devices|sessions|d|access)(\/|$)/;
+// Memory repo (module 10): memory is this device's too; a paired device may only fetch the sync bundle.
+const DEVICE_NEVER = /^\/api\/(devices|sessions|d|access|memory|memories)(\/|$)/;
 const DEVICE_READ_ONLY = /^\/api\/(settings|github|slack|apps|personas|plugins)(\/|$)/;
 api.use("*", async (c, next) => {
-  if (callerOf(c).kind !== "device" || c.req.path === "/api/devices/unpaired") return next();
+  if (callerOf(c).kind !== "device" || c.req.path === "/api/devices/unpaired" || c.req.path === BUNDLE_PATH) return next();
   if (DEVICE_NEVER.test(c.req.path) || (c.req.method !== "GET" && DEVICE_READ_ONLY.test(c.req.path))) {
     return c.json({ error: "Another device can't do that here. Use this device itself." }, 403);
   }
@@ -123,6 +127,7 @@ api.use("*", async (c, next) => {
 api.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
   if (err instanceof PairingError) return c.json({ error: err.message }, err.status);
+  if (err instanceof MemoryError) return c.json({ error: err.message }, err.status);
   if (err instanceof WikiError || err instanceof BrainError || err instanceof GitHubError || err instanceof AppsError) return c.json({ error: err.message }, 400);
   if (err instanceof ExecutorError) return c.json({ error: err.message }, err.status === 404 ? 404 : 400);
   console.error("[tot] request failed:", err);
@@ -482,30 +487,10 @@ api.post("/runs/:runId/stop", (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Memories
+// Memory repo (module 10): /api/memories and /api/memory/* (server/memory/routes.ts)
 // ---------------------------------------------------------------------------
 
-api.get("/memories", (c) => {
-  const q = c.req.query("q")?.trim();
-  return c.json(q ? memories.search(q, 100) : memories.list());
-});
-
-api.post("/memories", async (c) => {
-  const { content } = await body<{ content?: string }>(c);
-  if (!content?.trim()) throw new HttpError(400, "Memory can't be empty.");
-  return c.json(memories.create({ content, source: "user" }), 201);
-});
-
-api.patch("/memories/:id", async (c) => {
-  const { content } = await body<{ content?: string }>(c);
-  if (!content?.trim()) throw new HttpError(400, "Memory can't be empty.");
-  return c.json(found(memories.update(c.req.param("id"), content), "Memory not found."));
-});
-
-api.delete("/memories/:id", (c) => {
-  found(memories.delete(c.req.param("id")) || null, "Memory not found.");
-  return c.json({ ok: true });
-});
+api.route("/", memoryRoutes);
 
 // ---------------------------------------------------------------------------
 // Wiki
@@ -929,7 +914,10 @@ api.patch("/settings", async (c) => {
       }
     }
   }
+  // Memory repo (module 10): Dreaming's time and the backup remote's URL.
+  checkMemorySettings(patch.memory);
   const next = settings.patch(patch);
+  memorySettingsChanged(patch.memory);
   // New limits may free up slots for queued tasks.
   if (patch.tasks) taskQueue.pump();
   // Auth changes alter provider status; don't serve a stale cached one.

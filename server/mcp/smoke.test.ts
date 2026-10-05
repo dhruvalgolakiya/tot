@@ -52,9 +52,9 @@ const call = async (name: string, args: Record<string, unknown> = {}) => {
 };
 
 const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-// 19 plus the chat's task tools (task_start, task_spawn_many, task_list, task_status, task_message) and ticket_link
-// (chat_set_project only shows up once there are projects).
-check("tools listed", tools.length === 25 && tools.includes("routine_create") && tools.includes("wiki_edit") && tools.includes("task_spawn_many"), tools.join(", "));
+// 20 (with memory_read, module 10) plus the chat's task tools (task_start, task_spawn_many, task_list, task_status,
+// task_message) and ticket_link (chat_set_project only shows up once there are projects).
+check("tools listed", tools.length === 26 && tools.includes("memory_read") && tools.includes("routine_create") && tools.includes("wiki_edit") && tools.includes("task_spawn_many"), tools.join(", "));
 
 let r = await call("computer_exec", { command: "echo hi && pwd && node -v" });
 check("exec starts computer", !r.isError && r.text.includes("Started a new computer") && r.text.includes("hi"), r.text);
@@ -94,7 +94,7 @@ check("memory save", !r.isError && r.text.startsWith("Saved"), r.text);
 r = await call("memory_save", { content: "prefers typescript over python" });
 check("memory dedupe", r.text.startsWith("Already remembered"), r.text);
 r = await call("memory_search", { query: "typescript" });
-const memoryId = /\(([0-9a-f-]{36})\)/.exec(r.text)?.[1];
+const memoryId = /\(([0-9a-f]{6})\)/.exec(r.text)?.[1];
 check("memory search", Boolean(memoryId), r.text);
 r = await call("memory_update", { id: memoryId ?? "x", content: "Prefers TypeScript; avoids Python" });
 check("memory update", !r.isError && memories.get(memoryId ?? "x")?.content === "Prefers TypeScript; avoids Python", r.text);
@@ -202,7 +202,6 @@ const prompt = buildSystemPrompt({
   settings: settings.get(),
   agent,
   workspace: {
-    userMemories: [],
     wiki: {
       brains: brains.forAgent(agent.id),
       overview: wiki.overview(nb),

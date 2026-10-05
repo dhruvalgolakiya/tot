@@ -11,6 +11,7 @@ import { isOpenTask, isTask, TASK_STATUS_LABELS } from "../../lib/tasks";
 import { navigateToAgentHome, navigateToConversation, selectActiveAgent, useStore } from "../../store";
 import { Composer } from "../Composer";
 import { Mascot } from "../mascot";
+import { ProjectMemoryRow } from "../memory/ProjectMemoryRow";
 import { TaskDot } from "../tasks/TaskStatus";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -106,6 +107,8 @@ function ProjectContent({ project, agent }: { project: Project; agent: Agent | u
         </div>
       )}
 
+      {/* Memory repo (module 10): what agents learned in this project. */}
+      <ProjectMemoryRow project={project} />
       <ProjectChats project={project} />
       <FolderConsentDialog project={project} open={consentOpen} onOpenChange={setConsentOpen} />
     </>

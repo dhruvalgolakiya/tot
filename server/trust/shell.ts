@@ -3,6 +3,7 @@ import { computerManager } from "../computer/manager.ts";
 import type { ExecResult } from "../computer/types.ts";
 import { getSecret, secretValues } from "../config.ts";
 import { redactGitHubTokens } from "../github.ts";
+import { SECRET_SHAPES } from "./secrets.ts";
 
 /**
  * Commands that checks run on an agent's computer: the same exec path as the
@@ -14,22 +15,13 @@ import { redactGitHubTokens } from "../github.ts";
 export const TAIL_BYTES = 4096;
 export const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 
-/** Token shapes worth hiding even when TOT doesn't hold the token itself. */
-const SECRET_SHAPES = [
-  /\bsk-ant-[\w-]{20,}/g,
-  /\bsk-(?:proj-)?[\w-]{32,}/g,
-  /\bxox[abprs]-[\w-]{10,}/g,
-  /\bxapp-[\w-]{10,}/g,
-  /\bAKIA[0-9A-Z]{16}\b/g,
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
-];
-
 /** Hides every secret TOT holds (GitHub tokens, API keys, mailbox passwords) and anything shaped like a key. */
 export function scrub(text: string): string {
   let out = redactGitHubTokens(text);
   for (const secret of [...secretValues(""), getSecret("anthropicApiKey"), getSecret("boatApiKey")]) {
     if (secret && secret.length >= 8) out = out.split(secret).join("[secret hidden]");
   }
+  // Token shapes are worth hiding even when TOT doesn't hold the token itself.
   for (const shape of SECRET_SHAPES) out = out.replace(shape, "[secret hidden]");
   return out;
 }
