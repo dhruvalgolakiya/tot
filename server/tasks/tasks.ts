@@ -32,6 +32,7 @@ import { ticketKeyOf } from "../projects/tickets.ts";
 import { messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
 import { settings } from "../data/settings.ts";
+import { taskChecks } from "../landing/checks.ts";
 import { checkSpawn, childDepth } from "../orchestration/budget.ts";
 import { otherProvider, ROLE_NAMES, ROLES } from "../orchestration/roles.ts";
 import { roleTier, TIERS } from "../orchestration/tiers.ts";
@@ -448,6 +449,8 @@ export const tasks = {
     taskQueue.start();
     const offChange = taskStore.onChange((task) => {
       if (FINISHED.has(task.task.status)) reportToParent(task);
+      // Module 09: a coding task that's done gets its repo's checks.
+      if (task.task.status === "done" && task.task.repo) taskChecks.afterDone(task.id);
     });
     const offApprovals = appEvents.subscribe((event) => {
       if (event.type !== "approval") return;
@@ -477,6 +480,7 @@ export const tasks = {
       }
     }
     taskQueue.pump();
+    taskChecks.recover();
   },
 
   /** The server is stopping: running turns get stopped, and their tasks resume (or show as interrupted) next time. */

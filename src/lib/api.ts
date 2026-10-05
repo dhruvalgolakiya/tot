@@ -55,6 +55,8 @@ import type {
   SlackStatus,
   SlackTokens,
   TaskChanges,
+  TaskLandOptions,
+  LandTaskRequest,
   TaskPatch,
   TaskStatus,
   UpdateConversationRequest,
@@ -203,6 +205,16 @@ export const api = {
     request<Conversation>("POST", `/tasks/${seg(id)}/continue-on`, { provider }),
 
   // Module 09 · lane A (land): checks, merge, draft PR, update from base, discard.
+  /** How a finished coding task can land right now: merge into the folder's branch, or a draft PR, each with why it can't. */
+  taskLandOptions: (id: string) => request<TaskLandOptions>("GET", `/tasks/${seg(id)}/land`),
+  /** Merges it into your folder (TOT does it there), or pushes its tot/* branch and opens a draft PR; 409 with the reason when it can't. */
+  landTask: (id: string, body: LandTaskRequest) => request<Conversation>("POST", `/tasks/${seg(id)}/land`, body),
+  /** Rebases its branch onto its base; on conflicts the task gets a turn to resolve them (it's "running" then). */
+  updateTaskFromBase: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/update-from-base`, {}),
+  /** Stops it, removes its worktree, and deletes its branch unless it was pushed. */
+  discardTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/discard`, {}),
+  /** Runs the repo's checks on its branch again; the result arrives as a task event. */
+  runTaskChecks: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/checks`, {}),
 
   // Module 09 · lane B (mission control, spawning, best-of).
 

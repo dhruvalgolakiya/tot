@@ -75,7 +75,7 @@ Client functions go under the lane's anchor comment in `src/lib/api.ts`.
 ## Milestones
 
 - [ ] **M0 · Contract** (lead): types, stub route files, api anchors, this doc.
-- [ ] **M1 · Land** (lane A).
+- [x] **M1 · Land** (lane A). `server/landing/` (checks on done via 03's gates, also through a folder grant; land options; merge by TOT in your folder; push + draft PR; update from base; discard), the Land bar under the Changes tab, `server/landing.test.ts`.
 - [ ] **M2 · Mission control + spawning** (lane B).
 - [ ] **M3 · Worktree lifecycle** (lane C).
 - [ ] **M4 · Merge lanes, review, live run** (lead): one project, three parallel tasks from the composer, one best-of, land them in order, screenshots light/dark.

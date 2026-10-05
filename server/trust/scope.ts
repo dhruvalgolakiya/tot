@@ -1,4 +1,5 @@
 import type { GateResult, RepoProfileInput } from "../../shared/types.ts";
+import type { FolderGrant } from "../computer/types.ts";
 import { parseJson } from "../db.ts";
 import { sections, sh } from "./shell.ts";
 
@@ -130,7 +131,7 @@ interface Diff {
 /** The new path for "src/{old => new}/a.ts"-style numstat renames. */
 const renamedPath = (path: string) => path.replace(/\{[^{}]*? => ([^{}]*)\}/, "$1").replace(/^.* => /, "").replace(/\/\//g, "/");
 
-async function readDiff(agentId: string, cwd: string, baseSha: string): Promise<Diff> {
+async function readDiff(agentId: string, cwd: string, baseSha: string, grant?: FolderGrant | null): Promise<Diff> {
   const base = sh(baseSha);
   const found = await sections(
     agentId,
@@ -141,6 +142,7 @@ echo "@@@ patch"; git diff -U0 --no-color --no-ext-diff ${base} | head -c 300000
 echo "@@@ new-tests"; git ls-files --others --exclude-standard | grep -E '${TEST_FILE.source}' | head -50 | while IFS= read -r f; do printf 'diff --git a/%s b/%s\n+++ b/%s\n@@\n' "$f" "$f" "$f"; head -c 100000 "$f" | sed 's/^/+/'; echo; done
 for f in $({ git diff --name-only ${base} -- '*package.json'; git ls-files --others --exclude-standard -- '*package.json'; } | head -20); do echo "@@@ base:$f"; git show ${base}:"$f" 2>/dev/null; echo; echo "@@@ head:$f"; cat "$f" 2>/dev/null; echo; done`,
     cwd,
+    grant,
   );
 
   const changes: Change[] = [];
@@ -212,14 +214,16 @@ export interface ScopeCheck {
   plan?: Plan;
   /** Read-only work (investigating, reviewing a PR): any change at all fails. */
   readOnly?: boolean;
+  /** A task's folder grant, when its worktree is in a folder project on this Mac. */
+  grant?: FolderGrant | null;
 }
 
 /**
  * Scope, deps and size results, plus a "test" result (needs approval) when tests were skipped,
  * commented out or deleted — `runGates` folds that into the test command's own result.
  */
-export async function checkScope({ agentId, cwd, baseSha, profile, plan, readOnly }: ScopeCheck): Promise<GateResult[]> {
-  const diff = await readDiff(agentId, cwd, baseSha);
+export async function checkScope({ agentId, cwd, baseSha, profile, plan, readOnly, grant }: ScopeCheck): Promise<GateResult[]> {
+  const diff = await readDiff(agentId, cwd, baseSha, grant);
   const paths = [...new Set(diff.changes.flatMap((change) => (change.from ? [change.from, change.path] : [change.path])))];
   const results: GateResult[] = [];
 
