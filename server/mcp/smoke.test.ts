@@ -94,7 +94,7 @@ check("memory save", !r.isError && r.text.startsWith("Saved"), r.text);
 r = await call("memory_save", { content: "prefers typescript over python" });
 check("memory dedupe", r.text.startsWith("Already remembered"), r.text);
 r = await call("memory_search", { query: "typescript" });
-const memoryId = /\(([0-9a-f]{6})\)/.exec(r.text)?.[1];
+const memoryId = /\(([0-9a-f]{8})\)/.exec(r.text)?.[1];
 check("memory search", Boolean(memoryId), r.text);
 r = await call("memory_update", { id: memoryId ?? "x", content: "Prefers TypeScript; avoids Python" });
 check("memory update", !r.isError && memories.get(memoryId ?? "x")?.content === "Prefers TypeScript; avoids Python", r.text);

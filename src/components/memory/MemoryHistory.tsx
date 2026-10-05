@@ -28,7 +28,7 @@ const ICONS: Record<MemoryCommit["kind"], ComponentType<{ className?: string }>>
 
 const PAGE = 8;
 
-/** A memory repo's commits, newest first, with Undo on each (roadmap module 10). */
+/** A memory repo's commits, newest first, with Undo on each but syncs (roadmap module 10). */
 export function MemoryHistory({ repo, onChanged }: { repo: string; onChanged: () => void }) {
   const version = useMemoryUi((s) => s.versions[repo] ?? 0);
   const [commits, setCommits] = useState<MemoryCommit[] | null>(null);
@@ -64,7 +64,7 @@ export function MemoryHistory({ repo, onChanged }: { repo: string; onChanged: ()
 
   return (
     <section className="space-y-3">
-      <SectionHeader title="History" description="Every change is a commit. Undo puts back what one changed, as a new change." />
+      <SectionHeader title="History" description="Every change is a commit. Undo puts back what one changed, as a new change; a sync can't be undone." />
       {error && !commits && <Callout tone="danger">{error}</Callout>}
       {!error && !commits && <Skeleton className="h-40 rounded-xl" />}
       {commits && (

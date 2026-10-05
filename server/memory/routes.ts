@@ -6,14 +6,17 @@ import { memories } from "../data/memories.ts";
 import { settings } from "../data/settings.ts";
 import { projects } from "../projects/projects.ts";
 import { tildePath } from "../projects/folders.ts";
-import { dreaming, dreamState } from "./dreaming.ts";
+import { dreaming, dreamState, dreamUndone } from "./dreaming.ts";
+import { importDone, legacyMemories } from "./legacy.ts";
 import { edit, ensureRepo, forget, history, readMemoryFile, remember, repoFiles, resolveRepo, undo } from "./memory.ts";
+import { dropSkipped, importSkipped, importStatus } from "./migrate.ts";
 import { listFiles, projectRepoId, repoDir, repoExists, safePath, YOU } from "./repo.ts";
 import { createBundle, memorySync, remoteUrlProblem, syncNow, syncStatus } from "./sync.ts";
 
 /**
  * Memory repo routes (roadmap module 10); docs in shared/types.ts. `/api/memories` keeps working (the "you" repo,
- * or `?repo=`). Paired devices may call none of these (routes.ts) except the sync bundle, which only they may.
+ * or `?repo=`; until the one-time import lands, the old memories too, read-only). Paired devices may call none of
+ * these (routes.ts) except the sync bundle, which only they may.
  */
 export const memoryRoutes = new Hono();
 
@@ -36,7 +39,8 @@ memoryRoutes.get("/memory/sync/you.bundle", async (c) => {
 });
 
 memoryRoutes.get("/memory/repos", async (c) => {
-  await ensureRepo(YOU);
+  // A repo git can't make (the import's error says why) still lists, so Settings → Memory can show it.
+  await ensureRepo(YOU).catch(() => {});
   const repos = [
     { id: YOU, kind: "you" as const, name: "About you", projectId: null },
     ...projects.list().map((project) => ({ id: projectRepoId(project.slug), kind: "project" as const, name: project.name, projectId: project.id })),
@@ -50,6 +54,7 @@ memoryRoutes.get("/memory/repos", async (c) => {
       lastCommit: (await history(repo.id, 1))[0] ?? null,
       dream: dreamState(repo.id),
       sync: repo.id === YOU ? syncStatus() : null,
+      import: repo.id === YOU ? importStatus() : null,
     })),
   );
   return c.json(summaries);
@@ -62,6 +67,14 @@ memoryRoutes.post("/memory/dream", async (c) => {
 });
 
 memoryRoutes.post("/memory/sync", async (c) => c.json(await syncNow()));
+
+// Old memories the import left out as secrets: import one anyway, or drop it.
+memoryRoutes.post("/memory/import/:id", async (c) => c.json(await importSkipped(c.req.param("id")), 201));
+
+memoryRoutes.delete("/memory/import/:id", (c) => {
+  dropSkipped(c.req.param("id"));
+  return c.json({ ok: true });
+});
 
 memoryRoutes.get("/memory/:repo/files", (c) => c.json(repoFiles(repoParam(c))));
 
@@ -81,7 +94,10 @@ memoryRoutes.get("/memory/:repo/history", async (c) => {
 memoryRoutes.post("/memory/:repo/revert", async (c) => {
   const { sha } = await body<{ sha?: string }>(c);
   if (typeof sha !== "string" || !sha) throw new HttpError(400, "Say which change to undo: { sha }.");
-  return c.json(await undo(repoParam(c), sha.trim()));
+  const repo = repoParam(c);
+  const made = await undo(repo, sha.trim());
+  dreamUndone(repo, sha.trim());
+  return c.json(made);
 });
 
 // --- /api/memories: entries, as before (now in a repo) ----------------------------------------------------------
@@ -89,7 +105,13 @@ memoryRoutes.post("/memory/:repo/revert", async (c) => {
 memoryRoutes.get("/memories", (c) => {
   const repo = resolveRepo(c.req.query("repo"));
   const q = c.req.query("q")?.trim();
-  return c.json(q ? memories.search(q, { repos: [repo], limit: 100 }) : memories.list(repo));
+  const found = q ? memories.search(q, { repos: [repo], limit: 100 }) : memories.list(repo);
+  if (repo !== YOU || importDone()) return c.json(found);
+  // The import hasn't landed: the old memories still count, read-only.
+  const words = (q ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+  const known = new Set(found.map((memory) => memory.content.toLowerCase()));
+  const legacy = legacyMemories().filter((memory) => !known.has(memory.content.toLowerCase()) && (!words.length || words.some((word) => memory.content.toLowerCase().includes(word))));
+  return c.json([...found, ...legacy]);
 });
 
 memoryRoutes.post("/memories", async (c) => {
@@ -101,9 +123,10 @@ memoryRoutes.post("/memories", async (c) => {
 });
 
 memoryRoutes.patch("/memories/:id", async (c) => {
-  const { content } = await body<{ content?: string }>(c);
+  const { content, expected } = await body<{ content?: string; expected?: string }>(c);
   if (!content?.trim()) throw new HttpError(400, "Memory can't be empty.");
-  return c.json(await edit({ repos: [resolveRepo(c.req.query("repo"))], id: c.req.param("id"), text: content, actor: "you" }));
+  if (expected !== undefined && typeof expected !== "string") throw new HttpError(400, "`expected` is the text the edit started from.");
+  return c.json(await edit({ repos: [resolveRepo(c.req.query("repo"))], id: c.req.param("id"), text: content, actor: "you", expected }));
 });
 
 memoryRoutes.delete("/memories/:id", async (c) => {

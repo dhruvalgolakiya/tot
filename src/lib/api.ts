@@ -306,8 +306,9 @@ export const api = {
     return request<Memory[]>("GET", `/memories${qs ? `?${qs}` : ""}`);
   },
   createMemory: (content: string, opts: { repo?: string; file?: string } = {}) => request<Memory>("POST", "/memories", { content, ...opts }),
-  updateMemory: (id: string, content: string, repo?: string) =>
-    request<Memory>("PATCH", `/memories/${seg(id)}${repo ? `?repo=${seg(repo)}` : ""}`, { content }),
+  /** `expected`: the text the edit started from; a 409 when the entry says something else by now. */
+  updateMemory: (id: string, content: string, repo?: string, expected?: string) =>
+    request<Memory>("PATCH", `/memories/${seg(id)}${repo ? `?repo=${seg(repo)}` : ""}`, { content, ...(expected === undefined ? {} : { expected }) }),
   deleteMemory: (id: string, repo?: string) => request<Ok>("DELETE", `/memories/${seg(id)}${repo ? `?repo=${seg(repo)}` : ""}`),
   memoryRepos: () => request<MemoryRepoSummary[]>("GET", "/memory/repos"),
   memoryFiles: (repo: string) => request<MemoryFile[]>("GET", `/memory/${seg(repo)}/files`),
@@ -319,6 +320,9 @@ export const api = {
   /** Starts Dreaming in the background; a `memory` event follows when it changed something. */
   dreamMemory: (repo?: string) => request<Ok>("POST", "/memory/dream", repo ? { repo } : {}),
   syncMemory: () => request<MemorySyncStatus>("POST", "/memory/sync", {}),
+  /** An old memory the import left out as a secret: import it anyway, or drop it. */
+  importSkippedMemory: (id: string) => request<Memory>("POST", `/memory/import/${seg(id)}`, {}),
+  dropSkippedMemory: (id: string) => request<Ok>("DELETE", `/memory/import/${seg(id)}`),
 
   /** GitHub: one account connected for the whole app (issues/PRs/code search tools + git/gh login). */
   getGithubStatus: () => request<GitHubStatus>("GET", "/github"),

@@ -28,12 +28,12 @@ Brains and the wiki (long-form documents, Learn a repo) stay as they are. Memory
   MEMORY.md          entry point, loaded every session: short, links to the rest
   preferences.md     topic files, any names, any folders
   people.md
-  .gitattributes     *.md merge=union
+  .gitattributes     *.md merge=union (kept from the first commit; TOT merges entry by entry itself)
 ```
 
 - An entry is one line: `- Prefers pnpm over npm [id: 3f2a9c; source: tot://c/<conversationId>; added: 2026-10-06]`. Links: `[[preferences]]`, `[[billing/count_paying_customers.sql]]`.
-- **TOT rule 1, ids:** entries TOT writes carry `id` (6 hex) so tools can edit them. Lines a person wrote without one get a derived id (`h` + 5 hex of a hash of path + text), not written back.
-- **TOT rule 2, merges never conflict on markdown:** `.gitattributes` sets `*.md merge=union`, so two devices adding lines both keep theirs. Dreaming later merges near-duplicates. The same id twice: the index keeps the last one and Dreaming resolves it.
+- **TOT rule 1, ids:** entries TOT writes carry `id` (8 hex; older 6-hex ids still read) so tools can edit them. Lines a person wrote without one get a derived id (`h` + 10 hex of a hash of path + text), not written back, and only touched while their text still matches. The same id twice: both lines are kept, as `<id>` and `<id>.2`.
+- **TOT rule 2, merges never conflict, and deletes stick:** TOT merges memory itself, entry by entry against the merge base (`server/memory/merge.ts`), and writes the two-parent commit. Removed on one side and unchanged on the other → removed (a plain line union would bring it back); edited on one side → that edit; edited on both → both kept (Dreaming tidies); added on either → kept. Other lines merge three-way, this device winning a clash. A peer's links, scripts, dotfiles and submodules are dropped.
 - **TOT rule 3, no secrets:** every write is checked against `server/trust/shell.ts`'s secret shapes, TOT's own secret values and `redactGitHubTokens`. A match is refused with "That looks like a secret; memory never stores secrets."
 - Every write is one commit (author `TOT`, message `"<agent>: remember …"` / `"you: edit …"`), serialized per repo.
 
@@ -46,7 +46,7 @@ Brains and the wiki (long-form documents, Learn a repo) stay as they are. Memory
 - **Prompt:** first turn loads `you/MEMORY.md` (≤ 4000 chars), the project's MEMORY.md (≤ 3000) and FTS-relevant entries from other files (≤ 2000), replacing `memorySection`'s list. Same for tasks.
 - **Sync with paired devices** (`sync.ts`), the `you` repo only:
   - each device serves `GET /api/memory/sync/you.bundle` to **paired devices only** (device token; browsers and phones get 403);
-  - every 10 minutes, and soon after a peer's `memory` device event, a device fetches each online peer's bundle into `refs/peers/<deviceId>` and merges it (union for markdown; for anything else, keep ours and log it);
+  - every 10 minutes, and soon after a peer's `memory` device event, a device fetches each online peer's bundle (streamed, 50 MB cap, objects checked) into `refs/peers/<deviceId>` and merges it entry by entry (rule 2). One device of a pair merges and the other fast-forwards; after 30 minutes of waiting either may merge;
   - both sides pull, so they converge;
   - status per peer: last sync, ok or error.
 - **Optional remote backup:** `memory.remote = {url, enabled}`. When the user turns it on with a URL (a private repo they made), TOT pulls (rebase) and pushes the `you` repo after writes (debounced) and every 10 minutes. Off by default; tests use a local bare repo only.

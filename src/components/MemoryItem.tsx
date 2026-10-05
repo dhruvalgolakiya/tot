@@ -18,24 +18,43 @@ type MemoryItemProps = {
   onDeleted: (id: string) => void;
 };
 
+/** Where an old memory shows while the one-time import hasn't landed (server/memory/legacy.ts): read-only. */
+const NOT_IMPORTED = "(not imported yet)";
+
 const day = (time: number) => new Date(time).toLocaleDateString(undefined, { month: "short", day: "numeric", year: new Date(time).getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
 
-/** One memory entry as a row: its text, who saved it and when; edit and delete on hover. */
+/**
+ * One memory entry as a row: its text, who saved it and when; edit and delete on hover. An edit starts from the
+ * text shown now and is refused (409) if the entry changed meanwhile, so it never overwrites newer text.
+ */
 export function MemoryItem({ memory, first = false, showPath = false, onUpdated, onDeleted }: MemoryItemProps) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(memory.content);
+  /** The text the open edit started from. */
+  const [original, setOriginal] = useState(memory.content);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  function startEditing() {
+    setValue(memory.content);
+    setOriginal(memory.content);
+    setEditing(true);
+  }
+
+  function cancel() {
+    setValue(memory.content);
+    setEditing(false);
+  }
+
   async function save() {
     const content = value.trim();
-    if (!content || content === memory.content) {
+    if (!content || content === original) {
       setEditing(false);
       return;
     }
     setBusy(true);
     try {
-      onUpdated(await api.updateMemory(memory.id, content, memory.repo));
+      onUpdated(await api.updateMemory(memory.id, content, memory.repo, original));
       setEditing(false);
     } catch (error) {
       notifyError(error);
@@ -66,16 +85,13 @@ export function MemoryItem({ memory, first = false, showPath = false, onUpdated,
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void save();
-            if (event.key === "Escape") {
-              setValue(memory.content);
-              setEditing(false);
-            }
+            if (event.key === "Escape") cancel();
           }}
           aria-label="Edit memory"
           className="input resize-y rounded-xl leading-relaxed"
         />
         <div className="mt-2 flex justify-end gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
+          <Button size="sm" variant="ghost" onClick={cancel} disabled={busy}>
             Cancel
           </Button>
           <Button size="sm" variant="primary" onClick={() => void save()} disabled={busy || !value.trim()}>
@@ -97,7 +113,7 @@ export function MemoryItem({ memory, first = false, showPath = false, onUpdated,
         </p>
       </div>
       <div className="flex h-7 shrink-0 items-center gap-1">
-        {confirming ? (
+        {memory.path === NOT_IMPORTED ? null : confirming ? (
           <>
             <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
               Cancel
@@ -109,7 +125,7 @@ export function MemoryItem({ memory, first = false, showPath = false, onUpdated,
         ) : (
           <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
             <Tip content="Edit">
-              <IconButton label="Edit memory" size="sm" onClick={() => setEditing(true)}>
+              <IconButton label="Edit memory" size="sm" onClick={startEditing}>
                 <Pencil />
               </IconButton>
             </Tip>

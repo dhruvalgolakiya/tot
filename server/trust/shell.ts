@@ -1,9 +1,7 @@
 import { HttpError } from "../agent/orchestrator.ts";
 import { computerManager } from "../computer/manager.ts";
 import type { ExecResult, FolderGrant } from "../computer/types.ts";
-import { getSecret, secretValues } from "../config.ts";
-import { redactGitHubTokens } from "../github.ts";
-import { SECRET_SHAPES } from "./secrets.ts";
+import { scrub } from "./secrets.ts";
 
 /**
  * Commands that checks run on an agent's computer: the same exec path as the
@@ -15,16 +13,8 @@ import { SECRET_SHAPES } from "./secrets.ts";
 export const TAIL_BYTES = 4096;
 export const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 
-/** Hides every secret TOT holds (GitHub tokens, API keys, mailbox passwords) and anything shaped like a key. */
-export function scrub(text: string): string {
-  let out = redactGitHubTokens(text);
-  for (const secret of [...secretValues(""), getSecret("anthropicApiKey"), getSecret("boatApiKey")]) {
-    if (secret && secret.length >= 8) out = out.split(secret).join("[secret hidden]");
-  }
-  // Token shapes are worth hiding even when TOT doesn't hold the token itself.
-  for (const shape of SECRET_SHAPES) out = out.replace(shape, "[secret hidden]");
-  return out;
-}
+/** Hides every secret TOT holds and anything shaped like a key (lives in secrets.ts, which memory shares). */
+export { scrub };
 
 export const stripAnsi = (text: string) => text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
 

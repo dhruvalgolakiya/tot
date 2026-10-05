@@ -66,7 +66,18 @@ export const memories = {
     return rows.map(toMemory);
   },
 
-  /** An entry by id, in the first of `repos` that has it (any repo when omitted). */
+  /** Newest first, in the given repos; files can be left out. */
+  recent(opts: { repos: string[]; limit?: number; excludePaths?: string[] }): Memory[] {
+    const rows = db
+      .prepare(
+        `SELECT * FROM memories WHERE repo IN (SELECT value FROM json_each(?)) AND path NOT IN (SELECT value FROM json_each(?))
+         ORDER BY created_at DESC, line DESC LIMIT ?`,
+      )
+      .all(JSON.stringify(opts.repos), JSON.stringify(opts.excludePaths ?? []), opts.limit ?? 20) as Row[];
+    return rows.map(toMemory);
+  },
+
+  /** An entry by id (its key, see memory/repo.ts), in the first of `repos` that has it (any repo when omitted). */
   get(id: string, repos?: string[]): Memory | null {
     const rows = db.prepare(`SELECT * FROM memories WHERE id = ? ORDER BY rowid DESC`).all(id) as Row[];
     const found = rows.map(toMemory);

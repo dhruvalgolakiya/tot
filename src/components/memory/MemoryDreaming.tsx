@@ -4,6 +4,7 @@ import type { MemoryRepoSummary } from "@shared/types";
 import { api } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { notifyError, saveSettings, useStore } from "../../store";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { SettingRow } from "../settings/SettingRow";
 import { Button } from "../ui/Button";
 import { cardClass } from "../ui/Card";
@@ -12,17 +13,21 @@ import { Switch } from "../ui/Switch";
 
 /**
  * Dreaming (roadmap module 10): the nightly tidy-up, for every memory repo: on/off and when (settings, applied
- * at once), and this repo's last dream with Undo, plus "Dream now".
+ * at once), and this repo's last dream with Undo (confirmed, and gone once used), plus "Dream now".
  */
 export function MemoryDreaming({ summary, onChanged }: { summary: MemoryRepoSummary; onChanged: () => void }) {
   const dreaming = useStore((s) => s.settings?.memory.dreaming);
   const [time, setTime] = useState(dreaming?.time ?? "03:30");
   const [starting, setStarting] = useState(false);
+  const [confirmUndo, setConfirmUndo] = useState(false);
+  /** The dream undone here, hidden until the server's state catches up. */
+  const [undone, setUndone] = useState<string | null>(null);
   useEffect(() => setTime(dreaming?.time ?? "03:30"), [dreaming?.time]);
   if (!dreaming) return null;
 
   const { dream } = summary;
   const busy = dream.running || starting;
+  const undoable = dream.sha && dream.sha !== undone ? dream.sha : null;
 
   async function dreamNow() {
     setStarting(true);
@@ -37,10 +42,12 @@ export function MemoryDreaming({ summary, onChanged }: { summary: MemoryRepoSumm
   }
 
   async function undoDream(sha: string) {
+    setUndone(sha);
     try {
       await api.revertMemory(summary.id, sha);
       onChanged();
     } catch (error) {
+      setUndone(null);
       notifyError(error);
     }
   }
@@ -94,10 +101,10 @@ export function MemoryDreaming({ summary, onChanged }: { summary: MemoryRepoSumm
             ) : dream.lastAt ? (
               <>
                 {dream.summary} · {relativeTime(dream.lastAt)}
-                {dream.sha && (
+                {undoable && (
                   <>
                     {" · "}
-                    <button type="button" className="link-muted" onClick={() => void undoDream(dream.sha!)}>
+                    <button type="button" className="link-muted" onClick={() => setConfirmUndo(true)}>
                       Undo
                     </button>
                   </>
@@ -114,6 +121,14 @@ export function MemoryDreaming({ summary, onChanged }: { summary: MemoryRepoSumm
           }
         />
       </div>
+      <ConfirmDialog
+        open={confirmUndo}
+        onOpenChange={setConfirmUndo}
+        title="Undo the last dream?"
+        description={`“${dream.summary ?? "The tidy-up"}”. A new change puts back what it merged, removed and added; nothing else is touched.`}
+        confirmLabel="Undo"
+        onConfirm={() => undoable && void undoDream(undoable)}
+      />
     </section>
   );
 }

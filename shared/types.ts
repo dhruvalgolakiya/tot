@@ -461,7 +461,10 @@ export interface ComputerSummary {
 // ---------------------------------------------------------------------------
 
 export interface Memory {
-  /** 6 hex characters; "h" + 5 hex for a line someone wrote without an id (module 10). */
+  /**
+   * 8 hex characters (6 in entries from before); "h" + 10 hex for a line someone wrote without an id; "<id>.2"
+   * for a second line with the same id (two devices edited one entry), so each can be edited on its own (module 10).
+   */
   id: string;
   content: string;
   /** Who wrote it: an agent (memory_save, Dreaming), or the user (the Memory page, or the file by hand). */
@@ -1090,13 +1093,15 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // only the sync bundle). Writes are one commit each; a secret is refused with 400.
 // GET    /api/memories?q=&repo=               -> Memory[]  (repo defaults to "you"; file order, or best matches for q)
 // POST   /api/memories                        { content, repo?, file? } -> Memory  (201; an existing equal entry: 200 and that one)
-// PATCH  /api/memories/:id?repo=              { content } -> Memory
+// PATCH  /api/memories/:id?repo=              { content, expected? } -> Memory  (409 when the entry no longer says `expected`)
 // DELETE /api/memories/:id?repo=              -> { ok: true }
 // GET    /api/memory/repos                    -> MemoryRepoSummary[]  ("you" first, then each project; sync status on "you")
 // GET    /api/memory/:repo/files              -> MemoryFile[]  (:repo URL-encoded, e.g. projects%2Fweb; MEMORY.md first)
 // GET    /api/memory/:repo/file?path=         -> MemoryFileContent  (404 when missing)
 // GET    /api/memory/:repo/history?limit=&skip= -> MemoryCommit[]  (newest first)
-// POST   /api/memory/:repo/revert             { sha } -> MemoryCommit  (the undo commit; 409 when later changes touched the same lines)
+// POST   /api/memory/:repo/revert             { sha } -> MemoryCommit  (the undo commit; 409 when later changes touched the same lines; 400 for a sync's merge)
+// POST   /api/memory/import/:id               -> Memory  (imports an old memory the import left out as a secret; 400 for a key)
+// DELETE /api/memory/import/:id               -> { ok: true }  (drops it for good)
 // POST   /api/memory/dream                    MemoryDreamRequest -> { ok: true }  (202: runs in the background; a "memory" event when done)
 // POST   /api/memory/sync                     -> MemorySyncStatus  (sync with paired devices and the backup remote now)
 // GET    /api/memory/sync/you.bundle          -> application/octet-stream  (paired devices only: a git bundle of "you"; 403 for others)
@@ -2022,7 +2027,7 @@ export interface MemoryCommit {
   /** Lines added and removed. */
   added: number;
   removed: number;
-  /** False for the repo's first commit, which can't be undone. */
+  /** False for the repo's first commit and for merges (a sync, the backup remote), which can't be undone. */
   revertible: boolean;
 }
 
@@ -2044,6 +2049,8 @@ export interface MemoryPeerSync {
   /** null until the first try. */
   ok: boolean | null;
   error: string | null;
+  /** Both changed and that device merges the two (it has the smaller id): since when this one has waited for it. */
+  waitingSince: number | null;
 }
 
 export interface MemoryRemoteStatus {
@@ -2073,6 +2080,26 @@ export interface MemoryRepoSummary {
   dream: MemoryDreamState;
   /** The `you` repo only: paired devices and the optional backup remote. */
   sync: MemorySyncStatus | null;
+  /** The `you` repo only: the one-time import of the memories from before module 10. */
+  import: MemoryImportStatus | null;
+}
+
+/** An old memory the import left out because it looked like a secret. */
+export interface MemorySkippedMemory {
+  id: string;
+  /** Its text, with what looks like the secret hidden. */
+  text: string;
+  createdAt: number;
+  /** False when it holds a key: that can only be dropped. */
+  importable: boolean;
+}
+
+export interface MemoryImportStatus {
+  /** The import commit landed. Until then prompts and /api/memories read the old memories (read-only). */
+  done: boolean;
+  /** Why the last try failed; it's tried again at the next start. */
+  error: string | null;
+  skipped: MemorySkippedMemory[];
 }
 
 /** A file in a memory repo, with its entries (markdown files only). */

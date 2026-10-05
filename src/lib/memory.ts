@@ -27,16 +27,23 @@ export function memoryChanged(repo: string) {
 
 const VERBS: Record<string, string> = { remember: "Remembered", edit: "Edited", forget: "Forgot" };
 
-/** "remember Prefers pnpm" → "Remembered “Prefers pnpm”"; anything else just capitalized. */
+/** "remember “Prefers pnpm”" → "Remembered “Prefers pnpm”"; anything else just capitalized. */
 function describeAction(action: string): string {
   const [verb, ...words] = action.split(" ");
-  if (verb && VERBS[verb] && words.length) return `${VERBS[verb]} “${words.join(" ")}”`;
+  if (verb && VERBS[verb] && words.length) {
+    const text = words.join(" ");
+    return `${VERBS[verb]} ${text === "(text hidden)" ? text : `“${text.replace(/^“|”$/g, "")}”`}`;
+  }
   return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
-/** A commit as a line for the history: "Remembered “Prefers pnpm”", "Merged 3, removed 2", "Undid: Forgot “…”". */
+/**
+ * A commit as a line for the history: "Remembered “Prefers pnpm”", "Merged 3, removed 2", "Undid: Forgot “…”",
+ * "Synced with MacBook Air".
+ */
 export function describeCommit(commit: MemoryCommit): string {
   const rest = commit.subject.replace(/^[^:]{1,40}: /, "");
+  if (commit.kind === "sync" || commit.kind === "backup") return describeAction(rest.replace(/^merged from /i, "synced with "));
   if (commit.kind === "undo" && rest.startsWith("undo ")) {
     // The undone commit's own subject, in quotes: "you: undo “Kiwi: remember …”".
     const inner = rest.slice("undo ".length).replace(/^“|”$/g, "").replace(/^[^:]{1,40}: /, "");

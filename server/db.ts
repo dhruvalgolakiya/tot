@@ -521,6 +521,11 @@ db.exec(`
 // `memories` becomes an index of their entries, rebuilt from the files after every commit and at startup. An
 // entry's id is unique within its repo only, so the table is rebuilt once without the old primary key; the rows
 // from before move to `memories_legacy`, which memory/migrate.ts imports into the "you" repo once (and keeps).
+const MEMORY_LEGACY = `
+  CREATE TABLE IF NOT EXISTS memories_legacy (
+    id TEXT PRIMARY KEY, content TEXT NOT NULL, source TEXT NOT NULL, conversation_id TEXT,
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, agent_id TEXT
+  );`;
 const MEMORY_TRIGGERS = `
   CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
     INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
@@ -536,10 +541,7 @@ if (!hasColumn("memories", "repo")) {
   db.exec("BEGIN");
   try {
     db.exec(`
-      CREATE TABLE IF NOT EXISTS memories_legacy (
-        id TEXT PRIMARY KEY, content TEXT NOT NULL, source TEXT NOT NULL, conversation_id TEXT,
-        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, agent_id TEXT
-      );
+      ${MEMORY_LEGACY}
       INSERT OR IGNORE INTO memories_legacy (id, content, source, conversation_id, created_at, updated_at, agent_id)
         SELECT id, content, source, conversation_id, created_at, updated_at, agent_id FROM memories;
       DROP TABLE memories;
@@ -571,6 +573,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS memories_by_repo ON memories(repo, path, line);
   CREATE INDEX IF NOT EXISTS memories_by_id ON memories(id);
 `);
+// What the import did with each old row: 'imported', or 'secret' (left out until the user imports or drops it).
+db.exec(MEMORY_LEGACY);
+if (!hasColumn("memories_legacy", "import_state")) db.exec(`ALTER TABLE memories_legacy ADD COLUMN import_state TEXT`);
 
 // Mission control (roadmap module 09, lane C): what every new task worktree in a project gets. setup_command:
 // NULL = detect it from the lockfile, '' = nothing; copy_files: a folder project's files copied in (a JSON list).

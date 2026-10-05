@@ -1,7 +1,8 @@
 // Memory repo M3 (roadmap module 10): the "you" repo syncs between paired devices. Two real TOTs: "MacBook" in
 // this process, "Mac mini" as a child process with its own data dir and port, paired through the API. Each adds an
-// entry and both converge; the same line edited on both keeps both versions; only a paired device may fetch the
-// sync bundle; and a paired device can't use the other's memory routes.
+// entry and both converge; the same line edited on both keeps both versions, each editable on its own; an entry
+// forgotten on one while the other adds one stays forgotten; a sync can't be undone; only a paired device may
+// fetch the sync bundle, never through the device proxy; and a paired device can't use the other's memory routes.
 // Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/memory-sync.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { spawn, type ChildProcess } from "node:child_process";
@@ -26,6 +27,7 @@ const { createApp } = await import("./app.ts");
 const { deviceId } = await import("./devices/identity.ts");
 const { relay } = await import("./devices/relay.ts");
 const { memorySync } = await import("./memory/sync.ts");
+const { proxyRefuses } = await import("./devices/proxy.ts");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -102,9 +104,12 @@ try {
   const history = (await onBook("GET", "/api/memory/you/history?limit=10")).data as { kind: string; subject: string }[];
   check(
     "one device merged, the other fast-forwarded: one sync merge in the history",
-    history.filter((commit) => commit.kind === "sync").length === 1 && /^Sync: merged from /.test(history.find((c) => c.kind === "sync")?.subject ?? ""),
+    history.filter((commit) => commit.kind === "sync").length === 1 && /^Sync: synced with /.test(history.find((c) => c.kind === "sync")?.subject ?? ""),
     JSON.stringify(history.map((c) => c.subject)),
   );
+  const syncMerge = (history as unknown as { sha: string; kind: string; revertible: boolean }[]).find((c) => c.kind === "sync")!;
+  const undoSync = await onBook("POST", "/api/memory/you/revert", { sha: syncMerge.sha });
+  check("a sync isn't offered for undo, and undoing it is refused (400)", syncMerge.revertible === false && undoSync.status === 400, undoSync.text);
   const status = ((await onBook("GET", "/api/memory/repos")).data as MemoryRepoSummary[])[0]!.sync!;
   check("each paired device shows its last sync", status.peers[0]?.deviceId === miniId && status.peers[0]?.ok === true && Boolean(status.peers[0]?.lastSyncAt), JSON.stringify(status.peers));
 
@@ -120,8 +125,23 @@ try {
     const [here, there] = await Promise.all([memoryFile(onBook), memoryFile(onMini)]);
     return [here, there].every((text) => text.includes("Lives in Berlin, Germany") && text.includes("Lives in Berlin (Kreuzberg)"));
   });
-  check("both versions are kept on both devices (union merge, no conflict)", keptBoth, await memoryFile(onBook));
-  check("the same id twice: the index keeps one", ((await onBook("GET", "/api/memories")).data as Memory[]).filter((m) => m.id === berlin.id).length === 1);
+  check("both versions are kept on both devices (edited on both: both kept)", keptBoth, await memoryFile(onBook));
+  const twins = ((await onBook("GET", "/api/memories")).data as Memory[]).filter((m) => m.id === berlin.id || m.id === `${berlin.id}.2`);
+  check("the same id twice: the index keeps both, the second as <id>.2", twins.length === 2, JSON.stringify(twins.map((m) => [m.id, m.content])));
+  const dropTwin = await onBook("DELETE", `/api/memories/${berlin.id}.2`);
+  const leftTwins = ((await onBook("GET", "/api/memories")).data as Memory[]).filter((m) => m.id === berlin.id || m.id === `${berlin.id}.2`);
+  check("…and either can be forgotten on its own", dropTwin.status === 200 && leftTwins.length === 1 && leftTwins[0]!.id === berlin.id, dropTwin.text);
+
+  // --- Forgotten on one device while the other adds ------------------------------------------------------------
+  console.log("\n# Forgotten on one device while the other adds");
+  const tea = ((await onBook("GET", "/api/memories")).data as Memory[]).find((m) => m.content === "Prefers green tea")!;
+  const [gone, added] = await Promise.all([onBook("DELETE", `/api/memories/${tea.id}`), onMini("POST", "/api/memories", { content: "Reads sci-fi" })]);
+  check("both land locally", gone.status === 200 && added.status === 201, `${gone.text} ${added.text}`);
+  const settled = await until(async () => {
+    const [here, there] = await Promise.all([contents(onBook), contents(onMini)]);
+    return [here, there].every((list) => list.includes("Reads sci-fi") && !list.includes("Prefers green tea"));
+  });
+  check("the forgotten entry stays forgotten on both, the new one reaches both", settled, JSON.stringify([await contents(onBook), await contents(onMini)]));
 
   // --- Who may fetch the bundle ---------------------------------------------------------------------------------
   console.log("\n# Only paired devices fetch the bundle");
@@ -129,6 +149,13 @@ try {
   const asDevice = await call(MINI, { authorization: `Bearer ${bookToMini}` }, "GET", "/api/memory/sync/you.bundle");
   check("a paired device gets a git bundle", asDevice.status === 200 && asDevice.buffer.subarray(0, 16).toString().startsWith("# v") && asDevice.buffer.toString("latin1").includes("git bundle"), String(asDevice.status));
   check("a script with the access token gets 403", (await onMini("GET", "/api/memory/sync/you.bundle")).status === 403);
+  const proxied = await onBook("GET", `/api/d/${miniId}/memory/sync/you.bundle`);
+  const encoded = await onBook("GET", `/api/d/${miniId}/memory/%73ync/you.bundle`);
+  check(
+    "…and none through the device proxy (it would carry this device's token)",
+    proxied.status === 403 && encoded.status === 403 && !proxied.buffer.toString("latin1").includes("git bundle") && proxyRefuses("/Memory/Sync/you.bundle") && !proxyRefuses("/memories"),
+    `${proxied.status} ${encoded.status}`,
+  );
   const login = await fetch(`${MINI}/login`, {
     method: "POST",
     body: new URLSearchParams({ password: MINI_TOKEN, next: "/" }).toString(),

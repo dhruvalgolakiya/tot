@@ -4,10 +4,11 @@ import { db, parseJson, type Row } from "../db.ts";
 import { settings } from "../data/settings.ts";
 import { memories } from "../data/memories.ts";
 import { knownRepos, repoEntries } from "./index.ts";
-import { afterChange, assertNoSecret, ensureRepo, looksLikeSecret, projectOf } from "./memory.ts";
+import { afterChange, assertNoSecret, ensureRepo, entryFileFits, OVERFLOW_FILE, projectOf, quoted } from "./memory.ts";
 import {
   commitAll,
   commitOutsideEdits,
+  discardChanges,
   ENTRY_FILE,
   entryText,
   formatEntry,
@@ -20,7 +21,6 @@ import {
   MemoryError,
   newId,
   readFile,
-  subjectText,
   today,
   withRepo,
   writeFile,
@@ -32,8 +32,9 @@ import {
  * settles contradictions and notes patterns, with the wiki keeper's light model. It runs at
  * `memory.dreaming.time` (03:30 local by default), only for repos that changed or had chats since their last
  * dream; "Dream now" runs it at once. The model answers with JSON operations, which are checked (known ids only,
- * no secrets, never more than 40% of the entries removed, nothing edited meanwhile) and applied as one commit, so
- * undoing a dream is one revert.
+ * no secrets, at most 30, never more than 40% of the entries changed or removed, none removed from fewer than
+ * three, nothing edited meanwhile) and applied as one commit, so undoing a dream is one revert. What it adds to a
+ * full MEMORY.md goes to notes.md instead.
  */
 
 export type DreamOp =
@@ -54,7 +55,8 @@ export interface DreamResult {
 const MAX_OPS = 30;
 const FILES_BUDGET = 30_000;
 const MESSAGES_BUDGET = 20_000;
-const MAX_REMOVED_SHARE = 0.4;
+/** At most this share of a repo's entries changed or removed by one dream (rounded down). */
+const MAX_TOUCHED_SHARE = 0.4;
 const TICK_MS = 60_000;
 /** A missed night (TOT was off at 03:30) still dreams if TOT starts within this long after. */
 const CATCH_UP_MS = 6 * 60 * 60_000;
@@ -70,7 +72,7 @@ const INSTRUCTIONS = `Operations (use only ids shown above):
 - {"op": "move", "id": "<id>", "file": "preferences.md"} — an entry that belongs in a topic file.
 
 Rules:
-- Be conservative: when in doubt, leave an entry alone. Never remove more than a third of the entries.
+- Be conservative: when in doubt, leave an entry alone. Never change or remove more than a third of the entries.
 - One short fact per entry, written about the user (or, in a project's memory, about the project), not about a chat.
 - Keep MEMORY.md short: it's loaded in every chat. Details belong in topic files (any name ending in .md).
 - Never copy passwords, tokens, keys or other secrets; delete any entry that holds one.
@@ -110,6 +112,12 @@ function saveState(update: (state: DreamsState) => void): void {
 
 const running = new Set<string>();
 
+/** A dream's commit was undone: Settings stops offering its Undo. */
+export function dreamUndone(repo: string, sha: string): void {
+  const saved = readState().repos[repo];
+  if (saved?.sha && sha && saved.sha.startsWith(sha)) saveState((state) => (state.repos[repo] = { ...saved, sha: null, summary: `${saved.summary ?? "Dream"} · undone` }));
+}
+
 export function dreamState(repo: string): MemoryDreamState {
   const saved = readState().repos[repo];
   return { running: running.has(repo), lastAt: saved?.lastAt ?? null, summary: saved?.summary ?? null, sha: saved?.sha ?? null, error: saved?.error ?? null };
@@ -117,15 +125,18 @@ export function dreamState(repo: string): MemoryDreamState {
 
 // --- The prompt -------------------------------------------------------------------------------------------------
 
-/** The repo's markdown files, with every entry's id visible (lines without one get theirs shown). */
+/**
+ * The repo's markdown files, every entry showing the id operations use: its key (lines without an id of their
+ * own get theirs, and a second line with the same id is "<id>.2").
+ */
 function renderFiles(repo: string, entries: Entry[]): string {
-  const derived = new Map(entries.filter((entry) => entry.derived).map((entry) => [`${entry.path}:${entry.line}`, entry.id]));
+  const byLine = new Map(entries.map((entry) => [`${entry.path}:${entry.line}`, entry]));
   const blocks: string[] = [];
   let used = 0;
   for (const path of listFiles(repo).filter((file) => /\.md$/i.test(file))) {
     const lines = (readFile(repo, path) ?? "").split("\n").map((line, index) => {
-      const id = derived.get(`${path}:${index}`);
-      return id ? `${line.trimEnd()} [id: ${id}]` : line;
+      const entry = byLine.get(`${path}:${index}`);
+      return entry ? formatEntry({ ...entry, id: entry.key }) : line;
     });
     const block = `<file path="${path}">\n${lines.join("\n").trim()}\n</file>`;
     if (used + block.length > FILES_BUDGET) {
@@ -210,20 +221,22 @@ const str = (value: unknown) => (typeof value === "string" ? value : "");
 const SOURCE = /^(tot:\/\/c\/[\w-]+|you|dreaming)$/;
 
 /**
- * Checks proposed operations against the repo's entries now. Each bad operation is refused on its own (an
- * unknown id, a secret, an entry edited since the model read it, an id used twice); a plan that would remove
- * more than 40% of the entries is refused whole.
+ * Checks proposed operations against the repo's entries now (by key). Each bad operation is refused on its own
+ * (an unknown id, a secret, an entry edited since the model read it, an id used twice, one past the 30th); a plan
+ * that would change or remove more than 40% of the entries (merges, updates, moves and deletes all count) is
+ * refused whole, so a repo of fewer than three entries never loses one.
  */
 export function checkOps(entries: Entry[], raw: unknown[], seen?: Map<string, string>): { ops: DreamOp[]; refused: DreamResult["refused"]; problem: string | null } {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const byId = new Map(entries.map((entry) => [entry.key, entry]));
   const used = new Set<string>();
   const ops: DreamOp[] = [];
   const refused: DreamResult["refused"] = [];
   const texts = new Set(entries.map((entry) => entry.text.toLowerCase()));
   const refuse = (op: unknown, reason: string) => refused.push({ op, reason });
-  for (const item of raw.slice(0, MAX_OPS)) {
+  for (const item of raw) {
     const v = (item ?? {}) as Record<string, unknown>;
     try {
+      if (ops.length >= MAX_OPS) throw new MemoryError(`More than ${MAX_OPS} operations.`);
       const ids = v.op === "merge" ? (Array.isArray(v.ids) ? v.ids.map(str) : []) : v.op === "add" ? [] : [str(v.id)];
       for (const id of ids) {
         if (!byId.has(id)) throw new MemoryError(`Unknown id "${id}".`);
@@ -264,10 +277,12 @@ export function checkOps(entries: Entry[], raw: unknown[], seen?: Map<string, st
       refuse(item, err instanceof Error ? err.message : String(err));
     }
   }
-  const removed = ops.reduce((sum, op) => sum + (op.op === "delete" ? 1 : op.op === "merge" ? op.ids.length - 1 : 0), 0);
-  const allowed = Math.max(1, Math.floor(entries.length * MAX_REMOVED_SHARE));
+  const touched = ops.reduce((sum, op) => sum + (op.op === "merge" ? op.ids.length : op.op === "add" ? 0 : 1), 0);
+  const allowed = Math.floor(entries.length * MAX_TOUCHED_SHARE);
   const problem =
-    removed > allowed ? `That would remove ${removed} of ${entries.length} entries; Dreaming never removes more than ${MAX_REMOVED_SHARE * 100}%.` : null;
+    touched > allowed
+      ? `That would change or remove ${touched} of ${entries.length} entries; Dreaming never touches more than ${MAX_TOUCHED_SHARE * 100}%.`
+      : null;
   return { ops, refused, problem };
 }
 
@@ -288,11 +303,11 @@ export function summarize(ops: DreamOp[]): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-const quote = (text: string) => (looksLikeSecret(text) ? "(text hidden)" : `“${subjectText(text, 90)}”`);
+const quote = (text: string) => quoted(text, 90);
 
 /** Applies checked operations to the files (inside the repo's turn); returns the commit body's lines. */
 function applyOps(repo: string, entries: Entry[], ops: DreamOp[]): string[] {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const byId = new Map(entries.map((entry) => [entry.key, entry]));
   const taken = new Set([...memories.ids(), ...entries.map((entry) => entry.id)]);
   /** Per file: lines to replace (or remove, with null), and new lines to add. */
   const edits = new Map<string, Map<number, string | null>>();
@@ -344,11 +359,20 @@ function applyOps(repo: string, entries: Entry[], ops: DreamOp[]): string[] {
     const lines = (readFile(repo, path) ?? "").split("\n");
     writeFile(repo, path, lines.flatMap((line, index) => (changes.has(index) ? (changes.get(index) === null ? [] : [changes.get(index)!]) : [line])).join("\n"));
   }
+  // MEMORY.md is loaded in every chat: what doesn't fit there any more goes to notes.md.
+  const main = adds.get(ENTRY_FILE) ?? [];
+  let mainContent = readFile(repo, ENTRY_FILE) ?? "";
+  for (const line of main) {
+    if (entryFileFits(mainContent, line)) mainContent = insertEntry(ENTRY_FILE, mainContent, line);
+    else add(OVERFLOW_FILE, line);
+  }
+  if (main.length) writeFile(repo, ENTRY_FILE, mainContent);
   for (const [path, lines] of adds) {
+    if (path === ENTRY_FILE) continue;
     let content = readFile(repo, path);
     for (const line of lines) content = insertEntry(path, content, line);
     writeFile(repo, path, content!);
-    if (path !== ENTRY_FILE) writeFile(repo, ENTRY_FILE, linkFromEntry(readFile(repo, ENTRY_FILE) ?? "", path));
+    writeFile(repo, ENTRY_FILE, linkFromEntry(readFile(repo, ENTRY_FILE) ?? "", path));
   }
   return details;
 }
@@ -361,7 +385,7 @@ export async function dream(repo: string, complete: Complete = defaultComplete):
     await ensureRepo(repo);
     const since = readState().repos[repo]?.lastAt ?? 0;
     const entries = repoEntries(repo);
-    const seen = new Map(entries.map((entry) => [entry.id, entry.text]));
+    const seen = new Map(entries.map((entry) => [entry.key, entry.text]));
     const raw = entries.length || hasChatsSince(repo, since) ? parseOps(await complete(buildDreamPrompt(repo, entries, since), SYSTEM)) : [];
 
     const result = await withRepo(repo, async (): Promise<DreamResult> => {
@@ -373,10 +397,18 @@ export async function dream(repo: string, complete: Complete = defaultComplete):
         if (outside) afterChange(repo, outside);
         throw new MemoryError(problem);
       }
-      const details = ops.length ? applyOps(repo, now, ops) : [];
       const summary = summarize(ops);
-      const body = [...details, refused.length ? `Skipped ${refused.length} that didn't check out: ${refused.map((r) => r.reason).join(" ")}` : ""].filter(Boolean).join("\n");
-      const sha = ops.length ? await commitAll(repo, { subject: `Dreaming: ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`, body, actor: "Dreaming", kind: "dream" }) : null;
+      let sha: string | null = null;
+      try {
+        const details = ops.length ? applyOps(repo, now, ops) : [];
+        const body = [...details, refused.length ? `Skipped ${refused.length} that didn't check out: ${refused.map((r) => r.reason).join(" ")}` : ""].filter(Boolean).join("\n");
+        sha = ops.length ? await commitAll(repo, { subject: `Dreaming: ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`, body, actor: "Dreaming", kind: "dream" }) : null;
+      } catch (err) {
+        // A file it couldn't write: none of the dream stays behind.
+        await discardChanges(repo).catch(() => {});
+        if (outside) afterChange(repo, outside);
+        throw err;
+      }
       if (sha || outside) afterChange(repo, sha ?? outside);
       return { summary, sha, applied: ops, refused };
     });

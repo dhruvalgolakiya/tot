@@ -128,6 +128,7 @@ export function MemorySync({ sync, onChanged }: { sync: MemorySyncStatus; onChan
 
 function peerLine(peer: MemoryPeerSync): string {
   if (peer.error) return peer.error;
+  if (peer.waitingSince) return `Both changed; waiting for ${peer.name} to bring them together · started ${relativeTime(peer.waitingSince)}`;
   if (peer.lastSyncAt) return `Synced ${relativeTime(peer.lastSyncAt)}${peer.online ? "" : " · offline now"}`;
   return peer.online ? "Not synced yet" : "Offline";
 }

@@ -1,9 +1,25 @@
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+  type Stats,
+} from "node:fs";
 import { dirname, join, sep } from "node:path";
 import type { MemoryCommit, MemoryCommitKind } from "../../shared/types.ts";
 import { DATA_DIR } from "../config.ts";
+import { mergeEntries } from "./merge.ts";
 
 /**
  * Memory repos (roadmap module 10): memory is git repos of markdown, following the open Agent Memory Repo spec
@@ -12,10 +28,10 @@ import { DATA_DIR } from "../config.ts";
  * Git runs on this machine through execFile (never on an agent's computer), and changes to one repo run one at a
  * time (`withRepo`), so parallel tasks never step on each other.
  *
- * An entry is one line: `- Prefers pnpm over npm [id: 3f2a9c; source: tot://c/<chat>; added: 2026-10-06]`. Any
- * `- ` line counts and the metadata is optional: a line someone wrote without an id gets a derived one ("h" + 5
- * hex of its path and text), never written back. `.gitattributes` merges markdown by union, so two devices
- * adding lines both keep theirs.
+ * An entry is one line: `- Prefers pnpm over npm [id: 3f2a9c1b; source: tot://c/<chat>; added: 2026-10-06]`. Any
+ * `- ` line counts and the metadata is optional: a line someone wrote without an id gets a derived one ("h" + 10
+ * hex of its path and text), never written back. Copies of a repo merge entry by entry, in this process (merge.ts):
+ * a delete on one device survives the other's additions. Git's own merge machinery only runs for undo.
  */
 
 export const MEMORY_DIR = join(DATA_DIR, "memory");
@@ -23,7 +39,13 @@ export const YOU = "you";
 /** The entry point of every repo, loaded at the start of every chat. */
 export const ENTRY_FILE = "MEMORY.md";
 
+/** The committed `.gitattributes` (part of the first commit, so it can't change). TOT merges in process instead. */
 const ATTRIBUTES = "*.md merge=union\n";
+/**
+ * `.git/info/attributes`, which outranks any `.gitattributes` (a synced one included): files are stored and
+ * checked out byte for byte, and undo's revert merges as plain text, so a revert that collides is refused.
+ */
+const LOCAL_ATTRIBUTES = "* -text -filter -ident -working-tree-encoding merge=text\n";
 /**
  * Every device starts its repo with the same first commit (files, author, date and message), so two devices'
  * repos share history and merge three-way from the start. Never change these.
@@ -60,6 +82,14 @@ export function repoDir(repo: string): string {
 }
 
 export const repoKind = (repo: string): "you" | "project" => (repo === YOU ? "you" : "project");
+
+function lstatOrNull(path: string): Stats | null {
+  try {
+    return lstatSync(path);
+  } catch {
+    return null;
+  }
+}
 export const repoExists = (repo: string) => existsSync(join(repoDir(repo), ".git"));
 
 // --- Git ------------------------------------------------------------------------------------------------------
@@ -84,13 +114,20 @@ const CONFIG = [
   ["core.quotepath", "false"],
   ["core.autocrlf", "false"],
   ["init.defaultBranch", "main"],
+  // The user's own ignore file must not hide topic files.
+  ["core.excludesFile", "/dev/null"],
+  // Objects from another device or the remote are checked before they're kept.
+  ["transfer.fsckObjects", "true"],
 ].flatMap(([key, value]) => ["-c", `${key}=${value}`]);
+
+/** How many git processes TOT has running now (a lock file is only stale when none is). */
+let running = 0;
 
 /**
  * Runs git in a folder. Local calls ignore the user's git config entirely; `remote` calls (the backup remote)
  * keep it, for their SSH keys and credential helpers, but never prompt.
  */
-export function git(cwd: string, args: string[], opts: { remote?: boolean; env?: Record<string, string>; timeoutMs?: number } = {}): Promise<string> {
+export function git(cwd: string, args: string[], opts: { remote?: boolean; env?: Record<string, string>; timeoutMs?: number; input?: string } = {}): Promise<string> {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     // GIT_DIR and friends from whatever started TOT must not point these calls at another repo.
@@ -105,12 +142,22 @@ export function git(cwd: string, args: string[], opts: { remote?: boolean; env?:
   env.GIT_TERMINAL_PROMPT = "0";
   Object.assign(env, opts.env);
   return new Promise((resolve, reject) => {
-    execFile("git", [...CONFIG, ...args], { cwd, env, timeout: opts.timeoutMs ?? 30_000, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (!err) return resolve(stdout);
-      const code = typeof err.code === "number" ? err.code : null;
-      const detail = String(stderr || err.message).trim().split("\n").slice(-3).join(" ");
-      reject(new GitError(`git ${args[0]} failed: ${detail}`, code));
-    });
+    let child: ReturnType<typeof execFile>;
+    try {
+      child = execFile("git", [...CONFIG, ...args], { cwd, env, timeout: opts.timeoutMs ?? 30_000, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+        running--;
+        if (!err) return resolve(stdout);
+        const code = typeof err.code === "number" ? err.code : null;
+        const detail = String(stderr || err.message).trim().split("\n").slice(-3).join(" ");
+        reject(new GitError(`git ${args[0]} failed: ${detail}`, code));
+      });
+    } catch (err) {
+      // Some spawn failures (a folder that's a file) throw rather than call back.
+      return reject(new GitError(`git ${args[0]} failed: ${err instanceof Error ? err.message : String(err)}`, null));
+    }
+    running++;
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(opts.input ?? "");
   });
 }
 
@@ -139,14 +186,24 @@ export function withRepo<T>(repo: string, fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/** Puts back this device's own git settings for a repo (`.git/info/attributes`), whatever was there. */
+function ensureLocalSettings(dir: string): void {
+  const info = join(dir, ".git", "info", "attributes");
+  if (existsSync(info) && readFileSync(info, "utf8") === LOCAL_ATTRIBUTES) return;
+  mkdirSync(dirname(info), { recursive: true });
+  rmSync(info, { force: true });
+  writeFileSync(info, LOCAL_ATTRIBUTES);
+}
+
 /** Makes the repo if it isn't there yet. Call inside `withRepo`. */
 export async function initRepo(repo: string): Promise<void> {
   const dir = repoDir(repo);
-  if (existsSync(join(dir, ".git"))) return;
+  if (existsSync(join(dir, ".git"))) return ensureLocalSettings(dir);
   const genesis = { GIT_AUTHOR_DATE: GENESIS_DATE, GIT_COMMITTER_DATE: GENESIS_DATE };
   if (existsSync(dir)) {
     // A folder someone made by hand: it becomes a repo in place, their files kept (and committed next).
     await git(dir, ["init", "-q", "-b", "main"]);
+    ensureLocalSettings(dir);
     if (!existsSync(join(dir, ENTRY_FILE))) writeFileSync(join(dir, ENTRY_FILE), STARTERS[repoKind(repo)]);
     writeFileSync(join(dir, ".gitattributes"), ATTRIBUTES);
     await git(dir, ["add", ".gitattributes", ENTRY_FILE]);
@@ -158,6 +215,7 @@ export async function initRepo(repo: string): Promise<void> {
   mkdirSync(temp, { recursive: true });
   try {
     await git(temp, ["init", "-q", "-b", "main"]);
+    ensureLocalSettings(temp);
     writeFileSync(join(temp, ".gitattributes"), ATTRIBUTES);
     writeFileSync(join(temp, ENTRY_FILE), STARTERS[repoKind(repo)]);
     await git(temp, ["add", "-A"]);
@@ -214,6 +272,54 @@ export async function commitOutsideEdits(repo: string): Promise<string | null> {
   return commitAll(repo, { subject: "Edited outside TOT", actor: "Outside TOT", kind: "outside" });
 }
 
+/**
+ * Puts the working tree back as the last commit has it, after a change failed halfway: nothing of a refused change
+ * stays behind to be committed later. Safe because every change commits hand edits first. Call inside `withRepo`.
+ */
+export async function discardChanges(repo: string): Promise<void> {
+  const dir = repoDir(repo);
+  await git(dir, ["reset", "-q", "--hard", "HEAD"]);
+  await git(dir, ["clean", "-q", "-f", "-d"]);
+}
+
+/** A lock file older than this, with no git of TOT's running, was left by a crash. */
+const LOCK_STALE_MS = 60_000;
+
+/** Every repo folder on this device: "you", and each project's. */
+function repoDirsOnDisk(): string[] {
+  const dirs = [join(MEMORY_DIR, YOU)];
+  const projectsDir = join(MEMORY_DIR, "projects");
+  if (existsSync(projectsDir)) {
+    for (const item of readdirSync(projectsDir, { withFileTypes: true })) if (item.isDirectory()) dirs.push(join(projectsDir, item.name));
+  }
+  return dirs.filter((dir) => existsSync(join(dir, ".git")));
+}
+
+/**
+ * At startup, before any change: what a crash left behind. A stale `.git/index.lock` would refuse every commit
+ * from then on; an interrupted undo leaves a half-done revert; and this device's git settings are put back.
+ * Returns what it fixed.
+ */
+export async function recoverRepos(now = Date.now()): Promise<string[]> {
+  const fixed: string[] = [];
+  for (const dir of repoDirsOnDisk()) {
+    const meta = join(dir, ".git");
+    const lock = lstatOrNull(join(meta, "index.lock"));
+    if (lock && now - lock.mtimeMs > LOCK_STALE_MS && running === 0) {
+      rmSync(join(meta, "index.lock"), { force: true });
+      fixed.push(`${dir}: a stale index.lock`);
+    }
+    rmSync(join(meta, MERGE_INDEX), { force: true });
+    if (["REVERT_HEAD", "MERGE_HEAD", "CHERRY_PICK_HEAD"].some((name) => existsSync(join(meta, name)))) {
+      await git(dir, ["reset", "-q", "--merge"]).catch(() => git(dir, ["reset", "-q", "--hard", "HEAD"]));
+      rmSync(join(meta, "sequencer"), { recursive: true, force: true });
+      fixed.push(`${dir}: an interrupted undo`);
+    }
+    ensureLocalSettings(dir);
+  }
+  return fixed;
+}
+
 const KINDS = new Set<MemoryCommitKind>(["start", "import", "remember", "edit", "forget", "undo", "dream", "sync", "backup", "outside"]);
 const RS = "\x1e";
 const US = "\x1f";
@@ -258,15 +364,17 @@ export async function log(repo: string, limit = 50, skip = 0): Promise<MemoryCom
       at: Number(time) * 1000,
       added,
       removed,
-      revertible: Boolean(parents?.trim()),
+      // Not the first commit, and not a merge: undoing a sync would drop what the other device brought in.
+      revertible: (parents?.trim().split(" ").filter(Boolean).length ?? 0) === 1,
     });
   }
   return commits;
 }
 
 /**
- * Undoes one commit with a new commit. Markdown merges as plain text here (not by union), so an undo that
- * would collide with later changes is refused instead of quietly keeping both versions. Call inside `withRepo`.
+ * Undoes one commit with a new commit. Markdown merges as plain text here (`.git/info/attributes`), so an undo
+ * that would collide with later changes is refused instead of quietly keeping both versions. A merge (a sync, the
+ * backup) can't be undone: it would take out what the other device brought in. Call inside `withRepo`.
  */
 export async function revertCommit(repo: string, sha: string, message: CommitMessage): Promise<string> {
   const dir = repoDir(repo);
@@ -276,57 +384,134 @@ export async function revertCommit(repo: string, sha: string, message: CommitMes
   });
   const parents = line.trim().split(" ").slice(1);
   if (!parents.length) throw new MemoryError("That's where this memory starts; it can't be undone.");
-  const info = join(dir, ".git", "info", "attributes");
-  mkdirSync(dirname(info), { recursive: true });
-  writeFileSync(info, "*.md merge=text\n");
+  if (parents.length > 1) throw new MemoryError("A sync brings in another device's changes; it can't be undone. Undo those changes one by one instead.");
+  ensureLocalSettings(dir);
   try {
-    await git(dir, ["revert", "--no-commit", ...(parents.length > 1 ? ["-m", "1"] : []), sha]);
+    await git(dir, ["revert", "--no-commit", sha]);
   } catch {
     await git(dir, ["revert", "--abort"]).catch(() => git(dir, ["reset", "--hard", "-q", "HEAD"]));
     throw new MemoryError("Later changes touched the same lines, so this can't be undone on its own.", 409);
-  } finally {
-    rmSync(info, { force: true });
   }
   const committed = await commitAll(repo, message);
   if (!committed) throw new MemoryError("Nothing to undo: those changes are already gone.", 409);
   return committed;
 }
 
+/** A file in a commit's tree. */
+interface TreeItem {
+  mode: string;
+  sha: string;
+}
+
+/** The temporary index a merge builds its tree in (inside .git, so it's never part of the repo). */
+const MERGE_INDEX = "tot-merge.index";
+
+async function treeOf(dir: string, rev: string | null): Promise<Map<string, TreeItem>> {
+  const items = new Map<string, TreeItem>();
+  if (!rev) return items;
+  for (const record of (await git(dir, ["ls-tree", "-r", "-z", "--full-tree", rev])).split("\0")) {
+    const tab = record.indexOf("\t");
+    if (tab < 0) continue;
+    const [mode, , sha] = record.slice(0, tab).split(" ");
+    items.set(record.slice(tab + 1), { mode: mode!, sha: sha! });
+  }
+  return items;
+}
+
+/** What a memory repo holds: markdown, SQL and plain text, as regular files (no links, scripts or submodules). */
+const MEMORY_FILE = /\.(md|markdown|sql|txt)$/i;
+const MARKDOWN = /\.(md|markdown)$/i;
+
+function isMemoryFile(path: string, item: TreeItem): boolean {
+  if ((item.mode !== "100644" && item.mode !== "100755") || !MEMORY_FILE.test(path)) return false;
+  try {
+    return safePath(path) === path;
+  } catch {
+    return false;
+  }
+}
+
+const sameItem = (a: TreeItem | undefined, b: TreeItem | undefined) => a?.sha === b?.sha && a?.mode === b?.mode;
+
 /**
- * Brings another copy's history in (a paired device's, the backup remote's): a fast-forward when this side has
- * nothing new, else a merge (unless `fastForwardOnly`: then it waits, `diverged`). Markdown merges by union; any
- * other file that conflicts keeps this device's version. Returns whether the head moved, and the files kept.
- * Call inside `withRepo`.
+ * Brings another copy's history in (a paired device's, the backup remote's), merging in this process: markdown
+ * entry by entry against the merge base (merge.ts); any other file both changed keeps this device's version.
+ * Nothing but memory files comes in: links, scripts, submodules and dotfiles (`.gitattributes`, `.gitignore`)
+ * from the other side are left out. A fast-forward when this side has nothing new and nothing was left out;
+ * else a merge commit (unless `fastForwardOnly`: then it waits, `diverged`). Call inside `withRepo`, on a clean
+ * working tree.
  */
 export async function mergeRef(
   repo: string,
   ref: string,
   message: CommitMessage,
   { fastForwardOnly = false } = {},
-): Promise<{ changed: boolean; kept: string[]; diverged: boolean }> {
+): Promise<{ changed: boolean; kept: string[]; dropped: string[]; diverged: boolean }> {
   const dir = repoDir(repo);
-  if (await isAncestor(dir, ref, "HEAD")) return { changed: false, kept: [], diverged: false };
-  if (await isAncestor(dir, "HEAD", ref)) {
-    await git(dir, ["merge", "--ff-only", "-q", ref]);
-    return { changed: true, kept: [], diverged: false };
-  }
-  if (fastForwardOnly) return { changed: false, kept: [], diverged: true };
-  try {
-    await git(dir, ["merge", "--no-ff", "--no-edit", "-q", "--allow-unrelated-histories", "-X", "ours", ...messageArgs(message), ref]);
-    return { changed: true, kept: [], diverged: false };
-  } catch {
-    const kept = (await git(dir, ["diff", "--name-only", "--diff-filter=U"])).split("\n").filter(Boolean);
-    if (!kept.length) {
-      await git(dir, ["merge", "--abort"]).catch(() => {});
-      throw new GitError("The merge failed.", null);
+  const ours = (await git(dir, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
+  const theirs = (await git(dir, ["rev-parse", "--verify", `${ref}^{commit}`])).trim();
+  if (await isAncestor(dir, theirs, ours)) return { changed: false, kept: [], dropped: [], diverged: false };
+  const forward = await isAncestor(dir, ours, theirs);
+  if (!forward && fastForwardOnly) return { changed: false, kept: [], dropped: [], diverged: true };
+  const base = forward ? ours : (await git(dir, ["merge-base", ours, theirs]).catch(() => "")).trim() || null;
+  const [was, mine, other] = await Promise.all([treeOf(dir, base), treeOf(dir, ours), treeOf(dir, theirs)]);
+
+  const result = new Map<string, TreeItem>();
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  const blob = (sha: string) => git(dir, ["cat-file", "blob", sha]);
+  for (const path of new Set([...was.keys(), ...mine.keys(), ...other.keys()])) {
+    const b = was.get(path);
+    const o = mine.get(path);
+    const t = other.get(path);
+    let pick: TreeItem | undefined;
+    if ((t && !isMemoryFile(path, t)) || (!t && b && !isMemoryFile(path, b))) {
+      // Never taken from another copy: this device's stays as it is.
+      if (t && !sameItem(t, o) && !sameItem(t, b)) dropped.push(path);
+      pick = o;
+    } else if (sameItem(o, t) || sameItem(t, b)) {
+      pick = o;
+    } else if (sameItem(o, b)) {
+      pick = t;
+    } else if (!o || !t) {
+      // Deleted on one side, changed on the other: the change wins.
+      pick = o ?? t;
+    } else if (MARKDOWN.test(path)) {
+      const [baseText, oursText, theirsText] = await Promise.all([b ? blob(b.sha) : "", blob(o.sha), blob(t.sha)]);
+      const merged = mergeEntries(baseText, oursText, theirsText, (content) => parseEntries(path, content));
+      pick = { mode: o.mode, sha: (await git(dir, ["hash-object", "-w", "--no-filters", "--stdin"], { input: merged })).trim() };
+    } else {
+      kept.push(path);
+      pick = o;
     }
-    for (const file of kept) await git(dir, ["checkout", "--ours", "--", file]).catch(() => git(dir, ["rm", "-q", "-f", "--", file]));
-    await git(dir, ["add", "-A"]);
-    const body = [message.body, `Kept this device's version of: ${kept.join(", ")}`].filter(Boolean).join("\n");
-    await git(dir, ["commit", "-q", ...messageArgs({ ...message, body })]);
-    console.warn(`[tot] memory merge in ${repo} kept this device's version of ${kept.length} file(s)`);
-    return { changed: true, kept, diverged: false };
+    if (pick) result.set(path, pick);
   }
+
+  const sameAsTheirs = result.size === other.size && [...result].every(([path, item]) => sameItem(item, other.get(path)));
+  if (forward && sameAsTheirs) {
+    await git(dir, ["merge", "--ff-only", "-q", theirs]);
+    return { changed: true, kept, dropped, diverged: false };
+  }
+  const notes = [
+    message.body,
+    kept.length ? `Kept this device's version of: ${kept.join(", ")}` : "",
+    dropped.length ? `Left out what isn't memory: ${dropped.join(", ")}` : "",
+  ].filter(Boolean);
+  const index = join(dir, ".git", MERGE_INDEX);
+  try {
+    const env = { GIT_INDEX_FILE: index };
+    await git(dir, ["read-tree", "--empty"], { env });
+    const info = [...result].map(([path, item]) => `${item.mode} blob ${item.sha}\t${path}\0`).join("");
+    if (info) await git(dir, ["update-index", "-z", "--index-info"], { env, input: info });
+    const tree = (await git(dir, ["write-tree"], { env })).trim();
+    const commit = (await git(dir, ["commit-tree", tree, "-p", ours, "-p", theirs, ...messageArgs({ ...message, body: notes.join("\n") })])).trim();
+    // The merge's first parent is this head, so moving to it is a fast-forward that updates the files.
+    await git(dir, ["merge", "--ff-only", "-q", commit]);
+  } finally {
+    rmSync(index, { force: true });
+  }
+  if (kept.length || dropped.length) console.warn(`[tot] memory merge in ${repo} kept this device's version of ${kept.length} file(s) and left out ${dropped.length}`);
+  return { changed: true, kept, dropped, diverged: false };
 }
 
 // --- Files ----------------------------------------------------------------------------------------------------
@@ -348,10 +533,18 @@ export function safePath(path: string): string {
   return parts.join("/");
 }
 
-/** A file to write entries to: markdown, with ".md" added when it's missing. */
+/** A file to write entries to: markdown, with ".md" added when it's missing; plain names only. */
 export function markdownPath(path: string): string {
   const clean = safePath(path.replace(/^\[\[|\]\]$/g, ""));
-  return /\.md$/i.test(clean) ? clean : `${clean}.md`;
+  const name = clean.split("/").at(-1)!;
+  if (!/\.md$/i.test(name) && /\.[a-z]{1,5}$/i.test(name)) {
+    throw new MemoryError(`"${path}" isn't a markdown file. Memory topics are markdown, like "preferences.md".`);
+  }
+  const named = /\.md$/i.test(clean) ? clean : `${clean}.md`;
+  if (named.length > 120 || named.split("/").some((part) => !/^[\p{L}\p{N}][\p{L}\p{N} _.-]{0,79}$/u.test(part))) {
+    throw new MemoryError(`"${path}" isn't a file name memory can use. Use letters, digits, spaces, "-" and "_", like "work/clients.md".`);
+  }
+  return named;
 }
 
 function within(dir: string, full: string): boolean {
@@ -371,19 +564,48 @@ export function readFile(repo: string, path: string): string | null {
   return readFileSync(full, "utf8");
 }
 
-/** Writes a file in the working tree (commit it after). Call inside `withRepo`. */
-export function writeFile(repo: string, path: string, content: string): void {
+/**
+ * Where a file in a repo is, checked step by step: every folder below the repo must be a real folder (a link to
+ * somewhere else is refused), made one at a time when `create`. Null when a folder is missing and not `create`.
+ */
+function placeIn(repo: string, path: string, create: boolean): string | null {
   const dir = repoDir(repo);
-  const full = join(dir, ...safePath(path).split("/"));
-  mkdirSync(dirname(full), { recursive: true });
-  if (existsSync(full) && !within(dir, full)) throw new MemoryError(`"${path}" isn't a file memory can write.`);
-  writeFileSync(full, content);
+  const parts = safePath(path).split("/");
+  let current = dir;
+  for (const part of parts.slice(0, -1)) {
+    current = join(current, part);
+    let info = lstatOrNull(current);
+    if (!info) {
+      if (!create) return null;
+      mkdirSync(current);
+      info = lstatSync(current);
+    }
+    if (info.isSymbolicLink() || !info.isDirectory()) throw new MemoryError(`"${path}" isn't a file memory can write: "${part}" isn't a folder in this memory.`);
+  }
+  if (!within(dir, current)) throw new MemoryError(`"${path}" isn't a file memory can write.`);
+  return join(current, parts.at(-1)!);
+}
+
+/**
+ * Writes a file in the working tree (commit it after), never through a link: an existing file must be a plain
+ * file of its own, and a new one is made with O_EXCL, neither following a link. Call inside `withRepo`.
+ */
+export function writeFile(repo: string, path: string, content: string): void {
+  const full = placeIn(repo, path, true)!;
+  const info = lstatOrNull(full);
+  if (info && (!info.isFile() || info.nlink > 1)) throw new MemoryError(`"${path}" isn't a file memory can write: it's a link or a folder.`);
+  const flags = info ? constants.O_WRONLY | constants.O_TRUNC | constants.O_NOFOLLOW : constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
+  const fd = openSync(full, flags, 0o644);
+  try {
+    writeFileSync(fd, content);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export function removeFile(repo: string, path: string): void {
-  const dir = repoDir(repo);
-  const full = join(dir, ...safePath(path).split("/"));
-  if (existsSync(full) && within(dir, full)) rmSync(full);
+  const full = placeIn(repo, path, false);
+  if (full && lstatOrNull(full)?.isFile()) unlinkSync(full);
 }
 
 /** Every file in the repo, MEMORY.md first, then by path. Hidden files and links are skipped. */
@@ -431,6 +653,11 @@ export interface Entry {
   added: string | null;
   /** The line has no id of its own: `id` is derived from its path and text. */
   derived: boolean;
+  /**
+   * How tools and screens name this line: its id, or "<id>.2", "<id>.3"… for later lines with the same id (two
+   * devices edited one entry), so each can still be edited or forgotten on its own. Set by `assignKeys`.
+   */
+  key: string;
   path: string;
   /** Index of its line in the file. */
   line: number;
@@ -441,9 +668,10 @@ export interface Entry {
 const ENTRY_LINE = /^(\s*)([-*])\s+(.*\S)\s*$/;
 const META = /\s*\[([^[\]]*)\]\s*$/;
 const META_KEYS = new Set(["id", "source", "added"]);
-export const ENTRY_ID = /^[0-9a-f]{6}$/;
+/** Ids TOT writes: 8 hex (6 before; still read). */
+export const ENTRY_ID = /^[0-9a-f]{6}(?:[0-9a-f]{2})?$/;
 
-export const derivedId = (path: string, text: string) => `h${createHash("sha1").update(`${path}\n${text}`).digest("hex").slice(0, 5)}`;
+export const derivedId = (path: string, text: string) => `h${createHash("sha1").update(`${path}\n${text}`).digest("hex").slice(0, 10)}`;
 
 export const today = (now = new Date()) =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -486,8 +714,10 @@ export function parseEntries(path: string, content: string): Entry[] {
     const { text, meta } = splitMeta(match[3]!);
     if (!text) return;
     const own = meta?.id && ENTRY_ID.test(meta.id) ? meta.id : null;
+    const id = own ?? derivedId(path, text);
     entries.push({
-      id: own ?? derivedId(path, text),
+      id,
+      key: id,
       derived: !own,
       text,
       source: meta?.source ?? null,
@@ -501,6 +731,27 @@ export function parseEntries(path: string, content: string): Entry[] {
   return entries;
 }
 
+/** Names each line of a repo's entries (in file order) for tools and screens: see `Entry.key`. */
+export function assignKeys(entries: Entry[]): Entry[] {
+  const seen = new Map<string, number>();
+  for (const entry of entries) {
+    const n = (seen.get(entry.id) ?? 0) + 1;
+    seen.set(entry.id, n);
+    entry.key = n === 1 ? entry.id : `${entry.id}.${n}`;
+  }
+  return entries;
+}
+
+/** A file as an agent's prompt shows it: each entry "- text (key)", without the rest of its metadata. */
+export function promptView(content: string, entries: Pick<Entry, "line" | "indent" | "text" | "key">[]): string {
+  const lines = content.split("\n");
+  for (const entry of entries) lines[entry.line] = `${entry.indent}- ${entry.text} (${entry.key})`;
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** How many characters a markdown file takes in a prompt (entries without their metadata). */
+export const promptSize = (path: string, content: string) => promptView(content, parseEntries(path, content)).length;
+
 /** One line of text, as an entry holds it. */
 export const entryText = (text: string) => text.replace(/\s+/g, " ").trim();
 
@@ -509,10 +760,10 @@ export function formatEntry(entry: Pick<Entry, "text" | "id" | "source" | "added
   return `${entry.indent ?? ""}${entry.bullet ?? "-"} ${entryText(entry.text)} [${meta}]`;
 }
 
-/** A fresh id, unused by `taken`. */
+/** A fresh id (8 hex), unused by `taken`. */
 export function newId(taken: Set<string>): string {
   for (;;) {
-    const id = randomBytes(3).toString("hex");
+    const id = randomBytes(4).toString("hex");
     if (!taken.has(id)) return id;
   }
 }

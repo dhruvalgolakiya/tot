@@ -8,6 +8,7 @@ import { goToSettings, useStore } from "../store";
 import { MemoryDreaming } from "./memory/MemoryDreaming";
 import { MemoryEntries } from "./memory/MemoryEntries";
 import { MemoryHistory } from "./memory/MemoryHistory";
+import { MemoryImport } from "./memory/MemoryImport";
 import { MemorySync } from "./memory/MemorySync";
 import { Callout } from "./ui/Callout";
 import { IconButton } from "./ui/IconButton";
@@ -20,7 +21,7 @@ const SKILL_COMMAND = "npx skills add AgentMemoryRepo/agentmemoryrepo --skill ag
 /**
  * Settings → Memory (roadmap module 10): memory is git repos of markdown. Pick a repo (About you, or a
  * project's), then its entries grouped by file, its history with Undo, Dreaming, and (About you) sync with
- * paired devices and the optional backup remote.
+ * paired devices and the optional backup remote, and what the one-time import left for the user to decide.
  */
 export function MemoryBrowser() {
   const memoryEnabled = useStore((s) => s.settings?.memory.enabled ?? true);
@@ -95,6 +96,7 @@ export function MemoryBrowser() {
           Memory is off, so agents won't save or recall anything.
         </Callout>
       )}
+      {summary.import && <MemoryImport status={summary.import} onChanged={load} />}
       <MemoryEntries key={`entries:${summary.id}`} repo={summary.id} kind={summary.kind} onChanged={load} />
       <MemoryHistory key={`history:${summary.id}`} repo={summary.id} onChanged={load} />
       <MemoryDreaming summary={summary} onChanged={load} />

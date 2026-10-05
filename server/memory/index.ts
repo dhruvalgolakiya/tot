@@ -2,19 +2,19 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 import { memories, type IndexRow } from "../data/memories.ts";
 import { projects } from "../projects/projects.ts";
-import { listFiles, parseEntries, projectRepoId, readFile, repoDir, repoExists, YOU, type Entry } from "./repo.ts";
+import { assignKeys, listFiles, parseEntries, projectRepoId, readFile, repoDir, repoExists, YOU, type Entry } from "./repo.ts";
 
 /**
  * The memory index (roadmap module 10): the `memories` table rebuilt from a repo's markdown files, after every
  * commit, merge and undo, and for every repo at startup. The files are the truth; the index is for lookups and
- * full-text search. The same id twice in a repo (two devices edited one line): the index keeps the last one,
- * and Dreaming settles it.
+ * full-text search. The same id twice in a repo (two devices edited one line): the index keeps both, the later
+ * one as "<id>.2" (see `Entry.key`), so either can be edited or forgotten; Dreaming settles them.
  */
 
 /** "tot://c/<chat>" names the chat or task an agent saved it from. */
 const CHAT_SOURCE = /^tot:\/\/c\/([\w-]+)$/;
 
-/** Every entry in the repo's markdown files, in file order. */
+/** Every entry in the repo's markdown files, in file order, each with its key. */
 export function repoEntries(repo: string): Entry[] {
   if (!repoExists(repo)) return [];
   const entries: Entry[] = [];
@@ -23,7 +23,7 @@ export function repoEntries(repo: string): Entry[] {
     const content = readFile(repo, path);
     if (content !== null) entries.push(...parseEntries(path, content));
   }
-  return entries;
+  return assignKeys(entries);
 }
 
 function toRow(entry: Entry, fileTime: number): IndexRow {
@@ -32,7 +32,7 @@ function toRow(entry: Entry, fileTime: number): IndexRow {
   // A date alone: noon local time, so it reads as that day everywhere.
   const createdAt = entry.added ? new Date(`${entry.added}T12:00:00`).getTime() : fileTime;
   return {
-    id: entry.id,
+    id: entry.key,
     repo: "",
     path: entry.path,
     line: entry.line,
@@ -46,7 +46,7 @@ function toRow(entry: Entry, fileTime: number): IndexRow {
 }
 
 export function reindex(repo: string): number {
-  const rows = new Map<string, IndexRow>();
+  const rows: IndexRow[] = [];
   const times = new Map<string, number>();
   for (const entry of repoEntries(repo)) {
     if (!times.has(entry.path)) {
@@ -58,12 +58,10 @@ export function reindex(repo: string): number {
       }
       times.set(entry.path, time);
     }
-    // Keep the last line with an id, at its own place.
-    rows.delete(entry.id);
-    rows.set(entry.id, toRow(entry, times.get(entry.path)!));
+    rows.push({ ...toRow(entry, times.get(entry.path)!), repo });
   }
-  memories.replaceRepo(repo, [...rows.values()].map((row) => ({ ...row, repo })));
-  return rows.size;
+  memories.replaceRepo(repo, rows);
+  return rows.length;
 }
 
 /** Every repo on this device: "you", then each project's that exists. */

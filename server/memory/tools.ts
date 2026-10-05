@@ -5,6 +5,7 @@ import type { ConversationRecord } from "../data/conversations.ts";
 import { memories } from "../data/memories.ts";
 import { projects } from "../projects/projects.ts";
 import { clip, guarded, reply } from "../mcp/results.ts";
+import { hideSecrets } from "../trust/secrets.ts";
 import { edit, forget, remember } from "./memory.ts";
 import { listFiles, linksIn, projectRepoId, readFile, repoExists, resolveLink, YOU } from "./repo.ts";
 
@@ -12,7 +13,8 @@ import { listFiles, linksIn, projectRepoId, readFile, repoExists, resolveLink, Y
  * Memory tools (roadmap module 10): the same names as before, reaching further. Memory is git repos of
  * markdown: "you" (about the user, every chat) and the chat's project's repo (about the code and the work, only
  * in a project chat or task). Writes from parallel tasks queue up on the server, one commit each, so they never
- * conflict. Gated by `memory.enabled` (mcp/server.ts).
+ * conflict. What they read back is scrubbed of anything that looks like a secret (a line written by hand or
+ * synced in was never checked). Gated by `memory.enabled` (mcp/server.ts).
  */
 
 const READ_LIMIT = 30_000;
@@ -48,7 +50,11 @@ export function registerMemoryTools(server: McpServer, conversation: Conversatio
       inputSchema: {
         content: z.string().min(3).max(500).describe("The fact to remember, as one short sentence"),
         scope,
-        file: z.string().max(120).optional().describe('A topic file to keep it in, e.g. "people.md" (made if needed and linked from MEMORY.md). Default: MEMORY.md'),
+        file: z
+          .string()
+          .max(120)
+          .optional()
+          .describe('A markdown topic file to keep it in, e.g. "people.md" or "work/clients.md" (made if needed and linked from MEMORY.md). Default: MEMORY.md'),
       },
     },
     ({ content, scope: which, file }) =>
@@ -75,7 +81,7 @@ export function registerMemoryTools(server: McpServer, conversation: Conversatio
       guarded(async () => {
         const repos = which === "you" ? [YOU] : which === "project" ? [repoFor("project")] : visible;
         const found = memories.search(query, { repos, limit: limit ?? 10 });
-        return reply(found.length ? found.map((m) => `- (${m.id}) ${m.content} — ${label(m.repo, m.path)}`).join("\n") : "No matching memories.");
+        return reply(found.length ? hideSecrets(found.map((m) => `- (${m.id}) ${m.content} — ${label(m.repo, m.path)}`).join("\n")) : "No matching memories.");
       }),
   );
 
@@ -85,7 +91,7 @@ export function registerMemoryTools(server: McpServer, conversation: Conversatio
       title: "Update memory",
       description: "Rewrite a memory entry by id when it's out of date (ids are in your prompt, or from memory_search).",
       inputSchema: {
-        id: z.string().min(1).describe("The entry's id, e.g. 3f2a9c"),
+        id: z.string().min(1).max(40).describe("The entry's id, e.g. 3f2a9c1b"),
         content: z.string().min(3).max(500).describe("The new text, as one short sentence"),
       },
     },
@@ -101,7 +107,7 @@ export function registerMemoryTools(server: McpServer, conversation: Conversatio
     {
       title: "Forget something",
       description: "Delete a memory entry by id (ids are in your prompt, or from memory_search). Do this whenever the user asks you to forget something.",
-      inputSchema: { id: z.string().min(1).describe("The entry's id, e.g. 3f2a9c") },
+      inputSchema: { id: z.string().min(1).max(40).describe("The entry's id, e.g. 3f2a9c1b") },
     },
     ({ id }) =>
       guarded(async () => {
@@ -131,7 +137,7 @@ export function registerMemoryTools(server: McpServer, conversation: Conversatio
           return reply(`No file "${path}" in ${repo} memory.${files.length ? ` Files: ${files.join(", ")}` : ""}`, true);
         }
         const links = linksIn(content);
-        return reply(`${label(repo, file)}\n\n${clip(content.trimEnd(), READ_LIMIT)}${links.length ? `\n\n[Links: ${links.join(", ")}]` : ""}`);
+        return reply(hideSecrets(`${label(repo, file)}\n\n${clip(content.trimEnd(), READ_LIMIT)}${links.length ? `\n\n[Links: ${links.join(", ")}]` : ""}`));
       }),
   );
 }
