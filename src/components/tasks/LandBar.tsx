@@ -212,7 +212,7 @@ export function LandBar({ task }: { task: TaskConversation }) {
             className="min-w-0 flex-1"
             disabled={!option.available || busy !== null}
             onClick={() =>
-              void act(method, () => api.landTask(task.id, { method }), (updated) => {
+              void act(method, () => api.landTask(task.id, { method, headSha: repo.headSha ?? undefined }), (updated) => {
                 const done = updated.task?.landing;
                 if (done?.kind === "pr" && done.pr) toast.success(`Opened draft PR #${done.pr.number}`);
               })

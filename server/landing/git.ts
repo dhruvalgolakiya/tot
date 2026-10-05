@@ -4,6 +4,7 @@ import type { TaskRepo } from "../../shared/types.ts";
 import { quote } from "../computer/github-login.ts";
 import { computerManager } from "../computer/manager.ts";
 import type { ExecResult, FolderGrant } from "../computer/types.ts";
+import { hostGitEnv } from "../git-env.ts";
 import type { TaskRecord } from "../tasks/store.ts";
 import { homeRelative } from "../tasks/worktree.ts";
 import { scrub } from "../trust/shell.ts";
@@ -73,12 +74,20 @@ export interface WorktreeState {
   /** What it's compared with: "main" or "origin/main". */
   ref: string;
   head: string | null;
+  /** The task's branch as the repo has it now (refs/heads/<branch>), and what the worktree has checked out ("refs/heads/…", or null when detached). */
+  branchHead: string | null;
+  checkedOut: string | null;
   /** Tracked files changed but not committed (`git status --porcelain` lines). */
   uncommitted: string[];
+  /** Files it made and never added (not ignored ones): a merge wouldn't carry them, and removing the worktree would lose them. */
+  untracked: string[];
   /** Commits on the base the branch doesn't have, and commits on the branch the base doesn't have. */
   behind: number;
   ahead: number;
 }
+
+/** The file a `git status --porcelain` line is about ("R  old -> new" → "new"). */
+export const statusPath = (line: string) => line.slice(3).replace(/^.* -> /, "");
 
 /** One round trip to the computer; null when the worktree isn't there. */
 export async function worktreeState(task: TaskRecord, grant: FolderGrant | null): Promise<WorktreeState | null> {
@@ -87,7 +96,10 @@ export async function worktreeState(task: TaskRecord, grant: FolderGrant | null)
     baseRefScript(repo.baseBranch, Boolean(grant)),
     `echo '@@ ref'; echo "$ref"`,
     "echo '@@ head'; git rev-parse HEAD 2>/dev/null",
+    `echo '@@ branch'; git rev-parse --verify --quiet ${quote(`refs/heads/${repo.branch}`)}`,
+    "echo '@@ checkout'; git symbolic-ref --quiet HEAD",
     "echo '@@ uncommitted'; git status --porcelain --untracked-files=no | head -n 50",
+    "echo '@@ untracked'; git ls-files --others --exclude-standard | head -n 50",
     `echo '@@ behind'; git rev-list --count "HEAD..$ref" 2>/dev/null || echo 0`,
     `echo '@@ ahead'; git rev-list --count "$ref..HEAD" 2>/dev/null || echo 0`,
   ];
@@ -99,7 +111,10 @@ export async function worktreeState(task: TaskRecord, grant: FolderGrant | null)
   return {
     ref: found.ref?.trim() || repo.baseBranch,
     head: found.head?.trim() || null,
+    branchHead: found.branch?.trim() || null,
+    checkedOut: found.checkout?.trim() || null,
     uncommitted: (found.uncommitted ?? "").split("\n").filter(Boolean),
+    untracked: (found.untracked ?? "").split("\n").filter(Boolean),
     behind: Number(found.behind?.trim()) || 0,
     ahead: Number(found.ahead?.trim()) || 0,
   };
@@ -107,14 +122,17 @@ export async function worktreeState(task: TaskRecord, grant: FolderGrant | null)
 
 const execFileAsync = promisify(execFile);
 
-/** git in the user's folder on this Mac, as TOT's server: never through an agent's sandbox. */
-export async function folderGit(folder: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+/**
+ * git in the user's folder on this Mac, as TOT's server: never through an agent's sandbox, and without
+ * TOT's own GIT_* variables. `timeoutMs: 0` waits as long as git takes (a merge mustn't be cut off halfway).
+ */
+export async function folderGit(folder: string, args: string[], { timeoutMs = FOLDER_TIMEOUT_MS } = {}): Promise<{ code: number; stdout: string; stderr: string }> {
   try {
     const { stdout, stderr } = await execFileAsync("git", args, {
       cwd: folder,
-      timeout: FOLDER_TIMEOUT_MS,
+      timeout: timeoutMs,
       maxBuffer: 4 * 1024 * 1024,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_MERGE_AUTOEDIT: "no" },
+      env: hostGitEnv({ GIT_TERMINAL_PROMPT: "0", GIT_MERGE_AUTOEDIT: "no" }),
     });
     return { code: 0, stdout, stderr };
   } catch (err) {

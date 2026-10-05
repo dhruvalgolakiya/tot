@@ -6,7 +6,7 @@
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
@@ -334,7 +334,11 @@ check("…and it's no longer behind", (await options(tidy.id)).behind === 0);
 
 writeFileSync(join(tidyWorktree, "b.txt"), "left uncommitted\n");
 opts = await options(tidy.id);
-check("work left uncommitted in the worktree: refused", !opts.merge.available && opts.merge.reason === "The task left 1 uncommitted file. Ask it to commit it first.", JSON.stringify(opts.merge));
+check(
+  "work left uncommitted in the worktree: refused",
+  !opts.merge.available && opts.merge.reason === "This task has files it didn't commit (b.txt). Reply to the task to commit them, or discard it.",
+  JSON.stringify(opts.merge),
+);
 commit(shop, { "d.txt": "more\n" }, "Add d");
 sentBefore = sent.length;
 res = await call<Conversation>("POST", `/tasks/${tidy.id}/update-from-base`);
@@ -512,6 +516,224 @@ res = await call("POST", `/tasks/${footer.id}/land`, { method: "pr" });
 check("opening it again is refused", res.status === 409 && /draft PR #12/.test(res.data.error), JSON.stringify(res.data));
 res = await call("POST", `/tasks/${footer.id}/discard`);
 check("…and so is discarding it (close the PR on GitHub)", res.status === 409 && pushedRefs().includes(footerBranch), JSON.stringify(res.data));
+await tasks.message(footer.id, { text: "Address the review comments" });
+await until(() => taskStore.get(footer.id)?.task.status === "done");
+check(
+  "a draft PR's task picked up again keeps its PR (the branch carries on)",
+  taskStore.get(footer.id)?.task.landing?.kind === "pr" && existsSync(local(footer.task.repo!.worktree)),
+  JSON.stringify(taskStore.get(footer.id)?.task.landing),
+);
+
+// =============================================================================
+// Landing safely: only what was committed and reviewed, never over the user's files, one merge at a time
+// =============================================================================
+console.log("\n# Landing safely");
+const lab = join(HOME, "code/lab");
+makeRepo(lab, { "main.ts": "export {};\n", ".gitignore": ".env\n" });
+const labProject: Project = (await call<Project>("POST", "/projects", { kind: "folder", source: lab, grant: true })).data;
+const labChat = conversations.create({ agentId: tot.id, modelId: tot.modelId, title: "Lab", projectId: labProject.id });
+const labDone = (goal: string, work: (worktree: string) => void) => doneTask(labChat.id, goal, work);
+const merges = () => Number(git(lab, "rev-list", "--count", "--merges", "HEAD"));
+
+// A file the task made and never added: the merge wouldn't carry it, and removing the worktree would lose it.
+const importer = await labDone("Use a new module", (wt) => {
+  commit(wt, { "main.ts": "import './new';\n" }, "Use a new module");
+  writeFileSync(join(wt, "new.ts"), "export const fresh = true;\n");
+});
+const importerTree = local(importer.task.repo!.worktree);
+const labHead = git(lab, "rev-parse", "HEAD");
+opts = await options(importer.id);
+res = await call("POST", `/tasks/${importer.id}/land`, { method: "merge" });
+check(
+  "a file left untracked in the worktree: refused, by name, and nothing is merged",
+  !opts.merge.available &&
+    opts.merge.reason === "This task has files it didn't commit (new.ts). Reply to the task to commit them, or discard it." &&
+    res.status === 409 &&
+    git(lab, "rev-parse", "HEAD") === labHead &&
+    existsSync(join(importerTree, "new.ts")),
+  `${JSON.stringify(opts.merge)} ${JSON.stringify(res.data)}`,
+);
+let removeError = "";
+await worktrees.remove(tot.id, importer.task.repo!, { grant: grantFor(importer) }).catch((err: Error) => (removeError = err.message));
+check("…and removing a worktree with new files is refused (no --force) and keeps them", Boolean(removeError) && existsSync(join(importerTree, "new.ts")), removeError);
+git(importerTree, "add", "new.ts");
+git(importerTree, "commit", "-qm", "Add the new module");
+const importerHead = git(importerTree, "rev-parse", "HEAD");
+res = await call<Conversation>("POST", `/tasks/${importer.id}/land`, { method: "merge", headSha: importer.task.repo!.headSha });
+check("the head the user reviewed: a commit made since is refused", res.status === 409 && res.data.error === "The task's branch changed since you looked. Review it again." && git(lab, "rev-parse", "HEAD") === labHead, JSON.stringify(res.data));
+res = await call<Conversation>("POST", `/tasks/${importer.id}/land`, { method: "merge", headSha: "zzz" });
+check("…a headSha that isn't one is a 400", res.status === 400, JSON.stringify(res.data));
+res = await call<Conversation>("POST", `/tasks/${importer.id}/land`, { method: "merge", headSha: importerHead });
+check(
+  "…and the head now, once reviewed, is merged, its worktree removed (clean, no force)",
+  res.status === 200 && res.data.task?.landing?.kind === "merged" && existsSync(join(lab, "new.ts")) && !existsSync(importerTree),
+  JSON.stringify(res.data.task?.landing ?? res.data),
+);
+
+// A worktree that isn't on its branch anymore.
+const wanderer = await labDone("Wander off", (wt) => commit(wt, { "w.txt": "w\n" }, "Wander off"));
+const wandererTree = local(wanderer.task.repo!.worktree);
+git(wandererTree, "checkout", "-q", "--detach");
+opts = await options(wanderer.id);
+check(
+  "a worktree on a detached HEAD: refused, saying so",
+  !opts.merge.available && opts.merge.reason?.startsWith(`The task's worktree isn't on a branch (detached HEAD), not ${wanderer.task.repo!.branch}.`) === true,
+  JSON.stringify(opts.merge),
+);
+git(wandererTree, "checkout", "-q", wanderer.task.repo!.branch);
+
+// The branch force-added a file the user's folder ignores, and the user has their own copy.
+writeFileSync(join(lab, ".env"), "USER_SECRET=mine\n");
+const envy = await labDone("Commit an env file", (wt) => {
+  writeFileSync(join(wt, ".env"), "FROM_BRANCH=1\n");
+  git(wt, "add", "-f", ".env");
+  git(wt, "commit", "-qm", "Commit an env file");
+});
+const beforeEnv = git(lab, "rev-parse", "HEAD");
+opts = await options(envy.id);
+res = await call("POST", `/tasks/${envy.id}/land`, { method: "merge" });
+check(
+  "a branch changing a file git ignores in the folder (which has its own): refused, by name, the user's copy kept",
+  !opts.merge.available &&
+    opts.merge.reason === "Merging would replace a file git ignores in your folder with the branch's: .env. Move it aside, then merge." &&
+    res.status === 409 &&
+    readFileSync(join(lab, ".env"), "utf8") === "USER_SECRET=mine\n" &&
+    git(lab, "rev-parse", "HEAD") === beforeEnv,
+  `${JSON.stringify(opts.merge)} ${readFileSync(join(lab, ".env"), "utf8")}`,
+);
+await call("POST", `/tasks/${envy.id}/discard`);
+
+// Two merges into one folder at once: one after the other, both land.
+const one = await labDone("Add one", (wt) => commit(wt, { "one.txt": "1\n" }, "Add one"));
+const two = await labDone("Add two", (wt) => commit(wt, { "two.txt": "2\n" }, "Add two"));
+const mergesBefore = merges();
+const both = await Promise.all([call<Conversation>("POST", `/tasks/${one.id}/land`, { method: "merge" }), call<Conversation>("POST", `/tasks/${two.id}/land`, { method: "merge" })]);
+check(
+  "two merges into the same folder at once both land, one after the other",
+  both.every((r) => r.status === 200 && r.data.task?.landing?.kind === "merged") &&
+    merges() === mergesBefore + 2 &&
+    existsSync(join(lab, "one.txt")) &&
+    existsSync(join(lab, "two.txt")) &&
+    git(lab, "status", "--porcelain") === "",
+  both.map((r) => JSON.stringify(r.data.task?.landing ?? r.data)).join(" "),
+);
+
+// git in the folder doesn't follow TOT's own GIT_* variables somewhere else.
+const decoy = join(OUTSIDE, "decoy");
+makeRepo(decoy, { "decoy.txt": "decoy\n" });
+const decoyHead = git(decoy, "rev-parse", "HEAD");
+const three = await labDone("Add three", (wt) => commit(wt, { "three.txt": "3\n" }, "Add three"));
+Object.assign(process.env, { GIT_DIR: join(decoy, ".git"), GIT_WORK_TREE: decoy, GIT_INDEX_FILE: join(decoy, ".git/index") });
+try {
+  opts = await options(three.id);
+  res = await call<Conversation>("POST", `/tasks/${three.id}/land`, { method: "merge" });
+} finally {
+  for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"]) delete process.env[name];
+}
+check(
+  "TOT's own GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE don't reach git in the user's folder",
+  opts.merge.available && res.status === 200 && existsSync(join(lab, "three.txt")) && git(decoy, "rev-parse", "HEAD") === decoyHead && git(decoy, "status", "--porcelain") === "",
+  `${JSON.stringify(opts.merge)} ${JSON.stringify(res.data.task?.landing ?? res.data)}`,
+);
+
+// A merge that fails: aborted only when it's TOT's own, and a half-merged folder is said so.
+const hook = join(lab, ".git/hooks/pre-merge-commit");
+mkdirSync(dirname(hook), { recursive: true });
+writeFileSync(hook, "#!/bin/sh\necho 'the hook says no' >&2\nexit 1\n");
+chmodSync(hook, 0o755);
+const four = await labDone("Add four", (wt) => commit(wt, { "four.txt": "4\n" }, "Add four"));
+const beforeFour = git(lab, "rev-parse", "HEAD");
+res = await call("POST", `/tasks/${four.id}/land`, { method: "merge" });
+check(
+  "a merge git stops (the user's hook) is TOT's: aborted, the folder as it was",
+  res.status === 409 &&
+    String(res.data.error).includes("the hook says no") &&
+    !gitOk(lab, "rev-parse", "--verify", "--quiet", "MERGE_HEAD") &&
+    git(lab, "status", "--porcelain") === "" &&
+    git(lab, "rev-parse", "HEAD") === beforeFour,
+  JSON.stringify(res.data),
+);
+rmSync(hook);
+// git standing in for one that's stopped halfway: `merge` merges without committing, then leaves MERGE_HEAD as the test says.
+const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+const wrapped = join(OUTSIDE, "wrapped-git");
+const mode = join(OUTSIDE, "merge-mode");
+mkdirSync(wrapped);
+writeFileSync(
+  join(wrapped, "git"),
+  `#!/bin/sh
+if [ "$1" = merge ] && [ "$2" = --no-ff ]; then
+  for last; do :; done
+  ${realGit} merge --no-ff --no-commit --no-stat "$last" >/dev/null 2>&1
+  case "$(cat ${mode})" in
+    other) ${realGit} rev-parse HEAD > .git/MERGE_HEAD ;;
+    half) rm -f .git/MERGE_HEAD ;;
+  esac
+  echo "fatal: stopped halfway" >&2
+  exit 1
+fi
+exec ${realGit} "$@"
+`,
+);
+chmodSync(join(wrapped, "git"), 0o755);
+const pathBefore = process.env.PATH;
+const landWith = async (how: string, taskId: string) => {
+  writeFileSync(mode, how);
+  process.env.PATH = `${wrapped}:${pathBefore}`;
+  try {
+    return await call("POST", `/tasks/${taskId}/land`, { method: "merge" });
+  } finally {
+    process.env.PATH = pathBefore;
+  }
+};
+res = await landWith("other", four.id);
+check(
+  "a failed merge that left someone else's MERGE_HEAD: not aborted, and said so",
+  res.status === 409 && String(res.data.error).includes("in the middle of another merge now, which TOT left alone") && gitOk(lab, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"),
+  JSON.stringify(res.data),
+);
+git(lab, "merge", "--abort");
+res = await landWith("half", four.id);
+check(
+  "a merge stopped halfway with no MERGE_HEAD: the half-merged folder is reported, not touched",
+  res.status === 409 && String(res.data.error).startsWith(`Git stopped partway through merging ${four.task.repo!.branch}`) && git(lab, "status", "--porcelain", "--untracked-files=no") !== "",
+  `${JSON.stringify(res.data)} ${git(lab, "status", "--porcelain")}`,
+);
+git(lab, "reset", "-q", "--hard", "HEAD");
+rmSync(join(lab, ".git/MERGE_MSG"), { force: true });
+rmSync(join(lab, ".git/MERGE_MODE"), { force: true });
+res = await call<Conversation>("POST", `/tasks/${four.id}/land`, { method: "merge" });
+check("…and once the folder's sorted, it merges", res.status === 200 && res.data.task?.landing?.kind === "merged", JSON.stringify(res.data.task?.landing ?? res.data));
+
+// Merged or discarded, then picked up again: new work in a new worktree, which can land again.
+const mergedBranch = four.task.repo!.branch;
+await tasks.message(four.id, { text: "One more thing" });
+await until(() => taskStore.get(four.id)?.task.status === "done");
+let again = taskStore.get(four.id)!;
+opts = await options(four.id);
+check(
+  "a merged task picked up again: its landing is cleared, its worktree and branch made again from main",
+  again.task.landing === null &&
+    existsSync(again.task.repo!.worktree) &&
+    git(lab, "branch", "--list", mergedBranch).includes(mergedBranch) &&
+    again.task.repo!.headSha === git(lab, "rev-parse", "main") &&
+    opts.merge.reason === "The branch has no commits yet.",
+  `${JSON.stringify(again.task.landing)} ${JSON.stringify(opts.merge)}`,
+);
+commit(again.task.repo!.worktree, { "five.txt": "5\n" }, "Add five");
+taskStore.patch(four.id, { repo: { ...again.task.repo!, headSha: git(again.task.repo!.worktree, "rev-parse", "HEAD") } });
+res = await call<Conversation>("POST", `/tasks/${four.id}/land`, { method: "merge" });
+check("…and its new work lands again", res.status === 200 && res.data.task?.landing?.kind === "merged" && existsSync(join(lab, "five.txt")), JSON.stringify(res.data.task?.landing ?? res.data));
+const dropped = await labDone("Try something", (wt) => commit(wt, { "maybe.txt": "?\n" }, "Try something"));
+await call("POST", `/tasks/${dropped.id}/discard`);
+await tasks.message(dropped.id, { text: "Try again, differently" });
+await until(() => taskStore.get(dropped.id)?.task.status === "done");
+again = taskStore.get(dropped.id)!;
+check(
+  "a discarded task picked up again: landing cleared, a new worktree from main",
+  again.task.landing === null && existsSync(again.task.repo!.worktree) && !existsSync(join(again.task.repo!.worktree, "maybe.txt")),
+  JSON.stringify(again.task.landing),
+);
 
 
 fakeServer.close();

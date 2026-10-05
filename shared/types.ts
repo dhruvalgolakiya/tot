@@ -1403,6 +1403,8 @@ export interface LandTaskRequest {
   /** PR only: overrides for the generated title and body. */
   title?: string;
   body?: string;
+  /** The head the user reviewed (task.repo.headSha): refused with a 409 when the branch is somewhere else now. */
+  headSha?: string;
 }
 
 /** The worktree's setup command, run once when the worktree is created. */

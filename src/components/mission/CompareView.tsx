@@ -7,6 +7,7 @@ import { useNow } from "../../hooks/useNow";
 import { api, errorMessage } from "../../lib/api";
 import { bestOfLabel, CHECKS_LABELS, landingLine } from "../../lib/mission";
 import { modelLabel, PROVIDER_LABELS } from "../../lib/models";
+import { useProjects } from "../../lib/projects";
 import { isOpenTask, isTask, taskElapsed, type TaskConversation } from "../../lib/tasks";
 import { navigateToConversation, navigateToMission, notifyError, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -145,6 +146,7 @@ export function CompareView() {
 
 function Comparison({ runs }: { runs: TaskConversation[] }) {
   const models = useStore((s) => s.models);
+  const projects = useProjects((s) => s.projects);
   const changes = useRunChanges(runs);
   const now = useNow(runs.some((run) => run.task.status === "running"), 30_000);
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -166,9 +168,9 @@ function Comparison({ runs }: { runs: TaskConversation[] }) {
     return paths;
   }, [runs, changes]);
 
-  /** Asks how it can land (lane A), then confirms. */
+  /** Asks how it can land (lane A), then confirms. Only a run without code is kept without landing. */
   async function askToKeep(run: TaskConversation) {
-    if (!run.task.repo?.headSha) {
+    if (!run.task.repo) {
       setKeeping({ run, method: null, options: null });
       return;
     }
@@ -177,7 +179,9 @@ function Comparison({ runs }: { runs: TaskConversation[] }) {
       const options = await api.taskLandOptions(run.id);
       const method = options.merge.available ? "merge" : options.pr.available ? "pr" : null;
       if (!method) {
-        toast.error(options.merge.reason ?? options.pr.reason ?? "This run can't land right now.");
+        // The reason for the way this project lands: merging for a folder on this Mac, a draft PR otherwise.
+        const folder = projects.find((project) => project.id === run.projectId)?.kind === "folder";
+        toast.error((folder ? options.merge.reason : options.pr.reason) ?? "This run can't land right now.");
         return;
       }
       setKeeping({ run, method, options });
@@ -194,7 +198,8 @@ function Comparison({ runs }: { runs: TaskConversation[] }) {
     const { run, method, options } = keeping;
     setBusy(run.id);
     try {
-      if (method) await api.landTask(run.id, { method });
+      // The head the user compared lands, or nothing does.
+      if (method) await api.landTask(run.id, { method, headSha: run.task.repo?.headSha ?? undefined });
       const others = runs.filter((other) => other.id !== run.id && !other.task.landing);
       const failed: string[] = [];
       for (const other of others) {

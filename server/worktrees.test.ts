@@ -3,9 +3,9 @@
 // worktree, under the same sandbox and grant), and cleanup of old worktrees. Real git and the macOS sandbox under
 // a temp HOME, the local computer backend, fake providers, no network.
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,11 +41,13 @@ const { conversations } = await import("./data/conversations.ts");
 const { queueHolds } = await import("./data/queue-holds.ts");
 const { settings } = await import("./data/settings.ts");
 const { createApp } = await import("./app.ts");
-const { prepareTask } = await import("./projects/checkout.ts");
+const { grantFor, prepareTask } = await import("./projects/checkout.ts");
 const { taskSection } = await import("./tasks/prompt.ts");
 const { runEnd } = await import("./tasks/run-loop.ts");
 const { taskStore } = await import("./tasks/store.ts");
 const { tasks } = await import("./tasks/tasks.ts");
+const { worktrees } = await import("./tasks/worktree.ts");
+const { worktreeCleanup } = await import("./worktrees/cleanup.ts");
 const { worktreeLifecycle } = await import("./worktrees/lifecycle.ts");
 const { previews, PREVIEW_NEEDS_LOCAL } = await import("./worktrees/preview.ts");
 const { detectIn } = await import("./worktrees/setup.ts");
@@ -67,6 +69,10 @@ const mascot = { shape: "blob" as const, color: "#60a5fa", accessory: "none" as 
 
 // Everything TOT printed while the test ran: a copied file's contents must never be among it.
 const SECRET = `s3cr3t-${randomUUID()}`;
+/** Shaped like an Anthropic API key: what scrub() hides even when TOT doesn't hold it. Commands print it in two halves. */
+const KEY_TAIL = `api03-${randomUUID().replaceAll("-", "")}`;
+const API_KEY_SHAPE = `sk-ant-${KEY_TAIL}`;
+const printKey = (words: string) => `printf '${words} sk-ant-%s\\n' ${KEY_TAIL}`;
 const printed: string[] = [];
 for (const name of ["log", "warn", "error"] as const) {
   const original = console[name].bind(console);
@@ -315,6 +321,16 @@ if (!localSandboxed) {
       readFileSync(join(envyTask.task.repo!.worktree, "setup-env.txt"), "utf8") === `${envyPorts.base} ${envyPorts.base}-${envyPorts.base + 9}`,
     );
 
+    // Setup output goes into the agent's prompt and the UI: secrets come out first, not just GitHub tokens.
+    const leaky = await folderProject("leaky", { "README.md": "leaky\n" }, { setupCommand: `${printKey("using")} >&2; exit 2` });
+    const leakyTask = await preparedTask(leaky, "Leak nothing");
+    noteBlock(leakyTask);
+    check(
+      "a failed setup's output has secrets hidden (any key-shaped text, not only GitHub tokens)",
+      leakyTask.task.setup?.state === "failed" && Boolean(leakyTask.task.setup.error?.includes("using [secret hidden]")) && !JSON.stringify(leakyTask.task).includes(API_KEY_SHAPE),
+      JSON.stringify(leakyTask.task.setup),
+    );
+
     // =============================================================================
     // Copy files
     // =============================================================================
@@ -373,6 +389,50 @@ if (!localSandboxed) {
       "a copy is never written through a symlink out of the worktree",
       !existsSync(join(HOME, "planted.env")) && existsSync(join(sneakyTask.task.repo!.worktree, "local.env")) && Boolean(sneakyTask.task.setup?.error?.includes("out/planted.env")),
       JSON.stringify(sneakyTask.task.setup),
+    );
+
+    // The branch has a symlink where a listed file goes, pointing at a file that doesn't exist yet (the user's
+    // folder, on another branch, has the real file): the copy mustn't create it through the link.
+    const dangling = await folderProject("dangling", { "README.md": "dangling\n" });
+    const planted = join(HOME, "planted-dangling.env");
+    symlinkSync(planted, join(dangling.source!, "local.env"));
+    git(dangling.source!, "add", "local.env");
+    git(dangling.source!, "commit", "-qm", "link");
+    git(dangling.source!, "checkout", "-q", "-b", "dev");
+    git(dangling.source!, "rm", "-q", "local.env");
+    git(dangling.source!, "commit", "-qm", "unlink");
+    writeFileSync(join(dangling.source!, "local.env"), `X=${SECRET}\n`);
+    await request("PATCH", `/projects/${dangling.id}`, { copyFiles: ["local.env"] });
+    // Its branch starts from main (the folder has dev checked out).
+    const dangle = tasks.create({ agentId: tot.id, projectId: dangling.id, goal: "Dangle", baseBranch: "main" });
+    taskStore.patch(dangle.id, { repo: await prepareTask(taskStore.get(dangle.id)!) });
+    const danglingTask = taskStore.get(dangle.id)!;
+    noteBlock(danglingTask);
+    check(
+      "…nor through a symlink that points nowhere yet",
+      lstatSync(join(danglingTask.task.repo!.worktree, "local.env")).isSymbolicLink() && !existsSync(planted) && Boolean(danglingTask.task.setup?.error?.includes("local.env")),
+      JSON.stringify(danglingTask.task.setup),
+    );
+
+    // The exclude check is git run by TOT itself: TOT's own GIT_DIR (a repo that ignores everything) mustn't steer it.
+    const decoy = join(HOME, "decoy");
+    makeRepo(decoy);
+    writeFileSync(join(decoy, ".git/info/exclude"), "*\n");
+    const decoyed = await folderProject("decoyed", { "README.md": "decoyed\n" });
+    writeFileSync(join(decoyed.source!, ".env"), `KEY=${SECRET}\n`);
+    await request("PATCH", `/projects/${decoyed.id}`, { copyFiles: [".env"] });
+    process.env.GIT_DIR = join(decoy, ".git");
+    let decoyedTask: TaskRecord;
+    try {
+      decoyedTask = await preparedTask(decoyed, "Ignore the decoy");
+    } finally {
+      delete process.env.GIT_DIR;
+    }
+    noteBlock(decoyedTask);
+    check(
+      "TOT's own GIT_DIR doesn't reach the git it runs: the copied .env is still kept out of commits",
+      readFileSync(join(decoyed.source!, ".git/info/exclude"), "utf8").includes("\n/.env\n") && git(decoyedTask.task.repo!.worktree, "status", "--porcelain") === "",
+      readFileSync(join(decoyed.source!, ".git/info/exclude"), "utf8"),
     );
 
     // =============================================================================
@@ -509,6 +569,104 @@ if (!localSandboxed) {
       r.text,
     );
 
+    // Its output goes back to the agent: secrets hidden.
+    r = await inShop("task_preview_start", { command: `${printKey("listening with")}; exit 1` });
+    check("a preview's output has secrets hidden", r.isError && r.text.includes("listening with [secret hidden]") && !r.text.includes(API_KEY_SHAPE), r.text);
+
+    // Two starts at once: one after the other, and only the second keeps running.
+    const [firstStart, secondStart] = await Promise.allSettled([
+      previews.start(shopTask.id, { command: devServer(), port: shopPorts.base + 1 }),
+      previews.start(shopTask.id, { command: devServer(), port: shopPorts.base + 2 }),
+    ]);
+    check(
+      "two task_preview_start calls at once leave one preview running, not two",
+      firstStart.status === "fulfilled" &&
+        secondStart.status === "fulfilled" &&
+        taskStore.get(shopTask.id)!.task.preview?.port === shopPorts.base + 2 &&
+        (await fetchText(local(shopPorts.base + 2))) !== null &&
+        (await until(async () => (await fetchText(local(shopPorts.base + 1))) === null)),
+      `${firstStart.status} ${secondStart.status} ${JSON.stringify(taskStore.get(shopTask.id)!.task.preview)}`,
+    );
+    const recorded = () => JSON.parse(readFileSync(join(DATA_DIR, "previews", "running.json"), "utf8")) as Record<string, { pid: number; started: string }>;
+    check("…and it's recorded on disk, with its process group", Number.isInteger(recorded()[shopTask.id]?.pid) && Boolean(recorded()[shopTask.id]?.started), JSON.stringify(recorded()));
+
+    // Stopping the agent's computer stops its previews too.
+    await computerManager.stop(tot.id);
+    check(
+      "stopping the computer stops the preview, and clears its link and record",
+      (await until(() => !previews.isRunning(shopTask.id) && taskStore.get(shopTask.id)!.task.preview === null)) &&
+        (await until(async () => (await fetchText(local(shopPorts.base + 2))) === null)) &&
+        !(shopTask.id in recorded()),
+      JSON.stringify(taskStore.get(shopTask.id)!.task.preview),
+    );
+
+    // TOT crashed with a preview running: the next TOT (a fresh copy of the module, its memory empty) stops it from the record.
+    r = await inShop("task_preview_start", { command: devServer() });
+    const crashedPid = recorded()[shopTask.id]?.pid;
+    const afterCrash = (await import(String("./worktrees/preview.ts?after-crash"))) as typeof import("./worktrees/preview.ts");
+    // A pid in the record that's someone else's by now (it started at another time) must survive.
+    const bystander = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });
+    bystander.unref();
+    await sleep(200);
+    writeFileSync(join(DATA_DIR, "previews", "running.json"), JSON.stringify({ ...recorded(), "task-gone": { pid: bystander.pid, started: "Thu Jan 1 00:00:00 1970" } }));
+    afterCrash.previews.forgetStale();
+    const alive = (pid: number | undefined) => {
+      try {
+        process.kill(pid!, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    check(
+      "after a crash, TOT stops a preview it left running (found by its recorded pid and start time)",
+      !r.isError &&
+        Boolean(crashedPid) &&
+        (await until(async () => (await fetchText(local(shopPorts.base))) === null)) &&
+        (await until(() => !alive(crashedPid) && !previews.isRunning(shopTask.id))),
+      r.text,
+    );
+    check("…never a process whose pid only looks the same (another start time)", alive(bystander.pid) && JSON.stringify(recorded()) === "{}", JSON.stringify(recorded()));
+    process.kill(bystander.pid!, "SIGKILL");
+
+    // Landing (merge) and discarding stop the preview before the worktree goes.
+    const shipping = await folderProject("shipping", { "README.md": "shipping\n" });
+    const shipIt = await preparedTask(shipping, "Ship it");
+    const dropIt = await preparedTask(shipping, "Drop it");
+    for (const [task, file] of [
+      [shipIt, "ship.txt"],
+      [dropIt, "drop.txt"],
+    ] as const) {
+      const tree = task.task.repo!.worktree;
+      writeFileSync(join(tree, file), "work\n");
+      git(tree, "add", file);
+      git(tree, "commit", "-qm", file);
+      taskStore.patch(task.id, { repo: { ...task.task.repo!, headSha: git(tree, "rev-parse", "HEAD") } });
+      taskStore.transition(task.id, "running");
+      taskStore.transition(task.id, "done", { summary: "Done." });
+      const started = await previews.start(task.id, { command: devServer() });
+      if (!started.ready) throw new Error(`no preview for ${file}`);
+    }
+    const shipPort = taskStore.get(shipIt.id)!.task.preview!.port;
+    res = await request<Conversation>("POST", `/tasks/${shipIt.id}/land`, { method: "merge", headSha: taskStore.get(shipIt.id)!.task.repo!.headSha });
+    check(
+      "merging stops the task's preview first (it's gone when the merge returns), then its worktree goes",
+      res.status === 200 &&
+        res.data.task?.landing?.kind === "merged" &&
+        res.data.task.preview === null &&
+        !previews.isRunning(shipIt.id) &&
+        !existsSync(shipIt.task.repo!.worktree) &&
+        (await fetchText(local(shipPort))) === null,
+      JSON.stringify(res.data.task ?? res.data).slice(0, 300),
+    );
+    const dropPort = taskStore.get(dropIt.id)!.task.preview!.port;
+    res = await request<Conversation>("POST", `/tasks/${dropIt.id}/discard`);
+    check(
+      "…and so does discarding",
+      res.status === 200 && res.data.task?.landing?.kind === "discarded" && res.data.task.preview === null && !previews.isRunning(dropIt.id) && (await fetchText(local(dropPort))) === null,
+      JSON.stringify(res.data.task ?? res.data).slice(0, 300),
+    );
+
     // A Boat computer has no preview; and a chat has no preview tools.
     const cloudy = agents.create({ name: "Cloudy", mascot });
     queueHolds.set(cloudy.id, null, "test");
@@ -596,6 +754,46 @@ if (!localSandboxed) {
       "a cleaned-up task picked up again gets its worktree back from its branch, set up again, with ports",
       existsSync(again.worktree) && again.branch === old.task.repo!.branch && Boolean(again.headSha) && revived.task.setup?.state === "done" && Boolean(revived.task.ports),
       JSON.stringify(revived.task.setup),
+    );
+
+    // Work the task never committed (a new file) keeps its worktree where it is.
+    const unsaved = await preparedTask(shop, "Unsaved work");
+    finish(unsaved, 20);
+    writeFileSync(join(unsaved.task.repo!.worktree, "notes.md"), "not committed\n");
+    res = await request("POST", "/worktrees/cleanup");
+    check(
+      "cleanup leaves a worktree with uncommitted work (a new file) alone",
+      res.status === 200 && existsSync(join(unsaved.task.repo!.worktree, "notes.md")) && Boolean(taskStore.get(unsaved.id)!.task.repo!.headSha),
+      JSON.stringify(res.data),
+    );
+
+    // A task being picked up again (it holds its lock, as tasks.message does) is never cleaned up under it.
+    const picked = await preparedTask(shop, "Picked up again");
+    finish(picked, 20);
+    let sweep: Promise<{ removed: number }> | null = null;
+    await worktrees.forTask(picked.id, async () => {
+      sweep = worktreeCleanup.run();
+      await sleep(300);
+      taskStore.transition(picked.id, "running");
+    });
+    const swept = await sweep!;
+    check(
+      "cleanup looks at a task again once it's its turn: one picked up meanwhile keeps its worktree",
+      swept.removed === 0 && existsSync(picked.task.repo!.worktree) && Boolean(taskStore.get(picked.id)!.task.repo!.headSha),
+      JSON.stringify(swept),
+    );
+    taskStore.transition(picked.id, "done", { summary: "Done." });
+
+    // Two replies at once to a cleaned-up task: its worktree is made once, and set up once.
+    const twice = await folderProject("twice", { "README.md": "twice\n" }, { setupCommand: "echo ran >> setup-runs.txt" });
+    const twiceTask = await preparedTask(twice, "Set up once");
+    await worktrees.remove(tot.id, twiceTask.task.repo!, { force: true, grant: grantFor(twiceTask) });
+    taskStore.patch(twiceTask.id, { repo: { ...twiceTask.task.repo!, headSha: null }, setup: null });
+    const [onceA] = await Promise.all([prepareTask(taskStore.get(twiceTask.id)!), prepareTask(taskStore.get(twiceTask.id)!)]);
+    check(
+      "two set-ups at once of a cleaned-up task run its setup once",
+      readFileSync(join(onceA.worktree, "setup-runs.txt"), "utf8") === "ran\n",
+      readFileSync(join(onceA.worktree, "setup-runs.txt"), "utf8"),
     );
   } catch (err) {
     check("the test ran to the end", false, err instanceof Error ? (err.stack ?? err.message) : String(err));
