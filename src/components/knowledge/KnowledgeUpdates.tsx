@@ -1,6 +1,225 @@
-import type { Project } from "@shared/types";
+import { Fragment, useCallback, useEffect, useState, type ComponentType } from "react";
+import clsx from "clsx";
+import { GitBranch, GitMerge, LoaderCircle, MessageSquare, MoonStar, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import type { KnowledgeTrigger, KnowledgeUpdate, Project } from "@shared/types";
+import { api, errorMessage } from "../../lib/api";
+import { relativeTime } from "../../lib/format";
+import { projectMemoryRepo, useMemoryUi } from "../../lib/memory";
+import { navigateToWiki, notifyError, selectActiveAgentId, useStore } from "../../store";
+import { ConfirmDialog } from "../ConfirmDialog";
+import { Button } from "../ui/Button";
+import { Callout } from "../ui/Callout";
+import { cardClass } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
+import { SectionHeader } from "../ui/SectionHeader";
+import { Skeleton } from "../ui/Skeleton";
 
-/** Module 11 (docs/roadmap/11-workspaces.md). Lane C: the project's knowledge auto-updates, with Undo. */
-export function KnowledgeUpdates(_props: { project: Project }) {
-  return null;
+/**
+ * Module 11 (docs/roadmap/11-workspaces.md), lane C: a project's knowledge auto-updates, newest first: "Updated
+ * after “Fix cart” · 2 pages, 1 fact", with Undo (confirmed) on hover, runs in progress on top, and Check now
+ * for a project with repos. Reloads on `memory` events for the project's knowledge repo, which every change
+ * to the log sends. Knowledge stays on its device: nothing for another device's project.
+ */
+
+const ICONS: Record<KnowledgeTrigger, ComponentType<{ className?: string }>> = {
+  landed: GitMerge,
+  "base-moved": GitBranch,
+  manual: GitBranch,
+  chat: MessageSquare,
+  dreaming: MoonStar,
+};
+
+const PAGE = 6;
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** "2 pages, 1 fact"; empty when it changed nothing. */
+function changeText(update: KnowledgeUpdate): string {
+  return [update.pages.length && plural(update.pages.length, "page"), update.facts && plural(update.facts, "fact")].filter(Boolean).join(", ");
+}
+
+const undoable = (update: KnowledgeUpdate) => !update.running && !update.undoneAt && !update.error && (update.sha !== null || update.pages.length > 0);
+
+export function KnowledgeUpdates({ project }: { project: Project }) {
+  const repo = projectMemoryRepo(project.slug);
+  const version = useMemoryUi((s) => s.versions[repo] ?? 0);
+  const agentId = useStore(selectActiveAgentId);
+  const remote = Boolean(project.deviceId);
+  const [updates, setUpdates] = useState<KnowledgeUpdate[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [limit, setLimit] = useState(PAGE);
+  const [checking, setChecking] = useState(false);
+  const [undoing, setUndoing] = useState<KnowledgeUpdate | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setUpdates(await api.knowledgeUpdates(project.id));
+      setError(null);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }, [project.id]);
+
+  useEffect(() => {
+    if (!remote) void load();
+  }, [load, version, remote]);
+
+  if (remote) return null;
+  const hasRepos = (project.repos?.length ?? (project.kind !== "none" && project.source ? 1 : 0)) > 0;
+
+  async function checkNow() {
+    setChecking(true);
+    try {
+      const result = await api.refreshKnowledge(project.id);
+      setUpdates(result.updates);
+      if (!result.moved) toast.success("Up to date");
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function undo(update: KnowledgeUpdate) {
+    try {
+      await api.undoKnowledgeUpdate(project.id, update.id);
+      void load();
+    } catch (err) {
+      notifyError(err);
+    }
+  }
+
+  const shown = updates?.slice(0, limit) ?? [];
+
+  return (
+    <section className="space-y-3">
+      <SectionHeader
+        as="h3"
+        title="Updates"
+        description="TOT updates the docs and facts after a task lands and when a repo's main branch moves. Each update can be undone."
+        action={
+          hasRepos && (
+            <Button size="sm" variant="ghost" disabled={checking} onClick={() => void checkNow()}>
+              <RefreshCw className={clsx(checking && "animate-spin")} /> {checking ? "Checking…" : "Check now"}
+            </Button>
+          )
+        }
+      />
+      {error && !updates && (
+        <Callout
+          tone="danger"
+          action={
+            <button type="button" className="link-muted" onClick={() => void load()}>
+              Try again
+            </button>
+          }
+        >
+          Couldn't load the updates.
+        </Callout>
+      )}
+      {!error && !updates && (
+        <div aria-busy aria-label="Loading updates">
+          <Skeleton className="h-28 rounded-xl" />
+        </div>
+      )}
+      {updates && !updates.length && (
+        <EmptyState
+          size="sm"
+          variant="dashed"
+          title="No updates yet"
+          description="When a task lands or a repo's main branch moves, TOT updates this project's docs and facts, and the change shows here."
+        />
+      )}
+      {shown.length > 0 && (
+        <>
+          <ul className={cardClass({ padding: "none" })}>
+            {shown.map((update, index) => (
+              <UpdateRow
+                key={update.id}
+                update={update}
+                first={index === 0}
+                onOpenPage={agentId ? (pageId) => navigateToWiki(agentId, pageId) : null}
+                onUndo={() => setUndoing(update)}
+              />
+            ))}
+          </ul>
+          {updates!.length > limit && (
+            <button type="button" className="link-muted text-xs" onClick={() => setLimit((n) => n + 20)}>
+              Show older updates
+            </button>
+          )}
+        </>
+      )}
+      <ConfirmDialog
+        open={Boolean(undoing)}
+        onOpenChange={(open) => !open && setUndoing(null)}
+        title="Undo this update?"
+        description={
+          undoing
+            ? `“${undoing.summary}”. ${changeText(undoing) ? `Its ${changeText(undoing)} go back` : "What it changed goes back"} to how they were, as a new change; nothing else is touched.`
+            : ""
+        }
+        confirmLabel="Undo"
+        onConfirm={() => undoing && void undo(undoing)}
+      />
+    </section>
+  );
+}
+
+function UpdateRow({
+  update,
+  first,
+  onOpenPage,
+  onUndo,
+}: {
+  update: KnowledgeUpdate;
+  first: boolean;
+  onOpenPage: ((pageId: string) => void) | null;
+  onUndo: () => void;
+}) {
+  const Icon = ICONS[update.trigger] ?? GitBranch;
+  const busy = update.running && !update.error;
+  const changed = changeText(update);
+  const meta = [changed, update.undoneAt ? "Undone" : "", relativeTime(update.undoneAt ?? update.at)].filter(Boolean).join(" · ");
+
+  return (
+    <li className={clsx("group flex items-start gap-3 px-4 py-2.5", !first && "border-t border-hairline")}>
+      {busy ? <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-fg-subtle" /> : <Icon className="mt-0.5 size-4 shrink-0 text-fg-subtle" />}
+      <div className="min-w-0 flex-1">
+        <p className={clsx("line-clamp-2 text-sm [overflow-wrap:anywhere]", update.undoneAt ? "text-fg-muted" : "text-fg")} title={update.summary}>
+          {update.summary}
+          {busy && "…"}
+        </p>
+        <p className="mt-0.5 text-xs text-fg-subtle tabular-nums">{meta}</p>
+        {update.error && <p className={clsx("mt-0.5 line-clamp-2 text-xs", update.running ? "text-warning" : "text-danger")}>{update.error}</p>}
+        {update.pages.length > 0 && !update.undoneAt && (
+          <p className="mt-0.5 truncate text-xs text-fg-muted">
+            {update.pages.map((page, index) => (
+              <Fragment key={page.id}>
+                {index > 0 && ", "}
+                {onOpenPage ? (
+                  <button type="button" className="link-muted" onClick={() => onOpenPage(page.id)}>
+                    {page.title}
+                  </button>
+                ) : (
+                  page.title
+                )}
+              </Fragment>
+            ))}
+          </p>
+        )}
+      </div>
+      {undoable(update) && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onUndo}
+          className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+        >
+          Undo
+        </Button>
+      )}
+    </li>
+  );
 }

@@ -32,6 +32,8 @@ import type {
   GitHubDeviceStart,
   GitHubRepo,
   GitHubStatus,
+  KnowledgeRefreshResult,
+  KnowledgeUpdate,
   LandTaskRequest,
   LearnRepoRequest,
   MailMessage,
@@ -256,6 +258,13 @@ export const api = {
   // Module 11 · lane B (knowledge: status, panel).
 
   // Module 11 · lane C (knowledge auto-updates).
+  /** A project's knowledge auto-updates, newest first: runs in progress (`running`), then the last 50. */
+  knowledgeUpdates: (projectId: string) => request<KnowledgeUpdate[]>("GET", `/projects/${seg(projectId)}/knowledge/updates`),
+  /** Checks the project's repos for new commits now; an update is queued for each one that moved. */
+  refreshKnowledge: (projectId: string) => request<KnowledgeRefreshResult>("POST", `/projects/${seg(projectId)}/knowledge/refresh`, {}),
+  /** Puts back what one update changed, as a new commit; 409 when a page it wrote changed since. */
+  undoKnowledgeUpdate: (projectId: string, updateId: string) =>
+    request<KnowledgeUpdate>("POST", `/projects/${seg(projectId)}/knowledge/updates/${seg(updateId)}/undo`, {}),
 
   // Module 11 · lane D (the Lead, Home).
 
