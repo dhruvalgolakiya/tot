@@ -307,8 +307,9 @@ export const api = {
   /** Archives it: it leaves the sidebar; its chats and brain stay. */
   archiveProject: (id: string) => request<Project>("DELETE", `/projects/${seg(id)}`),
   /** Learn a repo into the project's brain; returns the study chat, filed under the project. */
-  learnProject: (id: string, agentId: string) =>
-    request<{ conversationId: string; runId: string }>("POST", `/projects/${seg(id)}/learn`, { agentId }),
+  /** Learn the project's code; `repo` picks one of its repos (module 11), else the primary. */
+  learnProject: (id: string, agentId: string, repo?: string) =>
+    request<{ conversationId: string; runId: string }>("POST", `/projects/${seg(id)}/learn`, repo ? { agentId, repo } : { agentId }),
   /** A folder project: the user allows agents to work in the folder. */
   grantProjectFolder: (id: string) => request<Project>("POST", `/projects/${seg(id)}/grant`, {}),
   /** Git folders on this Mac, for the folder picker: `path` is absolute, `label` is "~/…". */

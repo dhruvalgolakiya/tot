@@ -135,6 +135,11 @@ export const repoHeads = {
     ).run(projectId, repoName, branch, sha, Date.now());
   },
 
+  /** The repo was renamed (module 11): its head follows, so a rename isn't taken for a move. */
+  rename(projectId: string, from: string, to: string): void {
+    db.prepare(`UPDATE OR REPLACE knowledge_repo_heads SET repo_name = ? WHERE project_id = ? AND repo_name = ?`).run(to, projectId, from);
+  },
+
   /** Checked and unchanged: only the time moves. */
   touch(projectId: string, repoName: string): void {
     db.prepare(`UPDATE knowledge_repo_heads SET checked_at = ? WHERE project_id = ? AND repo_name = ?`).run(Date.now(), projectId, repoName);

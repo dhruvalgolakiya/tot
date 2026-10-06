@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Ellipsis, FolderGit, Pencil, Plus, Star, Trash2 } from "lucide-react";
+import { Ellipsis, FolderGit, GraduationCap, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import type { Project, ProjectRepo } from "@shared/types";
-import { errorMessage } from "../../lib/api";
+import { api, errorMessage } from "../../lib/api";
 import { grantProjectRepo, removeProjectRepo, repoSourceLabel, updateProjectRepo } from "../../lib/project-repos";
 import { PROJECT_ICONS, tildePath } from "../../lib/projects";
-import { notifyError } from "../../store";
+import { navigateToConversation, notifyError, selectActiveAgent, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -20,8 +20,8 @@ import { FolderConsentText, folderConsentTitle } from "./FolderConsent";
 /**
  * Module 11 (docs/roadmap/11-workspaces.md), lane A: the project's repos, the primary first, each a flat row
  * (its name, what it is, its base branch). Add one (a GitHub repo, or a folder on this Mac with consent);
- * a row's "…" menu renames it or sets its base branch, makes it the primary, or removes it (refused while
- * a task has work in it). A folder not allowed yet shows "Allow…". Placed by lane D (the project's Repos tab).
+ * a row's "…" menu learns it (its docs go under its own page in the project's knowledge), renames it or sets
+ * its base branch, makes it the primary, or removes it (refused while a task has work in it). A folder not allowed yet shows "Allow…". Placed by lane D (the project's Repos tab).
  */
 export function ProjectRepos({ project }: { project: Project }) {
   const repos = project.repos ?? [];
@@ -30,10 +30,21 @@ export function ProjectRepos({ project }: { project: Project }) {
   const [editing, setEditing] = useState<ProjectRepo | null>(null);
   const [removing, setRemoving] = useState<ProjectRepo | null>(null);
   const [allowing, setAllowing] = useState<ProjectRepo | null>(null);
+  const agent = useStore(selectActiveAgent);
 
   async function makePrimary(repo: ProjectRepo) {
     try {
       await updateProjectRepo(project.id, repo.name, { primary: true });
+    } catch (error) {
+      notifyError(error);
+    }
+  }
+
+  async function learn(repo: ProjectRepo) {
+    if (!agent) return;
+    try {
+      const { conversationId } = await api.learnProject(project.id, agent.id, repo.name);
+      navigateToConversation(conversationId);
     } catch (error) {
       notifyError(error);
     }
@@ -92,6 +103,7 @@ export function ProjectRepos({ project }: { project: Project }) {
               repo={repo}
               editable={editable}
               onAllow={() => setAllowing(repo)}
+              onLearn={agent && !(repo.kind === "folder" && !repo.folderGranted) ? () => void learn(repo) : undefined}
               onEdit={() => setEditing(repo)}
               onMakePrimary={() => void makePrimary(repo)}
               onRemove={() => setRemoving(repo)}
@@ -123,6 +135,7 @@ function RepoRow({
   repo,
   editable,
   onAllow,
+  onLearn,
   onEdit,
   onMakePrimary,
   onRemove,
@@ -130,6 +143,8 @@ function RepoRow({
   repo: ProjectRepo;
   editable: boolean;
   onAllow: () => void;
+  /** Absent when it can't be learned now (no agent, or a folder not allowed yet). */
+  onLearn?: () => void;
   onEdit: () => void;
   onMakePrimary: () => void;
   onRemove: () => void;
@@ -181,6 +196,11 @@ function RepoRow({
                 next();
               }}
             >
+              {onLearn && (
+                <DropdownMenu.Item className="menu-item" onSelect={onLearn}>
+                  <GraduationCap className="size-4 text-fg-muted" /> Learn this repo
+                </DropdownMenu.Item>
+              )}
               <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = onEdit)}>
                 <Pencil className="size-4 text-fg-muted" /> Rename…
               </DropdownMenu.Item>

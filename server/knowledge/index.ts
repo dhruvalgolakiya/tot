@@ -69,6 +69,20 @@ export const knowledge = {
     }).result;
   },
 
+  /**
+   * A project repo was renamed (module 11): the page heading its docs follows (`repo: <to>`), and its subtree
+   * moves to repos/<to>/ in one commit. Nothing when the repo has no docs yet.
+   */
+  renameRepo(brainId: string, from: string, to: string): void {
+    const row = db
+      .prepare(`SELECT id FROM wiki_pages WHERE brain_id = ? AND deleted_at IS NULL AND repo IS NOT NULL AND lower(repo) = lower(?) ORDER BY created_at LIMIT 1`)
+      .get(brainId, from) as Row | undefined;
+    const page = row ? wiki.get(String(row.id)) : null;
+    if (!page || page.repo === to) return;
+    const name = cleanRepoName(to);
+    inBatch(brainId, { subject: `TOT: the docs of ${from} are now ${name}'s`, actor: "TOT" }, () => setRepo(page, name));
+  },
+
   /** A repo's docs: its head page and everything under it, in tree order (empty when it has none yet). */
   repoPages(brainId: string, repoName: string): WikiPageSummary[] {
     const outline = wiki.list(brainId);

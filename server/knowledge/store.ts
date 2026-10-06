@@ -566,6 +566,18 @@ export async function flush(brainId: string): Promise<string | null> {
   return head(repoOf(brainId));
 }
 
+/**
+ * Waits until every page change recorded so far for any brain whose pages live in `repo` is committed (module 11:
+ * auto-update runs count a write's commit as theirs only once it has landed). Never call it in the repo's turn.
+ */
+export async function flushRepo(repo: string): Promise<void> {
+  const rows = db.prepare(`SELECT DISTINCT brain_id FROM wiki_changes`).all() as Row[];
+  for (const row of rows) {
+    const brainId = String(row.brain_id);
+    if (repoOf(brainId) === repo) await flush(brainId);
+  }
+}
+
 /** The commit a change (or a batch) landed in, once it has. */
 export const landedIn = (changeOrBatch: string) => landed.get(changeOrBatch) ?? null;
 

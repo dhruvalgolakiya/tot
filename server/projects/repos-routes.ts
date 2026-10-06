@@ -1,6 +1,8 @@
 import { Hono, type Context } from "hono";
 import type { AddProjectRepoRequest, UpdateProjectRepoRequest } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
+import { repoHeads } from "../knowledge/auto/log.ts";
+import { knowledge } from "../knowledge/index.ts";
 import { projectRepos } from "./repos.ts";
 
 /**
@@ -19,9 +21,23 @@ async function body<T>(c: Context): Promise<T> {
 
 projectRepoRoutes.post("/projects/:id/repos", async (c) => c.json(projectRepos.add(c.req.param("id"), await body<AddProjectRepoRequest>(c)), 201));
 
-projectRepoRoutes.patch("/projects/:id/repos/:name", async (c) =>
-  c.json(projectRepos.update(c.req.param("id"), c.req.param("name"), await body<UpdateProjectRepoRequest>(c))),
-);
+projectRepoRoutes.patch("/projects/:id/repos/:name", async (c) => {
+  const projectId = c.req.param("id");
+  const was = projectRepos.get(projectId, c.req.param("name"));
+  const project = projectRepos.update(projectId, c.req.param("name"), await body<UpdateProjectRepoRequest>(c));
+  // A rename: the repo's docs in the knowledge (and the head auto-update last saw) follow its new name. The
+  // repo is found again by its folder, which a rename never changes.
+  const now = was ? projectRepos.list(projectId).find((repo) => projectRepos.folder(repo) === projectRepos.folder(was) && repo.kind === was.kind) : null;
+  if (was && now && now.name !== was.name) {
+    repoHeads.rename(projectId, was.name, now.name);
+    try {
+      knowledge.renameRepo(project.brainId, was.name, now.name);
+    } catch (err) {
+      console.warn(`[tot] the docs of ${was.name} didn't follow its rename:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return c.json(project);
+});
 
 projectRepoRoutes.delete("/projects/:id/repos/:name", (c) => c.json(projectRepos.remove(c.req.param("id"), c.req.param("name"))));
 

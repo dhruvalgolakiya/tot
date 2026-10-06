@@ -323,6 +323,19 @@ try {
   check("history says the head page was created", mobileCommit?.pages.find((p) => p.id === mobile.id)?.action === "created" && mobileCommit.subject === "TOT: start the docs of mobile", JSON.stringify(mobileCommit?.pages));
   check("repoHead finds it again; repoPages lists its docs", knowledge.repoHead(ids.shopBrain, "Mobile").id === mobile.id && knowledge.repoPages(ids.shopBrain, "mobile").map((p) => p.id).join() === [mobile.id, screen.id].join());
   check("WikiPageSummary.repo marks heads", wiki.list(ids.shopBrain).filter((p) => p.repo).map((p) => p.repo).sort().join() === "api,mobile");
+  knowledge.renameRepo(ids.shopBrain, "mobile", "app");
+  await knowledge.flush(ids.shopBrain);
+  check(
+    "a repo renamed: its head page follows, and its docs move to repos/<new>/ in one commit",
+    wiki.get(mobile.id)?.repo === "app" &&
+      read(shopDir, "repos/app/README.md")?.includes("repo: app") === true &&
+      read(shopDir, "repos/app/screens.md")?.includes("Expo router.") === true &&
+      !read(shopDir, "repos/mobile/README.md") &&
+      (await subjects(shopDir, 1))[0] === "TOT: the docs of mobile are now app's",
+    (await subjects(shopDir, 1))[0],
+  );
+  knowledge.renameRepo(ids.shopBrain, "app", "mobile");
+  await knowledge.flush(ids.shopBrain);
 
   console.log("\n# Learn a repo for a project repo writes under its head page");
   const turnsBefore = turns.length;

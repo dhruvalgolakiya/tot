@@ -41,6 +41,7 @@ const { memories } = await import("./data/memories.ts");
 const { messages } = await import("./data/messages.ts");
 const { settings } = await import("./data/settings.ts");
 const { wiki } = await import("./data/wiki.ts");
+const { knowledge } = await import("./knowledge/index.ts");
 const { createApp } = await import("./app.ts");
 const { computerManager } = await import("./computer/manager.ts");
 const { localSandboxed } = await import("./computer/local.ts");
@@ -232,6 +233,13 @@ check(
   JSON.stringify(fixRun),
 );
 check("the commit says what it skipped", (await kLog(kDir, "%b")).includes("Skipped 4 that didn't check out") && (await kLog(kDir, "%b")).includes(SECRET_REFUSAL));
+check(
+  "the one commit keeps the page's trailers (the page and its writer), so its history reads as TOT's",
+  (await kLog(kDir, "%b")).includes(`TOT-Page: ${cart.id} `) &&
+    (await kLog(kDir, "%b")).includes("TOT-Author: keeper") &&
+    (await knowledge.history(project, 1))[0]?.pages.some((page) => page.id === cart.id && page.action === "edited"),
+  `${await kLog(kDir, "%b")}\n${JSON.stringify((await knowledge.history(project, 1))[0])}`,
+);
 
 // The wiki keeper leaves a task to its landing's update.
 modelCalls = 0;
@@ -251,7 +259,11 @@ land(rename.task.id, rename.sha);
 await until(() => runFor(rename.task.id) !== null);
 const renameRun = runFor(rename.task.id);
 check("the user's edit stands; nothing to update", wiki.get(cart.id)!.content === userText && renameRun?.summary === "Nothing to update after “Rename cart total”" && renameRun.sha === null && !renameRun.pages.length, JSON.stringify(renameRun));
-check("…and no commit", (await kCommits(kDir)) === commitsBefore);
+check(
+  "…and no commit of its own (only the user's edit, by the user)",
+  (await kCommits(kDir)) === commitsBefore + 1 && (await kLog(kDir, "%b")).includes("TOT-Author: user"),
+  await kLog(kDir, "%s%n%b"),
+);
 
 // --- Undo ---------------------------------------------------------------------------------------------------------
 console.log("\n# Undo");
