@@ -20,6 +20,7 @@ TOT has playbooks (step-by-step recipes like Bug fix, Feature and Refactor), a p
 
 - **Stacked pull requests**, where one task builds on another's branch. Every task starts from the main branch.
 - **Preview on cloud computers.** A task's Preview link works on local computers only.
+- **One task across several repos.** In a project with more than one, each task still works in just one; a Lead splits bigger work into one task per repo instead.
 
 ## Projects and computers
 
@@ -33,7 +34,7 @@ TOT has playbooks (step-by-step recipes like Bug fix, Feature and Refactor), a p
 - **Agents working across Macs**: an agent on one Mac starting a task for an agent on another.
 - **Previews from other screens.** A task's Preview opens on its own Mac only.
 - **Offline Macs.** While a paired Mac is off, you can't read its chats.
-- **Project memory on more than one Mac.** Only your About you memory follows you.
+- **Project knowledge on more than one Mac.** Only your About you memory follows you.
 
 ## The Mac app
 

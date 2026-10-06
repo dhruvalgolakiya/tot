@@ -7,9 +7,9 @@ TOT is an app for your Mac that gives you a small team of AI agents. You talk to
 - **Agents with faces.** Each agent has a mascot, its own instructions and a default model. Make as many as you like; Tot is the first.
 - **Two brains, one app.** Claude through your Claude Pro or Max plan, ChatGPT through your Plus or Pro plan. **TOT Auto** picks one for each message, and switches when a plan hits its limit.
 - **A computer per agent.** Agents run commands on a computer of their own, not on your files: a sandboxed folder on your Mac, or a cloud machine with a desktop it can click around.
-- **A memory.** Agents keep short facts about you and your projects, and longer notes in a wiki.
+- **A memory.** Agents keep short facts about you and your projects, and longer notes in each project's own wiki, kept current by itself.
 - **Background work.** Ask for something big and the agent starts tasks that keep going while you chat, then report back.
-- **Many coding agents at once.** Run several on one project, see them on one board, and land their code when you're happy with it.
+- **Many coding agents at once.** A project can hold several repos; run tasks across them, see them all on one board, and land their code — yourself, or through the project's **Lead**, which only ever asks first.
 - **Everywhere you are.** Use TOT from your phone, pair your Macs, or keep it in your menu bar with the Mac app.
 
 ## How it works

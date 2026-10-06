@@ -5,8 +5,9 @@ TOT's agents can do real things: run code, push branches, send email. So some th
 - **Merge a pull request on GitHub.** Agents have no tool to merge, and Mission control only opens *draft* pull requests. Merging is yours, on GitHub.
 - **Merge into your folder without you.** **Merge into main** in Mission control runs only when you press it, only when your folder has no uncommitted changes, and only when there are no conflicts.
 - **Push anything but its own branches from Mission control.** Draft PRs push only `tot/…` branches, never your main branch, and never force-push.
+- **Land what a project's Lead proposes, on its own.** Its `task_land` and `task_discard` only run after you press **Approve** on the card they show, at exactly the commit it showed.
 - **Change your checked-out files.** In a folder project, agents can read the folder and make branches, but the sandbox stops them from writing to your files.
-- **Store secrets in memory.** Anything that looks like a password, token or key is refused.
+- **Store secrets in memory or a project's knowledge.** Anything that looks like a password, token or key is refused.
 - **Print your secrets.** Tokens are scrubbed from logs, errors and tool output.
 
 ## What it asks first
@@ -15,7 +16,7 @@ TOT's agents can do real things: run code, push branches, send email. So some th
 - **App actions that change things.** New apps start at **Ask me**. You can set each action to **Allowed**, **Ask me** or **Blocked**.
 - **Folders on your Mac.** Agents can't see a folder until you add it as a project and say **Allow**.
 
-Approval cards wait about a minute. If you don't answer, the answer is no.
+Approval cards wait about a minute. If you don't answer, the answer is no. A project's Lead is the exception: its cards to land or discard a task wait for you as long as it takes; only your answer lands or discards anything.
 
 ## What's off until you turn it on
 
@@ -38,7 +39,7 @@ With GitHub writes on, agents are told never to push to the default branch, forc
 ## Your files and computers
 
 - Agents run commands on their own computer, not on your Mac. A local computer is sandboxed by macOS: it writes only inside its own folder, and can't read your personal files.
-- Each coding task works in its own copy of the code (a worktree), on its own `tot/…` branch.
+- Each coding task works in its own copy of one of the project's repos (a worktree), on its own `tot/…` branch.
 - Files you list to copy into worktrees, like `.env`, are copied but never shown.
 - Discarding a task never deletes a branch that was pushed.
 

@@ -6,9 +6,10 @@ A task is work that keeps going in the background. It's a chat that works on its
 
 - **Ask for real work in a chat.** "Fix the flaky checkout test" or "research these five vendors and compare them". The agent decides when to start a task, and can start several at once. Each one shows up in your chat as a live card.
 - **Start one yourself.** Turn on **Task** in the message box, press `⌘↩`, or type `/task`. See [Mission control](/docs/mission-control) for `/parallel` and `/best-of`.
+- **From a project's Lead.** A project's Lead chat plans and starts the project's tasks itself, across any of its repos, and watches every task in the project, not only the ones it started. See [Projects](/docs/projects#the-lead).
 - **From Slack or email.** A request becomes a chat, and its agent starts tasks the same way.
 
-Tasks aren't only for code. A research task gets everything except git.
+Tasks aren't only for code. A research task gets everything except git. A coding task in a project with more than one repo works in just one of them.
 
 ## The task card
 

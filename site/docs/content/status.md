@@ -35,7 +35,9 @@ More in [Tasks](/docs/tasks).
 More in [Projects](/docs/projects).
 
 - [Available] **Three kinds**: a GitHub repo, a folder on your Mac (with your OK), or a topic.
-- [Available] **The project page**, with every agent's chats, instructions, a brain and memory.
+- [Available] **Several repos in one project**, any mix of GitHub repos and folders, one task per repo.
+- [Available] **A Lead chat per project.** Plans the work, starts and watches tasks across the project's repos, and lands only with your OK, by a card that waits for you.
+- [Available] **One screen.** The project page: the Lead in the middle, with Board, Chats, Knowledge and Repos tabs, and a row for every project on each agent's home screen.
 - [Available] **Tickets and intake.** Linear and GitHub links, Slack channels and Linear teams.
 - [Not yet] **Folder projects on cloud computers.** Folders on your Mac need a local computer.
 
@@ -57,11 +59,12 @@ More in [Mission control](/docs/mission-control).
 
 More in [Memory](/docs/memory).
 
-- [Available] **About you and per project**, as git repos of markdown.
-- [Available] **History and Undo** for every change.
+- [Available] **About you and per project**, as git repos of markdown. A project's is one knowledge base with its wiki: facts, pages and each repo's own docs.
+- [Available] **History and Undo** for every change, to a fact or a page.
+- [Available] **Keeps itself current.** After a task lands, when a repo's main branch moves, from chats, and in Dreaming, with Undo on each update.
 - [Available] **Dreaming**, a nightly tidy-up you can undo.
 - [Available] **Sync between your Macs**, for About you, and an optional git backup.
-- [Not yet] **Project memory on more than one Mac.**
+- [Not yet] **Project knowledge on more than one Mac.**
 
 ## Computers
 

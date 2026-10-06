@@ -10,9 +10,9 @@ Connect GitHub so agents can read issues and pull requests, clone private repos,
 **Writes are off by default.** The switch **Agents can push and open pull requests** decides:
 
 - **Off**: GitHub tools are read-only, and pushes are blocked.
-- **On**: agents work on branches and open pull requests when you ask. Merging and pushing to the main branch stay off-limits unless you ask.
+- **On**: agents work on branches and open pull requests when you ask. They're told never to push to the main branch, force-push or merge, unless you ask for that exact action — but that's an instruction, not something the code enforces. See [Safety](/docs/safety#pushing-to-your-main-branch).
 
-Whatever the switch says, agents have no tool to merge a pull request. You merge on GitHub yourself. For a hard read-only guarantee, connect a read-only token.
+Whatever the switch says, agents have no tool to merge a pull request. You merge on GitHub yourself. For a hard guarantee against pushes to the main branch, connect a read-only token.
 
 ## Slack
 
@@ -66,7 +66,7 @@ Plugins add tools from any MCP server, the standard way to give AI models extra 
 
 ## Approvals, in short
 
-When an agent wants to do something that needs you, its chat shows a card with **Approve** and **Deny** (or a form to fill in). It waits about a minute. If you don't answer, it's declined.
+When an agent wants to do something that needs you, its chat shows a card with **Approve** and **Deny** (or a form to fill in). It waits about a minute. If you don't answer, it's declined. The exception is a project's Lead: its cards to land or discard a task wait for you as long as it takes; see [Projects](/docs/projects#the-lead).
 
 ## Limits
 

@@ -2,13 +2,13 @@ Mission control is how you run many coding agents on one project at once, from o
 
 **Why you'd use it:** a big change rarely fits in one go. Split it into tasks, let them run side by side, and stay in charge of what lands.
 
-Each coding task works in its own **worktree**: a separate copy of the project with its own branch, so agents don't edit over each other or over your files. Its branch is named `tot/…`.
+Each coding task works in its own **worktree**: a separate copy of one of the project's repos, with its own branch, so agents don't edit over each other or over your files. Its branch is named `tot/…`. On a project page, the **Board** tab shows the same board for that project alone, with the project's **Lead** able to propose landing for you; see [Projects](/docs/projects#the-lead).
 
 ## Start tasks yourself
 
 The agent starts tasks on its own when you ask for real work. You can also start them directly from the composer (the box you type in):
 
-- **Task**: turn on the **Task** toggle, or press `⌘↩`, and your message starts a task in the background instead of a reply. The placeholder changes to "Describe a task for …". On a project page, the task starts in that project.
+- **Task**: turn on the **Task** toggle, or press `⌘↩`, and your message starts a task in the background instead of a reply. The placeholder changes to "Describe a task for …". On a project page, the task starts in that project — in its primary repo, unless the project has more than one and you pick another with the repo picker next to **Task**.
 - **/task**: type `/task` and your goal. Same as the toggle.
 - **/parallel**: type `/parallel` and a bigger job. The agent splits it into independent tasks, one branch each, and sums up when they finish.
 - **/best-of**: type `/best-of` and a goal. The same job runs twice, once on Claude and once on ChatGPT (or twice on the one you have), so you can compare and keep the better one.
@@ -24,11 +24,11 @@ Open **Mission control** with `⌘⇧M`, or the board icon in the sidebar's **Ta
 - **Ready to land**: finished and not yet merged, in the order to land them.
 - **Landed**: merged, opened as a draft PR, or discarded. Folded away.
 
-Each card shows the agent's mascot, the title, the latest progress, the branch, how much changed (`+a −r · n files`) and the checks. Pick a project at the top to see only its tasks.
+Each card shows the agent's mascot, the title, the latest progress, the branch, how much changed (`+a −r · n files`) and the checks — and, in a project with more than one repo, which repo it's in. Pick a project at the top to see only its tasks.
 
 ### Overlaps and land order
 
-When two unfinished tasks change the same files, their cards warn you, like "Also changes 2 files in “Fix cart”". **Ready to land** is sorted for you: fewest overlaps with other tasks first, then the smallest change. Landing in that order means fewer conflicts.
+When two unfinished tasks in the same repo change the same files, their cards warn you, like "Also changes 2 files in “Fix cart”" (tasks in different repos never overlap). **Ready to land** is sorted for you: fewest overlaps with other tasks first, then the smallest change. Landing in that order means fewer conflicts.
 
 ## Review and land the code
 
@@ -58,7 +58,7 @@ TOT tells you why, right under the button. The common ones:
 
 ## Checks
 
-When a coding task finishes, TOT runs the project's own checks in its worktree: commands like typecheck, lint, test and build, plus checks on what changed (new dependencies, the size of the change). The commands come from the project's **repo profile**: open the project's brain, then **Repo profile…** in the brain menu. With no profile yet, TOT works them out from the project's files. A test that already fails on the main branch doesn't count against the task; only new failures do.
+When a coding task finishes, TOT runs its repo's own checks in its worktree: commands like typecheck, lint, test and build, plus checks on what changed (new dependencies, the size of the change). The commands come from the repo's **repo profile**: open any of its pages from the **Knowledge** tab, then **Repo profile…** in the page's menu. With no profile yet, TOT works them out from the repo's files. A test that already fails on the main branch doesn't count against the task; only new failures do.
 
 You'll see "Checks passing", "Checks failing" or "No checks" on the card, and one line per check in the Land bar.
 
@@ -70,8 +70,8 @@ You'll see "Checks passing", "Checks failing" or "No checks" on the card, and on
 
 Each new worktree is set up before its agent starts:
 
-- **Setup command.** TOT runs `npm ci` (or the right install for the project's lockfile: pnpm, yarn, bun or uv). Change it in the project's **…** menu → **Worktree setup**. If it fails, the agent is told and starts anyway.
-- **Files to copy.** For a folder on your Mac, list files like `.env` to copy into each new worktree. TOT never shows what's in them.
+- **Setup command.** TOT runs `npm ci` (or the right install for the lockfile: pnpm, yarn, bun or uv), in the project's **…** menu → **Worktree setup**. That command is for the primary repo's worktrees; a task in another of the project's repos gets its own lockfile detected instead. If setup fails, the agent is told and starts anyway.
+- **Files to copy.** For a folder project, list files like `.env` to copy into each new worktree of its primary repo. TOT never shows what's in them.
 - **Ports.** Each task gets its own block of ports, so two tasks can run their dev servers at the same time.
 - **Preview.** When a task starts a dev server, its header shows a **Preview** link that opens it.
 - **Cleanup.** Worktrees of finished tasks that were never landed are removed after 14 days. Branches are kept. Change the days, or **Clean up now**, in **Settings → Tasks**.
