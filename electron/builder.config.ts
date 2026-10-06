@@ -1,4 +1,6 @@
+import { join } from "node:path";
 import type { Configuration } from "electron-builder";
+import { checkPeers } from "./peer-deps.ts";
 
 /**
  * Packaging the Mac app (roadmap module 08): TOT.app for Apple silicon, as a .dmg and a .zip in release/.
@@ -9,6 +11,8 @@ import type { Configuration } from "electron-builder";
  *   hardened runtime (notarizing comes later). Codex's and Claude Code's own binaries keep their vendors'
  *   signatures.
  * - Nothing is published: there are no releases or auto-update yet.
+ * - The packaged node_modules are checked before signing: every required peer of a dependency must be there,
+ *   in a version it accepts (peer-deps.ts), or the build fails.
  */
 
 const developerId = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
@@ -22,6 +26,11 @@ const config: Configuration = {
   asar: false,
   npmRebuild: false,
   publish: null,
+  afterPack: async ({ appOutDir, packager }) => {
+    const appDir = join(appOutDir, `${packager.appInfo.productFilename}.app`, "Contents", "Resources", "app");
+    const problems = checkPeers(appDir);
+    if (problems.length) throw new Error(`The app's node_modules aren't right:\n- ${problems.join("\n- ")}`);
+  },
   mac: {
     target: [
       { target: "dmg", arch: ["arm64"] },

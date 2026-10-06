@@ -1,5 +1,6 @@
 // The Mac app's helpers (roadmap module 08): the PATH it runs TOT with, the node/npm/npx shims, whether to open
-// a TOT already on the port or start one, where the window opens, which links stay in it, and the log's size cap.
+// a TOT already on the port or start one, where the window opens, which links stay in it, the log's size cap, and
+// the check that the packaged node_modules hold every peer dependency in a version it accepts.
 // Run: TOT_DATA_DIR=$(mktemp -d) npx tsx electron/desktop.test.ts
 import "../server/test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
@@ -8,6 +9,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { checkPeers } from "./peer-deps.ts";
 import { accessLabel, classifyAnswer, planLaunch, probeTot } from "./probe.ts";
 import { trimLog } from "./server-process.ts";
 import { EXTRA_DIRS, mergePath, parseShellPath, shellQuote, shimScripts, writeShims } from "./shell-env.ts";
@@ -156,6 +158,54 @@ writeFileSync(log, "x".repeat(2048));
 check("a small log is left alone", !trimLog(log, 4096) && statSync(log).size === 2048);
 check("a log past the limit is emptied", trimLog(log, 1024) && statSync(log).size === 0);
 check("no log yet is fine", !trimLog(join(scratch, "missing.log")));
+
+// --- Packaged peer dependencies ----------------------------------------------------------------------------------
+console.log("\n# Packaged peer dependencies");
+/** An app folder: its package.json's dependencies and the packages in its node_modules (`path` → package.json). */
+function appWith(name: string, dependencies: string[], packages: Record<string, Record<string, unknown>>, files: Record<string, string> = {}): string {
+  const root = join(scratch, name);
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name, dependencies: Object.fromEntries(dependencies.map((d) => [d, "*"])) }));
+  for (const [path, pkg] of Object.entries(packages)) {
+    mkdirSync(join(root, path), { recursive: true });
+    writeFileSync(join(root, path, "package.json"), JSON.stringify(pkg));
+  }
+  for (const [path, text] of Object.entries(files)) writeFileSync(join(root, path), text);
+  return root;
+}
+const socketMode = { name: "@slack/socket-mode", version: "3.1.0", peerDependencies: { undici: "^7.0.0 || ^8.0.0" } };
+let app = appWith("old-undici", ["@slack/socket-mode"], {
+  "node_modules/@slack/socket-mode": socketMode,
+  "node_modules/undici": { name: "undici", version: "6.28.0" },
+});
+let problems = checkPeers(app);
+check("another package's old copy hoisted in place of the peer: caught", problems.length === 1 && problems[0] === "@slack/socket-mode needs undici@^7.0.0 || ^8.0.0, but the app has 6.28.0", JSON.stringify(problems));
+app = appWith("new-undici", ["@slack/socket-mode", "undici"], {
+  "node_modules/@slack/socket-mode": socketMode,
+  "node_modules/undici": { name: "undici", version: "8.11.2" },
+});
+check("the peer in a version it accepts: fine", checkPeers(app).length === 0, JSON.stringify(checkPeers(app)));
+app = appWith("nested", ["@slack/socket-mode"], {
+  "node_modules/@slack/socket-mode": socketMode,
+  "node_modules/@slack/socket-mode/node_modules/undici": { name: "undici", version: "7.30.0" },
+  "node_modules/undici": { name: "undici", version: "6.28.0" },
+});
+check("a copy nested under the package wins, as Node resolves it", checkPeers(app).length === 0, JSON.stringify(checkPeers(app)));
+app = appWith("missing", ["@slack/socket-mode", "gone"], { "node_modules/@slack/socket-mode": socketMode });
+problems = checkPeers(app);
+check("a missing peer and a missing dependency: both caught", problems.includes("@slack/socket-mode needs undici@^7.0.0 || ^8.0.0, which isn't in the app") && problems.includes("gone isn't in the app"), JSON.stringify(problems));
+app = appWith("optional", ["kit"], { "node_modules/kit": { name: "kit", version: "1.0.0", peerDependencies: { react: "^19" }, peerDependenciesMeta: { react: { optional: true } } } });
+check("an optional peer may be missing", checkPeers(app).length === 0);
+const agentSdk = { name: "@anthropic-ai/claude-agent-sdk", version: "1.0.0", peerDependencies: { "@anthropic-ai/sdk": ">=0.93.0" } };
+app = appWith("types-only", ["@anthropic-ai/claude-agent-sdk"], { "node_modules/@anthropic-ai/claude-agent-sdk": agentSdk }, {
+  "node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs": "export const run = () => 1;",
+  "node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts": 'import type { Message } from "@anthropic-ai/sdk";',
+});
+check("a peer only its types name is left out on purpose", checkPeers(app).length === 0, JSON.stringify(checkPeers(app)));
+app = appWith("types-only-now-loaded", ["@anthropic-ai/claude-agent-sdk"], { "node_modules/@anthropic-ai/claude-agent-sdk": agentSdk }, {
+  "node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs": 'import Anthropic from "@anthropic-ai/sdk";',
+});
+check("…until its code loads it: then it's caught", checkPeers(app).length === 1, JSON.stringify(checkPeers(app)));
 
 rmSync(scratch, { recursive: true, force: true });
 console.log(failures ? `\n${failures} FAILED` : "\nALL PASS");
