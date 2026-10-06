@@ -29,6 +29,7 @@ import { toMs, truncate } from "./lib/format";
 import { AUTO_MODEL_ID, PROVIDER_LABELS } from "./lib/models";
 import { deviceOf, onDevice } from "./lib/devices";
 import { loadProjects, upsertProject, useProjects } from "./lib/projects";
+import { memoryChanged } from "./lib/memory";
 import { handleDeviceDeleted, handleDeviceEvent, loadDevices, whenDevicesLoaded } from "./lib/remote";
 import { applyRunEvent, createAssistantMessage, upsertMessage } from "./lib/reducer";
 import {
@@ -1477,6 +1478,10 @@ export function handleAppEvent(event: AppEvent, deviceId: string | null = null) 
       break;
     case "project":
       upsertProject(event.project);
+      break;
+    // Memory repo (module 10): open memory views reload.
+    case "memory":
+      memoryChanged(event.repo);
       break;
     case "run":
       // Running agents are tracked by useRunningAgents() + setRunningAgents; here, follow turns

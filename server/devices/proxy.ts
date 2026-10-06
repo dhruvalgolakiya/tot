@@ -32,6 +32,20 @@ const DROPPED_RESPONSE = new Set(["connection", "content-encoding", "content-len
 /** Long enough for an upload; streams are exempt once the other side answers. */
 const ANSWER_TIMEOUT_MS = 60_000;
 
+/**
+ * Never forwarded: the memory sync bundle (module 10) is for paired devices themselves. Forwarded, it would hand
+ * the other device's whole memory to whoever is signed in here, under this device's token.
+ */
+export function proxyRefuses(path: string): boolean {
+  let parts: string[];
+  try {
+    parts = path.split("/").filter(Boolean).map((part) => decodeURIComponent(part).toLowerCase());
+  } catch {
+    return true;
+  }
+  return parts[0] === "memory" && parts[1] === "sync";
+}
+
 export async function proxy(c: Context, id: string): Promise<Response> {
   const peer = peers.get(id);
   if (!peer) return c.json({ error: "That device isn't paired anymore." }, 404);
@@ -39,7 +53,9 @@ export async function proxy(c: Context, id: string): Promise<Response> {
   if (!peer.address || !token) return c.json({ error: `${peer.name} can't be reached from this device.` }, 502);
 
   const url = new URL(c.req.url);
-  const target = `${peer.address}/api${url.pathname.replace(/^\/api\/d\/[^/]+/, "")}${url.search}`;
+  const rest = url.pathname.replace(/^\/api\/d\/[^/]+/, "");
+  if (proxyRefuses(rest)) return c.json({ error: "Another device's memory syncs between the devices themselves; it can't be fetched through this one." }, 403);
+  const target = `${peer.address}/api${rest}${url.search}`;
   const headers = new Headers();
   for (const [name, value] of c.req.raw.headers) if (!DROPPED_REQUEST.has(name.toLowerCase())) headers.set(name, value);
   headers.set("authorization", `Bearer ${token}`);

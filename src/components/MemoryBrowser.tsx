@@ -1,147 +1,146 @@
-import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
-import type { Memory } from "@shared/types";
-import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useCallback, useEffect, useState } from "react";
+import { Check, Copy } from "lucide-react";
+import type { MemoryRepoSummary } from "@shared/types";
+import { useCopy } from "../hooks/useCopy";
 import { api, errorMessage } from "../lib/api";
-import { toMs } from "../lib/format";
-import { goToSettings, notifyError, useStore } from "../store";
-import { Button } from "./ui/Button";
+import { pickMemoryRepo, useMemoryUi } from "../lib/memory";
+import { goToSettings, useStore } from "../store";
+import { MemoryDreaming } from "./memory/MemoryDreaming";
+import { MemoryEntries } from "./memory/MemoryEntries";
+import { MemoryHistory } from "./memory/MemoryHistory";
+import { MemoryImport } from "./memory/MemoryImport";
+import { MemorySync } from "./memory/MemorySync";
 import { Callout } from "./ui/Callout";
-import { EmptyState } from "./ui/EmptyState";
-import { Kbd } from "./ui/Kbd";
-import { SearchInput } from "./ui/SearchInput";
+import { IconButton } from "./ui/IconButton";
+import { Select } from "./ui/Select";
 import { Skeleton } from "./ui/Skeleton";
-import { MemoryItem } from "./MemoryItem";
+import { Tip } from "./ui/Tip";
 
-const newestFirst = (list: Memory[]) => [...list].sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt));
+const SKILL_COMMAND = "npx skills add AgentMemoryRepo/agentmemoryrepo --skill agent-memory-repo";
 
-/** Search, add, edit and delete memory about the user. */
+/**
+ * Settings → Memory (roadmap module 10): memory is git repos of markdown. Pick a repo (About you, or a
+ * project's), then its entries grouped by file, its history with Undo, Dreaming, and (About you) sync with
+ * paired devices and the optional backup remote, and what the one-time import left for the user to decide.
+ */
 export function MemoryBrowser() {
   const memoryEnabled = useStore((s) => s.settings?.memory.enabled ?? true);
-  const [query, setQuery] = useState("");
-  const search = useDebouncedValue(query.trim(), 250);
-  const [memories, setMemories] = useState<Memory[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [adding, setAdding] = useState(false);
+  const picked = useMemoryUi((s) => s.repo);
+  const changes = useMemoryUi((s) => Object.values(s.versions).reduce((sum, n) => sum + n, 0));
+  const [repos, setRepos] = useState<MemoryRepoSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setRepos(await api.memoryRepos());
+      setError(null);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setMemories(null);
-    setLoadError(null);
-    api.listMemories({ q: search || undefined }).then(
-      (list) => {
-        if (cancelled) return;
-        setMemories(newestFirst(list));
-        setLoadError(null);
-      },
-      (error: unknown) => {
-        if (!cancelled) setLoadError(errorMessage(error));
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [search]);
+    void load();
+  }, [load, changes]);
 
-  async function add() {
-    const content = draft.trim();
-    if (!content) return;
-    setAdding(true);
-    try {
-      const memory = await api.createMemory(content);
-      setMemories((list) => [memory, ...(list ?? [])]);
-      setDraft("");
-    } catch (error) {
-      notifyError(error);
-    } finally {
-      setAdding(false);
-    }
+  // A dream that changes nothing sends no event: follow it until it's done.
+  const dreaming = repos?.some((repo) => repo.dream.running) ?? false;
+  useEffect(() => {
+    if (!dreaming) return;
+    const timer = window.setInterval(() => void load(), 2000);
+    return () => window.clearInterval(timer);
+  }, [dreaming, load]);
+
+  const summary = repos?.find((repo) => repo.id === picked) ?? repos?.[0];
+  useEffect(() => {
+    if (repos && summary && summary.id !== picked) pickMemoryRepo(summary.id);
+  }, [repos, summary, picked]);
+
+  if (error && !repos) {
+    return (
+      <Callout
+        tone="danger"
+        action={
+          <button type="button" onClick={() => void load()} className="link-muted">
+            Try again
+          </button>
+        }
+      >
+        Couldn't load memory. {error}
+      </Callout>
+    );
   }
 
-  const replace = (memory: Memory) => setMemories((list) => list?.map((m) => (m.id === memory.id ? memory : m)) ?? null);
-  const remove = (id: string) => setMemories((list) => list?.filter((m) => m.id !== id) ?? null);
+  if (!repos || !summary) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Loading memory">
+        <Skeleton className="h-9 w-60 rounded-lg" />
+        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-40 w-full rounded-xl" />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="space-y-8">
+      <RepoHeader repos={repos} summary={summary} />
       {!memoryEnabled && (
-        <div className="mb-3">
-          <Callout
-            tone="warning"
-            action={
-              <button type="button" className="link-muted" onClick={() => goToSettings("general")}>
-                Turn it on in Settings
-              </button>
-            }
-          >
-            Memory is off, so TOT won't save or recall anything.
-          </Callout>
-        </div>
+        <Callout
+          tone="warning"
+          action={
+            <button type="button" className="link-muted" onClick={() => goToSettings("general")}>
+              Turn it on in Settings
+            </button>
+          }
+        >
+          Memory is off, so agents won't save or recall anything.
+        </Callout>
       )}
-
-      <form
-        className="shrink-0 pb-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void add();
-        }}
-      >
-        <textarea
-          rows={2}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault();
-              void add();
-            }
-          }}
-          placeholder="Add something for TOT to remember, e.g. “I live in Berlin and work in UTC+1.”"
-          aria-label="New memory"
-          className="input resize-none rounded-xl leading-relaxed"
-        />
-        <div className="mt-2 flex items-center justify-end gap-3">
-          <span className="hidden text-xs text-fg-faint sm:inline">
-            <Kbd keys={["mod", "↵"]} /> to add
-          </span>
-          <Button type="submit" size="sm" variant="primary" disabled={adding || !draft.trim()}>
-            <Plus /> Add memory
-          </Button>
-        </div>
-      </form>
-
-      <div className="shrink-0 pb-3">
-        <SearchInput
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search memories"
-          aria-label="Search memories"
-        />
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto pb-5">
-        {loadError && !memories && <Callout tone="danger">{loadError}</Callout>}
-        {!loadError && !memories && (
-          <div className="space-y-2" aria-busy="true" aria-label="Loading memories">
-            {[0, 1, 2].map((key) => (
-              <Skeleton key={key} className="h-16 rounded-xl" />
-            ))}
-          </div>
-        )}
-        {memories && memories.length === 0 && (
-          <EmptyState
-            title={search ? `No memories match “${search}”.` : "Nothing yet"}
-            description={search ? undefined : "Tell TOT to remember something, or add it here."}
-          />
-        )}
-        {memories && memories.length > 0 && (
-          <ul className="space-y-2">
-            {memories.map((memory) => (
-              <MemoryItem key={memory.id} memory={memory} onUpdated={replace} onDeleted={remove} />
-            ))}
-          </ul>
-        )}
-      </div>
+      {summary.import && <MemoryImport status={summary.import} onChanged={load} />}
+      <MemoryEntries key={`entries:${summary.id}`} repo={summary.id} kind={summary.kind} onChanged={load} />
+      <MemoryHistory key={`history:${summary.id}`} repo={summary.id} onChanged={load} />
+      <MemoryDreaming summary={summary} onChanged={load} />
+      {summary.sync && <MemorySync sync={summary.sync} onChanged={load} />}
     </div>
+  );
+}
+
+/** Which memory, where it lives, and how other agents can read it. */
+function RepoHeader({ repos, summary }: { repos: MemoryRepoSummary[]; summary: MemoryRepoSummary }) {
+  const { copied, copy } = useCopy();
+  const whose = summary.kind === "you" ? "Your memory" : `${summary.name}'s memory`;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Select
+          size="sm"
+          value={summary.id}
+          onValueChange={pickMemoryRepo}
+          aria-label="Which memory"
+          className="w-60 max-w-full"
+          options={repos.map((repo) => ({
+            value: repo.id,
+            label: repo.name,
+            description: repo.kind === "you" ? "What you've told any agent" : "What agents learned in this project",
+          }))}
+        />
+        <span className="text-xs text-fg-subtle tabular-nums">
+          {summary.entries} {summary.entries === 1 ? "entry" : "entries"} · {summary.files} {summary.files === 1 ? "file" : "files"}
+        </span>
+      </div>
+      <p className="text-xs leading-relaxed text-fg-subtle">
+        {whose} is a git repo at <code className="font-mono text-fg-muted">{summary.path}</code>
+        {summary.kind === "project" ? ", on this device only" : ""}. Claude Code, Codex and Cursor can read it too:
+      </p>
+      <div className="flex items-center gap-2 rounded-lg bg-sunken py-1 pr-1 pl-3">
+        <code className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted">{SKILL_COMMAND}</code>
+        <Tip content={copied ? "Copied" : "Copy"}>
+          <IconButton label="Copy the command" size="sm" onClick={() => void copy(SKILL_COMMAND)}>
+            {copied ? <Check /> : <Copy />}
+          </IconButton>
+        </Tip>
+      </div>
+    </section>
   );
 }

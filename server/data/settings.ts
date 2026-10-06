@@ -14,7 +14,8 @@ function defaults(): StoredSettings {
     customInstructions: "",
     // Cloud VMs when a Boat key exists, otherwise a sandboxed local folder so tools work out of the box.
     computer: { mode: getSecret("boatApiKey") ? "boat" : "local", size: "default", idleStopMinutes: 10 },
-    memory: { enabled: true },
+    // Memory repo (module 10): Dreaming nightly at 03:30 local; no backup remote until the user sets one.
+    memory: { enabled: true, dreaming: { enabled: true, time: "03:30" }, remote: { url: "", enabled: false } },
     claude: { authMode: "subscription", useConnectedApps: true },
     chatgpt: { useConnectedApps: true },
     tasks: {
@@ -47,6 +48,16 @@ function mergeModels(base: ModelTierSettings, patch: Partial<ModelTierSettings> 
   };
 }
 
+/** Memory repo (module 10): Dreaming and the backup remote merge field by field, like the rest of memory. */
+function mergeMemory(base: Settings["memory"], patch: SettingsPatch["memory"] | Partial<Settings["memory"]> | undefined): Settings["memory"] {
+  return {
+    ...base,
+    ...patch,
+    dreaming: { ...base.dreaming, ...patch?.dreaming },
+    remote: { ...base.remote, ...patch?.remote },
+  };
+}
+
 function readStored(): StoredSettings {
   const base = defaults();
   const row = db.prepare(`SELECT value FROM settings WHERE key = 'settings'`).get() as Row | undefined;
@@ -55,7 +66,7 @@ function readStored(): StoredSettings {
     ...base,
     ...stored,
     computer: { ...base.computer, ...stored.computer },
-    memory: { ...base.memory, ...stored.memory },
+    memory: mergeMemory(base.memory, stored.memory),
     claude: { ...base.claude, ...stored.claude },
     chatgpt: { ...base.chatgpt, ...stored.chatgpt },
     tasks: { ...base.tasks, ...stored.tasks },
@@ -87,7 +98,7 @@ export const settings = {
       ...current,
       ...top,
       computer: { ...current.computer, ...computer },
-      memory: { ...current.memory, ...memory },
+      memory: mergeMemory(current.memory, memory),
       claude: { ...current.claude, ...claude },
       chatgpt: { ...current.chatgpt, ...chatgpt },
       tasks: { ...current.tasks, ...tasks },

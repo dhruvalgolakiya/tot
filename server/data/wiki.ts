@@ -381,9 +381,10 @@ for (const row of db.prepare(`SELECT id FROM agents`).all() as Row[]) brains.not
 for (const brain of brains.list()) wiki.overview(brain.id);
 
 // Notes saved per workspace before the wiki existed move into a "Notes" page, all
-// or nothing, and never in a way that could stop the server from starting.
+// or nothing, and never in a way that could stop the server from starting. (Since module 10 the old memory
+// rows are in memories_legacy; `memories` is the memory repos' index.)
 const workspaceNotes = db
-  .prepare(`SELECT agent_id, content FROM memories WHERE agent_id IS NOT NULL ORDER BY created_at`)
+  .prepare(`SELECT agent_id, content FROM memories_legacy WHERE agent_id IS NOT NULL ORDER BY created_at`)
   .all() as Row[];
 if (workspaceNotes.length) {
   const byAgent = new Map<string, string[]>();
@@ -397,7 +398,7 @@ if (workspaceNotes.length) {
       const content = notes.map((note) => `- ${note}`).join("\n").slice(0, MAX_PAGE_CHARS);
       wiki.create(notebook, { title, summary: "Notes saved before the wiki existed", content }, "agent");
     }
-    db.prepare(`DELETE FROM memories WHERE agent_id IS NOT NULL`).run();
+    db.prepare(`DELETE FROM memories_legacy WHERE agent_id IS NOT NULL`).run();
     db.exec("COMMIT");
   } catch (err) {
     db.exec("ROLLBACK");

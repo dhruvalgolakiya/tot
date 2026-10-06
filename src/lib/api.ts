@@ -37,6 +37,11 @@ import type {
   MailMessage,
   MailSummary,
   Memory,
+  MemoryCommit,
+  MemoryFile,
+  MemoryFileContent,
+  MemoryRepoSummary,
+  MemorySyncStatus,
   Message,
   MissionOverview,
   ModelOption,
@@ -292,13 +297,32 @@ export const api = {
   restoreWikiRevision: (pageId: string, revisionId: string) =>
     request<WikiPage>("POST", `/wiki/${seg(pageId)}/revisions/${seg(revisionId)}/restore`, {}),
 
-  /** Memory: short facts about the user, shared by every agent. */
-  listMemories: (opts: { q?: string } = {}) =>
-    request<Memory[]>("GET", opts.q ? `/memories?q=${encodeURIComponent(opts.q)}` : "/memories"),
-  createMemory: (content: string) => request<Memory>("POST", "/memories", { content }),
-  updateMemory: (id: string, content: string) =>
-    request<Memory>("PATCH", `/memories/${seg(id)}`, { content }),
-  deleteMemory: (id: string) => request<Ok>("DELETE", `/memories/${seg(id)}`),
+  // Memory repo (module 10): memory is git repos of markdown, "you" and "projects/<slug>" (repo defaults to "you").
+  listMemories: (opts: { q?: string; repo?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.q) params.set("q", opts.q);
+    if (opts.repo) params.set("repo", opts.repo);
+    const qs = params.toString();
+    return request<Memory[]>("GET", `/memories${qs ? `?${qs}` : ""}`);
+  },
+  createMemory: (content: string, opts: { repo?: string; file?: string } = {}) => request<Memory>("POST", "/memories", { content, ...opts }),
+  /** `expected`: the text the edit started from; a 409 when the entry says something else by now. */
+  updateMemory: (id: string, content: string, repo?: string, expected?: string) =>
+    request<Memory>("PATCH", `/memories/${seg(id)}${repo ? `?repo=${seg(repo)}` : ""}`, { content, ...(expected === undefined ? {} : { expected }) }),
+  deleteMemory: (id: string, repo?: string) => request<Ok>("DELETE", `/memories/${seg(id)}${repo ? `?repo=${seg(repo)}` : ""}`),
+  memoryRepos: () => request<MemoryRepoSummary[]>("GET", "/memory/repos"),
+  memoryFiles: (repo: string) => request<MemoryFile[]>("GET", `/memory/${seg(repo)}/files`),
+  memoryFile: (repo: string, path: string) => request<MemoryFileContent>("GET", `/memory/${seg(repo)}/file?path=${seg(path)}`),
+  memoryHistory: (repo: string, opts: { limit?: number; skip?: number } = {}) =>
+    request<MemoryCommit[]>("GET", `/memory/${seg(repo)}/history?limit=${opts.limit ?? 20}&skip=${opts.skip ?? 0}`),
+  /** Undoes one change with a new commit; 409 when later changes touched the same lines. */
+  revertMemory: (repo: string, sha: string) => request<MemoryCommit>("POST", `/memory/${seg(repo)}/revert`, { sha }),
+  /** Starts Dreaming in the background; a `memory` event follows when it changed something. */
+  dreamMemory: (repo?: string) => request<Ok>("POST", "/memory/dream", repo ? { repo } : {}),
+  syncMemory: () => request<MemorySyncStatus>("POST", "/memory/sync", {}),
+  /** An old memory the import left out as a secret: import it anyway, or drop it. */
+  importSkippedMemory: (id: string) => request<Memory>("POST", `/memory/import/${seg(id)}`, {}),
+  dropSkippedMemory: (id: string) => request<Ok>("DELETE", `/memory/import/${seg(id)}`),
 
   /** GitHub: one account connected for the whole app (issues/PRs/code search tools + git/gh login). */
   getGithubStatus: () => request<GitHubStatus>("GET", "/github"),

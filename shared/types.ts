@@ -223,7 +223,8 @@ export type ToolStatus = "running" | "done" | "error";
  *                   computer_key, computer_scroll, computer_open_url
  *                   (GUI control of Boat VMs; a screenshot's output contains
  *                   a line "screenshot: <url>" the UI can render)
- *  - TOT memory:    memory_save, memory_search, memory_update, memory_delete (about the user)
+ *  - TOT memory:    memory_save, memory_search, memory_update, memory_delete, memory_read
+ *                   (git repos of markdown: about the user, and per project; module 10)
  *  - TOT wiki:      wiki_search, wiki_read, wiki_write, wiki_edit, wiki_delete
  *  - TOT chats:     chat_search, chat_read (earlier chats in the same workspace)
  *  - TOT projects:  chat_set_project (file a chat that's in no project), ticket_link (module 06)
@@ -422,7 +423,9 @@ export type AppEvent =
   | { type: "device"; device: Device }
   | { type: "device-deleted"; deviceId: string }
   /** Something changed on a paired device: one of the events above, about its agents, chats or projects (module 07). */
-  | { type: "remote"; deviceId: string; event: AppEvent };
+  | { type: "remote"; deviceId: string; event: AppEvent }
+  /** Memory repo (module 10): a memory repo changed. */
+  | MemoryEvent;
 
 // ---------------------------------------------------------------------------
 // Computers (one per agent, created lazily on first tool use)
@@ -458,13 +461,20 @@ export interface ComputerSummary {
 // ---------------------------------------------------------------------------
 
 export interface Memory {
+  /**
+   * 8 hex characters (6 in entries from before); "h" + 10 hex for a line someone wrote without an id; "<id>.2"
+   * for a second line with the same id (two devices edited one entry), so each can be edited on its own (module 10).
+   */
   id: string;
   content: string;
-  /** Who wrote it: the agent via memory_save, or the user in the Memory page. */
+  /** Who wrote it: an agent (memory_save, Dreaming), or the user (the Memory page, or the file by hand). */
   source: "agent" | "user";
   conversationId: string | null;
   createdAt: number;
   updatedAt: number;
+  /** The memory repo and file it's in (module 10), e.g. "you" and "MEMORY.md". */
+  repo: MemoryRepoId;
+  path: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -943,6 +953,10 @@ export interface Settings {
   };
   memory: {
     enabled: boolean;
+    /** Memory repo (module 10): the nightly pass that tidies memory, at a local "HH:MM". */
+    dreaming: { enabled: boolean; time: string };
+    /** Memory repo (module 10): an optional private git remote the `you` repo is backed up to. Off by default. */
+    remote: { url: string; enabled: boolean };
   };
   claude: {
     /** subscription = local Claude Code login; api-key = ANTHROPIC_API_KEY stored in TOT */
@@ -964,7 +978,10 @@ export interface Settings {
 export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "claude" | "chatgpt" | "tasks" | "models">> & {
   models?: Partial<ModelTierSettings>;
   computer?: Partial<Omit<Settings["computer"], "boatApiKeySet">>;
-  memory?: Partial<Settings["memory"]>;
+  memory?: Partial<Omit<Settings["memory"], "dreaming" | "remote">> & {
+    dreaming?: Partial<Settings["memory"]["dreaming"]>;
+    remote?: Partial<Settings["memory"]["remote"]>;
+  };
   claude?: Partial<Omit<Settings["claude"], "apiKeySet">>;
   chatgpt?: Partial<Settings["chatgpt"]>;
   tasks?: Partial<TaskSettings>;
@@ -1072,10 +1089,22 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/wiki/:pageId/revisions          -> WikiRevision[]  (newest first)
 // POST   /api/wiki/:pageId/revisions/:revisionId/restore -> WikiPage
 //
-// GET    /api/memories?q=                     -> Memory[]  (memory about the user)
-// POST   /api/memories                        { content } -> Memory
-// PATCH  /api/memories/:id                    { content } -> Memory
-// DELETE /api/memories/:id                    -> { ok: true }
+// Memory repo (module 10; memory is git repos of markdown: "you" and "projects/<slug>"; paired devices may call
+// only the sync bundle). Writes are one commit each; a secret is refused with 400.
+// GET    /api/memories?q=&repo=               -> Memory[]  (repo defaults to "you"; file order, or best matches for q)
+// POST   /api/memories                        { content, repo?, file? } -> Memory  (201; an existing equal entry: 200 and that one)
+// PATCH  /api/memories/:id?repo=              { content, expected? } -> Memory  (409 when the entry no longer says `expected`)
+// DELETE /api/memories/:id?repo=              -> { ok: true }
+// GET    /api/memory/repos                    -> MemoryRepoSummary[]  ("you" first, then each project; sync status on "you")
+// GET    /api/memory/:repo/files              -> MemoryFile[]  (:repo URL-encoded, e.g. projects%2Fweb; MEMORY.md first)
+// GET    /api/memory/:repo/file?path=         -> MemoryFileContent  (404 when missing)
+// GET    /api/memory/:repo/history?limit=&skip= -> MemoryCommit[]  (newest first)
+// POST   /api/memory/:repo/revert             { sha } -> MemoryCommit  (the undo commit; 409 when later changes touched the same lines; 400 for a sync's merge)
+// POST   /api/memory/import/:id               -> Memory  (imports an old memory the import left out as a secret; 400 for a key)
+// DELETE /api/memory/import/:id               -> { ok: true }  (drops it for good)
+// POST   /api/memory/dream                    MemoryDreamRequest -> { ok: true }  (202: runs in the background; a "memory" event when done)
+// POST   /api/memory/sync                     -> MemorySyncStatus  (sync with paired devices and the backup remote now)
+// GET    /api/memory/sync/you.bundle          -> application/octet-stream  (paired devices only: a git bundle of "you"; 403 for others)
 //
 // GET    /api/github                          -> GitHubStatus
 // POST   /api/github/connect                  GitHubConnectRequest -> GitHubStatus  (400 with the reason when it doesn't work)
@@ -1967,3 +1996,128 @@ export interface RenameDeviceRequest {
   name: string;
 }
 
+// ---------------------------------------------------------------------------
+// Memory repo (roadmap module 10): memory as git repos of markdown, following the Agent Memory Repo spec.
+// "you" holds what the user told any agent; "projects/<slug>" what agents learned in a project. Each is a
+// folder of markdown files (MEMORY.md loaded every chat, topic files linked from it) under
+// DATA_DIR/memory, one git commit per change. The `you` repo syncs with paired devices.
+// ---------------------------------------------------------------------------
+
+/** "you", or "projects/<slug>". */
+export type MemoryRepoId = string;
+
+/** A change to a memory repo is published so open screens (and paired devices, for `you`) catch up. */
+export interface MemoryEvent {
+  type: "memory";
+  repo: MemoryRepoId;
+  /** The repo's new head. */
+  sha: string | null;
+}
+
+export type MemoryCommitKind = "start" | "import" | "remember" | "edit" | "forget" | "undo" | "dream" | "sync" | "backup" | "outside";
+
+/** One commit in a memory repo's history. */
+export interface MemoryCommit {
+  sha: string;
+  /** Who made it: an agent's name, "you", "Dreaming", "Sync", "TOT". */
+  actor: string;
+  kind: MemoryCommitKind;
+  subject: string;
+  /** Details (what Dreaming merged and why, what a sync brought in); "" when there are none. */
+  body: string;
+  at: number;
+  /** Lines added and removed. */
+  added: number;
+  removed: number;
+  /** False for the repo's first commit and for merges (a sync, the backup remote), which can't be undone. */
+  revertible: boolean;
+}
+
+export interface MemoryDreamState {
+  running: boolean;
+  lastAt: number | null;
+  /** "Merged 3, removed 2, added 1", or why the last dream changed nothing. */
+  summary: string | null;
+  /** The dream's commit, to undo it; null when it changed nothing. */
+  sha: string | null;
+  error: string | null;
+}
+
+export interface MemoryPeerSync {
+  deviceId: string;
+  name: string;
+  online: boolean;
+  lastSyncAt: number | null;
+  /** null until the first try. */
+  ok: boolean | null;
+  error: string | null;
+  /** Both changed and that device merges the two (it has the smaller id): since when this one has waited for it. */
+  waitingSince: number | null;
+}
+
+export interface MemoryRemoteStatus {
+  url: string;
+  enabled: boolean;
+  lastPushAt: number | null;
+  lastPullAt: number | null;
+  error: string | null;
+}
+
+export interface MemorySyncStatus {
+  peers: MemoryPeerSync[];
+  remote: MemoryRemoteStatus;
+}
+
+export interface MemoryRepoSummary {
+  id: MemoryRepoId;
+  kind: "you" | "project";
+  /** "About you", or the project's name. */
+  name: string;
+  projectId: string | null;
+  /** Where it is on this computer, e.g. "~/.tot/memory/you". */
+  path: string;
+  entries: number;
+  files: number;
+  lastCommit: MemoryCommit | null;
+  dream: MemoryDreamState;
+  /** The `you` repo only: paired devices and the optional backup remote. */
+  sync: MemorySyncStatus | null;
+  /** The `you` repo only: the one-time import of the memories from before module 10. */
+  import: MemoryImportStatus | null;
+}
+
+/** An old memory the import left out because it looked like a secret. */
+export interface MemorySkippedMemory {
+  id: string;
+  /** Its text, with what looks like the secret hidden. */
+  text: string;
+  createdAt: number;
+  /** False when it holds a key: that can only be dropped. */
+  importable: boolean;
+}
+
+export interface MemoryImportStatus {
+  /** The import commit landed. Until then prompts and /api/memories read the old memories (read-only). */
+  done: boolean;
+  /** Why the last try failed; it's tried again at the next start. */
+  error: string | null;
+  skipped: MemorySkippedMemory[];
+}
+
+/** A file in a memory repo, with its entries (markdown files only). */
+export interface MemoryFile {
+  path: string;
+  markdown: boolean;
+  chars: number;
+  entries: Memory[];
+}
+
+export interface MemoryFileContent {
+  path: string;
+  content: string;
+}
+
+export interface MemoryDreamRequest {
+  /** One repo; omit for every repo that changed since its last dream. */
+  repo?: MemoryRepoId;
+}

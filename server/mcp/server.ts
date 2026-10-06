@@ -12,13 +12,13 @@ import { attachedTo } from "../chats/attach.ts";
 import { forks } from "../chats/fork.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations } from "../data/conversations.ts";
-import { memories } from "../data/memories.ts";
 import { describeSchedule, routines, validateRoutine } from "../data/routines.ts";
 import { settings } from "../data/settings.ts";
 import { redactGitHubTokens } from "../github.ts";
 import { isThisMachine } from "../net.ts";
 import { forTools } from "../projects/checkout.ts";
 import { registerProjectTools } from "../projects/tools.ts";
+import { registerMemoryTools } from "../memory/tools.ts";
 import { registerTaskTools } from "../tasks/tools.ts";
 import { homeRelative } from "../tasks/worktree.ts";
 import { taskPorts } from "../worktrees/ports.ts";
@@ -180,7 +180,7 @@ function buildServer(conversation: ConversationRecord): McpServer {
   const { id: conversationId, agentId } = conversation;
   const server = new McpServer(
     { name: "tot", version: VERSION },
-    { instructions: "TOT's tools: your own computer for this chat (computer_*) and long-term memory about the user (memory_*)." },
+    { instructions: "TOT's tools: your own computer for this chat (computer_*) and long-term memory, about the user and per project (memory_*)." },
   );
   const { computer, memory } = settings.get();
   // A coding task works in its own worktree: commands and relative paths start there.
@@ -314,69 +314,8 @@ function buildServer(conversation: ConversationRecord): McpServer {
   if (computer.mode !== "off" && computerManager.hasDesktop(agentId)) registerDesktopTools(server, agentId);
 
   if (memory.enabled) {
-    server.registerTool(
-      "memory_save",
-      {
-        title: "Remember something",
-        description:
-          'Save a durable fact about the user to long-term memory (preferences, personal details, goals), shared with all of their agents — or anything they ask you to remember about them. One short sentence written about the user, e.g. "Prefers TypeScript over Python". Knowledge about the work itself belongs in the wiki instead. Never save secrets or passwords.',
-        inputSchema: { content: z.string().min(3).max(500).describe("The fact to remember, as one short sentence") },
-      },
-      ({ content }) =>
-        guarded(async () => {
-          const text = redactGitHubTokens(content);
-          const existing = memories.findDuplicate(text);
-          if (existing) return reply(`Already remembered (${existing.id}): ${existing.content}`);
-          const saved = memories.create({ content: text, source: "agent", conversationId });
-          return reply(`Saved to memory (${saved.id}): ${saved.content}`);
-        }),
-    );
-
-    server.registerTool(
-      "memory_search",
-      {
-        title: "Search memory",
-        description: "Search long-term memory for facts about the user. Returns matching memories with their ids.",
-        inputSchema: {
-          query: z.string().min(1).describe("What to look for, e.g. `favorite programming language`"),
-          limit: z.number().int().min(1).max(50).optional().describe("Maximum results (default 10)"),
-        },
-      },
-      ({ query, limit }) =>
-        guarded(async () => {
-          const found = memories.search(query, limit ?? 10);
-          return reply(found.length ? found.map((m) => `- (${m.id}) ${m.content}`).join("\n") : "No matching memories.");
-        }),
-    );
-
-    server.registerTool(
-      "memory_update",
-      {
-        title: "Update memory",
-        description: "Rewrite a memory about the user by id when it's out of date. Use memory_search first to find it.",
-        inputSchema: {
-          id: z.string().min(1).describe("The memory id from memory_search"),
-          content: z.string().min(3).max(500).describe("The new text, as one short sentence"),
-        },
-      },
-      ({ id, content }) =>
-        guarded(async () => {
-          const updated = memories.get(id) && memories.update(id, content);
-          if (!updated) return reply(`No memory with id ${id}.`, true);
-          return reply(`Updated memory (${updated.id}): ${updated.content}`);
-        }),
-    );
-
-    server.registerTool(
-      "memory_delete",
-      {
-        title: "Forget something",
-        description: "Delete a memory by id (use memory_search first to find it). Do this whenever the user asks you to forget something.",
-        inputSchema: { id: z.string().min(1).describe("The memory id from memory_search") },
-      },
-      ({ id }) =>
-        guarded(async () => (memories.delete(id) ? reply(`Forgot memory ${id}.`) : reply(`No memory with id ${id}.`, true))),
-    );
+    // Memory repo (module 10): memory_save / _search / _update / _delete / _read over git repos of markdown.
+    registerMemoryTools(server, conversation);
 
     registerWikiTools(server, agentId, conversationId);
 

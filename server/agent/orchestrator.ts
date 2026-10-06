@@ -11,7 +11,6 @@ import { attachedNote, cleanContextChats } from "../chats/attach.ts";
 import { forks } from "../chats/fork.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
-import { memories } from "../data/memories.ts";
 import { messages } from "../data/messages.ts";
 import { personas } from "../data/personas.ts";
 import { plugins } from "../data/plugins.ts";
@@ -45,6 +44,7 @@ import { intake } from "../projects/intake.ts";
 import { projects } from "../projects/projects.ts";
 import { deviceSection } from "../devices/prompt.ts";
 import { projectList, projectNote, projectSection } from "../projects/prompt.ts";
+import { promptMemory } from "../memory/prompt.ts";
 
 export class HttpError extends Error {
   constructor(
@@ -439,7 +439,8 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
       const mine = brains.forAgent(agent.id);
       const notebook = mine[0];
       workspace = {
-        userMemories: memories.forPrompt(text),
+        // Memory repo (module 10): you/MEMORY.md, the project's MEMORY.md, and entries related to the message.
+        memory: promptMemory(conversation.projectId, ctx.text || text),
         wiki: {
           // A project's brain carries its folder, so its card says where the files are (module 06).
           brains: mine.map((brain) => {

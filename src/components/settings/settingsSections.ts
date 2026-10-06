@@ -40,7 +40,7 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   {
     id: "memory",
     label: "Memory",
-    description: "Shared by every agent. Ask TOT to remember or forget anything about you.",
+    description: "What your agents remember, about you and about each project, kept as git repos with history and undo.",
     icon: Brain,
     hasDraft: false,
   },
