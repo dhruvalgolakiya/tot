@@ -603,6 +603,39 @@ db.exec(`
   );
 `);
 
+// Workspaces (roadmap module 11, lane C, server/knowledge/auto/): a project's knowledge updates itself. One row per
+// run (the last 50 per project are kept; `pages` and `undo` are JSON), and the base branch head last seen per
+// project repo (a new head means it moved).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS knowledge_updates (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    -- 'landed', 'base-moved', 'chat', 'dreaming' or 'manual'.
+    kind TEXT NOT NULL,
+    repo_name TEXT,
+    task_id TEXT,
+    at INTEGER NOT NULL,
+    sha TEXT,
+    pages TEXT NOT NULL DEFAULT '[]',
+    facts INTEGER NOT NULL DEFAULT 0,
+    summary TEXT NOT NULL,
+    error TEXT,
+    -- What Undo needs beyond the row: the run's commits, each page's text before and a hash of what it wrote.
+    undo TEXT NOT NULL DEFAULT '{}',
+    undone_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS knowledge_updates_by_project ON knowledge_updates(project_id, at);
+  CREATE INDEX IF NOT EXISTS knowledge_updates_by_task ON knowledge_updates(task_id);
+  CREATE TABLE IF NOT EXISTS knowledge_repo_heads (
+    project_id TEXT NOT NULL,
+    repo_name TEXT NOT NULL,
+    branch TEXT,
+    sha TEXT NOT NULL,
+    checked_at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, repo_name)
+  );
+`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

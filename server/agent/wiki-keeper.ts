@@ -8,6 +8,7 @@ import { db, type Row } from "../db.ts";
 import { messageText, messages } from "../data/messages.ts";
 import { settings } from "../data/settings.ts";
 import { MAX_PAGE_CHARS, wiki, WikiError } from "../data/wiki.ts";
+import { keeperKnowledge } from "../knowledge/auto/keeper.ts";
 import { limits } from "./limits.ts";
 import { providerStatuses, providers } from "./providers/index.ts";
 import { CLAUDE_SONNET } from "./router.ts";
@@ -124,10 +125,10 @@ function pageBlock(page: WikiPage, mine: AgentBrain[]): string {
   return `<page id="${page.id}" title="${page.title}"${brain && mine.length > 1 ? ` brain="${brainName(brain)}"` : ""}${parent ? ` parent="${parent.title}"` : ""} summary="${page.summary}">\n${page.content || "(empty)"}\n</page>`;
 }
 
-/** The brains the keeper may write to, notebook first, and the one new pages default to. */
+/** The brains the keeper may write to, notebook first, and the one new pages default to (in a project, its knowledge). */
 function keeperBrains(agentId: string, conversationId: string): { writable: AgentBrain[]; home: AgentBrain } {
   const writable = brains.forAgent(agentId).filter((brain) => brain.access === "write");
-  const focus = brains.focus(conversationId);
+  const focus = keeperKnowledge.homeBrain(conversationId) ?? brains.focus(conversationId);
   return { writable, home: writable.find((brain) => brain.id === focus) ?? writable[0] };
 }
 
@@ -292,7 +293,8 @@ export async function keepConversation(conversationId: string, complete: Complet
   const lastAt = Math.max(...fresh.map((m) => m.createdAt));
 
   const newChars = fresh.reduce((sum, m) => sum + messageText(m).length, 0);
-  if (!settings.get().memory.enabled || newChars < MIN_NEW_CHARS) {
+  // Module 11: a task whose landing updated the project's knowledge (or is about to) is left to that.
+  if (!settings.get().memory.enabled || newChars < MIN_NEW_CHARS || keeperKnowledge.covered(conversationId, lastAt)) {
     markSynced(conversationId, lastAt);
     return [];
   }
@@ -302,7 +304,9 @@ export async function keepConversation(conversationId: string, complete: Complet
   const updates = parseUpdates(await complete(prompt, SYSTEM));
   // The chat may have been deleted while the model was working.
   if (!conversations.get(conversationId)) return [];
+  const projectRun = await keeperKnowledge.begin(conversationId, editable.keys());
   const { changed, created } = applyUpdates(conversation.agentId, conversationId, updates, editable);
+  await projectRun?.finish(changed, conversation.title);
   markSynced(conversationId, lastAt);
   if (!changed.length) return [];
 

@@ -94,7 +94,7 @@ MCP tool registration points in `server/mcp/server.ts`: lane D adds `registerLea
 - [ ] **M0 · Contract** (lead).
 - [x] **M1 · Multi-repo projects** (A). `project_repos` with every existing project's repo migrated as its primary (checkout kept), added GitHub repos cloned at `~/projects/<slug>.<name>`, folder repos with their own grant (a chat reads every allowed folder), tasks by repo name with `repoName`, landing and checks per repo, the four repo routes, `ProjectRepos` + Add repo, the composer's repo picker, repo names on mission cards (`server/project-repos.test.ts`).
 - [ ] **M2 · One knowledge base** (B).
-- [ ] **M3 · Auto-update** (C).
+- [x] **M3 · Auto-update** (C). `server/knowledge/auto/`: on land (merged or draft PR) and when a repo's base branch moves (every 6 hours, or Check now; GitHub repos fetched in an existing clone on an agent's computer, folder repos read on this Mac, TOT's own landed tasks left out), the keeper's light model returns checked ops applied as one commit by TOT (squashed when lane B makes pages commits too); the keeper writes project chats' pages to the project's brain and skips tasks their landing covered; Dreaming reads page summaries and may `fact_to_page`; the `KnowledgeUpdate` log with Undo (module 10's undo, plus pages put back through `wiki.*` before B); `KnowledgeUpdates`; `server/knowledge-auto.test.ts`.
 - [ ] **M4 · Lead, one screen, Home** (D).
 - [ ] **M5 · Merge, review, live run** (lead): a two-repo project, the Lead plans and runs a cross-repo change as two tasks, lands both with approvals, the knowledge updates after landing; screenshots light and dark.
 

@@ -1,10 +1,14 @@
-import type { MemoryDreamState } from "../../shared/types.ts";
+import type { MemoryDreamState, Project, WikiPage } from "../../shared/types.ts";
 import { defaultComplete, type Complete } from "../agent/wiki-keeper.ts";
+import { appEvents } from "../app-events.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { settings } from "../data/settings.ts";
 import { memories } from "../data/memories.ts";
+import { wiki } from "../data/wiki.ts";
+import { consolidate, trackWrite } from "../knowledge/auto/commit.ts";
+import { knowledgeLog, pageHash, type PageUndo } from "../knowledge/auto/log.ts";
 import { knownRepos, repoEntries } from "./index.ts";
-import { afterChange, assertNoSecret, ensureRepo, entryFileFits, OVERFLOW_FILE, projectOf, quoted } from "./memory.ts";
+import { afterChange, assertNoSecret, ensureRepo, entryFileFits, looksLikeSecret, OVERFLOW_FILE, projectOf, quoted, SECRET_REFUSAL } from "./memory.ts";
 import {
   commitAll,
   commitOutsideEdits,
@@ -35,6 +39,11 @@ import {
  * no secrets, at most 30, never more than 40% of the entries changed or removed, none removed from fewer than
  * three, nothing edited meanwhile) and applied as one commit, so undoing a dream is one revert. What it adds to a
  * full MEMORY.md goes to notes.md instead.
+ *
+ * Module 11 (lane C): a project's dream also reads the project's page summaries, so it doesn't keep facts a page
+ * already says, and may move a long fact into the page it belongs in (`fact_to_page`: added to the end of the
+ * page through `wiki.*` first, then removed from memory; with lane B both land in the dream's one commit). A
+ * project dream that changed something is logged with the project's knowledge updates.
  */
 
 export type DreamOp =
@@ -42,7 +51,8 @@ export type DreamOp =
   | { op: "update"; id: string; text: string }
   | { op: "delete"; id: string; reason: string }
   | { op: "add"; file: string; text: string; source?: string }
-  | { op: "move"; id: string; file: string };
+  | { op: "move"; id: string; file: string }
+  | { op: "fact_to_page"; id: string; page: string };
 
 export interface DreamResult {
   /** "Merged 3, removed 2, added 1", or "Nothing to tidy". */
@@ -112,10 +122,11 @@ function saveState(update: (state: DreamsState) => void): void {
 
 const running = new Set<string>();
 
-/** A dream's commit was undone: Settings stops offering its Undo. */
+/** A dream's commit was undone: Settings stops offering its Undo (and so does the project's knowledge log). */
 export function dreamUndone(repo: string, sha: string): void {
   const saved = readState().repos[repo];
   if (saved?.sha && sha && saved.sha.startsWith(sha)) saveState((state) => (state.repos[repo] = { ...saved, sha: null, summary: `${saved.summary ?? "Dream"} · undone` }));
+  knowledgeLog.undoneElsewhere(repo, sha);
 }
 
 export function dreamState(repo: string): MemoryDreamState {
@@ -188,21 +199,44 @@ const hasChatsSince = (repo: string, since: number) => {
   );
 };
 
+const PAGES_BUDGET = 6000;
+
+/** A project's pages, as a dream may name them: id → title. Empty for "you". */
+function projectPages(project: Project | null): Map<string, string> {
+  return new Map(project ? wiki.list(project.brainId).map((page) => [page.id, page.title]) : []);
+}
+
+/** The project's page index with summaries (module 11), within budget. */
+function pagesBlock(project: Project): string {
+  const lines: string[] = [];
+  let used = 0;
+  for (const page of wiki.outline(project.brainId)) {
+    const line = `${"  ".repeat(page.depth)}- ${page.title} (${page.id})${page.summary ? ` — ${page.summary}` : ""}`;
+    if ((used += line.length) > PAGES_BUDGET) break;
+    lines.push(line);
+  }
+  return lines.join("\n");
+}
+
+const PAGE_INSTRUCTIONS = `- {"op": "fact_to_page", "id": "<id>", "page": "<page id>"} — a long fact (a procedure, a paragraph of detail) that belongs in one of the project's pages above: it's added to the end of that page and leaves memory.
+- A fact that only repeats what a page above already says (see its summary) can be deleted: the page has it.`;
+
 export function buildDreamPrompt(repo: string, entries: Entry[], since: number): string {
   const project = projectOf(repo);
   const what = project ? `the memory of the project "${project.name}" (what agents learned working on it)` : "the memory about the user (what they told their agents)";
   const said = userMessages(repo, since);
+  const pages = project ? pagesBlock(project) : "";
   return `This is ${what}, ${entries.length} entries.
 
 <memory>
 ${renderFiles(repo, entries) || "(empty)"}
 </memory>
-
+${pages ? `\n<pages note="the project's documentation pages: title (id) — summary">\n${pages}\n</pages>\n` : ""}
 <user-messages since="${since ? today(new Date(since)) : "the start"}">
 ${said || "(none)"}
 </user-messages>
 
-${INSTRUCTIONS}`;
+${INSTRUCTIONS}${pages ? `\n\nWith the project's pages:\n${PAGE_INSTRUCTIONS}` : ""}`;
 }
 
 // --- Checking and applying ---------------------------------------------------------------------------------------
@@ -224,9 +258,15 @@ const SOURCE = /^(tot:\/\/c\/[\w-]+|you|dreaming)$/;
  * Checks proposed operations against the repo's entries now (by key). Each bad operation is refused on its own
  * (an unknown id, a secret, an entry edited since the model read it, an id used twice, one past the 30th); a plan
  * that would change or remove more than 40% of the entries (merges, updates, moves and deletes all count) is
- * refused whole, so a repo of fewer than three entries never loses one.
+ * refused whole, so a repo of fewer than three entries never loses one. `pages`: the project's pages a
+ * `fact_to_page` may name (module 11); none for "you".
  */
-export function checkOps(entries: Entry[], raw: unknown[], seen?: Map<string, string>): { ops: DreamOp[]; refused: DreamResult["refused"]; problem: string | null } {
+export function checkOps(
+  entries: Entry[],
+  raw: unknown[],
+  seen?: Map<string, string>,
+  pages: Map<string, string> = new Map(),
+): { ops: DreamOp[]; refused: DreamResult["refused"]; problem: string | null } {
   const byId = new Map(entries.map((entry) => [entry.key, entry]));
   const used = new Set<string>();
   const ops: DreamOp[] = [];
@@ -268,6 +308,9 @@ export function checkOps(entries: Entry[], raw: unknown[], seen?: Map<string, st
         const file = markdownPath(str(v.file));
         if (file === byId.get(ids[0]!)!.path) throw new MemoryError("It's already there.");
         op = { op: "move", id: ids[0]!, file };
+      } else if (v.op === "fact_to_page") {
+        if (!pages.has(str(v.page))) throw new MemoryError(`Unknown page "${str(v.page)}".`);
+        op = { op: "fact_to_page", id: ids[0]!, page: str(v.page) };
       } else {
         throw new MemoryError(`Unknown operation "${str(v.op)}".`);
       }
@@ -297,6 +340,7 @@ export function summarize(ops: DreamOp[]): string {
     count("update") && phrase(count("update"), "updated"),
     count("add") && phrase(count("add"), "added"),
     count("move") && phrase(count("move"), "moved"),
+    count("fact_to_page") && `${phrase(count("fact_to_page"), "moved")} into pages`,
   ].filter(Boolean) as string[];
   if (!parts.length) return "Nothing to tidy";
   const text = parts.join(", ");
@@ -306,7 +350,7 @@ export function summarize(ops: DreamOp[]): string {
 const quote = (text: string) => quoted(text, 90);
 
 /** Applies checked operations to the files (inside the repo's turn); returns the commit body's lines. */
-function applyOps(repo: string, entries: Entry[], ops: DreamOp[]): string[] {
+function applyOps(repo: string, entries: Entry[], ops: DreamOp[], pages: Map<string, string> = new Map()): string[] {
   const byId = new Map(entries.map((entry) => [entry.key, entry]));
   const taken = new Set([...memories.ids(), ...entries.map((entry) => entry.id)]);
   /** Per file: lines to replace (or remove, with null), and new lines to add. */
@@ -348,6 +392,10 @@ function applyOps(repo: string, entries: Entry[], ops: DreamOp[]): string[] {
       replace(entry, null);
       add(op.file, rewrite({ ...entry, indent: "", bullet: "-" }, entry.text));
       details.push(`- moved ${op.id} to ${op.file}`);
+    } else if (op.op === "fact_to_page") {
+      // Its text was added to the page before this commit (moveFactsToPages).
+      replace(byId.get(op.id)!, null);
+      details.push(`- moved ${op.id} into the page “${pages.get(op.page) ?? op.page}”`);
     } else {
       const id = newId(taken);
       taken.add(id);
@@ -377,6 +425,75 @@ function applyOps(repo: string, entries: Entry[], ops: DreamOp[]): string[] {
   return details;
 }
 
+const dreamSubject = (summary: string) => `Dreaming: ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`;
+
+/**
+ * The `fact_to_page` operations that check out, done first: each fact's text added to the end of its page (as
+ * "keeper", through `wiki.*`), so a fact is never removed from memory without being in its page. Those that
+ * can't be (the page is gone, it would be too long) are dropped. The whole plan is checked first: a plan that
+ * would be refused whole moves nothing.
+ */
+async function moveFactsToPages(
+  repo: string,
+  project: Project | null,
+  raw: unknown[],
+  seen: Map<string, string>,
+  pages: Map<string, string>,
+): Promise<{ dropped: Set<unknown>; refused: DreamResult["refused"]; mine: Set<string>; undo: PageUndo[] }> {
+  const moved = { dropped: new Set<unknown>(), refused: [] as DreamResult["refused"], mine: new Set<string>(), undo: [] as PageUndo[] };
+  if (!project || !raw.some((item) => (item as { op?: unknown } | null)?.op === "fact_to_page")) return moved;
+  const entries = repoEntries(repo);
+  const { ops, problem } = checkOps(entries, raw, seen, pages);
+  if (problem) return moved;
+  const allowed = new Set(ops.filter((op) => op.op === "fact_to_page").map((op) => (op as { id: string }).id));
+  const before = new Map<string, WikiPage>();
+  for (const item of raw) {
+    const v = item as { op?: unknown; id?: unknown; page?: unknown };
+    if (v?.op !== "fact_to_page" || typeof v.id !== "string" || !allowed.has(v.id)) continue;
+    const entry = entries.find((candidate) => candidate.key === v.id)!;
+    const page = wiki.get(String(v.page));
+    try {
+      if (!page || page.brainId !== project.brainId) throw new Error("That page is gone.");
+      // Pages refuse secrets as facts do (a line written by hand may hold one).
+      if (looksLikeSecret(entry.text)) throw new Error(SECRET_REFUSAL);
+      if (!before.has(page.id)) before.set(page.id, page);
+      const content = page.content.trim() ? `${page.content.trimEnd()}\n\n${entry.text}` : entry.text;
+      await trackWrite(repo, moved.mine, () => wiki.update(page.id, { content }, "keeper"));
+    } catch (err) {
+      moved.dropped.add(item);
+      moved.refused.push({ op: item, reason: `Couldn't add it to the page: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+  for (const [id, was] of before) {
+    const now = wiki.get(id);
+    if (now && pageHash(now) !== pageHash(was)) {
+      moved.undo.push({ id, action: "updated", before: { title: was.title, summary: was.summary, content: was.content }, wrote: pageHash(now) });
+    }
+  }
+  if (moved.undo.length) appEvents.brainChanged(project.brainId);
+  return moved;
+}
+
+/** A project's dream that changed something, in the project's knowledge updates (module 11). */
+function logProjectDream(project: Project, result: DreamResult, commits: string[], pages: PageUndo[]): void {
+  try {
+    knowledgeLog.record({
+      projectId: project.id,
+      trigger: "dreaming",
+      repoName: null,
+      taskId: null,
+      sha: result.sha,
+      pages: pages.map((page) => ({ id: page.id, title: wiki.get(page.id)?.title ?? "Page", action: "updated" as const })),
+      facts: result.applied.length,
+      summary: `Dreaming: ${result.summary.charAt(0).toLowerCase()}${result.summary.slice(1)}`,
+      error: null,
+      undo: { commits: commits.length ? commits : result.sha ? [result.sha] : [], pages },
+    });
+  } catch (err) {
+    console.warn("[tot] couldn't log a project's dream:", err instanceof Error ? err.message : err);
+  }
+}
+
 /** One dream over one repo. `complete` is the model (the keeper's light one by default; tests pass a fake). */
 export async function dream(repo: string, complete: Complete = defaultComplete): Promise<DreamResult> {
   if (running.has(repo)) throw new MemoryError("Already dreaming about this memory.", 409);
@@ -386,23 +503,29 @@ export async function dream(repo: string, complete: Complete = defaultComplete):
     const since = readState().repos[repo]?.lastAt ?? 0;
     const entries = repoEntries(repo);
     const seen = new Map(entries.map((entry) => [entry.key, entry.text]));
-    const raw = entries.length || hasChatsSince(repo, since) ? parseOps(await complete(buildDreamPrompt(repo, entries, since), SYSTEM)) : [];
+    let raw = entries.length || hasChatsSince(repo, since) ? parseOps(await complete(buildDreamPrompt(repo, entries, since), SYSTEM)) : [];
+    const project = projectOf(repo);
+    const pages = projectPages(project);
+    const base = await head(repo);
+    const moved = await moveFactsToPages(repo, project, raw, seen, pages);
+    raw = raw.filter((item) => !moved.dropped.has(item));
 
-    const result = await withRepo(repo, async (): Promise<DreamResult> => {
+    const result = await withRepo(repo, async (): Promise<DreamResult & { body: string }> => {
       await initRepo(repo);
       const outside = await commitOutsideEdits(repo);
       const now = repoEntries(repo);
-      const { ops, refused, problem } = checkOps(now, raw, seen);
+      const { ops, refused, problem } = checkOps(now, raw, seen, pages);
       if (problem) {
         if (outside) afterChange(repo, outside);
         throw new MemoryError(problem);
       }
       const summary = summarize(ops);
       let sha: string | null = null;
+      let body = "";
       try {
-        const details = ops.length ? applyOps(repo, now, ops) : [];
-        const body = [...details, refused.length ? `Skipped ${refused.length} that didn't check out: ${refused.map((r) => r.reason).join(" ")}` : ""].filter(Boolean).join("\n");
-        sha = ops.length ? await commitAll(repo, { subject: `Dreaming: ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`, body, actor: "Dreaming", kind: "dream" }) : null;
+        const details = ops.length ? applyOps(repo, now, ops, pages) : [];
+        body = [...details, refused.length ? `Skipped ${refused.length} that didn't check out: ${refused.map((r) => r.reason).join(" ")}` : ""].filter(Boolean).join("\n");
+        sha = ops.length ? await commitAll(repo, { subject: dreamSubject(summary), body, actor: "Dreaming", kind: "dream" }) : null;
       } catch (err) {
         // A file it couldn't write: none of the dream stays behind.
         await discardChanges(repo).catch(() => {});
@@ -410,11 +533,16 @@ export async function dream(repo: string, complete: Complete = defaultComplete):
         throw err;
       }
       if (sha || outside) afterChange(repo, sha ?? outside);
-      return { summary, sha, applied: ops, refused };
+      return { summary, sha, applied: ops, refused: [...moved.refused, ...refused], body };
     });
+    // With lane B a page is a commit too: the pages and the dream become one commit.
+    if (result.sha) moved.mine.add(result.sha);
+    const commits = moved.mine.size ? await consolidate(repo, base, { subject: dreamSubject(result.summary), body: result.body, actor: "Dreaming", kind: "dream" }, moved.mine) : [];
+    if (commits[0]) result.sha = commits[0];
+    if (project && result.sha) logProjectDream(project, result, commits, moved.undo);
     const after = await head(repo);
     saveState((state) => (state.repos[repo] = { lastAt: Date.now(), head: after, summary: result.summary, sha: result.sha, error: null }));
-    return result;
+    return { summary: result.summary, sha: result.sha, applied: result.applied, refused: result.refused };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     saveState((state) => (state.repos[repo] = { ...(state.repos[repo] ?? { lastAt: null, head: null, summary: null, sha: null }), error }));

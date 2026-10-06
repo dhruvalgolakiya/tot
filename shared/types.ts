@@ -1110,7 +1110,15 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/memory/sync                     -> MemorySyncStatus  (sync with paired devices and the backup remote now)
 // GET    /api/memory/sync/you.bundle          -> application/octet-stream  (paired devices only: a git bundle of "you"; 403 for others)
 //
-// GET    /api/github                          -> GitHubStatus
+// Knowledge auto-updates (module 11, lane C; after a task lands, when a repo's main branch moves, after chats, Dreaming;
+// each run is one commit in the project's knowledge repo; paired devices get 403: knowledge stays on its device)
+// GET    /api/projects/:id/knowledge/updates  -> KnowledgeUpdate[]  (newest first: runs in progress (running), then the last 50)
+// POST   /api/projects/:id/knowledge/refresh  -> KnowledgeRefreshResult  (checks every repo's base branch now; an update is
+//                                              queued for each that moved, and shows in `updates` as running)
+// POST   /api/projects/:id/knowledge/updates/:updateId/undo -> KnowledgeUpdate  (reverts its commit through memory's undo and puts
+//                                              its pages back; 409 when a page it wrote changed since, or later changes collide)
+//
+// GET    /api/github                         -> GitHubStatus
 // POST   /api/github/connect                  GitHubConnectRequest -> GitHubStatus  (400 with the reason when it doesn't work)
 // POST   /api/github/device                   -> GitHubDeviceStart  (browser sign-in; 400 when not set up)
 // GET    /api/github/device                   -> GitHubDevicePoll   (poll every intervalSeconds until not "pending")
@@ -1553,6 +1561,17 @@ export interface KnowledgeUpdate {
   /** One line for the UI: "Updated after “Fix cart”". */
   summary: string;
   error: string | null;
+  /** Lane C: still running, or waiting to try again (`error` says why); not in the log yet. */
+  running?: boolean;
+  /** Lane C: when Undo put its changes back; null while they stand. */
+  undoneAt?: number | null;
+}
+
+/** POST /api/projects/:id/knowledge/refresh: the project's repos checked now, how many had moved (an update runs for each), and the log. */
+export interface KnowledgeRefreshResult {
+  checked: number;
+  moved: number;
+  updates: KnowledgeUpdate[];
 }
 
 /** A project's row on Home: what needs you, what's working, what's ready to land, and its Lead. */

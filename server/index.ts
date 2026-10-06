@@ -27,6 +27,7 @@ import { taskNotifications } from "./tasks/notify.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { chatWakes } from "./tasks/wake.ts";
 import { worktreeLifecycle } from "./worktrees/lifecycle.ts";
+import { knowledgeAuto } from "./knowledge/auto/jobs.ts";
 
 // The Mac app (module 08) runs TOT with Electron's Node, which ELECTRON_RUN_AS_NODE=1 switches on. Children
 // mustn't inherit it: an agent running another Electron app's CLI would get a bare Node instead.
@@ -83,6 +84,8 @@ chatWakes.start();
 tasks.start();
 // Module 09: previews from before the restart are gone, old worktrees are swept daily.
 worktreeLifecycle.start();
+// Module 11: a project's knowledge updates itself after tasks land and when its repos' base branches move.
+knowledgeAuto.start();
 taskNotifications.start();
 fanIn.start();
 missionWatch.start();
@@ -96,6 +99,7 @@ async function shutdown(signal: string) {
   console.log(`\n${signal} received, stopping runs…`);
   scheduler.stop();
   wikiKeeper.stop();
+  knowledgeAuto.stop();
   stopMemory();
   relay.stopAll();
   void listeners.stop();
