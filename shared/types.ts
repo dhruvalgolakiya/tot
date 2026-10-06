@@ -1186,6 +1186,13 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/worktrees/cleanup               -> { removed: number }  (removes worktrees of finished, unlanded tasks older than
 //                                              tasks.worktreeCleanupDays now, as the daily sweep does; their branches stay)
 //
+// Workspaces (module 11 · lane D: a project's Lead, and Home)
+// POST   /api/projects/:id/lead               { agentId? } -> Conversation  (the project's Lead chat, `lead: true`, pinned, titled "Lead":
+//                                              made the first time (201) with agentId or the agent most active in the project, the
+//                                              same one after (200); 400 for an archived project without one. Project.leadChatId names it)
+// GET    /api/home                            -> HomeProject[]  (every project that isn't archived, the most recently active first:
+//                                              what needs you, is working and is ready to land on its board, and its Lead chat)
+//
 // Devices (module 07; this device, remote access, and the browsers and phones signed in to it)
 // GET    /.well-known/tot                     -> { id, name, protocol: 1 }  (open, no sign-in: lets another device check it reached TOT)
 // GET    /api/devices                         -> DevicesStatus

@@ -68,6 +68,8 @@ function toRecord(row: Row): ConversationRecord {
     wakeTokens: Number(row.wake_tokens ?? 0),
     mergeNotes: parseJson<MergeNote[]>(row.merge_notes, []),
     projectId: (row.project_id as string | null) ?? null,
+    // Module 11: only a project's Lead carries the flag.
+    ...(row.lead ? { lead: true } : {}),
   };
 }
 
@@ -125,6 +127,12 @@ export const conversations = {
     return (db.prepare(`SELECT * FROM conversations WHERE project_id = ? ORDER BY updated_at DESC`).all(projectId) as Row[]).map(toRecord);
   },
 
+  /** Module 11: the id of the project's Lead chat, or null (server/lead/). */
+  leadOf(projectId: string): string | null {
+    const row = db.prepare(`SELECT id FROM conversations WHERE project_id = ? AND lead = 1 ORDER BY created_at LIMIT 1`).get(projectId) as Row | undefined;
+    return row ? String(row.id) : null;
+  },
+
   /** Chats forked from this one. */
   forksOf(id: string): ConversationRecord[] {
     return (db.prepare(`SELECT * FROM conversations WHERE json_extract(forked_from, '$.conversationId') = ?`).all(id) as Row[]).map(toRecord);
@@ -151,6 +159,8 @@ export const conversations = {
     task?: TaskInfo | null;
     forkedFrom?: ForkOrigin | null;
     projectId?: string | null;
+    /** Module 11: the project's Lead chat. */
+    lead?: boolean;
   }): ConversationRecord {
     const id = randomUUID();
     const now = Date.now();
@@ -171,6 +181,7 @@ export const conversations = {
       now,
       now,
     );
+    if (input.lead) db.prepare(`UPDATE conversations SET lead = 1 WHERE id = ?`).run(id);
     return conversations.get(id)!;
   },
 

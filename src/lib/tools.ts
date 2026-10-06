@@ -17,6 +17,7 @@ import {
   MousePointerClick,
   MoveVertical,
   Puzzle,
+  SquareKanban,
   Terminal,
   Wrench,
 } from "lucide-react";
@@ -39,6 +40,7 @@ const ICONS: Record<string, LucideIcon> = {
   computer_open_url: Link,
   web_search: Globe,
   web_fetch: Globe,
+  mission_overview: SquareKanban,
 };
 
 export function toolIcon(name: string): LucideIcon {

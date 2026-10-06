@@ -47,6 +47,8 @@ function toProject(row: Row): Project {
     updatedAt: Number(row.updated_at),
     chats: Number(counts.chats ?? 0),
     running: Number(counts.running ?? 0),
+    // Module 11: its Lead chat, once made (server/lead/).
+    leadChatId: conversations.leadOf(id),
     // Module 09: what every new task worktree gets.
     setupCommand: (row.setup_command as string | null) ?? null,
     copyFiles: parseJson<string[]>(row.copy_files, []),
@@ -231,6 +233,8 @@ export const projects = {
   moveChat(conversationId: string, projectId: string | null): void {
     const chat = conversations.get(conversationId);
     if (!chat) throw new HttpError(404, "Chat not found.");
+    // Module 11: a project's Lead runs that project; it isn't filed elsewhere.
+    if (chat.lead) throw new HttpError(400, "The Lead stays in its project.");
     const project = projectId ? projects.get(projectId) : null;
     if (projectId && (!project || project.archived)) throw new HttpError(404, "Project not found.");
     const family = [chat, ...conversations.tasks({ parentId: chat.id })];

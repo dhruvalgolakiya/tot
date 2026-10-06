@@ -44,6 +44,7 @@ import { intake } from "../projects/intake.ts";
 import { projects } from "../projects/projects.ts";
 import { deviceSection } from "../devices/prompt.ts";
 import { projectList, projectNote, projectSection } from "../projects/prompt.ts";
+import { leadNote, leadSection } from "../lead/prompt.ts";
 import { promptMemory } from "../memory/prompt.ts";
 
 export class HttpError extends Error {
@@ -167,9 +168,9 @@ export async function sendMessage(
   messages.insert(userMessage);
   messages.insert(assistant);
 
-  // Routine (and other pre-named) chats keep their names, so they skip auto-titling. (A chat filed on
-  // arrival starts with its "Filed under" notice, so it's the first user message that counts.)
-  const isFirstTurn = !history.some((m) => m.role === "user") && !conversation.routineId && !options.keepTitle;
+  // Routine (and other pre-named) chats, and a project's Lead, keep their names, so they skip auto-titling. (A chat
+  // filed on arrival starts with its "Filed under" notice, so it's the first user message that counts.)
+  const isFirstTurn = !history.some((m) => m.role === "user") && !conversation.routineId && !options.keepTitle && !conversation.lead;
   const updated = conversations.update(
     conversationId,
     { modelId, ...(isFirstTurn ? { title: quickTitle(routingText) } : {}) },
@@ -424,13 +425,16 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
   const section = project ? projectSection(project, { inTask: conversation.kind === "task" }) : conversation.kind === "chat" ? projectList() : null;
   const moved = projectNote(conversation.systemPrompt, section);
   if (moved.prompt !== null) conversations.update(conversation.id, { systemPrompt: moved.prompt });
+  // A project's Lead (module 11): its section follows the project's repos; a change is said once.
+  const lead = leadNote(conversation, project, moved.prompt ?? conversation.systemPrompt);
+  if (lead.prompt !== null) conversations.update(conversation.id, { systemPrompt: lead.prompt });
   const text =
-    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, ctx.text]
+    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, lead.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, ctx.text]
       .filter(Boolean)
       .join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
 
-  let systemPrompt = moved.prompt ?? conversation.systemPrompt;
+  let systemPrompt = lead.prompt ?? moved.prompt ?? conversation.systemPrompt;
   if (!systemPrompt) {
     const settings = settingsStore.get();
     const agent = agents.get(conversation.agentId) ?? agents.first();
@@ -468,6 +472,7 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
       // A task is told its goal and where to work; a chat, when to start tasks.
       tasks: conversation.kind === "task" && conversation.task ? taskSection(conversation.task) : chatTasksSection(),
       project: section,
+      lead: conversation.lead && project ? leadSection(project) : null,
       device: deviceSection(),
     });
     conversations.update(conversation.id, { systemPrompt });

@@ -10,7 +10,7 @@ import { runRegistry } from "../agent/runs.ts";
 import { registerPreviewTools } from "../worktrees/tools.ts";
 import { markResultsRead, MAX_DEPTH, resultBlock } from "./prompt.ts";
 import { taskRequests } from "./requests.ts";
-import { FINISHED, taskStore, type TaskRecord } from "./store.ts";
+import { FINISHED, isTask, taskStore, type TaskRecord } from "./store.ts";
 import { tasks } from "./tasks.ts";
 import { DEFAULT_WAIT_MINUTES, MAX_WAIT_MINUTES, waitForTasks } from "./wait.ts";
 
@@ -36,10 +36,20 @@ function describe(task: TaskRecord): string {
   return lines.join("\n");
 }
 
-/** A task this conversation started, or null. */
+/** A task this conversation started (or, for a project's Lead, any task in its project: module 11), or null. */
 function child(conversation: ConversationRecord, id: string): TaskRecord | null {
   const task = taskStore.get(id);
-  return task && task.parentId === conversation.id ? task : null;
+  if (!task) return null;
+  if (task.parentId === conversation.id) return task;
+  return conversation.lead && conversation.projectId && task.projectId === conversation.projectId ? task : null;
+}
+
+/** The tasks task_list shows: those started from here, or for a project's Lead every task in its project (newest first, at most 40). */
+function listed(conversation: ConversationRecord): { tasks: TaskRecord[]; more: number } {
+  const all = (
+    conversation.lead && conversation.projectId ? conversations.inProject(conversation.projectId) : conversations.tasks({ parentId: conversation.id })
+  ).filter(isTask);
+  return { tasks: all.slice(0, 40), more: Math.max(0, all.length - 40) };
 }
 
 const role = z.enum(ROLE_NAMES as [Role, ...Role[]]).optional();
@@ -121,6 +131,8 @@ const toSpec = (input: SessionInput): SpawnSpec => ({
 
 export function registerTaskTools(server: McpServer, conversation: ConversationRecord): void {
   const inTask = conversation.kind === "task" && conversation.task;
+  // A project's Lead looks after every task in its project (module 11).
+  const scope = conversation.lead && conversation.projectId ? "in this project" : "started from here";
   if (inTask) registerInsideTask(server, conversation.id);
   // A coding task can show the user its app (module 09).
   if (inTask && conversation.task!.repo) registerPreviewTools(server, conversation.id);
@@ -183,14 +195,14 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     "task_list",
     {
       title: "List tasks",
-      description: "List the tasks started from here, with their status, progress and results.",
+      description: `List the tasks ${scope}, with their status, progress and results.`,
       inputSchema: {},
     },
     () =>
       guarded(async () => {
-        const list = conversations.tasks({ parentId: conversation.id }) as TaskRecord[];
-        if (!list.length) return reply("No tasks have been started from here.");
-        return reply(`${plural(list.length, "task")}:\n${list.map(describe).join("\n")}`);
+        const { tasks: list, more } = listed(conversation);
+        if (!list.length) return reply(`No tasks ${scope === "in this project" ? "in this project yet" : "have been started from here"}.`);
+        return reply(`${plural(list.length + more, "task")}${more ? `, the newest ${list.length}` : ""}:\n${list.map(describe).join("\n")}`);
       }),
   );
 
@@ -198,13 +210,13 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     "task_status",
     {
       title: "Check a task",
-      description: "The status, plan, progress and result of one task started from here.",
+      description: `The status, plan, progress and result of one task ${scope}.`,
       inputSchema: { id: z.string().min(1).describe("The task id from task_start or task_list") },
     },
     ({ id }) =>
       guarded(async () => {
         const task = child(conversation, id);
-        if (!task) return reply(`No task with id ${id} was started from here.`, true);
+        if (!task) return reply(`No task with id ${id} ${scope === "in this project" ? "in this project" : "was started from here"}.`, true);
         // Its result has been seen now: no wake-up or next-turn note repeats it.
         markResultsRead(conversation.id, [id]);
         const plan = task.task.plan.map((step) => `  - [${step.done ? "x" : " "}] ${step.text}`).join("\n");
@@ -221,7 +233,7 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     {
       title: "Message a task",
       description:
-        "Add an instruction to a task started from here. A running task gets it mid-run (as a note from the user); a finished or paused one picks up again with it.",
+        `Add an instruction to a task ${scope}. A running task gets it mid-run (as a note from the user); a finished or paused one picks up again with it; one waiting for input takes it as the answer.`,
       inputSchema: {
         id: z.string().min(1).describe("The task id"),
         text: z.string().min(1).max(4000).describe("The instruction, e.g. “Also cover pricing for teams over 50”"),
@@ -230,7 +242,7 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     ({ id, text }) =>
       guarded(async () => {
         const task = child(conversation, id);
-        if (!task) return reply(`No task with id ${id} was started from here.`, true);
+        if (!task) return reply(`No task with id ${id} ${scope === "in this project" ? "in this project" : "was started from here"}.`, true);
         const result = await tasks.message(id, { text });
         return reply("steered" in result ? `Sent to “${task.title}” while it runs.` : `“${task.title}” picked up again with your message.`);
       }),

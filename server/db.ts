@@ -582,6 +582,9 @@ if (!hasColumn("memories_legacy", "import_state")) db.exec(`ALTER TABLE memories
 if (!hasColumn("projects", "setup_command")) db.exec(`ALTER TABLE projects ADD COLUMN setup_command TEXT`);
 if (!hasColumn("projects", "copy_files")) db.exec(`ALTER TABLE projects ADD COLUMN copy_files TEXT NOT NULL DEFAULT '[]'`);
 
+// Workspaces (roadmap module 11, lane D; server/lead/): a project's Lead chat, the one it's run from (at most one per project).
+if (!hasColumn("conversations", "lead")) db.exec(`ALTER TABLE conversations ADD COLUMN lead INTEGER NOT NULL DEFAULT 0`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

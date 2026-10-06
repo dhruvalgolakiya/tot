@@ -251,6 +251,8 @@ export function buildSystemPrompt(opts: {
   tasks?: string;
   /** The project the chat is in (module 06; see projects/prompt.ts). */
   project?: string | null;
+  /** A project's Lead: how it runs the project (module 11; see lead/prompt.ts). */
+  lead?: string | null;
   /** Which device the agent runs on, once there are paired devices (module 07; see devices/prompt.ts). */
   device?: string | null;
   now?: Date;
@@ -284,6 +286,7 @@ Your name is ${name}. Under the hood, TOT sends each message to a model from the
     opts.persona && personaSection(opts.persona),
     opts.tasks,
     opts.project,
+    opts.lead,
     opts.apps && appsSection(),
     opts.workspace && memorySection(opts.workspace),
     opts.workspace && wikiSection(name, opts.workspace),

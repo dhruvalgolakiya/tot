@@ -20,12 +20,22 @@ export function missionRoot(conversation: ConversationRecord): ConversationRecor
   return current;
 }
 
+/**
+ * A project's Lead (module 11) runs its project for as long as the project lasts: its limits count the work
+ * still in flight (open, or finished with code not yet landed), not every task it ever started.
+ */
+function inFlight(task: ConversationRecord): boolean {
+  if (!task.task || task.task.landing) return false;
+  return !["done", "failed", "stopped"].includes(task.task.status) || Boolean(task.task.repo?.headSha);
+}
+
 /** Tokens used by every task under a mission's root (and the root: its own turns when it's a task, its wake-ups when it's a chat). */
 export function missionUsage(root: ConversationRecord): number {
-  let total = (root.task ? root.task.usage.inputTokens + root.task.usage.outputTokens : 0) + root.wakeTokens;
+  let total = (root.task ? root.task.usage.inputTokens + root.task.usage.outputTokens : 0) + (root.lead ? 0 : root.wakeTokens);
   const queue = [root.id];
   for (let i = 0; i < queue.length && i < 200; i++) {
     for (const child of conversations.tasks({ parentId: queue[i] })) {
+      if (root.lead && queue[i] === root.id && !inFlight(child)) continue;
       if (child.task) total += child.task.usage.inputTokens + child.task.usage.outputTokens;
       queue.push(child.id);
     }
@@ -50,7 +60,7 @@ export function checkSpawn(parent: ConversationRecord, count: number): void {
     throw new HttpError(400, `Tasks go at most ${MAX_DEPTH} levels deep; this one can't start tasks of its own. Do the work here instead.`);
   }
   const { maxChildren } = settings.get().tasks;
-  const existing = conversations.tasks({ parentId: parent.id }).length;
+  const existing = conversations.tasks({ parentId: parent.id }).filter((child) => !parent.lead || inFlight(child)).length;
   if (existing + count > maxChildren) {
     throw new HttpError(400, `A chat or task can start at most ${maxChildren} tasks (it has ${existing}). Combine the work into fewer tasks.`);
   }

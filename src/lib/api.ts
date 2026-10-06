@@ -32,6 +32,7 @@ import type {
   GitHubDeviceStart,
   GitHubRepo,
   GitHubStatus,
+  HomeProject,
   LandTaskRequest,
   LearnRepoRequest,
   MailMessage,
@@ -258,6 +259,11 @@ export const api = {
   // Module 11 · lane C (knowledge auto-updates).
 
   // Module 11 · lane D (the Lead, Home).
+  /** The project's Lead chat: made the first time (with `agentId`, else the agent most active in the project), the same one after. */
+  openLead: (projectId: string, agentId?: string | null) =>
+    request<Conversation>("POST", `/projects/${seg(projectId)}/lead`, agentId ? { agentId } : {}),
+  /** Every project's row on Home: needs you, working, ready to land, last activity, its Lead. */
+  getHome: () => request<HomeProject[]>("GET", "/home"),
 
   stopRun: (runId: string) => request<Ok>("POST", `/runs/${seg(runId)}/stop`, {}),
   /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */

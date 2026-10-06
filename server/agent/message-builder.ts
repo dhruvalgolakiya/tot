@@ -82,6 +82,15 @@ export function toolTitle(name: string, input: unknown): string {
       return args.question ? "Asked you a question" : args.plan ? "Updated its plan" : "Noted its progress";
     case "task_finish":
       return args.outcome === "failed" ? "Reported the task failed" : "Finished the task";
+    // A project's Lead (module 11).
+    case "mission_overview":
+      return "Read the board";
+    case "task_land":
+      return "Asked to land a task";
+    case "task_update_from_base":
+      return "Updated a task from its base";
+    case "task_discard":
+      return "Asked to discard a task";
     default:
       return name.includes("/") ? `Used ${name}` : name;
   }

@@ -25,6 +25,7 @@ import { handoffs } from "./orchestration/handoff.ts";
 import { taskNotifications } from "./tasks/notify.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { chatWakes } from "./tasks/wake.ts";
+import { leadWakes } from "./lead/wake.ts";
 import { worktreeLifecycle } from "./worktrees/lifecycle.ts";
 
 // The Mac app (module 08) runs TOT with Electron's Node, which ELECTRON_RUN_AS_NODE=1 switches on. Children
@@ -77,6 +78,8 @@ mailboxes.resume();
 wikiKeeper.start();
 // Before tasks: tasks cut off by the restart (and not resuming) wake the chats that started them.
 chatWakes.start();
+// Module 11: a project's Lead hears about every task in its project.
+leadWakes.start();
 tasks.start();
 // Module 09: previews from before the restart are gone, old worktrees are swept daily.
 worktreeLifecycle.start();
