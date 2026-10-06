@@ -9,6 +9,8 @@ import type {
   WikiSearchHit,
 } from "../../shared/types.ts";
 import { db, type Row } from "../db.ts";
+import { OVERVIEW_PATH } from "../knowledge/files.ts";
+import { atomically, gitRevisions, linked, modeOf, record } from "../knowledge/store.ts";
 import { brains } from "./brains.ts";
 import { toFtsQuery } from "./memories.ts";
 
@@ -20,6 +22,10 @@ import { toFtsQuery } from "./memories.ts";
  * page, created on first use. Deleting a page only marks it deleted, so it and
  * its history can be recovered. Reads can span several brains (`BrainScope`);
  * writes go to one.
+ *
+ * Since module 11 a brain's pages are markdown files in a git repo (knowledge/store.ts) and `wiki_pages` is
+ * their index: writes update it at once and are committed in the background, and a page's history comes from
+ * git. A brain whose move into git hasn't landed works from the database as before. Pages never hold secrets.
  */
 
 /** One brain id, or several (e.g. every brain an agent can see). */
@@ -61,6 +67,7 @@ function toSummary(row: Row): WikiPageSummary {
     position: Number(row.position),
     updatedBy: row.updated_by as WikiAuthor,
     updatedAt: Number(row.updated_at),
+    repo: (row.repo as string | null) ?? null,
   };
 }
 
@@ -137,6 +144,24 @@ function cleanContent(content: unknown): string {
 /** Case-insensitive across scripts (SQLite's lower() only folds ASCII). */
 const sameTitle = (a: string, b: string) => a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
 
+export const WIKI_SECRET_REFUSAL = "That looks like a secret; the wiki never stores secrets.";
+
+/**
+ * Refuses text that brings in a secret (as memory does: anything shaped like a key, TOT's own secrets, a password
+ * written out). Only what's new counts, so a line that was already on the page doesn't lock it.
+ */
+function assertNoNewSecret(before: string, after: string): void {
+  if (before === after) return;
+  const old = new Set(before.split("\n"));
+  const added = after
+    .split("\n")
+    .filter((line) => !old.has(line))
+    .join("\n");
+  if (linked.secretKind(added)) throw new WikiError(WIKI_SECRET_REFUSAL);
+}
+
+const isGit = (brainId: string) => modeOf(brainId) === "git";
+
 export const wiki = {
   /** The brain's pinned Overview (its start-here page), created on first use. */
   overview(brainId: string): WikiPage {
@@ -147,10 +172,12 @@ export const wiki = {
     const id = randomUUID();
     const now = Date.now();
     const summary = brains.get(brainId)?.kind === "notebook" ? OVERVIEW_SUMMARY : SHARED_OVERVIEW_SUMMARY;
+    // In git, an empty Overview nobody wrote in yet is only in the index: its file comes with its first edit.
+    const path = isGit(brainId) ? OVERVIEW_PATH : null;
     db.prepare(
-      `INSERT INTO wiki_pages (id, brain_id, title, summary, content, pinned, position, updated_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, '', 1, 0, 'agent', ?, ?)`,
-    ).run(id, brainId, OVERVIEW_TITLE, summary, now, now);
+      `INSERT INTO wiki_pages (id, brain_id, title, summary, content, pinned, position, updated_by, created_at, updated_at, path)
+       VALUES (?, ?, ?, ?, '', 1, 0, 'agent', ?, ?, ?)`,
+    ).run(id, brainId, OVERVIEW_TITLE, summary, now, now, path);
     return wiki.get(id)!;
   },
 
@@ -240,6 +267,7 @@ export const wiki = {
     const title = cleanTitle(input.title);
     const summary = cleanSummary(input.summary);
     const content = cleanContent(input.content);
+    assertNoNewSecret("", `${title}\n${summary}\n${content}`);
     wiki.overview(brainId);
     const parentId = input.parentId ? wiki.checkParent(brainId, input.parentId, null) : null;
     if (wiki.withTitle(brainId, title, parentId).length) throw new WikiError(`There's already a page called “${title}” here.`);
@@ -254,10 +282,19 @@ export const wiki = {
     );
     const id = randomUUID();
     const now = Date.now();
-    db.prepare(
-      `INSERT INTO wiki_pages (id, brain_id, parent_id, title, summary, content, pinned, position, updated_by, conversation_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
-    ).run(id, brainId, parentId, title, summary, content, position, author, conversationId, now, now);
+    const insert = () =>
+      db.prepare(
+        `INSERT INTO wiki_pages (id, brain_id, parent_id, title, summary, content, pinned, position, updated_by, conversation_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+      ).run(id, brainId, parentId, title, summary, content, position, author, conversationId, now, now);
+    if (isGit(brainId)) {
+      atomically(() => {
+        insert();
+        record(brainId, [{ id, op: "create" }], author, conversationId);
+      });
+    } else {
+      insert();
+    }
     return wiki.get(id)!;
   },
 
@@ -279,52 +316,93 @@ export const wiki = {
       throw new WikiError(`There's already a page called “${title}” here.`);
     }
     const position = patch.position ?? page.position;
+    const git = isGit(page.brainId);
 
     if (title === page.title && summary === page.summary && content === page.content) {
       // Nothing to read changed (a move or reorder): keep who wrote it and when.
-      db.prepare(`UPDATE wiki_pages SET parent_id = ?, position = ? WHERE id = ?`).run(parentId, position, id);
+      const move = () => db.prepare(`UPDATE wiki_pages SET parent_id = ?, position = ? WHERE id = ?`).run(parentId, position, id);
+      if (!git) move();
+      else if (parentId !== page.parentId || position !== page.position) {
+        atomically(() => {
+          move();
+          record(page.brainId, [{ id, op: "move" }], author, conversationId);
+        });
+      }
       return wiki.get(id)!;
     }
-    wiki.snapshot(page, author, conversationId);
-    db.prepare(
-      `UPDATE wiki_pages SET title = ?, summary = ?, content = ?, parent_id = ?, position = ?, updated_by = ?, conversation_id = ?, updated_at = ?
-       WHERE id = ?`,
-    ).run(title, summary, content, parentId, position, author, conversationId, Date.now(), id);
+    assertNoNewSecret(page.title, title);
+    assertNoNewSecret(page.summary, summary);
+    assertNoNewSecret(page.content, content);
+    const write = () =>
+      db.prepare(
+        `UPDATE wiki_pages SET title = ?, summary = ?, content = ?, parent_id = ?, position = ?, updated_by = ?, conversation_id = ?, updated_at = ?
+         WHERE id = ?`,
+      ).run(title, summary, content, parentId, position, author, conversationId, Date.now(), id);
+    if (git) {
+      // Git keeps every version; the commit says who and from which chat.
+      atomically(() => {
+        write();
+        record(page.brainId, [{ id, op: "edit" }], author, conversationId);
+      });
+    } else {
+      wiki.snapshot(page, author, conversationId);
+      write();
+    }
     return wiki.get(id)!;
   },
 
   /**
    * Deletes a page (kept, marked deleted); its children move up a level, renamed
-   * if a sibling there already has their title. The pinned Overview can't be deleted.
+   * if a sibling there already has their title. The pinned Overview can't be deleted. `author`: who deleted it
+   * (the history says so; module 11).
    */
-  delete(id: string): WikiPage {
+  delete(id: string, author: WikiAuthor = "user", conversationId: string | null = null): WikiPage {
     const page = wiki.get(id);
     if (!page) throw new WikiError("Page not found.");
     if (page.pinned) throw new WikiError(`The ${page.title} page can't be deleted.`);
-    for (const child of db.prepare(`SELECT * FROM wiki_pages WHERE parent_id = ? AND deleted_at IS NULL`).all(id) as Row[]) {
-      const { id: childId, title } = toSummary(child);
-      let free = title;
-      for (let n = 1; wiki.withTitle(page.brainId, free, page.parentId).length; n++) {
-        free = n === 1 ? `${title} (${page.title})` : `${title} (${page.title} ${n})`;
+    const remove = () => {
+      const moved: string[] = [];
+      for (const child of db.prepare(`SELECT * FROM wiki_pages WHERE parent_id = ? AND deleted_at IS NULL`).all(id) as Row[]) {
+        const { id: childId, title } = toSummary(child);
+        let free = title;
+        for (let n = 1; wiki.withTitle(page.brainId, free, page.parentId).length; n++) {
+          free = n === 1 ? `${title} (${page.title})` : `${title} (${page.title} ${n})`;
+        }
+        db.prepare(`UPDATE wiki_pages SET parent_id = ?, title = ? WHERE id = ?`).run(page.parentId, free, childId);
+        moved.push(childId);
       }
-      db.prepare(`UPDATE wiki_pages SET parent_id = ?, title = ? WHERE id = ?`).run(page.parentId, free, childId);
+      db.prepare(`UPDATE wiki_pages SET deleted_at = ? WHERE id = ?`).run(Date.now(), id);
+      return moved;
+    };
+    if (isGit(page.brainId)) {
+      // The file goes (git keeps it, and an undo brings it back); the index keeps the page, marked deleted.
+      atomically(() => {
+        const moved = remove();
+        record(page.brainId, [{ id, op: "delete" }, ...moved.map((child) => ({ id: child, op: "move" as const }))], author, conversationId);
+      });
+    } else {
+      remove();
     }
-    db.prepare(`UPDATE wiki_pages SET deleted_at = ? WHERE id = ?`).run(Date.now(), id);
     return page;
   },
 
   revisions(pageId: string): WikiRevision[] {
+    const brain = db.prepare(`SELECT brain_id FROM wiki_pages WHERE id = ?`).get(pageId) as Row | undefined;
+    if (brain && isGit(String(brain.brain_id))) return gitRevisions(String(brain.brain_id), pageId);
     return (db.prepare(`SELECT * FROM wiki_revisions WHERE page_id = ? ORDER BY created_at DESC`).all(pageId) as Row[]).map(
       toRevision,
     );
   },
 
   restore(pageId: string, revisionId: string, author: WikiAuthor): WikiPage {
+    const current = wiki.get(pageId);
+    if (current && isGit(current.brainId)) return restoreFromGit(current, revisionId, author);
     const row = db.prepare(`SELECT * FROM wiki_revisions WHERE id = ? AND page_id = ?`).get(revisionId, pageId) as Row | undefined;
     if (!row) throw new WikiError("That version no longer exists.");
     const revision = toRevision(row);
     const page = wiki.get(pageId);
     if (!page) throw new WikiError("Page not found.");
+    assertNoNewSecret(page.content, revision.content);
     // The old title comes back unless it's pinned or a sibling took it meanwhile.
     const titleFree =
       !page.pinned && !wiki.withTitle(page.brainId, revision.title, page.parentId).some((other) => other.id !== page.id);
@@ -375,6 +453,36 @@ export const wiki = {
     return parent.id;
   },
 };
+
+/** A git brain's restore: the old version comes back as a new change (a commit), so a restore can be undone too. */
+function restoreFromGit(page: WikiPage, revisionId: string, author: WikiAuthor): WikiPage {
+  const revision = wiki.revisions(page.id).find((candidate) => candidate.id === revisionId);
+  if (!revision) throw new WikiError("That version no longer exists.");
+  const titleFree =
+    !page.pinned && !wiki.withTitle(page.brainId, revision.title, page.parentId).some((other) => other.id !== page.id);
+  const title = titleFree ? revision.title : page.title;
+  assertNoNewSecret(page.title, title);
+  assertNoNewSecret(page.summary, revision.summary);
+  assertNoNewSecret(page.content, revision.content);
+  atomically(() => {
+    db.prepare(`UPDATE wiki_pages SET title = ?, summary = ?, content = ?, updated_by = ?, conversation_id = NULL, updated_at = ? WHERE id = ?`).run(
+      title,
+      revision.summary,
+      revision.content,
+      author,
+      Date.now(),
+      page.id,
+    );
+    record(page.brainId, [{ id: page.id, op: "restore" }], author, null);
+  });
+  return wiki.get(page.id)!;
+}
+
+// The store's secret checks and events come from modules that use the wiki while they load (knowledge/link.ts):
+// linked once everything has loaded (knowledge/index.ts and memory/start.ts link them too).
+void Promise.resolve()
+  .then(() => import("../knowledge/link.ts"))
+  .catch((err) => console.error("[tot] the wiki couldn't link its secret checks:", err instanceof Error ? err.message : err));
 
 // Every agent has its notebook, and every brain its Overview, from the start.
 for (const row of db.prepare(`SELECT id FROM agents`).all() as Row[]) brains.notebook(String(row.id));

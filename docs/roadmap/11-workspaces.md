@@ -93,7 +93,8 @@ MCP tool registration points in `server/mcp/server.ts`: lane D adds `registerLea
 
 - [ ] **M0 · Contract** (lead).
 - [ ] **M1 · Multi-repo projects** (A).
-- [ ] **M2 · One knowledge base** (B).
+- [x] **M2 · One knowledge base** (B).
+  - *Shipped:* `server/knowledge/` — `store.ts` (each brain's pages as markdown files in its repo, a project's in `memory/projects/<slug>` beside its memory, others in `memory/brains/<id>`; `wiki.*` stays synchronous: a write updates the `wiki_pages` index at once and records the change in `wiki_changes`, then it's committed in the repo's turn, one commit per change with `TOT-Author`/`TOT-Chat`/`TOT-Page` trailers; the index is rebuilt from the files at startup and after undo or hand edits; history read back from git with the old burst rule, plus "Before git" rows; the one-time move per brain, retried at each start, rows kept in `wiki_pages_legacy`/`wiki_revisions_legacy`, keys hidden in git; a brain that joins a project brings its pages), `files.ts` (front matter, file places), `index.ts` (`knowledge.repoHead`, `repoPages`, `flush`, `batch`, status, history, undo), `routes.ts`. Secrets are refused in pages; memory's facts, files list and Dreaming leave `pages/` and `repos/` out. Learn a repo takes `repoName` and writes under that repo's head page. `KnowledgePanel` (Facts, Pages, Repos, History with Undo). Tested in `server/knowledge.test.ts`.
 - [ ] **M3 · Auto-update** (C).
 - [ ] **M4 · Lead, one screen, Home** (D).
 - [ ] **M5 · Merge, review, live run** (lead): a two-repo project, the Lead plans and runs a cross-repo change as two tasks, lands both with approvals, the knowledge updates after landing; screenshots light and dark.

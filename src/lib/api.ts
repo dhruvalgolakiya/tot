@@ -37,6 +37,8 @@ import type {
   MailMessage,
   MailSummary,
   Memory,
+  KnowledgeCommit,
+  KnowledgeStatus,
   MemoryCommit,
   MemoryFile,
   MemoryFileContent,
@@ -254,6 +256,13 @@ export const api = {
   // Module 11 · lane A (a project's repos).
 
   // Module 11 · lane B (knowledge: status, panel).
+  /** Where a project's knowledge lives (its repo), whether its wiki moved into git, and its page and fact counts. */
+  knowledgeStatus: (projectId: string) => request<KnowledgeStatus>("GET", `/projects/${seg(projectId)}/knowledge`),
+  /** The project's knowledge history, facts and pages alike, newest first. */
+  knowledgeHistory: (projectId: string, opts: { limit?: number; skip?: number } = {}) =>
+    request<KnowledgeCommit[]>("GET", `/projects/${seg(projectId)}/knowledge/history?limit=${opts.limit ?? 20}&skip=${opts.skip ?? 0}`),
+  /** Undoes one change to the project's knowledge with a new commit; 409 when later changes touched the same lines. */
+  undoKnowledge: (projectId: string, sha: string) => request<KnowledgeCommit>("POST", `/projects/${seg(projectId)}/knowledge/undo`, { sha }),
 
   // Module 11 · lane C (knowledge auto-updates).
 

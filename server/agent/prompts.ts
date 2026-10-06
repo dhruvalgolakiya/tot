@@ -186,7 +186,7 @@ function wikiSection(name: string, workspace: WorkspaceContext): string {
   let used = 0;
   const index: string[] = [];
   for (const page of outline) {
-    const line = `${"  ".repeat(page.depth)}- ${page.title} (${page.id})${page.summary ? ` — ${page.summary}` : ""}`;
+    const line = `${"  ".repeat(page.depth)}- ${page.title} (${page.id})${page.summary ? ` — ${page.summary}` : ""}${page.repo ? ` [the ${page.repo} repo's docs]` : ""}`;
     if ((used += line.length) > OUTLINE_BUDGET) {
       index.push(`- … ${outline.length - index.length} more (wiki_search lists them all)`);
       break;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import clsx from "clsx";
 import { ChevronRight } from "lucide-react";
@@ -67,13 +67,32 @@ export function WikiHistoryDialog({ page, open, onOpenChange, onRestored }: Wiki
 
         {revisions && revisions.length > 0 && (
           <ul className="space-y-2">
-            {revisions.map((revision) => (
-              <RevisionRow key={revision.id} pageId={page.id} revision={revision} agentName={agentName} onRestored={handleRestored} />
+            {revisions.map((revision, index) => (
+              <Fragment key={revision.id}>
+                {/* Module 11: versions kept from before the wiki moved into git, under one label. */}
+                {revision.legacy && !revisions[index - 1]?.legacy && <BeforeGit first={index === 0} />}
+                <RevisionRow pageId={page.id} revision={revision} agentName={agentName} onRestored={handleRestored} />
+              </Fragment>
             ))}
           </ul>
         )}
       </ModalBody>
     </Modal>
+  );
+}
+
+/** The quiet divider above the versions from before the wiki moved into git. */
+function BeforeGit({ first }: { first: boolean }) {
+  return (
+    <li
+      role="separator"
+      aria-label="Before git"
+      title="Versions from before this wiki moved into git"
+      className={clsx("flex items-center gap-3 text-xs text-fg-subtle", !first && "pt-2")}
+    >
+      Before git
+      <span className="h-px flex-1 bg-hairline" aria-hidden="true" />
+    </li>
   );
 }
 

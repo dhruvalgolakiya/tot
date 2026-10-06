@@ -26,9 +26,13 @@ export function memoryChanged(repo: string) {
 }
 
 const VERBS: Record<string, string> = { remember: "Remembered", edit: "Edited", forget: "Forgot" };
+/** Module 11: a project's wiki pages commit to its repo too ("Kiwi: edit page “Checkout flow”"). */
+const PAGE_VERBS: Record<string, string> = { write: "Wrote", edit: "Edited", move: "Moved", delete: "Deleted", restore: "Restored", import: "Imported" };
 
-/** "remember “Prefers pnpm”" → "Remembered “Prefers pnpm”"; anything else just capitalized. */
+/** "remember “Prefers pnpm”" → "Remembered “Prefers pnpm”", "edit page “Cart”" → "Edited page “Cart”"; anything else just capitalized. */
 function describeAction(action: string): string {
+  const page = /^(\w+) page (“.*)$/.exec(action);
+  if (page && PAGE_VERBS[page[1]]) return `${PAGE_VERBS[page[1]]} page ${page[2].endsWith("”") ? page[2] : `${page[2]}”`}`;
   const [verb, ...words] = action.split(" ");
   if (verb && VERBS[verb] && words.length) {
     const text = words.join(" ");

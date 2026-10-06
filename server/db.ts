@@ -582,6 +582,76 @@ if (!hasColumn("memories_legacy", "import_state")) db.exec(`ALTER TABLE memories
 if (!hasColumn("projects", "setup_command")) db.exec(`ALTER TABLE projects ADD COLUMN setup_command TEXT`);
 if (!hasColumn("projects", "copy_files")) db.exec(`ALTER TABLE projects ADD COLUMN copy_files TEXT NOT NULL DEFAULT '[]'`);
 
+// Workspaces (roadmap module 11, lane B, server/knowledge/): every brain's wiki moves into a git repo of markdown (a
+// project's into its knowledge repo, with its memory), once per brain. `wiki_pages` stays as the index of the pages
+// (now with each page's file and the repo it heads), and `wiki_stores` says which brains moved. Writes reach the files
+// through `wiki_changes`, one row per change until it's committed (so a crash loses nothing). The rows from before
+// the move are kept for good in `wiki_pages_legacy` and `wiki_revisions_legacy` ("Before git" history).
+if (!hasColumn("wiki_pages", "path")) db.exec(`ALTER TABLE wiki_pages ADD COLUMN path TEXT`);
+if (!hasColumn("wiki_pages", "repo")) db.exec(`ALTER TABLE wiki_pages ADD COLUMN repo TEXT`);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS wiki_stores (
+    brain_id TEXT PRIMARY KEY,
+    -- 'git' once the brain's pages live in its repo; 'database' while the move hasn't happened (or failed: error).
+    state TEXT NOT NULL,
+    -- The repo its pages are in ("projects/<slug>", "brains/<id>"), and the ones they were in before (JSON), whose
+    -- history still counts.
+    repo TEXT,
+    earlier TEXT NOT NULL DEFAULT '[]',
+    error TEXT,
+    moved_at INTEGER,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS wiki_changes (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    brain_id TEXT NOT NULL,
+    -- {path: content | null}: the files as the change leaves them (null = removed).
+    files TEXT NOT NULL,
+    -- [{id, op, path}]: the pages it changed.
+    pages TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    author TEXT NOT NULL,
+    conversation_id TEXT,
+    -- Changes made together (one commit).
+    batch TEXT,
+    error TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS wiki_changes_by_brain ON wiki_changes(brain_id, seq);
+
+  CREATE TABLE IF NOT EXISTS wiki_pages_legacy (
+    id TEXT PRIMARY KEY,
+    brain_id TEXT NOT NULL,
+    parent_id TEXT,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    position REAL NOT NULL DEFAULT 0,
+    updated_by TEXT NOT NULL,
+    conversation_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted_at INTEGER,
+    moved_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS wiki_revisions_legacy (
+    id TEXT PRIMARY KEY,
+    page_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    content TEXT NOT NULL,
+    updated_by TEXT NOT NULL,
+    conversation_id TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS wiki_revisions_legacy_by_page ON wiki_revisions_legacy(page_id, created_at);
+`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

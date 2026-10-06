@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
   closeSync,
@@ -56,6 +56,8 @@ const STARTERS = {
   you: "# About you\n\nShort facts about the user, one per line, shared by every agent. Loaded at the start of every chat. Longer topics live in their own files, linked from here.\n",
   project:
     "# Project memory\n\nWhat agents learned working on this project, one fact per line: how to build, test and ship it, conventions, gotchas. Loaded at the start of every chat and task in the project.\n",
+  // Module 11: a brain that isn't a project's (an agent's notebook, a shared brain) keeps its wiki in a repo of its own.
+  brain: "# Brain\n\nThis brain's wiki, kept by TOT: one markdown page per file in pages/, a repo's docs in repos/<name>/.\n",
 };
 
 export class MemoryError extends Error {
@@ -71,9 +73,11 @@ export class MemoryError extends Error {
 // --- Repos ----------------------------------------------------------------------------------------------------
 
 export const projectRepoId = (slug: string) => `projects/${slug}`;
+/** Module 11: the repo of a brain that isn't a project's (its wiki pages only; memory never lists it). */
+export const brainRepoId = (brainId: string) => `brains/${brainId}`;
 
 export function isRepoId(value: unknown): value is string {
-  return typeof value === "string" && (value === YOU || /^projects\/[a-z0-9][a-z0-9._-]{0,80}$/.test(value));
+  return typeof value === "string" && (value === YOU || /^(projects|brains)\/[a-z0-9][a-z0-9._-]{0,80}$/.test(value));
 }
 
 export function repoDir(repo: string): string {
@@ -81,7 +85,7 @@ export function repoDir(repo: string): string {
   return join(MEMORY_DIR, ...repo.split("/"));
 }
 
-export const repoKind = (repo: string): "you" | "project" => (repo === YOU ? "you" : "project");
+export const repoKind = (repo: string): "you" | "project" | "brain" => (repo === YOU ? "you" : repo.startsWith("brains/") ? "brain" : "project");
 
 function lstatOrNull(path: string): Stats | null {
   try {
@@ -127,7 +131,7 @@ let running = 0;
  * Runs git in a folder. Local calls ignore the user's git config entirely; `remote` calls (the backup remote)
  * keep it, for their SSH keys and credential helpers, but never prompt.
  */
-export function git(cwd: string, args: string[], opts: { remote?: boolean; env?: Record<string, string>; timeoutMs?: number; input?: string } = {}): Promise<string> {
+function gitEnv(opts: { remote?: boolean; env?: Record<string, string> }): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     // GIT_DIR and friends from whatever started TOT must not point these calls at another repo.
@@ -141,6 +145,25 @@ export function git(cwd: string, args: string[], opts: { remote?: boolean; env?:
   }
   env.GIT_TERMINAL_PROMPT = "0";
   Object.assign(env, opts.env);
+  return env;
+}
+
+/**
+ * Module 11: git for a quick read that has to answer synchronously (a wiki page's history, behind the synchronous
+ * `wiki.*` API). Reads only: changes always go through `git` inside `withRepo`.
+ */
+export function gitSync(cwd: string, args: string[], opts: { input?: string } = {}): Buffer {
+  try {
+    return execFileSync("git", [...CONFIG, ...args], { cwd, env: gitEnv({}), timeout: 30_000, maxBuffer: 256 * 1024 * 1024, input: opts.input ?? "", stdio: ["pipe", "pipe", "pipe"] });
+  } catch (err) {
+    const stderr = (err as { stderr?: Buffer }).stderr?.toString() ?? "";
+    const code = (err as { status?: number | null }).status ?? null;
+    throw new GitError(`git ${args[0]} failed: ${(stderr || (err instanceof Error ? err.message : String(err))).trim().split("\n").slice(-3).join(" ")}`, code);
+  }
+}
+
+export function git(cwd: string, args: string[], opts: { remote?: boolean; env?: Record<string, string>; timeoutMs?: number; input?: string } = {}): Promise<string> {
+  const env = gitEnv(opts);
   return new Promise((resolve, reject) => {
     let child: ReturnType<typeof execFile>;
     try {
@@ -228,6 +251,24 @@ export async function initRepo(repo: string): Promise<void> {
   }
 }
 
+/** Called after a repo changed (a commit, a merge, an undo), once memory reindexed it: module 11's wiki reindexes its pages. */
+type RepoChangeHook = (repo: string, sha: string | null) => void;
+const changeHooks: RepoChangeHook[] = [];
+
+export function onRepoChange(hook: RepoChangeHook): void {
+  changeHooks.push(hook);
+}
+
+export function repoChanged(repo: string, sha: string | null): void {
+  for (const hook of changeHooks) {
+    try {
+      hook(repo, sha);
+    } catch (err) {
+      console.warn(`[tot] after a change to ${repo}:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
 export async function head(repo: string): Promise<string | null> {
   if (!repoExists(repo)) return null;
   return (await git(repoDir(repo), ["rev-parse", "HEAD"]).catch(() => "")).trim() || null;
@@ -239,9 +280,12 @@ export interface CommitMessage {
   /** Who made it: an agent's name, "you", "Dreaming"… */
   actor: string;
   kind: MemoryCommitKind;
+  /** More `TOT-…: …` trailer lines (module 11's wiki pages record which pages a commit changed). */
+  trailers?: string[];
 }
 
-const trailers = (actor: string, kind: MemoryCommitKind) => `TOT-Actor: ${actor.replace(/\s+/g, " ").trim() || "TOT"}\nTOT-Kind: ${kind}`;
+const trailers = (actor: string, kind: MemoryCommitKind, more: string[] = []) =>
+  [`TOT-Actor: ${actor.replace(/\s+/g, " ").trim() || "TOT"}`, `TOT-Kind: ${kind}`, ...more.map((line) => line.replace(/[\r\n]+/g, " "))].join("\n");
 
 /** One line, short enough for a commit subject. */
 export const subjectText = (text: string, max = 72) => {
@@ -254,7 +298,7 @@ export const messageArgs = (message: CommitMessage) => [
   subjectText(message.subject, 100),
   ...(message.body?.trim() ? ["-m", message.body.trim()] : []),
   "-m",
-  trailers(message.actor, message.kind),
+  trailers(message.actor, message.kind, message.trailers),
 ];
 
 /** Commits everything in the working tree; returns the new head, or null when nothing changed. Call inside `withRepo`. */
@@ -285,12 +329,13 @@ export async function discardChanges(repo: string): Promise<void> {
 /** A lock file older than this, with no git of TOT's running, was left by a crash. */
 const LOCK_STALE_MS = 60_000;
 
-/** Every repo folder on this device: "you", and each project's. */
+/** Every repo folder on this device: "you", each project's, and (module 11) each other brain's. */
 function repoDirsOnDisk(): string[] {
   const dirs = [join(MEMORY_DIR, YOU)];
-  const projectsDir = join(MEMORY_DIR, "projects");
-  if (existsSync(projectsDir)) {
-    for (const item of readdirSync(projectsDir, { withFileTypes: true })) if (item.isDirectory()) dirs.push(join(projectsDir, item.name));
+  for (const group of ["projects", "brains"]) {
+    const groupDir = join(MEMORY_DIR, group);
+    if (!existsSync(groupDir)) continue;
+    for (const item of readdirSync(groupDir, { withFileTypes: true })) if (item.isDirectory()) dirs.push(join(groupDir, item.name));
   }
   return dirs.filter((dir) => existsSync(join(dir, ".git")));
 }
@@ -341,11 +386,16 @@ export async function log(repo: string, limit = 50, skip = 0): Promise<MemoryCom
     const [sha, parents, time, author, subject, rawBody, stats = ""] = record.split(US);
     let actor = author || "TOT";
     let kind: MemoryCommitKind = "outside";
+    // Module 11: a commit that can't be undone on its own (moving a wiki into git) says so.
+    let locked = false;
     const body: string[] = [];
     for (const line of (rawBody ?? "").split("\n")) {
       const trailer = /^TOT-(Actor|Kind):\s*(.*)$/.exec(line);
-      if (!trailer) body.push(line);
-      else if (trailer[1] === "Actor") actor = trailer[2]!.trim() || actor;
+      // Other TOT trailers (module 11's TOT-Page, TOT-Change…) are for TOT, not for reading.
+      if (!trailer) {
+        if (/^TOT-Undo:\s*no\s*$/.test(line)) locked = true;
+        else if (!/^TOT-[\w-]+:/.test(line)) body.push(line);
+      } else if (trailer[1] === "Actor") actor = trailer[2]!.trim() || actor;
       else if (KINDS.has(trailer[2]!.trim() as MemoryCommitKind)) kind = trailer[2]!.trim() as MemoryCommitKind;
     }
     let added = 0;
@@ -365,7 +415,7 @@ export async function log(repo: string, limit = 50, skip = 0): Promise<MemoryCom
       added,
       removed,
       // Not the first commit, and not a merge: undoing a sync would drop what the other device brought in.
-      revertible: (parents?.trim().split(" ").filter(Boolean).length ?? 0) === 1,
+      revertible: !locked && (parents?.trim().split(" ").filter(Boolean).length ?? 0) === 1,
     });
   }
   return commits;
@@ -533,9 +583,17 @@ export function safePath(path: string): string {
   return parts.join("/");
 }
 
+/**
+ * Module 11: a project's knowledge repo also holds its wiki, pages in pages/ and each repo's docs in repos/<name>/.
+ * Those are documents, not facts: memory's entries, files list and Dreaming leave them out.
+ */
+export const DOCUMENT_DIRS = ["pages", "repos"];
+export const isDocumentPath = (path: string) => DOCUMENT_DIRS.includes(path.split("/")[0]!.toLowerCase());
+
 /** A file to write entries to: markdown, with ".md" added when it's missing; plain names only. */
 export function markdownPath(path: string): string {
   const clean = safePath(path.replace(/^\[\[|\]\]$/g, ""));
+  if (isDocumentPath(clean)) throw new MemoryError(`"${path}" is where the wiki's pages live; put facts in another file, like "notes.md".`);
   const name = clean.split("/").at(-1)!;
   if (!/\.md$/i.test(name) && /\.[a-z]{1,5}$/i.test(name)) {
     throw new MemoryError(`"${path}" isn't a markdown file. Memory topics are markdown, like "preferences.md".`);
@@ -608,8 +666,11 @@ export function removeFile(repo: string, path: string): void {
   if (full && lstatOrNull(full)?.isFile()) unlinkSync(full);
 }
 
-/** Every file in the repo, MEMORY.md first, then by path. Hidden files and links are skipped. */
-export function listFiles(repo: string): string[] {
+/**
+ * Every file in the repo, MEMORY.md first, then by path. Hidden files and links are skipped, and so are the wiki's
+ * pages (pages/, repos/; module 11) unless `documents`.
+ */
+export function listFiles(repo: string, { documents = false }: { documents?: boolean } = {}): string[] {
   const dir = repoDir(repo);
   if (!existsSync(dir)) return [];
   const found: string[] = [];
@@ -617,6 +678,7 @@ export function listFiles(repo: string): string[] {
     for (const item of readdirSync(folder, { withFileTypes: true })) {
       if (item.name.startsWith(".")) continue;
       const rel = prefix ? `${prefix}/${item.name}` : item.name;
+      if (!documents && !prefix && item.isDirectory() && isDocumentPath(rel)) continue;
       if (item.isDirectory() && depth < 4) walk(join(folder, item.name), rel, depth + 1);
       else if (item.isFile()) found.push(rel);
     }

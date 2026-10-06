@@ -4,7 +4,7 @@ import type { MemoryRepoSummary } from "@shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { api, errorMessage } from "../lib/api";
 import { pickMemoryRepo, useMemoryUi } from "../lib/memory";
-import { goToSettings, useStore } from "../store";
+import { goToSettings, navigateToProject, useStore } from "../store";
 import { MemoryDreaming } from "./memory/MemoryDreaming";
 import { MemoryEntries } from "./memory/MemoryEntries";
 import { MemoryHistory } from "./memory/MemoryHistory";
@@ -21,7 +21,8 @@ const SKILL_COMMAND = "npx skills add AgentMemoryRepo/agentmemoryrepo --skill ag
 /**
  * Settings → Memory (roadmap module 10): memory is git repos of markdown. Pick a repo (About you, or a
  * project's), then its entries grouped by file, its history with Undo, Dreaming, and (About you) sync with
- * paired devices and the optional backup remote, and what the one-time import left for the user to decide.
+ * paired devices and the optional backup remote, and what the one-time import left for the user to decide. A
+ * project's repo also holds its wiki pages (module 11): its Knowledge panel, on the project's page, shows them all.
  */
 export function MemoryBrowser() {
   const memoryEnabled = useStore((s) => s.settings?.memory.enabled ?? true);
@@ -141,6 +142,14 @@ function RepoHeader({ repos, summary }: { repos: MemoryRepoSummary[]; summary: M
           </IconButton>
         </Tip>
       </div>
+      {summary.kind === "project" && summary.projectId && (
+        <p className="text-xs leading-relaxed text-fg-subtle">
+          It also holds the project's wiki pages.{" "}
+          <button type="button" className="link-muted" onClick={() => navigateToProject(summary.projectId!)}>
+            Open its knowledge
+          </button>
+        </p>
+      )}
     </section>
   );
 }
