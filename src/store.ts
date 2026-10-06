@@ -349,7 +349,7 @@ export function initApp() {
   initialized = true;
   void loadAgents();
   void loadConversations();
-  void refreshProviders();
+  void refreshProviders().then(watchProviders);
   void loadSettings();
   void loadGithubStatus();
   void loadBrains();
@@ -404,6 +404,33 @@ export async function refreshProviders({ quiet = false } = {}) {
   if (providers.status === "fulfilled") set({ providers: providers.value });
   const failure = [models, providers].find((r): r is PromiseRejectedResult => r.status === "rejected");
   if (failure && !quiet) notifyError(failure.reason);
+}
+
+/**
+ * The Mac app opens its window as TOT starts, while the server may still be checking the Claude and
+ * ChatGPT logins: that first answer can come without a provider's models, and the model picker then
+ * shows raw ids. So check again shortly after start (fresh, past the server's 30 s cache) while any
+ * provider has no models, and whenever the window comes back into focus.
+ */
+const PROVIDER_RECHECK_MS = [3_000, 10_000, 30_000];
+const FOCUS_RECHECK_MS = 30_000;
+
+function watchProviders() {
+  for (const delay of PROVIDER_RECHECK_MS) {
+    window.setTimeout(() => {
+      if (!get().providers.some((p) => p.models.length === 0)) return;
+      void api
+        .listProviders({ refresh: true })
+        .then(() => refreshProviders({ quiet: true }))
+        .catch(() => {});
+    }, delay);
+  }
+  let checkedAt = Date.now();
+  window.addEventListener("focus", () => {
+    if (Date.now() - checkedAt < FOCUS_RECHECK_MS) return;
+    checkedAt = Date.now();
+    void refreshProviders({ quiet: true });
+  });
 }
 
 const LOGIN_POLL_MS = 3_000;
