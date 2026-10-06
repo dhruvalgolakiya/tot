@@ -1,3 +1,14 @@
+/* The docs set in Inter (the landing and the app keep Funnel): body and headings alike, with Inter's
+   optical sizes and a slightly open rhythm for long reading. */
+:root {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+body {
+  font-optical-sizing: auto;
+  font-feature-settings: "cv11", "ss03";
+}
+
 /* Docs prose details the utility classes in Markdown.tsx can't express: list markers, numbered steps, status rows.
    Plain CSS (unlayered), using the theme's raw variables from src/index.css. */
 
