@@ -23,3 +23,19 @@ export function StatusChip({ status, label, className, size = "md" }: { status: 
     </span>
   );
 }
+
+const DOT: Record<Status, string> = {
+  available: "bg-success",
+  partly: "bg-warning",
+  "not-yet": "bg-fg-subtle",
+};
+
+/** A page's status above its title: a small dot and the word, no box (the chips are for the status list). */
+export function StatusMark({ status }: { status: Status }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span aria-hidden="true" className={clsx("size-1.5 rounded-full", DOT[status])} />
+      {STATUS_LABEL[status]}
+    </span>
+  );
+}

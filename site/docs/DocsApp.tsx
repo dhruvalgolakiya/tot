@@ -13,7 +13,7 @@ import { GROUPS, PAGES, pageFor, type DocPage } from "./manifest";
 import { Markdown } from "./Markdown";
 import { hrefFor, onDocsLinkClick, useSlug } from "./router";
 import { Search } from "./Search";
-import { StatusChip } from "./StatusChip";
+import { StatusChip, StatusMark } from "./StatusChip";
 
 const MOD = isMac ? "⌘" : "Ctrl ";
 
@@ -236,26 +236,28 @@ function PageHeader({ page }: { page: DocPage }) {
       ) : (
         <Mascot spec={crew[page.mascot].spec} state={page.mood ?? "idle"} size={52} className="-ml-1" />
       )}
-      <p className="group-label mt-5">{home ? "TOT docs" : page.group}</p>
+      <p className="group-label mt-5 flex items-center gap-2">
+        {home ? "TOT docs" : page.group}
+        {page.status && (
+          <>
+            <span aria-hidden="true" className="text-fg-subtle/60">
+              ·
+            </span>
+            <StatusMark status={page.status} />
+          </>
+        )}
+      </p>
       <h1 className="mt-1.5 font-display text-[2.375rem] leading-[1.1] font-semibold tracking-tight text-balance text-fg-strong sm:text-[2.75rem]">
         {smarten(page.title)}
       </h1>
       <p className="mt-3 text-lg leading-relaxed text-pretty text-fg-muted">{smarten(page.description)}</p>
-      {page.status && (
-        <div className="mt-6 flex items-start gap-3 rounded-xl border border-hairline px-4 py-3">
-          <StatusChip status={page.status} />
-          <p className="min-w-0 pt-0.5 text-sm text-fg-muted">
-            {page.status === "available" ? "Everything on this page works today." : smarten(page.missing ?? "")}
-            {page.status !== "available" && (
-              <>
-                {" "}
-                <a href={hrefFor("not-yet")} onClick={(event) => onDocsLinkClick(event, hrefFor("not-yet"))} className="link-muted whitespace-nowrap">
-                  What’s not built yet
-                </a>
-              </>
-            )}
-          </p>
-        </div>
+      {page.status && page.status !== "available" && page.missing && (
+        <p className="mt-4 text-sm text-fg-subtle">
+          {smarten(page.missing)}{" "}
+          <a href={hrefFor("not-yet")} onClick={(event) => onDocsLinkClick(event, hrefFor("not-yet"))} className="link-muted whitespace-nowrap">
+            What’s not built yet
+          </a>
+        </p>
       )}
     </header>
   );
