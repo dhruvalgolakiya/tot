@@ -41,7 +41,7 @@ export const FEATURES: Feature[] = [
     icon: Monitor,
     title: "A computer of its own",
     joke: "It breaks its own computer, not yours.",
-    body: "Every agent gets a cloud machine with Ubuntu, Docker, Node, Python, Chrome and a real desktop it can click around while you watch. Servers it starts can be shared as links. Your Mac stays out of it.",
+    body: "Every agent gets a computer of its own: a sandboxed folder on your Mac, or a cloud machine with Ubuntu, Docker, Node, Python, Chrome and a real desktop it can click around while you watch. Your own files stay out of it.",
     visual: <TerminalVisual />,
   },
   {
@@ -118,7 +118,7 @@ export const FEATURES: Feature[] = [
     icon: Smartphone,
     title: "In your pocket",
     joke: "Check on the team from the couch.",
-    body: "Open it on your phone over Wi-Fi with a sign-in token, or from anywhere through a tunnel. Voice input, attachments, light and dark.",
+    body: "Scan a QR code and your phone is signed in, on your Wi-Fi or from anywhere with Tailscale. This computer never asks for a password. Attachments, light and dark.",
   },
 ];
 

@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { Dialog } from "radix-ui";
-import { CornerDownLeft, LayoutGrid, MessageCircleQuestion, Monitor, Moon, Search, Sun, X, type LucideIcon } from "lucide-react";
+import { BookOpen, CornerDownLeft, LayoutGrid, MessageCircleQuestion, Monitor, Moon, Search, Sun, X, type LucideIcon } from "lucide-react";
 import { Kbd } from "../../src/components/ui/Kbd";
 import { setThemePreference, useResolvedTheme, useThemePreference } from "../../src/lib/theme";
 import { FAQ, questionJump } from "../apps/Help";
@@ -320,6 +320,14 @@ export function useLauncherActions({
     if (closeAll && hasWindows) {
       list.push({ key: "close-all", label: "Close all windows", hint: "Clear the desktop", icon: X, terms: "clear hide", run: closeAll });
     }
+    list.push({
+      key: "docs",
+      label: "Read the docs",
+      hint: "How TOT works, what's in it, and what isn't yet",
+      icon: BookOpen,
+      terms: "documentation guide help manual install status",
+      run: () => location.assign("/docs"),
+    });
     const next = theme === "dark" ? "light" : "dark";
     list.push({
       key: "theme",

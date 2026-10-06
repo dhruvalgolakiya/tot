@@ -1,0 +1,92 @@
+/* Docs prose details the utility classes in Markdown.tsx can't express: list markers, numbered steps, status rows.
+   Plain CSS (unlayered), using the theme's raw variables from src/index.css. */
+
+.docs-prose > :first-child {
+  margin-top: 0;
+}
+
+.docs-prose li > p {
+  margin: 0;
+}
+.docs-prose li > p + p,
+.docs-prose li > p + ul,
+.docs-prose li > p + ol {
+  margin-top: 0.5rem;
+}
+
+/* Bullets: a small quiet dot. */
+.docs-ul {
+  list-style: none;
+}
+.docs-ul > li {
+  position: relative;
+}
+.docs-ul > li::before {
+  content: "";
+  position: absolute;
+  top: 0.72rem;
+  left: -1rem;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--fg-subtle);
+  opacity: 0.75;
+}
+
+/* Status rows ([Available] …): flat rows with a hairline between them, no bullets. */
+.docs-ul:has(> li[data-status]) {
+  padding-left: 0;
+}
+.docs-ul:has(> li[data-status]) > li {
+  margin: 0;
+}
+.docs-ul > li[data-status]::before {
+  display: none;
+}
+
+/* Steps: numbered circles. */
+.docs-ol {
+  list-style: none;
+  padding-left: 0;
+  counter-reset: step;
+}
+.docs-ol > li {
+  position: relative;
+  padding-left: 2.25rem;
+  counter-increment: step;
+}
+.docs-ol > li::before {
+  content: counter(step);
+  position: absolute;
+  top: 0.125rem;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 1px var(--line-hairline);
+  color: var(--color-zinc-300);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The mobile nav drawer slides in from the left. */
+@keyframes docs-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes docs-drawer-out {
+  to {
+    transform: translateX(-100%);
+  }
+}
+.docs-drawer[data-state="open"] {
+  animation: docs-drawer-in 240ms var(--ease-emphasized);
+}
+.docs-drawer[data-state="closed"] {
+  animation: docs-drawer-out 160ms ease-in;
+}

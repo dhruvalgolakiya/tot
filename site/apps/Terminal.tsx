@@ -67,14 +67,22 @@ export function Terminal() {
   const current = SCRIPT[shown];
   return (
     <div className="relative min-h-full bg-panel p-5 font-mono text-[13px] leading-relaxed">
-      <button
-        type="button"
-        onClick={() => void copy()}
-        className="absolute top-3 right-3 inline-flex h-7 items-center gap-1.5 rounded-full border border-edge px-2.5 font-sans text-xs font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg"
-      >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        {copied ? "Copied" : "Copy commands"}
-      </button>
+      <div className="absolute top-3 right-3 flex items-center gap-1 font-sans">
+        <a
+          href="/docs/install"
+          className="inline-flex h-7 items-center rounded-full px-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+        >
+          Install guide
+        </a>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-edge px-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+        >
+          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+          {copied ? "Copied" : "Copy commands"}
+        </button>
+      </div>
       <p className="mb-3 text-fg-subtle">Last login: today on ttys001</p>
       {SCRIPT.slice(0, shown).map((line, index) => (
         <TerminalLine key={index} line={line} />
