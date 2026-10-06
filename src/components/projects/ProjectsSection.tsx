@@ -27,8 +27,13 @@ export function ProjectsSection({ query }: { query: string }) {
   const expanded = useProjects((s) => s.expanded);
   const conversations = useStore((s) => s.conversations);
   const agentId = useStore(selectActiveAgentId);
-  const currentProjectId = useStore((s) => selectCurrentConversation(s)?.projectId ?? null);
-  const pageProjectId = useStore((s) => (s.page === "project" && s.currentId === null ? s.projectId : null));
+  // A project's Lead is open on its page (module 11): that doesn't unfold the project's row.
+  const currentProjectId = useStore((s) => {
+    const current = selectCurrentConversation(s);
+    return current && !current.lead ? current.projectId : null;
+  });
+  // On a project's page (its Lead open in the middle, module 11), its row is the current one.
+  const pageProjectId = useStore((s) => (s.page === "project" ? s.projectId : null));
   const needle = query.trim().toLowerCase();
 
   const currentId = useStore((s) => s.currentId);
@@ -37,28 +42,30 @@ export function ProjectsSection({ query }: { query: string }) {
   const agentDevice = useStore((s) => selectActiveAgent(s)?.deviceId);
   const live = useMemo(() => projects.filter((p) => !p.archived && p.deviceId === agentDevice), [projects, agentDevice]);
   /** This agent's conversations in each project, newest first; and the open tasks under each chat or task. */
-  const { byProject, childrenOf } = useMemo(() => {
+  const { byProject, childrenOf, leads } = useMemo(() => {
     const byProject = new Map<string, Conversation[]>();
     const childrenOf = new Map<string, Conversation[]>();
+    // A project's Lead (module 11) is its row itself: it isn't listed under it, and its tasks show as the project's own.
+    const leads = new Set(conversations.filter((c) => c.lead).map((c) => c.id));
     for (const c of conversations) {
-      if (!c.projectId || c.agentId !== agentId) continue;
+      if (!c.projectId || c.agentId !== agentId || c.lead) continue;
       byProject.set(c.projectId, [...(byProject.get(c.projectId) ?? []), c]);
       // A finished task stays on its chat's card (and the project's page), unless it's the one open.
-      if (isTask(c) && c.parentId && (isOpenTask(c.task.status) || c.id === currentId)) {
+      if (isTask(c) && c.parentId && !leads.has(c.parentId) && (isOpenTask(c.task.status) || c.id === currentId)) {
         childrenOf.set(c.parentId, [...(childrenOf.get(c.parentId) ?? []), c]);
       }
     }
     const newest = (a: Conversation, b: Conversation) => toMs(b.updatedAt) - toMs(a.updatedAt);
     for (const list of byProject.values()) list.sort(newest);
     for (const list of childrenOf.values()) list.sort(newest);
-    return { byProject, childrenOf };
+    return { byProject, childrenOf, leads };
   }, [conversations, agentId, currentId]);
 
   type Row = { project: Project; list: Conversation[]; nested: Map<string, Conversation[]> | null; open: boolean };
   const rows = live.flatMap((project): Row[] => {
     const all = byProject.get(project.id) ?? [];
     if (!needle) {
-      const top = all.filter((c) => !(isTask(c) && c.parentId));
+      const top = all.filter((c) => !(isTask(c) && c.parentId && !leads.has(c.parentId)));
       return [{ project, list: top, nested: childrenOf, open: expanded.has(project.id) || project.id === currentProjectId }];
     }
     // Searching: every match, chats and tasks alike, without nesting.

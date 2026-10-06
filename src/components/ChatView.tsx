@@ -5,6 +5,7 @@ import { selectActiveAgent, useStore } from "../store";
 import { AgentHome } from "./AgentHome";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+import { HomeProjects } from "./projects/HomeProjects";
 import { Suggestions } from "./Suggestions";
 
 const CAPTION = "TOT runs on your own ChatGPT & Claude subscriptions.";
@@ -68,8 +69,9 @@ export function ChatView() {
       {currentId ? (
         <p className="shrink-0 px-4 pb-2.5 text-center text-xs text-fg-subtle">{CAPTION}</p>
       ) : (
-        <div className="flex flex-1 flex-col pt-4">
-          <Suggestions />
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-4">
+          {/* Home (module 11): every project and its Lead; the starter prompts until there are projects. */}
+          <HomeProjects fallback={<Suggestions />} />
           <p className="mt-auto px-4 pt-6 pb-3 text-center text-xs text-fg-subtle">{CAPTION}</p>
         </div>
       )}

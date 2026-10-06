@@ -90,6 +90,13 @@ export function resultBlock(child: ConversationRecord): string {
     const note = task.status === "stopped" ? "Stopped before it finished: there's no result." : "Cut off when TOT restarted; it waits for the user to resume it. No result yet.";
     return JSON.stringify({ id: child.id, title: child.title, role: task.role, status: task.status, note, ...(task.repo ? { branch: task.repo.branch } : {}) }, null, 1);
   }
+  // Waiting for input (a project's Lead hears about these too, module 11): what it asks, no result yet.
+  if (task.status === "needs-input") {
+    const note = task.question
+      ? `It asks: ${clipped(task.question, 2000)}`
+      : "It's waiting for the user's OK on a card in the task; only the user can answer that.";
+    return JSON.stringify({ id: child.id, title: child.title, role: task.role, status: task.status, note, ...(task.repo ? { branch: task.repo.branch } : {}) }, null, 1);
+  }
   const result = task.result;
   return JSON.stringify(
     {
@@ -129,11 +136,14 @@ export function markResultsRead(conversationId: string, ids: string[]): void {
   if (unread.length !== current.childResults.length) conversations.update(conversationId, { childResults: unread });
 }
 
+/** A project's Lead (module 11) hears about every task in its project, not only those it started, and also when one needs input. */
+export const LEAD_NEWS = "Tasks in this project have news: finished, or waiting for input.";
+
 /** Results of a chat's tasks that finished since its model last heard, as a note for its next turn; "" when none. */
-export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults">): string {
+export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults" | "lead">): string {
   if (!conversation.childResults.length) return "";
   markResultsRead(conversation.id, conversation.childResults);
-  return resultsNote(conversation.childResults, "Tasks you started have finished since your last reply.");
+  return resultsNote(conversation.childResults, conversation.lead ? "Tasks in this project have news since your last reply: finished, or waiting for input." : "Tasks you started have finished since your last reply.");
 }
 
 /** The opening of a fresh session that carries on from a handoff packet instead of the transcript, with the last exchange verbatim. */

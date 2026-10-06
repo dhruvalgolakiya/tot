@@ -12,6 +12,7 @@ import { MissionControl } from "./components/mission/MissionControl";
 import { NewAgentDialog } from "./components/NewAgentDialog";
 import { NewProjectDialog } from "./components/projects/NewProjectDialog";
 import { ProjectPage } from "./components/projects/ProjectPage";
+import { ProjectPanel } from "./components/projects/ProjectTabs";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { TrustLab } from "./components/trust/TrustLab";
 import { Sidebar } from "./components/Sidebar";
@@ -54,7 +55,8 @@ export default function App() {
   const current = useStore(selectCurrentConversation);
   const pageProjectId = useStore((s) => (s.page === "project" ? s.projectId : null));
   const projectName = useProjects((s) => (pageProjectId ? s.projects.find((p) => p.id === pageProjectId)?.name : undefined));
-  const title = current ? conversationTitle(current) : (projectName ?? null);
+  // A project's page shows its Lead (module 11), but it's the project's page: the project names the tab.
+  const title = projectName ?? (current ? conversationTitle(current) : null);
 
   useEffect(() => {
     initApp();
@@ -153,6 +155,8 @@ export default function App() {
             </>
           )}
         </main>
+        {/* Module 11: a project's Board, Chats, Knowledge and Repos beside its Lead (wide screens). */}
+        <ProjectPanel />
         <ComputerPanel />
         <TaskPanel />
         <AgentSettingsPanel />

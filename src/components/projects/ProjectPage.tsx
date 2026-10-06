@@ -1,34 +1,28 @@
-import { useMemo, useState, type MouseEvent } from "react";
-import clsx from "clsx";
-import { SquareKanban } from "lucide-react";
-import type { Agent, Conversation, Project } from "@shared/types";
+import { useEffect, useState } from "react";
+import { Tabs } from "radix-ui";
+import type { Conversation, Project } from "@shared/types";
 import { useAttachments } from "../../hooks/useAttachments";
-import { useNow } from "../../hooks/useNow";
-import { conversationTitle } from "../../lib/conversations";
-import { toMs } from "../../lib/format";
-import { PROJECT_ICONS, shortTime, sourceLabel, useProjects } from "../../lib/projects";
-import { conversationPath } from "../../lib/router";
-import { isOpenTask, isTask, TASK_STATUS_LABELS } from "../../lib/tasks";
-import { navigateToAgentHome, navigateToConversation, navigateToMission, selectActiveAgent, useStore } from "../../store";
+import { api, errorMessage } from "../../lib/api";
+import { PROJECT_TABS, setNewProjectChat, setPhoneTab, useLeadUi, type PhoneTab } from "../../lib/lead";
+import { isCodeProject, useProjects } from "../../lib/projects";
+import { navigateToAgentHome, selectActiveAgent, sendMessage, showLead, useStore } from "../../store";
 import { Composer } from "../Composer";
-import { Mascot } from "../mascot";
-import { ProjectMemoryRow } from "../memory/ProjectMemoryRow";
-import { TaskDot } from "../tasks/TaskStatus";
-import { Badge } from "../ui/Badge";
+import { defaultMascot, MascotStage } from "../mascot";
+import { MessageList } from "../MessageList";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
-import { IconButton } from "../ui/IconButton";
-import { Kbd } from "../ui/Kbd";
 import { Skeleton } from "../ui/Skeleton";
-import { Tip } from "../ui/Tip";
 import { FolderConsentDialog } from "./FolderConsent";
-import { ProjectMenu } from "./ProjectMenu";
+import { ProjectTabContent, ProjectTabList, useDockedSide } from "./ProjectTabs";
 
 /**
- * A project's page: its name, where its files are and its one "…" menu; a composer that starts a
- * chat in it with the agent selected in the rail; and every agent's chats and tasks in it.
- * Mounted in the main column in place of ChatView while `page === "project"` (see App.tsx).
+ * A project's page, one screen (roadmap module 11, lane D): its Lead chat in the middle, the chat the user
+ * runs the project from, and beside it Board, Chats, Knowledge and Repos (ProjectPanel, docked from App.tsx
+ * on wide screens; tabs above the chat on narrower ones, the Lead first). Opening the page makes the Lead
+ * the first time (POST /api/projects/:id/lead) and opens it as the current chat, so the composer, the
+ * messages and the live reply work as in any chat. "New chat" in the Chats tab swaps the middle for a new
+ * chat in the project. Mounted in the main column while `page === "project"` (see App.tsx).
  */
 export function ProjectPage() {
   const projectId = useStore((s) => s.projectId);
@@ -36,12 +30,11 @@ export function ProjectPage() {
   const project = useProjects((s) => s.projects.find((p) => p.id === projectId));
   const state = useProjects((s) => s.state);
 
+  if (project) return <ProjectScreen key={project.id} project={project} />;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl px-4 pt-20 pb-12 sm:px-6 md:pt-24">
-        {project ? (
-          <ProjectContent project={project} agent={agent} />
-        ) : state === "loading" ? (
+        {state === "loading" ? (
           <div aria-busy="true" aria-label="Loading the project" className="space-y-4">
             <Skeleton className="h-7 w-48" />
             <Skeleton className="h-16 rounded-3xl" />
@@ -64,151 +57,188 @@ export function ProjectPage() {
   );
 }
 
-function ProjectContent({ project, agent }: { project: Project; agent: Agent | undefined }) {
-  const attachments = useAttachments(project.deviceId ?? null);
-  const [consentOpen, setConsentOpen] = useState(false);
-  const Icon = PROJECT_ICONS[project.kind];
+type LeadState = { status: "loading" } | { status: "ready"; lead: Conversation } | { status: "error"; message: string };
 
+/** The project's Lead chat: made the first time (with the agent the page is seen from), then opened. */
+function useLeadChat(project: Project): { state: LeadState; retry: () => void } {
+  const [state, setState] = useState<LeadState>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading" });
+    api.openLead(project.id, useStore.getState().homeAgentId).then(
+      (lead) => !cancelled && setState({ status: "ready", lead }),
+      (error: unknown) => !cancelled && setState({ status: "error", message: errorMessage(error) }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, attempt]);
+  return { state, retry: () => setAttempt((n) => n + 1) };
+}
+
+function ProjectScreen({ project }: { project: Project }) {
+  const docked = useDockedSide();
+  const phoneTab = useLeadUi((s) => s.phoneTab);
+  const newChat = useLeadUi((s) => s.newChat);
+  const { state, retry } = useLeadChat(project);
+
+  // A page opens on its Lead, on phones too.
+  useEffect(() => useLeadUi.setState({ newChat: false, phoneTab: "lead" }), []);
+  // The Lead is the open chat while the page shows it.
+  useEffect(() => {
+    if (state.status === "ready" && !newChat) showLead(state.lead);
+  }, [state, newChat]);
+
+  const middle = <LeadArea project={project} state={state} retry={retry} newChat={newChat} phone={!docked} />;
+  if (docked) return middle;
   return (
-    <>
-      <header className="flex items-start gap-3">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="flex min-w-0 items-center gap-2.5 text-title text-fg-strong">
-            <Icon aria-hidden="true" className="size-5 shrink-0 text-fg-muted" />
-            <span className="truncate">{project.name}</span>
-          </h1>
-          <span
-            title={project.source ?? undefined}
-            className="inline-flex h-6 max-w-full min-w-0 items-center truncate rounded-full bg-fill px-2.5 text-xs text-fg-muted"
-          >
-            <span className="truncate">{sourceLabel(project)}</span>
-          </span>
-        </div>
-        {/* Mission control (module 09): this project's tasks on one board. */}
-        <Tip
-          content={
-            <span className="flex items-center gap-2">
-              Mission control <Kbd keys={["mod", "shift", "M"]} />
-            </span>
-          }
-        >
-          <IconButton label="Mission control" onClick={() => navigateToMission(project.id)}>
-            <SquareKanban />
-          </IconButton>
-        </Tip>
-        <ProjectMenu project={project} agent={agent} />
-      </header>
+    <Tabs.Root value={phoneTab} onValueChange={(value) => setPhoneTab(value as PhoneTab)} className="flex min-h-0 flex-1 flex-col pt-14">
+      <ProjectTabList withLead />
+      <Tabs.Content value="lead" className="flex min-h-0 flex-1 flex-col outline-none">
+        {middle}
+      </Tabs.Content>
+      {PROJECT_TABS.map((tab) => (
+        <Tabs.Content key={tab.id} value={tab.id} className="min-h-0 flex-1 overflow-y-auto p-4 outline-none">
+          <ProjectTabContent project={project} tab={tab.id} />
+        </Tabs.Content>
+      ))}
+    </Tabs.Root>
+  );
+}
 
-      {project.archived ? (
-        <Callout className="mt-6">This project is archived. Its chats stay here, but new ones can't start in it.</Callout>
-      ) : (
-        project.kind === "folder" &&
-        !project.folderGranted && (
+/** The middle: the Lead (or a new chat in the project), with the project's notices over the composer. */
+function LeadArea({ project, state, retry, newChat, phone }: { project: Project; state: LeadState; retry: () => void; newChat: boolean; phone: boolean }) {
+  const attachments = useAttachments(project.deviceId ?? null);
+  const currentId = useStore((s) => s.currentId);
+  const lead = state.status === "ready" ? state.lead : null;
+  const open = lead && currentId === lead.id ? lead : null;
+  const messages = useStore((s) => (open ? s.messages[open.id] : undefined));
+  const loaded = useStore((s) => (open ? s.detailState[open.id] === "ready" : false));
+  const [consentOpen, setConsentOpen] = useState(false);
+  const empty = Boolean(open && loaded && !messages?.length);
+
+  if (!newChat && state.status !== "ready") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4">
+        {state.status === "loading" ? (
+          <div aria-busy="true" aria-label="Opening the Lead" className="w-full max-w-3xl space-y-4">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+        ) : project.archived ? (
+          <EmptyState title="This project is archived" description="Its chats stay here, but nothing new starts in it." />
+        ) : (
           <Callout
-            className="mt-6"
+            tone="danger"
+            className="w-full max-w-md"
             action={
-              <button type="button" onClick={() => setConsentOpen(true)} className="link-muted">
-                Allow…
+              <button type="button" onClick={retry} className="link-muted">
+                Try again
               </button>
             }
           >
-            Agents can't work in this folder until you allow it.
+            Couldn't open the Lead. {state.message}
           </Callout>
-        )
-      )}
-
-      {!project.archived && (
-        <div className="mt-6">
-          <Composer attachments={attachments} placeholder={`New chat in ${project.name}…`} taskPlaceholder={`New task in ${project.name}…`} />
-        </div>
-      )}
-
-      {/* Memory repo (module 10): what agents learned in this project. */}
-      <ProjectMemoryRow project={project} />
-      <ProjectChats project={project} />
-      <FolderConsentDialog project={project} open={consentOpen} onOpenChange={setConsentOpen} />
-    </>
-  );
-}
-
-/** Every agent's chats and tasks in the project, newest first: the one place to see everything going on in it. */
-function ProjectChats({ project }: { project: Project }) {
-  const conversations = useStore((s) => s.conversations);
-  const state = useStore((s) => s.conversationsState);
-  const agents = useStore((s) => s.agents);
-  const list = useMemo(
-    () => conversations.filter((c) => c.projectId === project.id).sort((a, b) => toMs(b.updatedAt) - toMs(a.updatedAt)),
-    [conversations, project.id],
-  );
-  const now = useNow(true, 60_000);
-
-  return (
-    <section aria-labelledby="project-chats" className="mt-10">
-      <h2 id="project-chats" className="group-label px-2.5 pb-1">
-        Chats and tasks
-      </h2>
-      {state === "loading" && list.length === 0 ? (
-        <div aria-busy="true" aria-label="Loading chats" className="space-y-3 px-2.5 pt-2">
-          {[64, 48, 56].map((width) => (
-            <Skeleton key={width} className="h-4" style={{ width: `${width}%` }} />
-          ))}
-        </div>
-      ) : list.length === 0 ? (
-        <EmptyState
-          size="sm"
-          variant="dashed"
-          className="mt-1"
-          description={`Chats and tasks in ${project.name} show up here, from every agent.`}
-        />
-      ) : (
-        <ul className="space-y-px">
-          {list.map((conversation) => (
-            <li key={conversation.id}>
-              <ProjectChatRow conversation={conversation} agent={agents.find((a) => a.id === conversation.agentId)} now={now} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function ProjectChatRow({ conversation, agent, now }: { conversation: Conversation; agent: Agent | undefined; now: number }) {
-  const streaming = useStore((s) => Boolean(s.activeRuns[conversation.id]));
-  const title = conversationTitle(conversation);
-  const task = isTask(conversation) ? conversation.task : null;
-  const key = conversation.origin?.key;
-  const working = streaming || task?.status === "running";
-
-  const open = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-    event.preventDefault();
-    navigateToConversation(conversation.id);
-  };
-
-  return (
-    <a
-      href={conversationPath(conversation.id)}
-      onClick={open}
-      title={title}
-      className="flex h-11 w-full min-w-0 items-center gap-3 rounded-lg px-2.5 text-sm text-fg transition-colors hover:bg-hover focus-visible:-outline-offset-2"
-    >
-      <span className="grid size-6 shrink-0 place-items-center" title={agent?.name}>
-        {agent ? (
-          <Mascot spec={agent.mascot} size={24} state={working ? "working" : "idle"} title={agent.name} />
-        ) : (
-          <span className="size-5 rounded-full bg-fill" />
         )}
-      </span>
-      <span className={clsx("min-w-0 flex-1 truncate", task && !isOpenTask(task.status) && "text-fg-muted")}>{title}</span>
-      {key && <Badge className="font-mono max-sm:hidden">{key}</Badge>}
-      {task && (
-        <span className="flex shrink-0 items-center gap-1.5 text-xs text-fg-subtle">
-          <TaskDot status={task.status} />
-          <span className="max-sm:hidden">{TASK_STATUS_LABELS[task.status]}</span>
-        </span>
+      </div>
+    );
+  }
+
+  const notice = project.archived ? (
+    <Callout className="mb-2">This project is archived. Its chats stay here, but nothing new starts in it.</Callout>
+  ) : project.kind === "folder" && !project.folderGranted ? (
+    <Callout
+      className="mb-2"
+      action={
+        <button type="button" onClick={() => setConsentOpen(true)} className="link-muted">
+          Allow…
+        </button>
+      }
+    >
+      Agents can't work in this folder until you allow it.
+    </Callout>
+  ) : null;
+
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {newChat ? (
+        <NewChatHero project={project} />
+      ) : open && !empty ? (
+        <MessageList conversationId={open.id} topPadding={phone ? "pt-4" : "pt-20"} />
+      ) : (
+        <LeadHero project={project} />
       )}
-      <span className="w-12 shrink-0 text-right text-xs text-fg-subtle tabular-nums">{shortTime(conversation.updatedAt, now)}</span>
-    </a>
+      <div className="relative z-10 shrink-0 px-3 pb-2 sm:px-4">
+        <div className="mx-auto w-full max-w-3xl">
+          {notice}
+          {!project.archived && (newChat || open) && (
+            <Composer
+              key={newChat ? "new-chat" : open?.id}
+              attachments={attachments}
+              placeholder={newChat ? `New chat in ${project.name}…` : `Ask the Lead of ${project.name}…`}
+              taskPlaceholder={`New task in ${project.name}…`}
+            />
+          )}
+        </div>
+      </div>
+      {/* Room under the composer for the hero to sit above it, as on an agent's home. */}
+      {(newChat || empty) && <div className="flex flex-1 flex-col pt-4">{empty && !project.archived && <LeadStarters project={project} />}</div>}
+      {!newChat && !empty && <div className="h-2 shrink-0" />}
+      <FolderConsentDialog project={project} open={consentOpen} onOpenChange={setConsentOpen} />
+    </div>
+  );
+}
+
+/** An empty Lead: who it is and what it does, above the composer. */
+function LeadHero({ project }: { project: Project }) {
+  const agent = useStore(selectActiveAgent);
+  return (
+    <div className="flex flex-1 flex-col items-center justify-end px-4 pb-6">
+      <MascotStage spec={agent?.mascot ?? defaultMascot} size={96} title={agent?.name ?? "Lead"} />
+      <h1 className="mt-5 text-center font-display text-3xl font-semibold text-fg-strong">{project.name}</h1>
+      <p className="mt-2 max-w-md text-center text-sm leading-relaxed text-fg-muted">
+        {isCodeProject(project)
+          ? "The Lead plans the work, runs tasks across the project's repos, and asks you before anything lands."
+          : "The Lead plans the work, runs tasks, and keeps track of where things stand."}
+      </p>
+    </div>
+  );
+}
+
+function NewChatHero({ project }: { project: Project }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-end px-4 pb-6">
+      <h1 className="text-center text-title text-fg-strong">New chat in {project.name}</h1>
+      <button type="button" onClick={() => setNewProjectChat(false)} className="mt-2 link-muted text-sm">
+        Back to the Lead
+      </button>
+    </div>
+  );
+}
+
+const STARTERS = [
+  { label: "Where do things stand?", text: "Where do things stand in this project? Look at the board and tell me what needs me." },
+  { label: "Plan the next step", text: "Read the project's knowledge, then propose the next few tasks. Don't start them yet." },
+  { label: "Land what's ready", text: "Check the tasks that are ready to land and propose landing them, one at a time, in order.", code: true },
+];
+
+/** First messages for an empty Lead (landing only where there's code). */
+function LeadStarters({ project }: { project: Project }) {
+  const sending = useStore((s) => s.sending);
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 px-3 sm:px-4">
+      {STARTERS.filter((starter) => !starter.code || isCodeProject(project)).map(({ label, text }) => (
+        <button
+          key={label}
+          type="button"
+          disabled={sending}
+          onClick={() => void sendMessage(text)}
+          className="inline-flex h-9 shrink-0 items-center rounded-full border border-edge px-3.5 text-sm text-fg-muted transition-colors hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-50"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }

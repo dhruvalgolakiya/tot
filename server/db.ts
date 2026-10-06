@@ -636,6 +636,9 @@ db.exec(`
   );
 `);
 
+// Workspaces (roadmap module 11, lane D; server/lead/): a project's Lead chat, the one it's run from (at most one per project).
+if (!hasColumn("conversations", "lead")) db.exec(`ALTER TABLE conversations ADD COLUMN lead INTEGER NOT NULL DEFAULT 0`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

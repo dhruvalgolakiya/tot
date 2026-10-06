@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { ChevronRight, SquareKanban } from "lucide-react";
 import type { MissionOverview } from "@shared/types";
-import { useAppEvents } from "../../hooks/useAppEvents";
 import { useNow } from "../../hooks/useNow";
-import { api, errorMessage } from "../../lib/api";
 import { boardSections, SECTION_TITLES, type MissionSection } from "../../lib/mission";
 import { useProjects } from "../../lib/projects";
 import { isTask, type TaskConversation } from "../../lib/tasks";
@@ -15,6 +13,7 @@ import { Kbd } from "../ui/Kbd";
 import { Select } from "../ui/Select";
 import { Skeleton } from "../ui/Skeleton";
 import { MissionCard } from "./MissionCard";
+import { useMissionOverview } from "./useMissionOverview";
 
 /**
  * Mission control (roadmap module 09): every task on one board, or one project's (`/mission?project=`).
@@ -23,47 +22,13 @@ import { MissionCard } from "./MissionCard";
  * cards themselves read each task from the store, so their status and progress are live.
  */
 
-const REFETCH_MS = 600;
-
 const DESCRIPTIONS: Partial<Record<MissionSection, string>> = {
   ready: "In the order to land them: fewest overlaps with other tasks first, then the smallest.",
 };
 
-type State = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; overview: MissionOverview };
-
 export function MissionControl() {
   const projectId = useStore((s) => s.missionProjectId);
-  const [state, setState] = useState<State>({ status: "loading" });
-  const request = useRef(0);
-
-  const load = useCallback(async () => {
-    const id = ++request.current;
-    try {
-      const overview = await api.getMission({ projectId });
-      if (id === request.current) setState({ status: "ready", overview });
-    } catch (error) {
-      if (id === request.current) setState((current) => (current.status === "ready" ? current : { status: "error", message: errorMessage(error) }));
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    setState({ status: "loading" });
-    void load();
-  }, [load]);
-
-  // Live: any task changing (or going away) refetches the overview, a moment later so a burst gives one fetch.
-  const timer = useRef<number | undefined>(undefined);
-  const schedule = useCallback(() => {
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => void load(), REFETCH_MS);
-  }, [load]);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-  useAppEvents(
-    (event) => {
-      if (event.type === "task" || event.type === "conversation-deleted") schedule();
-    },
-    () => void load(),
-  );
+  const { state, reload: load } = useMissionOverview(projectId);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">

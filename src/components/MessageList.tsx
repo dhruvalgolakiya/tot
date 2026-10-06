@@ -12,7 +12,8 @@ import { Skeleton } from "./ui/Skeleton";
 
 const NO_MESSAGES: Message[] = [];
 
-export function MessageList({ conversationId }: { conversationId: string }) {
+/** `topPadding`: room above the first message (the floating header's by default; less under a project page's tab row on phones). */
+export function MessageList({ conversationId, topPadding = "pt-20" }: { conversationId: string; topPadding?: string }) {
   const messages = useStore((s) => s.messages[conversationId]) ?? NO_MESSAGES;
   const run = useStore((s) => s.activeRuns[conversationId]);
   const sending = useStore((s) => s.sending);
@@ -62,7 +63,7 @@ export function MessageList({ conversationId }: { conversationId: string }) {
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain">
-        <div ref={contentRef} className="mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 pt-20 pb-10 sm:px-6">
+        <div ref={contentRef} className={`mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 pb-10 sm:px-6 ${topPadding}`}>
           {messages.length === 0 && loadState === "loading" && (
             <div className="space-y-4 pt-6" aria-busy="true" aria-label="Loading chat">
               <Skeleton className="ml-auto h-10 w-2/5 rounded-3xl" />

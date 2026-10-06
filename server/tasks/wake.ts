@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import type { TaskStatus } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
@@ -6,7 +7,7 @@ import { messageText } from "../data/messages.ts";
 import { settings } from "../data/settings.ts";
 import { overBudget } from "../orchestration/budget.ts";
 import { taskNotifications } from "./notify.ts";
-import { markResultsRead, resultsNote } from "./prompt.ts";
+import { LEAD_NEWS, markResultsRead, resultsNote } from "./prompt.ts";
 import { runEnd, runLoop } from "./run-loop.ts";
 import { taskStore, type TaskRecord } from "./store.ts";
 
@@ -52,16 +53,21 @@ function unread(chat: ConversationRecord): string[] {
   });
 }
 
+/** How one task's news reads, other than "finished". (A project's Lead also hears when a task needs input, module 11.) */
+const ENDINGS: Partial<Record<TaskStatus, string>> = { stopped: "was stopped", interrupted: "was cut off by a restart", "needs-input": "needs input" };
+
 /** The wake's own message, shown as a quiet divider: `2 tasks finished: “Fix checkout”, “Update docs”.` */
 export function wakeText(ids: string[]): string {
   const ended = ids.map((id) => taskStore.get(id)).filter((task): task is TaskRecord => task !== null);
   const titles = ended.map((task) => `“${task.title}”`);
   if (ended.length === 1) {
     const { status } = ended[0]!.task;
-    return `${titles[0]} ${status === "stopped" ? "was stopped" : status === "interrupted" ? "was cut off by a restart" : "finished"}.`;
+    return `${titles[0]} ${ENDINGS[status] ?? "finished"}.`;
   }
   const allFinished = ended.every((task) => task.task.status === "done" || task.task.status === "failed");
-  return `${titles.length} tasks ${allFinished ? "finished" : "ended"}: ${titles.join(", ")}.`;
+  // A project's Lead also hears when tasks need input (module 11).
+  const asking = ended.some((task) => task.task.status === "needs-input");
+  return `${titles.length} tasks ${allFinished ? "finished" : asking ? "have news" : "ended"}: ${titles.join(", ")}.`;
 }
 
 /** The wake is over: no longer pending, unless results it didn't cover came in meanwhile. */
@@ -105,7 +111,7 @@ async function wake(chatId: string): Promise<void> {
     if (run) {
       // A turn is running: hand it the results mid-turn when the provider can take them. Not in a chat from
       // Slack or email: its thread needs a reply about them, so they wait for the turn to end instead.
-      if (!chat.origin && run.steer && (await run.steer(resultsNote(ids)).catch(() => false))) {
+      if (!chat.origin && run.steer && (await run.steer(resultsNote(ids, chat.lead ? LEAD_NEWS : undefined)).catch(() => false))) {
         markResultsRead(chatId, ids);
         return settle(chatId, ids);
       }
@@ -121,7 +127,7 @@ async function wake(chatId: string): Promise<void> {
     }
 
     // Read before the turn starts, so it doesn't get them a second time with the chat's unread results.
-    const note = resultsNote(ids);
+    const note = resultsNote(ids, chat.lead ? LEAD_NEWS : undefined);
     markResultsRead(chatId, ids);
     let runId: string;
     try {
@@ -189,6 +195,16 @@ export const chatWakes = {
     if (!wakes(task)) return;
     conversations.update(task.parentId!, { wakePending: true });
     schedule(task.parentId!);
+  },
+
+  /**
+   * Module 11: news for a chat about a task it didn't start (a project's Lead hears about every task in its
+   * project, server/lead/wake.ts), already added to its unread results: wake it the same way, batched.
+   */
+  flagChat(chatId: string): void {
+    if (!started || !settings.get().tasks.wakeChats) return;
+    conversations.update(chatId, { wakePending: true });
+    schedule(chatId);
   },
 
   /** Starts waking chats, first those whose wake was pending when TOT stopped. */

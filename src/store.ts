@@ -781,10 +781,26 @@ export function navigateToProject(projectId: string, preferredAgentId = selectAc
   if (!agentId) return;
   if (!isDesktop()) set({ sidebarOpen: false });
   const s = get();
-  if (s.page === "project" && s.projectId === projectId && s.homeAgentId === agentId && s.currentId === null) return;
+  if (s.page === "project" && s.projectId === projectId && s.homeAgentId === agentId) return;
   pushPath(projectPath(agentId, projectId));
   set((s2) => ({ viewKey: s2.viewKey + 1, page: "project" }));
   showProject(agentId, projectId);
+}
+
+/**
+ * Module 11: the project page's Lead chat opens in its middle, and the page stays the project's: the composer,
+ * the message list and its live reply work on it as on any open chat (`currentId`).
+ */
+export function showLead(conversation: Conversation) {
+  set((s) => ({ conversations: upsertConversation(s.conversations, conversation) }));
+  const s = get();
+  if (s.page !== "project" || s.projectId !== conversation.projectId) return;
+  void openConversation(conversation.id);
+}
+
+/** Module 11: the project page's middle starts a new chat in the project instead of showing its Lead (its composer sends the first message). */
+export function showProjectDraft() {
+  if (get().page === "project") set({ currentId: null });
 }
 
 /** Mission control (module 09): the board of every task, or one project's (⌘⇧M, the sidebar's Tasks header, a project's page). */
@@ -818,8 +834,10 @@ export function selectAgent(agentId: string) {
   else navigateToAgentHome(agentId);
 }
 
-/** Open a conversation. */
+/** Open a conversation. A project's Lead opens as its project's page (module 11). */
 export function navigateToConversation(id: string) {
+  const lead = get().conversations.find((c) => c.id === id && c.lead && c.projectId);
+  if (lead?.projectId) return navigateToProject(lead.projectId, lead.agentId);
   if (!isDesktop()) set({ sidebarOpen: false });
   if (id === get().currentId) return;
   pushPath(conversationPath(id));
