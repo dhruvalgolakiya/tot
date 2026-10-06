@@ -40,7 +40,7 @@ function describe(page: WikiPage, brain: AgentBrain | undefined, showBrain: bool
 const outlineText = (brainId: string) =>
   wiki
     .outline(brainId)
-    .map((p) => `${"  ".repeat(p.depth)}- ${p.title} (${p.id})${p.summary ? ` — ${p.summary}` : ""}`)
+    .map((p) => `${"  ".repeat(p.depth)}- ${p.title} (${p.id})${p.summary ? ` — ${p.summary}` : ""}${p.repo ? ` [the ${p.repo} repo's docs]` : ""}`)
     .join("\n");
 
 export function registerWikiTools(server: McpServer, agentId: string, conversationId: string): void {
@@ -275,7 +275,7 @@ export function registerWikiTools(server: McpServer, agentId: string, conversati
         if (!found) return notFound(page, scope);
         const brain = byId(found.brainId)!;
         if (brain.access !== "write") return readOnly(brain);
-        wiki.delete(found.id);
+        wiki.delete(found.id, "agent", conversationId);
         changed(brain, true);
         return reply(`Deleted wiki page “${found.title}”.`);
       }),

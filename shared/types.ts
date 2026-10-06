@@ -574,6 +574,8 @@ export interface WikiRevision {
   updatedBy: WikiAuthor;
   conversationId: string | null;
   createdAt: number;
+  /** Module 11: kept from before the wiki moved into git ("Before git"); newer versions come from git. */
+  legacy?: boolean;
 }
 
 export interface WikiPageInput {
@@ -1093,6 +1095,12 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/wiki/:pageId/revisions          -> WikiRevision[]  (newest first)
 // POST   /api/wiki/:pageId/revisions/:revisionId/restore -> WikiPage
 //
+// A project's knowledge (module 11, lane B): its wiki pages and memory facts in one git repo. The wiki routes above
+// work the same on top of git; a page that brings in a secret is refused with 400.
+// GET    /api/projects/:id/knowledge          -> KnowledgeStatus
+// GET    /api/projects/:id/knowledge/history?limit=&skip= -> KnowledgeCommit[]  (newest first: facts and pages)
+// POST   /api/projects/:id/knowledge/undo     { sha } -> KnowledgeCommit  (the undo commit; 409 when later changes touched the same lines)
+//
 // Memory repo (module 10; memory is git repos of markdown: "you" and "projects/<slug>"; paired devices may call
 // only the sync bundle). Writes are one commit each; a secret is refused with 400.
 // GET    /api/memories?q=&repo=               -> Memory[]  (repo defaults to "you"; file order, or best matches for q)
@@ -1549,6 +1557,12 @@ export interface KnowledgeStatus {
   error: string | null;
   pages: number;
   facts: number;
+}
+
+/** One change in a project's knowledge, facts and pages alike (newest first): a commit of its knowledge repo. */
+export interface KnowledgeCommit extends MemoryCommit {
+  /** The wiki pages it changed (empty for a change to facts only). */
+  pages: { id: string; title: string; action: "created" | "edited" | "moved" | "deleted" | "restored" | "imported" }[];
 }
 
 export type KnowledgeTrigger = "landed" | "base-moved" | "chat" | "dreaming" | "manual";

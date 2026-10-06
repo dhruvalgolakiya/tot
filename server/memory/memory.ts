@@ -22,6 +22,7 @@ import {
   projectRepoId,
   promptSize,
   readFile,
+  repoChanged,
   repoExists,
   revertCommit,
   subjectText,
@@ -80,9 +81,10 @@ export function resolveRepo(value: string | null | undefined): string {
   return projectRepoId(project.slug);
 }
 
-/** Rebuilds the index and tells everyone the repo moved on. */
+/** Rebuilds the index (and, module 11, the wiki pages' index) and tells everyone the repo moved on. */
 export function afterChange(repo: string, sha: string | null): void {
   reindex(repo);
+  repoChanged(repo, sha);
   appEvents.publish({ type: "memory", repo, sha });
 }
 
@@ -276,6 +278,10 @@ export const history = (repo: string, limit = 50, skip = 0): Promise<MemoryCommi
 export async function undo(repo: string, sha: string, actor = "you"): Promise<MemoryCommit> {
   const target = (await log(repo, 500)).find((commit) => commit.sha.startsWith(sha));
   if (!target) throw new MemoryError("There's no such change in this memory.", 404);
+  // Module 11: moving a wiki into git (its pages imported in one commit) isn't undone wholesale.
+  if (!target.revertible && target.kind === "import") {
+    throw new MemoryError("Moving the wiki into git can't be undone; restore a page's earlier version from its history instead.");
+  }
   await withRepo(repo, async () => {
     await initRepo(repo);
     const outside = await commitOutsideEdits(repo);
