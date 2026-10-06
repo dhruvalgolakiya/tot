@@ -24,6 +24,7 @@ The plan has eight modules. Each has its own doc, written so an agent can pick i
 | 08 | **Mac app**: TOT.app starts and stops the server itself, lives in the menu bar when its window is closed, opens a TOT already running; ad-hoc signed `.dmg` | [08-mac-app.md](08-mac-app.md) | 07 | `tot-mac` |
 | 09 | **Mission control**: start tasks from the composer, `/parallel`, `/best-of`; a board of every task; land the code (merge into your folder, draft PR, update from base, discard); worktree setup, ports, previews, cleanup | [09-mission-control.md](09-mission-control.md) | 01, 02, 03, 06 | `tot-mission` |
 | 10 | **Memory repo**: memory as git repos of markdown (Agent Memory Repo spec): about you and per project, shared by paired devices, cleaned up nightly by Dreaming | [10-memory-repo.md](10-memory-repo.md) | 06, 07 | `tot-memory` |
+| 11 | **Workspaces**: a project holds several repos; one git knowledge base per project (wiki + memory) that updates itself; a Lead chat that runs the project, landing with your OK; one screen and a Home overview | [11-workspaces.md](11-workspaces.md) | 06, 09, 10 | `tot-ws` |
 
 01, 02, 03 (M1–M4), 05 and 06 (M1–M4) are merged into `main`. 07 (M1–M4) is built on `feat/devices`. 08 (M1) is built on `feat/mac-app`. 04 is next.
 

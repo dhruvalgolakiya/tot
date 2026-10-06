@@ -18,6 +18,7 @@ import { redactGitHubTokens } from "../github.ts";
 import { isThisMachine } from "../net.ts";
 import { forTools } from "../projects/checkout.ts";
 import { registerProjectTools } from "../projects/tools.ts";
+import { registerLeadTools } from "../lead/tools.ts";
 import { registerMemoryTools } from "../memory/tools.ts";
 import { registerTaskTools } from "../tasks/tools.ts";
 import { homeRelative } from "../tasks/worktree.ts";
@@ -375,6 +376,8 @@ function buildServer(conversation: ConversationRecord): McpServer {
   registerMailTools(server, agentId, conversationId);
   registerTaskTools(server, conversation);
   registerProjectTools(server, conversation);
+  // Module 11: the Lead's tools, in Lead chats only (lane D).
+  registerLeadTools(server, conversation);
   return server;
 }
 

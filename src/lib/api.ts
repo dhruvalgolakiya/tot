@@ -251,6 +251,14 @@ export const api = {
   /** The setup command a project's lockfile implies: what its new worktrees run when it has none of its own. */
   detectProjectSetup: (id: string) => request<SetupDetection>("GET", `/projects/${seg(id)}/setup-detect`),
 
+  // Module 11 · lane A (a project's repos).
+
+  // Module 11 · lane B (knowledge: status, panel).
+
+  // Module 11 · lane C (knowledge auto-updates).
+
+  // Module 11 · lane D (the Lead, Home).
+
   stopRun: (runId: string) => request<Ok>("POST", `/runs/${seg(runId)}/stop`, {}),
   /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */
   answerApproval: (runId: string, partId: string, answer: ApprovalAnswer) =>

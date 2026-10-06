@@ -195,6 +195,8 @@ export interface Conversation {
   forkedFrom: ForkOrigin | null;
   /** The project it's in (module 06); null for chats in no project. Tasks and forks take their chat's. */
   projectId: string | null;
+  /** Module 11: the project's Lead chat (its orchestrator). */
+  lead?: boolean;
 }
 
 export type ConversationKind = "chat" | "task";
@@ -545,6 +547,8 @@ export interface WikiPageSummary {
   /** Who last changed it: the agent during a chat, the keeper after a chat, or the user. */
   updatedBy: WikiAuthor;
   updatedAt: number;
+  /** Module 11: this page heads a project repo's docs (its subtree is that repo's); the repo's name. */
+  repo?: string | null;
 }
 
 export interface WikiPage extends WikiPageSummary {
@@ -1348,6 +1352,8 @@ export interface TaskRepo {
   worktree: string;
   /** The branch's newest commit, recorded after every turn; null before the worktree exists. */
   headSha: string | null;
+  /** Module 11: which of the project's repos it works in (its name); null outside a project or in a one-repo project before 11. */
+  repoName?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1468,6 +1474,87 @@ export interface BestOfRequest {
   /** One task per entry; defaults to every logged-in provider (two runs when only one is). */
   providers?: ProviderId[];
   requestId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Workspaces (module 11): a project's repos, one knowledge base, a Lead, Home
+// ---------------------------------------------------------------------------
+
+export type ProjectRepoKind = "github" | "folder";
+
+/** One repo of a project: a GitHub repo cloned on each agent's computer, or a folder on this Mac used in place. */
+export interface ProjectRepo {
+  /** Unique within the project, e.g. "web"; names its tasks' repo and its docs in the knowledge base. */
+  name: string;
+  kind: ProjectRepoKind;
+  /** "owner/name" (or a git URL) for github; an absolute path for folder. */
+  source: string;
+  /** The branch tasks start from; null = the repo's own default. */
+  defaultBranch: string | null;
+  /** Folder repos: the user allowed agents to work in the folder. Always true for github. */
+  folderGranted: boolean;
+  /** The project's main repo: keeps the project's original checkout, and tasks default to it. */
+  primary: boolean;
+}
+
+export interface AddProjectRepoRequest {
+  kind: ProjectRepoKind;
+  source: string;
+  /** Defaults to the repo's or folder's name, made unique in the project. */
+  name?: string;
+  defaultBranch?: string | null;
+  /** Folder repos: the user already said yes to the consent dialog. */
+  grant?: boolean;
+}
+
+export interface UpdateProjectRepoRequest {
+  name?: string;
+  defaultBranch?: string | null;
+  /** true makes it the primary (the old primary keeps its checkout). */
+  primary?: boolean;
+}
+
+/** Where a project's knowledge (wiki pages and memory facts) lives, and whether its move to git is done. */
+export interface KnowledgeStatus {
+  projectId: string;
+  /** Its knowledge repo, e.g. "projects/web" (module 10's repo id). */
+  repo: string;
+  /** The repo's folder on this Mac, "~/.tot/memory/projects/web". */
+  path: string;
+  /** git: pages and facts live in the repo; database: the move to git hasn't happened or failed (pages still work from the database). */
+  state: "git" | "moving" | "database";
+  error: string | null;
+  pages: number;
+  facts: number;
+}
+
+export type KnowledgeTrigger = "landed" | "base-moved" | "chat" | "dreaming" | "manual";
+
+/** One auto-update of a project's knowledge: what triggered it, and what it changed (one commit). */
+export interface KnowledgeUpdate {
+  id: string;
+  projectId: string;
+  trigger: KnowledgeTrigger;
+  repoName: string | null;
+  taskId: string | null;
+  at: number;
+  /** The commit, to undo it; null when nothing changed or it failed. */
+  sha: string | null;
+  pages: { id: string; title: string; action: "created" | "updated" }[];
+  facts: number;
+  /** One line for the UI: "Updated after “Fix cart”". */
+  summary: string;
+  error: string | null;
+}
+
+/** A project's row on Home: what needs you, what's working, what's ready to land, and its Lead. */
+export interface HomeProject {
+  project: Project;
+  needsYou: number;
+  working: number;
+  readyToLand: number;
+  lastActivityAt: number | null;
+  leadChatId: string | null;
 }
 
 export interface StartTaskRequest {
@@ -1858,6 +1945,10 @@ export interface Project {
   setupCommand?: string | null;
   /** Folder projects: files copied from the folder into each new worktree, e.g. ".env". */
   copyFiles?: string[];
+  /** Module 11: its repos, the primary first (`kind`, `source` and `folderGranted` mirror the primary). Empty for a topic project. */
+  repos?: ProjectRepo[];
+  /** Module 11: its Lead chat, once created. */
+  leadChatId?: string | null;
 }
 
 export interface CreateProjectRequest {
