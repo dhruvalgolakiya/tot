@@ -344,7 +344,7 @@ export const landing = {
       if (!available) throw new HttpError(409, reason ?? "This task can't be opened as a PR.");
       requireReviewed(assessment, headSha, method);
       await previews.stop(taskId);
-      const landed = await openDraftPr(task, { repo: assessment.github!, base, access: assessment.access!, title: request.title, body: request.body });
+      const landed = await openDraftPr(task, { repo: assessment.github!, base, access: assessment.access!, title: request.title, body: request.body, ...(headSha ? { headSha } : {}) });
       // The worktree stays: review fixes may follow on the same branch.
       return recordLanding(taskId, landed);
     });

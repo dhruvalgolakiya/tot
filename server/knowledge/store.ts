@@ -6,6 +6,7 @@ import {
   commitAll,
   commitOutsideEdits,
   discardChanges,
+  git,
   gitSync,
   head,
   initRepo,
@@ -335,6 +336,23 @@ export function atomically<T>(fn: () => T): T {
   }
 }
 
+/** A change as `watchChanges` reports it: `key` is what `landedIn` knows its commit by. */
+export interface RecordedChange {
+  key: string;
+  brainId: string;
+  author: WikiAuthor;
+  conversationId: string | null;
+}
+const watchers = new Set<(change: RecordedChange) => void>();
+
+/** Collects the page changes recorded until `stop()` (an auto-update run claims only its own commits). */
+export function watchChanges(): { changes: RecordedChange[]; stop: () => void } {
+  const changes: RecordedChange[] = [];
+  const watcher = (change: RecordedChange) => void changes.push(change);
+  watchers.add(watcher);
+  return { changes, stop: () => void watchers.delete(watcher) };
+}
+
 /**
  * After `wiki.*` changed the index (inside `atomically`): places the pages it touched (and, when pages moved, their
  * subtrees) in files, and records the change to be committed. `delete`: the page's file goes.
@@ -387,6 +405,7 @@ export function record(brainId: string, ops: { id: string; op: PageOp }[], autho
     inBatchNow?.id ?? null,
     Date.now(),
   );
+  for (const watcher of watchers) watcher({ key: inBatchNow?.id ?? id, brainId, author, conversationId });
   void scheduleFlush(brainId);
   return id;
 }
@@ -969,6 +988,31 @@ const movedFile = (row: IndexRow) =>
   renderPage({ ...row, title: linked.scrub(row.title), summary: linked.scrub(row.summary), content: linked.scrub(row.content) });
 
 /**
+ * Page files of this brain that an earlier try of its move left uncommitted (TOT stopped between writing them and
+ * committing): the move writes them again, so they mustn't be committed first as "Edited outside TOT" (a commit
+ * Undo would offer, taking every page out). Call inside the repo's turn.
+ */
+async function forgetUnfinishedMove(repo: string, brainId: string): Promise<void> {
+  const dir = repoDir(repo);
+  const mine = new Set((db.prepare(`SELECT id FROM wiki_pages WHERE brain_id = ?`).all(brainId) as Row[]).map((row) => String(row.id)));
+  const ours = (text: string | null) => {
+    const id = text === null ? null : parsePage(text).id;
+    return Boolean(id && mine.has(id));
+  };
+  await git(dir, ["reset", "-q"]);
+  for (const entry of (await git(dir, ["status", "--porcelain", "-z", "--untracked-files=all"])).split("\0").filter(Boolean)) {
+    const code = entry.slice(0, 2);
+    const path = entry.slice(3);
+    if (!isPagePath(path)) continue;
+    if (code === "??") {
+      if (ours(readFile(repo, path))) removeFile(repo, path);
+    } else if (ours(readFile(repo, path)) || ours(await git(dir, ["show", `HEAD:${path}`]).catch(() => null))) {
+      await git(dir, ["checkout", "-q", "HEAD", "--", path]);
+    }
+  }
+}
+
+/**
  * Moves a brain's pages from the database into its repo, once, keeping their ids: one commit "Imported N pages"
  * (and one more if pages changed while it ran), then the brain works from git. The rows stay in
  * `wiki_pages_legacy`, its revisions in `wiki_revisions_legacy`. A failure leaves it working from the database;
@@ -983,6 +1027,7 @@ export async function migrateBrain(brainId: string): Promise<number> {
     return await withRepo(repo, async () => {
       const existed = repoExists(repo);
       await initRepo(repo);
+      await forgetUnfinishedMove(repo, brainId);
       await commitOutsideEdits(repo);
       let imported = 0;
       try {

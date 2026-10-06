@@ -6,7 +6,7 @@ import { ExternalLink, ShieldAlert, ShieldCheck, ShieldOff, ShieldQuestion, Shie
 import type { ApprovalField, MessagePart } from "@shared/types";
 import { api, ApiError } from "../lib/api";
 import { toMs, truncate } from "../lib/format";
-import { notifyError, useStore } from "../store";
+import { loadConversation, notifyError, useStore } from "../store";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
 import { Select } from "./ui/Select";
@@ -95,13 +95,17 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
     setForceInactive(false);
   }, [part.status]);
 
+  // A Lead's land or discard card (module 11) waits for the user after the turn too, until it expires.
+  const lead = part.lead ?? null;
   const status: DisplayStatus = forceInactive
     ? "inactive"
     : optimistic
       ? optimistic
-      : part.status === "pending" && !runId
-        ? "inactive"
-        : part.status;
+      : part.status === "pending" && lead && toMs(part.expiresAt) <= now
+        ? "expired"
+        : part.status === "pending" && !runId && !lead
+          ? "inactive"
+          : part.status;
   const actionable = status === "pending";
 
   useEffect(() => {
@@ -116,7 +120,28 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
   }, [actionable, now, part.expiresAt]);
 
   async function respond(decision: "accept" | "decline", answerValues?: Record<string, FieldValue>) {
-    if (!runId || submitting) return;
+    if (submitting) return;
+    if (lead) {
+      setSubmitting(true);
+      try {
+        const answer = await api.answerLeadAsk(part.id, decision);
+        setOptimistic(answer.status);
+        if (!answer.ok) toast.error(answer.text);
+        // The outcome is a note in the chat: show it, unless a reply is streaming (it shows there anyway).
+        if (!useStore.getState().activeRuns[conversationId]) void loadConversation(conversationId);
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
+          toast.error(error.message);
+          setForceInactive(true);
+        } else {
+          notifyError(error);
+        }
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+    if (!runId) return;
     setSubmitting(true);
     try {
       await api.answerApproval(runId, part.id, answerValues ? { decision, values: answerValues } : { decision });
@@ -261,7 +286,9 @@ export function ApprovalCard({ part, conversationId }: ApprovalCardProps) {
         )}
       </div>
 
-      <p className="text-xs text-fg-subtle tabular-nums">Waiting for you · {formatCountdown(part.expiresAt, now)}</p>
+      <p className="text-xs text-fg-subtle tabular-nums">
+        {lead ? "Waiting for you · nothing happens until you answer" : `Waiting for you · ${formatCountdown(part.expiresAt, now)}`}
+      </p>
     </div>
   );
 }

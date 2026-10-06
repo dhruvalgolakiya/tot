@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import type { Project } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
+import { callerOf } from "../auth.ts";
 import { projects } from "../projects/projects.ts";
 import { knowledge } from "./index.ts";
 
@@ -12,6 +13,8 @@ import { knowledge } from "./index.ts";
 export const knowledgeRoutes = new Hono();
 
 function project(c: Context): Project {
+  // Memory is this device's (module 10's /api/memory is closed to paired devices): so is the knowledge's history and undo.
+  if (callerOf(c).kind === "device") throw new HttpError(403, "A project's knowledge stays on the device it's on.");
   const found = projects.get(c.req.param("id"));
   if (!found) throw new HttpError(404, "Project not found.");
   return found;

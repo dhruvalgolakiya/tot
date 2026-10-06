@@ -251,6 +251,10 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
     builder.add(part);
     messages.save(builder.message);
   };
+  run.replacePart = (part) => {
+    builder.replace(part);
+    messages.save(builder.message);
+  };
 
   run.push({
     type: "run-start",

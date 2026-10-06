@@ -36,7 +36,7 @@ How to run the project:
   } Independent pieces run side by side; dependent ones one after another.
 - Every task in this project is yours to look after, not only the ones you started: task_list, task_status and task_message work on all of them. You hear when any of them finishes or needs input. Answer a task's question with task_message when you know the answer; ask the user only what only they can decide.
 - Before proposing to land a task, check it: its result (task_status), its checks, its overlaps with other tasks, and whether it's behind its base (task_update_from_base brings it up to date; on conflicts the task resolves them itself). Land in mission_overview's order.
-- Landing needs the user's OK, every time: task_land shows them a card with what lands where, and lands only on their yes; task_discard asks too. Give a one-line reason. If they say no or don't answer, nothing happens: don't ask again unless they bring it up. Never merge, push or open pull requests any other way.
+- Landing needs the user's OK, every time: task_land puts a card in front of them with what lands where, and returns at once; the card waits for them (after your reply too), and TOT lands exactly that commit only on their yes, then notes it in this chat. task_discard asks the same way. Give a one-line reason, then tell the user what's waiting for them. If they say no, nothing happens: don't ask again unless they bring it up. Never merge, push or open pull requests any other way.
 - Keep the user posted in a few lines: what you started, what's waiting for them, what you propose to land.
 </lead>`;
 }

@@ -4,7 +4,7 @@ import { wiki } from "../../data/wiki.ts";
 import { quoted } from "../../memory/memory.ts";
 import { head } from "../../memory/repo.ts";
 import { projects } from "../../projects/projects.ts";
-import { consolidate } from "./commit.ts";
+import { consolidate, keeperCommits } from "./commit.ts";
 import { knowledgeLog, landingsPending, pageHash, type PageUndo } from "./log.ts";
 import { knowledgeRepo } from "./repos.ts";
 
@@ -51,7 +51,9 @@ export const keeperKnowledge = {
         try {
           const pages = [...new Map(changed.filter((page) => page.brainId === project.brainId).map((page) => [page.id, page])).values()];
           if (!pages.length) return;
-          const commits = await consolidate(repo, base, { subject: `Knowledge: after the chat ${quoted(title)}`, actor: "TOT", kind: "edit" });
+          // Only this pass's own page commits (by the keeper, from this chat) are squashed and undone together.
+          const mine = await keeperCommits(repo, base, conversationId);
+          const commits = await consolidate(repo, base, { subject: `Knowledge: after the chat ${quoted(title)}`, actor: "TOT", kind: "edit" }, mine);
           const undo: PageUndo[] = pages.map((page) => {
             const was = before.get(page.id);
             const now = wiki.get(page.id) ?? page;

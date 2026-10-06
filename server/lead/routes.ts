@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { toPublicConversation } from "../data/conversations.ts";
+import { leadAsks } from "./asks.ts";
 import { homeProjects } from "./board.ts";
 import { leads } from "./lead.ts";
 
@@ -15,3 +16,11 @@ leadRoutes.post("/projects/:id/lead", async (c) => {
 });
 
 leadRoutes.get("/home", (c) => c.json(homeProjects()));
+
+/** The user's answer to a Lead's land or discard card. Body: { decision: "accept" | "decline" }. Yes lands (or discards) the commit the card showed. */
+leadRoutes.post("/lead/asks/:id", async (c) => {
+  const request = (await c.req.json().catch(() => ({}))) as { decision?: unknown } | null;
+  const decision = request?.decision;
+  if (decision !== "accept" && decision !== "decline") return c.json({ error: 'Expected { decision: "accept" | "decline" }.' }, 400);
+  return c.json(await leadAsks.answer(c.req.param("id"), decision));
+});

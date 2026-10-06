@@ -1,6 +1,6 @@
 import { afterChange } from "../../memory/memory.ts";
 import { commitAll, git, head, isAncestor, repoDir, subjectText, withRepo, type CommitMessage } from "../../memory/repo.ts";
-import { flushRepo } from "../store.ts";
+import { flushRepo, landedIn, watchChanges } from "../store.ts";
 
 /**
  * Module 11, lane C: one run, one commit. A run writes facts through module 10 (one commit) and pages through
@@ -15,9 +15,6 @@ import { flushRepo } from "../store.ts";
 
 const RS = "\x1e";
 const US = "\x1f";
-
-/** Commit kinds (module 10's TOT-Kind trailer) that are never a run's own writes. */
-const FOREIGN = new Set(["start", "import", "outside", "sync", "backup", "undo", "dream"]);
 
 interface Commit {
   sha: string;
@@ -47,26 +44,46 @@ async function range(repo: string, from: string, to: string): Promise<Commit[]> 
     });
 }
 
-/** Runs one of a run's writes, adding the commits it made (if any) to `mine`. */
+/**
+ * Runs one of a run's writes (synchronous `wiki.*` calls), adding the commits its page changes landed in to `mine`.
+ * Only the changes recorded while `write` runs count: a fact, an undo or another run's page committed meanwhile
+ * is never taken for the run's (and so never squashed into it, or undone with it).
+ */
 export async function trackWrite<T>(repo: string, mine: Set<string>, write: () => T | Promise<T>): Promise<Awaited<T>> {
-  await flushRepo(repo);
-  const before = await head(repo);
-  const result = await write();
+  const watch = watchChanges();
+  let pending: T | Promise<T>;
+  try {
+    pending = write();
+  } finally {
+    watch.stop();
+  }
+  const result = await pending;
   // A page write is committed after it returns: wait for it, so its commit counts as the run's.
   await flushRepo(repo);
-  const after = await head(repo);
-  if (before && after && after !== before) {
-    for (const commit of await range(repo, before, after).catch(() => [])) if (!byOthers(commit)) mine.add(commit.sha);
+  for (const change of watch.changes) {
+    const sha = landedIn(change.key);
+    if (sha) mine.add(sha);
   }
   return result;
 }
 
+/** The wiki keeper's commits since `base` for one chat: its page writes there (TOT-Author keeper, TOT-Chat the chat). */
+export async function keeperCommits(repo: string, base: string | null, conversationId: string): Promise<Set<string>> {
+  await flushRepo(repo);
+  const top = await head(repo);
+  if (!base || !top || top === base) return new Set();
+  const commits = await range(repo, base, top).catch(() => []);
+  return new Set(
+    commits.filter((commit) => commit.pageTrailers.includes("TOT-Author: keeper") && commit.pageTrailers.includes(`TOT-Chat: ${conversationId}`)).map((commit) => commit.sha),
+  );
+}
+
 /**
  * Makes the run's commits since `base` one commit with `message`. Returns the run's commits, newest first (one
- * after squashing; none when it changed nothing). `mine`: the commits its writes made; without it (the wiki
- * keeper's pass, which isn't watched write by write) any commit that isn't a sync, an undo or a hand edit counts.
+ * after squashing; none when it changed nothing). `mine`: the commits its own writes made (trackWrite,
+ * keeperCommits, a facts commit); anything else since `base` keeps the run's commits as they are.
  */
-export async function consolidate(repo: string, base: string | null, message: CommitMessage, mine?: Set<string>): Promise<string[]> {
+export async function consolidate(repo: string, base: string | null, message: CommitMessage, mine: Set<string>): Promise<string[]> {
   if (!base) return [];
   // Page writes waiting to be committed land first (outside the repo's turn, where they're committed).
   await flushRepo(repo);
@@ -75,7 +92,7 @@ export async function consolidate(repo: string, base: string | null, message: Co
     const top = await head(repo);
     if (!top || top === base || !(await isAncestor(dir, base, top))) return [];
     const commits = await range(repo, base, top);
-    const own = (commit: Commit) => commit.parents === 1 && !byOthers(commit) && (mine ? mine.has(commit.sha) : !FOREIGN.has(commit.kind ?? "outside"));
+    const own = (commit: Commit) => commit.parents === 1 && !byOthers(commit) && mine.has(commit.sha);
     const ours = commits.filter(own).map((commit) => commit.sha).reverse();
     if (ours.length !== commits.length) return ours;
     if (commits.length === 1 && commits[0]!.subject === subjectText(message.subject, 100)) return ours;

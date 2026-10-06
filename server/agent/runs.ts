@@ -22,6 +22,8 @@ export class Run {
   reply?: () => Message;
   /** While the turn runs: adds a part to the reply, e.g. the card of a task a tool just started. */
   addPart?: (part: MessagePart) => void;
+  /** While the turn runs: replaces a part of the reply by id (a Lead's card being answered, module 11). */
+  replacePart?: (part: MessagePart) => void;
   /** While the turn runs, when the provider can take input mid-turn: hands the model a note; false when it couldn't. */
   steer?: (text: string) => Promise<boolean>;
 

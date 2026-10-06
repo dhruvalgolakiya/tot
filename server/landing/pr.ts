@@ -77,15 +77,20 @@ async function createDraft(repo: string, token: string, request: { title: string
 /**
  * Pushes the task's branch and opens a draft PR into `base`. The caller has checked that the
  * branch is a tot/* one, that the agent's account may write, and that nothing is left uncommitted.
+ * With `headSha` (the commit the user reviewed) exactly that commit is pushed as the branch, so a
+ * commit made after the check can't ride along.
  */
 export async function openDraftPr(
   task: TaskRecord,
-  { repo, base, access, title, body }: { repo: string; base: string; access: AgentGitHub; title?: string; body?: string },
+  { repo, base, access, title, body, headSha }: { repo: string; base: string; access: AgentGitHub; title?: string; body?: string; headSha?: string },
 ): Promise<Omit<TaskLanding, "at">> {
   const { branch } = task.task.repo!;
   const branchRef = `refs/heads/${branch}`;
+  const source = headSha && /^[0-9a-f]{7,64}$/.test(headSha) ? headSha : branchRef;
   const pushScript = [
-    `git push --porcelain -u origin ${quote(`${branchRef}:${branchRef}`)} 2>&1 || exit 4`,
+    `git push --porcelain -u origin ${quote(`${source}:${branchRef}`)} 2>&1 || exit 4`,
+    // Pushing a commit (not the branch) sets no upstream: set it, so review fixes on the branch push as before.
+    ...(source === branchRef ? [] : [`git config ${quote(`branch.${branch}.remote`)} origin && git config ${quote(`branch.${branch}.merge`)} ${quote(branchRef)}`]),
     baseRefScript(base, false),
     "echo '@@ head'; git rev-parse HEAD",
     `echo '@@ files'; git diff --numstat "$(git merge-base "$ref" HEAD)" HEAD | head -n ${MAX_FILES + 1}`,

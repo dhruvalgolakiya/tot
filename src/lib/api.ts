@@ -293,6 +293,9 @@ export const api = {
     request<Conversation>("POST", `/projects/${seg(projectId)}/lead`, agentId ? { agentId } : {}),
   /** Every project's row on Home: needs you, working, ready to land, last activity, its Lead. */
   getHome: () => request<HomeProject[]>("GET", "/home"),
+  /** Answers a Lead's land or discard card (it waits as long as it takes); `ok` false when it was approved but didn't land. */
+  answerLeadAsk: (partId: string, decision: "accept" | "decline") =>
+    request<{ status: "accepted" | "declined"; ok: boolean; text: string }>("POST", `/lead/asks/${seg(partId)}`, { decision }),
 
   stopRun: (runId: string) => request<Ok>("POST", `/runs/${seg(runId)}/stop`, {}),
   /** Answers a paused tool's approval request; 404s (as ApiError) once it's no longer pending. */

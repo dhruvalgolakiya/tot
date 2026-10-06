@@ -893,7 +893,7 @@ async function openConversation(id: string) {
  * Fetch a conversation and its messages. If a run is still active, drop the
  * partial assistant message and rebuild it from the replayed event stream.
  */
-async function loadConversation(id: string, { attach = true } = {}) {
+export async function loadConversation(id: string, { attach = true } = {}) {
   set((s) => ({ detailState: { ...s.detailState, [id]: s.messages[id] ? "ready" : "loading" } }));
   try {
     // Opened by URL before the paired devices' chats loaded: it may be one of theirs (module 07).
@@ -1455,6 +1455,10 @@ function handleApprovalEvent(event: Extract<AppEvent, { type: "approval" }>) {
     else next.delete(event.conversationId);
     return { pendingApprovals: next };
   });
+  // Answered elsewhere (a Lead's card, from another tab or device, module 11): the open chat shows it and its note.
+  if (!event.pending && get().currentId === event.conversationId && !get().activeRuns[event.conversationId]) {
+    void loadConversation(event.conversationId);
+  }
   if (!event.pending || get().currentId === event.conversationId) return;
   const agentName = get().agents.find((a) => a.id === event.agentId)?.name ?? "Your agent";
   toast(`${agentName} needs your OK`, {

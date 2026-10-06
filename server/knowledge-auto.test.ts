@@ -353,24 +353,29 @@ const lab = projects.create({ kind: "none", name: "Lab" });
 const labRepo = knowledgeRepo(lab);
 const labDir = repo.repoDir(labRepo);
 await remember({ repo: labRepo, text: "Seed fact", source: "you", actor: "you" });
+// A run's writes are page writes (wiki.*, by the keeper); its facts come as one commit whose sha it adds itself.
+const labPage = wiki.create(lab.brainId, { title: "Lab notes", summary: "Notes", content: "Start." }, "user");
+const labOther = wiki.create(lab.brainId, { title: "Lab log", summary: "Log", content: "Start." }, "user");
+await knowledge.flush(lab.brainId);
 let base = await repo.head(labRepo);
 let mine = new Set<string>();
-await trackWrite(labRepo, mine, () => remember({ repo: labRepo, text: "First write of a run", source: "tot", actor: "TOT" }));
-await trackWrite(labRepo, mine, () => remember({ repo: labRepo, text: "Second write of a run", source: "tot", actor: "TOT" }));
+await trackWrite(labRepo, mine, () => wiki.update(labPage.id, { content: "First write of a run" }, "keeper"));
+await trackWrite(labRepo, mine, () => wiki.update(labOther.id, { content: "Second write of a run" }, "keeper"));
 let squashed = await consolidate(labRepo, base, { subject: "Knowledge: after “Two writes”", actor: "TOT", kind: "edit" }, mine);
 check(
   "a run's two commits become one, by TOT, with everything in it",
   squashed.length === 1 &&
     Number((await repo.git(labDir, ["rev-list", "--count", `${base}..HEAD`])).trim()) === 1 &&
     (await kLog(labDir, "%s")) === "Knowledge: after “Two writes”" &&
-    ["First write of a run", "Second write of a run"].every((text) => memories.list(labRepo).some((m) => m.content === text)),
+    wiki.get(labPage.id)!.content === "First write of a run" &&
+    wiki.get(labOther.id)!.content === "Second write of a run",
   JSON.stringify(squashed),
 );
 base = await repo.head(labRepo);
 mine = new Set<string>();
-await trackWrite(labRepo, mine, () => remember({ repo: labRepo, text: "Third write of a run", source: "tot", actor: "TOT" }));
+await trackWrite(labRepo, mine, () => wiki.update(labPage.id, { content: "Third write of a run" }, "keeper"));
 await remember({ repo: labRepo, text: "Someone else saved this meanwhile", source: "you", actor: "you" });
-await trackWrite(labRepo, mine, () => remember({ repo: labRepo, text: "Fourth write of a run", source: "tot", actor: "TOT" }));
+await trackWrite(labRepo, mine, () => wiki.update(labOther.id, { content: "Fourth write of a run" }, "keeper"));
 squashed = await consolidate(labRepo, base, { subject: "Knowledge: after “Interleaved”", actor: "TOT", kind: "edit" }, mine);
 check("someone else's commit in between: nothing is squashed into the run (Undo reverts its own two)", squashed.length === 2 && Number((await repo.git(labDir, ["rev-list", "--count", `${base}..HEAD`])).trim()) === 3, JSON.stringify(squashed));
 

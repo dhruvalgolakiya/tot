@@ -1,6 +1,7 @@
 // A project's Lead (roadmap module 11, lane D): made once per project; its prompt; its tools (mission_overview, and
-// task_status / task_list / task_message across every task in the project); task_land and task_discard, which ask the
-// user on an approval card and act only on a yes (a fake answer here), landing only the head the card showed; wakes for
+// task_status / task_list / task_message across every task in the project); task_land and task_discard, which put a
+// card in front of the user that waits as long as it takes and act only on their yes (answered here by the test, also
+// after the turn), landing only the head the card showed; wakes for
 // any task in the project; Home's counts; and the Lead's limits counting only work in flight. Real git and the macOS
 // sandbox under a temp HOME (folder projects), fake model turns.
 // Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/lead.test.ts
@@ -45,6 +46,7 @@ const { MCP_TOKEN } = await import("./config.ts");
 const { agents } = await import("./data/agents.ts");
 const { conversations, toPublicConversation } = await import("./data/conversations.ts");
 const { messages } = await import("./data/messages.ts");
+const { db } = await import("./db.ts");
 const { queueHolds } = await import("./data/queue-holds.ts");
 const { settings } = await import("./data/settings.ts");
 const { createApp } = await import("./app.ts");
@@ -130,14 +132,26 @@ async function mcp(conversationId: string) {
   return { client, call, tools };
 }
 
-/** A turn running in the Lead's chat, so its tools can ask the user on a card (answered here by the test). */
+type Card = Extract<MessagePart, { type: "approval" }>;
+
+/** A turn running in the Lead's chat, so its tools can put a card in its reply (answered here by the test). */
 function startRun(conversationId: string, waitMs?: number) {
   const assistant: Message = { id: randomUUID(), conversationId, role: "assistant", parts: [], status: "streaming", createdAt: Date.now() };
   messages.insert(assistant);
   const run = runRegistry.create(conversationId, assistant.id);
   const builder = new MessageBuilder(assistant, (event) => run.push(event));
   makeElicitor({ run, builder, agentId: conversations.get(conversationId)!.agentId, unattended: false, waitMs });
-  const card = () => builder.message.parts.findLast((p): p is Extract<MessagePart, { type: "approval" }> => p.type === "approval" && p.status === "pending");
+  // As the orchestrator wires a real turn.
+  run.reply = () => builder.message;
+  run.addPart = (part) => {
+    builder.add(part);
+    messages.save(builder.message);
+  };
+  run.replacePart = (part) => {
+    builder.replace(part);
+    messages.save(builder.message);
+  };
+  const card = () => builder.message.parts.findLast((p): p is Card => p.type === "approval" && p.status === "pending");
   const answer = async (decision: "accept" | "decline") => (await request("POST", `/runs/${run.id}/approvals/${card()!.id}`, { decision })).status;
   const end = () => {
     const final = builder.finish("complete");
@@ -312,11 +326,26 @@ check("a task still working: refused without asking", r.isError && r.text.includ
 r = await leadTools.call("task_land", { task_id: randomUUID(), reason: "?" });
 check("a task outside the project: refused", r.isError && r.text.includes("in this project"), r.text);
 
+/** The Lead's card (in its reply, or saved once the turn is over) and the user's answer to it. */
+const cardIn = (messageId: string, id: string) => messages.get(messageId)?.parts.find((p): p is Card => p.type === "approval" && p.id === id) ?? null;
+const answerCard = (id: string, decision: "accept" | "decline") =>
+  request<{ status: string; ok: boolean; text: string; error?: string }>("POST", `/lead/asks/${id}`, { decision });
+const lastNote = () =>
+  messages
+    .listByConversation(lead.id)
+    .flatMap((m) => m.parts)
+    .filter((p) => p.type === "notice")
+    .at(-1) as Extract<MessagePart, { type: "notice" }> | undefined;
+
 let turn = startRun(lead.id);
 const mainBefore = git(shop, "rev-parse", "main");
-let landing = leadTools.call("task_land", { task_id: greet.id, reason: "Adds the greeting; checks pass." });
-await until(() => Boolean(turn.card()));
+r = await leadTools.call("task_land", { task_id: greet.id, reason: "Adds the greeting; checks pass." });
 let card = turn.card();
+check(
+  "task_land returns at once: the card is up and waits for the user (no minute-long limit)",
+  !r.isError && r.text.startsWith("Asked the user on a card.") && r.text.includes(greet.task.repo!.headSha!.slice(0, 7)) && card?.status === "pending" && card.lead?.action === "land" && card.lead.taskId === greet.id && card.expiresAt > Date.now() + 24 * 60 * 60_000,
+  r.text,
+);
 check(
   "the card: what lands where, its checks, the branch and head, and the Lead's reason",
   card?.kind === "confirm" &&
@@ -328,40 +357,66 @@ check(
   card?.message,
 );
 check("nothing lands before the OK", git(shop, "rev-parse", "main") === mainBefore && !taskStore.get(greet.id)!.task.landing);
-check("yes", (await turn.answer("accept")) === 200);
-r = await landing;
+r = await leadTools.call("task_land", { task_id: greet.id, reason: "Again." });
+check("asking again for the same commit: no second card", !r.isError && r.text.includes("already") && turn.card()?.id === card!.id, r.text);
+let answered = await answerCard(card!.id, "accept");
 let landed = taskStore.get(greet.id)!.task.landing;
 check(
-  "…merged into the folder, as the card said",
-  !r.isError && r.text.startsWith("Merged “Add a greeting” into main") && existsSync(join(shop, "hello.txt")) && landed?.kind === "merged" && landed.target === "main",
-  r.text,
+  "yes: merged into the folder, as the card said",
+  answered.status === 200 && answered.data.ok && answered.data.text.startsWith("Merged “Add a greeting” into main") && existsSync(join(shop, "hello.txt")) && landed?.kind === "merged" && landed.target === "main",
+  JSON.stringify(answered.data),
 );
+check("…the card says Approved, and the chat has a note of what happened", cardIn(turn.run.messageId, card!.id)?.status === "accepted" && lastNote()?.text === answered.data.text);
+answered = await answerCard(card!.id, "accept");
+check("…and a card is answered once (409)", answered.status === 409, JSON.stringify(answered.data));
 
 const shout = await doneTask({ parentId: totChat.id }, "Shout", (wt) => commit(wt, { "shout.txt": "HEY\n" }, "Shout"));
-landing = leadTools.call("task_land", { task_id: shout.id, method: "merge", reason: "Shouts." });
-await until(() => Boolean(turn.card()));
-check("no", (await turn.answer("decline")) === 200);
-r = await landing;
-check("…nothing lands", !r.isError && r.text.startsWith("The user said no") && !existsSync(join(shop, "shout.txt")) && !taskStore.get(shout.id)!.task.landing, r.text);
+await leadTools.call("task_land", { task_id: shout.id, method: "merge", reason: "Shouts." });
+card = turn.card();
+answered = await answerCard(card!.id, "decline");
+check(
+  "no: nothing lands, the card says Denied",
+  answered.status === 200 && answered.data.status === "declined" && !existsSync(join(shop, "shout.txt")) && !taskStore.get(shout.id)!.task.landing && cardIn(turn.run.messageId, card!.id)?.status === "declined",
+  JSON.stringify(answered.data),
+);
 turn.end();
 
-turn = startRun(lead.id, 300);
-r = await leadTools.call("task_land", { task_id: shout.id, reason: "Shouts." });
-check("no answer before the card expires: nothing lands", r.text.startsWith("The user said no, or didn't answer") && !existsSync(join(shop, "shout.txt")), r.text);
+// A card answered after the Lead's turn is over still lands: it waited for the user.
+const wave = await doneTask({ parentId: totChat.id }, "Wave", (wt) => commit(wt, { "wave.txt": "o/\n" }, "Wave"));
+turn = startRun(lead.id);
+await leadTools.call("task_land", { task_id: wave.id, reason: "Waves." });
+card = turn.card();
+const waveMessage = turn.run.messageId;
 turn.end();
+answered = await answerCard(card!.id, "accept");
+check(
+  "answered after the turn ended: it lands, and the saved card says Approved",
+  answered.data.ok && existsSync(join(shop, "wave.txt")) && taskStore.get(wave.id)!.task.landing?.kind === "merged" && cardIn(waveMessage, card!.id)?.status === "accepted",
+  JSON.stringify(answered.data),
+);
 
 turn = startRun(lead.id);
-landing = leadTools.call("task_land", { task_id: shout.id, reason: "Shouts." });
-await until(() => Boolean(turn.card()));
+await leadTools.call("task_land", { task_id: shout.id, reason: "Shouts." });
+card = turn.card();
 // The task's branch moves after the card went up (its agent committed again): the card's head is no longer the head.
 commit(shout.task.repo!.worktree, { "shout.txt": "HEY!!\n" }, "Shout louder");
-await turn.answer("accept");
-r = await landing;
+answered = await answerCard(card!.id, "accept");
 check(
-  "yes, but the branch moved since the card: nothing lands",
-  r.isError && r.text.includes("didn't land") && r.text.includes("changed since you looked") && !existsSync(join(shop, "shout.txt")) && !taskStore.get(shout.id)!.task.landing,
-  r.text,
+  "yes, but the branch moved since the card: nothing lands, and the note says why",
+  answered.status === 200 &&
+    !answered.data.ok &&
+    answered.data.text.includes("didn't land") &&
+    answered.data.text.includes("changed since you looked") &&
+    !existsSync(join(shop, "shout.txt")) &&
+    !taskStore.get(shout.id)!.task.landing &&
+    lastNote()?.kind === "warning",
+  JSON.stringify(answered.data),
 );
+await leadTools.call("task_land", { task_id: shout.id, reason: "Shouts." });
+card = turn.card();
+db.prepare(`UPDATE lead_asks SET expires_at = ? WHERE id = ?`).run(Date.now() - 1, card!.id);
+answered = await answerCard(card!.id, "accept");
+check("a card left too long expires: nothing lands (409)", answered.status === 409 && /expired/.test(answered.data.error ?? "") && !taskStore.get(shout.id)!.task.landing && turn.card()?.id !== card!.id, JSON.stringify(answered.data));
 r = await leadTools.call("task_land", { task_id: shout.id, method: "pr", reason: "?" });
 check("a draft PR in a folder project: refused without asking", r.isError && r.text.includes("Draft PRs are for GitHub projects") && !turn.card(), r.text);
 
@@ -369,17 +424,14 @@ check("a draft PR in a folder project: refused without asking", r.isError && r.t
 // task_discard asks too; task_update_from_base
 // =============================================================================
 console.log("\n# task_discard and task_update_from_base");
-let discarding = leadTools.call("task_discard", { task_id: shout.id, reason: "Superseded." });
-await until(() => Boolean(turn.card()));
-check("the discard card", turn.card()?.message.startsWith("Discard “Shout”?") === true && turn.card()?.message.endsWith("Superseded.") === true, turn.card()?.message);
-await turn.answer("decline");
-r = await discarding;
-check("no: nothing is discarded", r.text.startsWith("The user said no") && !taskStore.get(shout.id)!.task.landing && existsSync(shout.task.repo!.worktree), r.text);
-discarding = leadTools.call("task_discard", { task_id: shout.id, reason: "Superseded." });
-await until(() => Boolean(turn.card()));
-await turn.answer("accept");
-r = await discarding;
-check("yes: discarded, its worktree gone", !r.isError && r.text === "Discarded “Shout”." && taskStore.get(shout.id)!.task.landing?.kind === "discarded" && !existsSync(shout.task.repo!.worktree), r.text);
+r = await leadTools.call("task_discard", { task_id: shout.id, reason: "Superseded." });
+card = turn.card();
+check("the discard card", !r.isError && card?.lead?.action === "discard" && card.message.startsWith("Discard “Shout”?") && card.message.endsWith("Superseded."), card?.message);
+answered = await answerCard(card!.id, "decline");
+check("no: nothing is discarded", answered.data.status === "declined" && !taskStore.get(shout.id)!.task.landing && existsSync(shout.task.repo!.worktree), JSON.stringify(answered.data));
+await leadTools.call("task_discard", { task_id: shout.id, reason: "Superseded." });
+answered = await answerCard(turn.card()!.id, "accept");
+check("yes: discarded, its worktree gone", answered.data.ok && answered.data.text === "Discarded “Shout”, as you approved." && taskStore.get(shout.id)!.task.landing?.kind === "discarded" && !existsSync(shout.task.repo!.worktree), JSON.stringify(answered.data));
 r = await leadTools.call("task_discard", { task_id: greet.id, reason: "?" });
 check("a landed task can't be discarded (and isn't asked about)", r.isError && r.text.includes("has landed already") && !turn.card(), r.text);
 turn.end();

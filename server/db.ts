@@ -639,6 +639,26 @@ db.exec(`
 // Workspaces (roadmap module 11, lane D; server/lead/): a project's Lead chat, the one it's run from (at most one per project).
 if (!hasColumn("conversations", "lead")) db.exec(`ALTER TABLE conversations ADD COLUMN lead INTEGER NOT NULL DEFAULT 0`);
 
+// A Lead's land and discard requests (server/lead/asks.ts): a card that waits for the user as long as it takes. On
+// their yes TOT lands exactly head_sha; decision is 'accept', 'decline' or 'expired', set once (answered_at).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lead_asks (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    method TEXT,
+    head_sha TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    answered_at INTEGER,
+    decision TEXT,
+    outcome TEXT
+  );
+  CREATE INDEX IF NOT EXISTS lead_asks_by_task ON lead_asks(task_id, answered_at);
+`);
+
 // Workspaces (roadmap module 11, lane B, server/knowledge/): every brain's wiki moves into a git repo of markdown (a
 // project's into its knowledge repo, with its memory), once per brain. `wiki_pages` stays as the index of the pages
 // (now with each page's file and the repo it heads), and `wiki_stores` says which brains moved. Writes reach the files

@@ -287,6 +287,11 @@ export type MessagePart =
       status: "pending" | "accepted" | "declined" | "expired";
       /** An unanswered request is declined at this time. */
       expiresAt: number;
+      /**
+       * A project Lead's request to land or discard a task (module 11): it waits for the user as long as it takes,
+       * after the turn too, and is answered with POST /api/lead/asks/:id, not the run's approval route.
+       */
+      lead?: { action: "land" | "discard"; taskId: string };
     }
   /** A task started from this chat. The UI shows it as a live card that reads the task's current state, so the part only holds its id. */
   | { type: "task"; id: string; taskId: string };
