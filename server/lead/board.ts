@@ -23,13 +23,14 @@ export function boardSection(task: TaskRecord): BoardSection {
   return repo?.headSha ? "ready" : "done";
 }
 
-/** The project's repos, one line each: "web (primary): GitHub acme/web · base main". */
+/** The project's repos, one line each: "web (primary): GitHub acme/web · base main" ("(primary)" only when there are several). */
 export function repoLines(project: Project): string[] {
   const base = (branch: string | null) => `base: ${branch ?? "the repo's default branch"}`;
   if (project.repos?.length) {
+    const several = project.repos.length > 1;
     return project.repos.map((repo) => {
       const where = repo.kind === "github" ? `GitHub ${repo.source}` : `folder ${tildePath(repo.source)}${repo.folderGranted ? "" : " (the user hasn't allowed agents in yet)"}`;
-      return `${repo.name}${repo.primary ? " (primary)" : ""}: ${where} · ${base(repo.defaultBranch)}`;
+      return `${repo.name}${several && repo.primary ? " (primary)" : ""}: ${where} · ${base(repo.defaultBranch)}`;
     });
   }
   // Before module 11's repos (or a project made before them): the project's one repo or folder.
@@ -61,10 +62,11 @@ function startedBy(task: TaskRecord, leadId: string | null): string {
   return parent ? `from ${parent.kind === "task" ? "task" : "chat"} “${parent.title}”` : "started elsewhere";
 }
 
-function taskLine(task: TaskRecord, leadId: string | null, overlaps: MissionOverlap[], titleOf: (id: string) => string): string {
+/** A task's line on the board; `named` adds which repo it works in (a project with several). */
+function taskLine(task: TaskRecord, leadId: string | null, overlaps: MissionOverlap[], titleOf: (id: string) => string, named: boolean): string {
   const { status, repo, stats, checks, landing, question, progress, queuePosition, plan, summary, result } = task.task;
   const parts = [`${task.id} · “${task.title}” · ${status}${status === "queued" && queuePosition ? ` (#${queuePosition} in line)` : ""}`];
-  if (repo) parts.push(`${repo.repoName ? `repo ${repo.repoName} · ` : ""}branch ${repo.branch}`);
+  if (repo) parts.push(`${named && repo.repoName ? `repo ${repo.repoName} · ` : ""}branch ${repo.branch}`);
   if (stats) parts.push(`+${stats.added} −${stats.removed} · ${stats.files} file${stats.files === 1 ? "" : "s"}`);
   const checked = checksWords(checks, repo?.headSha ?? null);
   if (checked && !landing) parts.push(checked);
@@ -104,7 +106,8 @@ export function projectBoardText(project: Project, leadId: string | null): strin
   const all = overview.tasks.map((t) => conversations.get(t.conversation.id)).filter(isTask);
   const titleOf = (id: string) => conversations.get(id)?.title ?? "another task";
   const by = (section: BoardSection) => all.filter((task) => boardSection(task) === section);
-  const line = (task: TaskRecord) => taskLine(task, leadId, overlaps.get(task.id) ?? [], titleOf);
+  const named = (project.repos?.length ?? 0) > 1;
+  const line = (task: TaskRecord) => taskLine(task, leadId, overlaps.get(task.id) ?? [], titleOf, named);
   const order = (task: TaskRecord) => {
     const at = overview.landOrder.indexOf(task.id);
     return at === -1 ? overview.landOrder.length : at;

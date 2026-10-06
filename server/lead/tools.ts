@@ -96,14 +96,15 @@ export function registerLeadTools(server: McpServer, conversation: ConversationR
         const base = how === "merge" ? (options.merge.target ?? repo.baseBranch ?? "main") : options.pr.base;
         // The head the card describes is the one that lands: the landing API refuses it if the branch moved since.
         const headSha = repo.headSha ?? undefined;
+        if (!headSha) return reply(`“${task.title}” has no known head commit yet, so the user wasn't asked. Check it again once it has finished.`, true);
         const question = how === "merge" ? `Merge “${task.title}” into ${base}?` : `Open a draft PR for “${task.title}” against ${base}?`;
         const line = changeLine(task, options, base);
-        const message = `${question}${line ? ` · ${line}` : ""}\n${repo.repoName ? `${repo.repoName} · ` : ""}${repo.branch}${headSha ? ` @ ${headSha.slice(0, 7)}` : ""}\n${reason.trim()}`;
+        const message = `${question}${line ? ` · ${line}` : ""}\n${repo.repoName ? `${repo.repoName} · ` : ""}${repo.branch} @ ${headSha.slice(0, 7)}\n${reason.trim()}`;
         const yes = await askUser(conversation.id, "Lead", message, extra.signal);
         if (yes === null) return reply(NO_TURN, true);
         if (!yes) return reply(NOT_LANDED);
         try {
-          const landed = (await landing.land(task.id, { method: how, ...(headSha ? { headSha } : {}) })).task.landing;
+          const landed = (await landing.land(task.id, { method: how, headSha })).task.landing;
           if (landed?.kind === "pr") return reply(`Opened draft PR #${landed.pr?.number ?? "?"} for “${task.title}” against ${landed.target ?? base}: ${landed.pr?.url ?? ""}`.trim());
           return reply(`Merged “${task.title}” into ${landed?.target ?? base}${landed?.sha ? ` (${landed.sha.slice(0, 7)})` : ""}. Its worktree is gone.`);
         } catch (err) {

@@ -8,7 +8,8 @@ import { folderGit } from "../../landing/git.ts";
 import { checkout } from "../../projects/checkout.ts";
 import { resolveFolder } from "../../projects/folders.ts";
 import { projects } from "../../projects/projects.ts";
-import { cloneUrl, homeRelative } from "../../tasks/worktree.ts";
+import { projectRepos as repoRecords } from "../../projects/repos.ts";
+import { homeRelative } from "../../tasks/worktree.ts";
 import { scrub } from "../../trust/secrets.ts";
 import type { UpdateJob } from "./jobs.ts";
 import { repoHeads } from "./log.ts";
@@ -25,7 +26,6 @@ import { projectRepos, repoOfTask } from "./repos.ts";
 
 const GIT_TIMEOUT_MS = 60_000;
 const FETCH_TIMEOUT_MS = 5 * 60_000;
-const CLONE_TIMEOUT_MS = 10 * 60_000;
 const MAX_COMMITS = 50;
 /** Landed tasks this recent are left out of a range. */
 const LANDED_WINDOW_MS = 14 * 24 * 60 * 60_000;
@@ -67,27 +67,25 @@ function computerGit(agentId: string, folder: string): Git {
 const words = (text: string) => scrub(text).trim().split("\n").filter(Boolean).slice(-2).join(" · ").slice(0, 300);
 
 /**
- * Where a GitHub repo's clone is on an agent's computer: the primary's is the project folder (~/projects/<slug>,
- * as checkout.ts keeps it); another repo's is ~/projects/<slug>.<name> beside it (lane A's place).
+ * Where a GitHub repo's clone is on an agent's computer: the place lane A fixed when the repo was added
+ * (~/projects/<slug> for the project's first repo, ~/projects/<slug>.<name> for the others), so a rename or a new
+ * primary never looks in the wrong folder.
  */
-const cloneFolder = (project: Project, repo: ProjectRepo) => (repo.primary ? `~/projects/${project.slug}` : `~/projects/${project.slug}.${repo.name}`);
+const cloneFolder = (project: Project, repo: ProjectRepo) => {
+  const record = repoRecords.get(project.id, repo.name);
+  return (record && repoRecords.folder(record)) || (repo.primary ? `~/projects/${project.slug}` : `~/projects/${project.slug}.${repo.name}`);
+};
 
 async function hasClone(agentId: string, folder: string): Promise<boolean> {
   const active = await computerManager.ensure(agentId);
   return (await active.backend.exec(active.externalId, `test -e ${quote(`${homeRelative(folder)}/.git`)}`, { timeoutMs: GIT_TIMEOUT_MS })).exitCode === 0;
 }
 
-/** Clones a repo that isn't on the computer yet (Check now only; the timer never clones). */
-async function cloneOnComputer(agentId: string, project: Project, repo: ProjectRepo, folder: string): Promise<void> {
-  if (repo.primary) {
-    await checkout.ensure(agentId, project);
-    return;
-  }
-  const url = cloneUrl(repo.source);
-  if (!url) throw new Error(`${repo.name} has no repo to clone.`);
-  const active = await computerManager.ensure(agentId);
-  const cloned = await active.backend.exec(active.externalId, `mkdir -p projects && git clone --quiet ${quote(url)} ${quote(homeRelative(folder))}`, { timeoutMs: CLONE_TIMEOUT_MS });
-  if (cloned.exitCode !== 0) throw new Error(`Couldn't clone ${repo.name}: ${words(cloned.stderr || cloned.stdout)}`);
+/** Clones a repo that isn't on the computer yet (Check now only; the timer never clones), as tasks would. */
+async function cloneOnComputer(agentId: string, project: Project, repo: ProjectRepo): Promise<void> {
+  const record = repoRecords.get(project.id, repo.name);
+  if (!record) throw new Error(`${repo.name} isn't in ${project.name} any more.`);
+  await checkout.ensure(agentId, project, record);
 }
 
 /** Where to read a repo's base branch, fetched first for a clone; null when it can't be read now. */
@@ -123,7 +121,7 @@ async function locate(project: Project, repo: ProjectRepo, manual: boolean): Pro
   if (!agentId) {
     if (!manual || !candidates[0]) return null;
     agentId = candidates[0];
-    await cloneOnComputer(agentId, project, repo, folder);
+    await cloneOnComputer(agentId, project, repo);
   }
   const git = computerGit(agentId, folder);
   const fetched = await git(["fetch", "--quiet", "origin"], FETCH_TIMEOUT_MS);
