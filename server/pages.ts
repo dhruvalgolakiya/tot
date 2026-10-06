@@ -4,7 +4,7 @@ import type { Context } from "hono";
 /**
  * TOT's few server-rendered pages: signing in from another device, and where a pairing link points. They
  * load before the app (signed out), so they're plain HTML hand-matching the app's design tokens
- * (src/index.css): canvas, text tiers, hairlines, the Funnel fonts, light and dark.
+ * (src/index.css): canvas, text tiers, hairlines, Inter, light and dark.
  */
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
@@ -24,12 +24,12 @@ const STYLE = `
   *, *::before, *::after { box-sizing: border-box; }
   html, body { height: 100%; }
   body { margin: 0; display: grid; place-items: center; padding: 24px; background: var(--canvas); color: var(--text);
-    font: 16px/1.5 "Funnel Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font: 16px/1.5 "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased; }
   main { width: min(360px, 100%); display: grid; gap: 24px; }
   header { display: grid; gap: 6px; justify-items: start; }
   header svg { margin-bottom: 14px; }
-  h1 { margin: 0; font: 600 26px/1.2 "Funnel Display", "Funnel Sans", ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.02em; }
+  h1 { margin: 0; font: 600 26px/1.2 "Inter", ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.022em; }
   p { margin: 0; color: var(--muted); font-size: 15px; }
   form { display: grid; gap: 12px; }
   .field { position: relative; }
@@ -88,7 +88,7 @@ export function sendPage(c: Context, page: { title: string; body: string; script
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ffffff"><meta name="referrer" content="no-referrer">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@500..700&family=Funnel+Sans:wght@400..600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
 <link rel="icon" href="/tot.svg"><title>${escape(page.title)}</title>
 <script nonce="${nonce}">${THEME}</script>
 <style>${STYLE}</style></head>

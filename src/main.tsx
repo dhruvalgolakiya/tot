@@ -10,7 +10,7 @@ import { totDesktop } from "./lib/desktop";
 // index.css's drag-region rules and components that read `totDesktop` for layout.
 if (totDesktop) document.documentElement.classList.add("desktop");
 
-// Icons default to a 1.75 stroke (lucide's 2 looks heavy next to Funnel Sans at 13–14px). An explicit
+// Icons default to a 1.75 stroke (lucide's 2 looks heavy next to Inter at 13–14px). An explicit
 // `strokeWidth` prop on an icon still wins. See DESIGN.md → Icons.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

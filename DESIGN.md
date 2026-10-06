@@ -61,7 +61,7 @@ decoration.
 
 ## 3. Typography
 
-Funnel Sans (variable weight, Google Fonts, `display=swap`) for the UI; Funnel Display (`font-display`) for display headings only; Geist Mono for code.
+Inter (variable weight and optical size, Google Fonts, `display=swap`) for the UI and headings (`font-display` is Inter too, for display headings); Geist Mono for code.
 Weights: 400 text, 500 labels/buttons/row emphasis, 600 headings. Never 700 in UI chrome.
 Use `tabular-nums` for counts, sizes, times and countdowns.
 
