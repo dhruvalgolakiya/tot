@@ -358,7 +358,8 @@ type RepoPickerProps = {
   onSelect: (fullName: string) => void;
 };
 
-function RepoPicker({ device, login, query, onQueryChange, selected, onSelect }: RepoPickerProps) {
+/** Also module 11's Add repo dialog (AddRepoDialog.tsx). */
+export function RepoPicker({ device, login, query, onQueryChange, selected, onSelect }: RepoPickerProps) {
   const text = query.trim();
   const isUrl = GIT_URL.test(text);
   const search = useDebouncedValue(isUrl ? "" : text, 250);
@@ -503,16 +504,19 @@ function RepoOption({ repo, index, selected, onSelect }: { repo: GitHubRepo; ind
 
 type RecentFolder = { path: string; label: string };
 
-function FolderPicker({
+/** Also module 11's Add repo dialog (AddRepoDialog.tsx), where `exclude` holds the project's own folders. */
+export function FolderPicker({
   device,
   value,
   onChange,
   projects,
+  exclude = [],
 }: {
   device: string | null;
   value: string;
   onChange: (value: string) => void;
   projects: Project[];
+  exclude?: string[];
 }) {
   const [recent, setRecent] = useState<RecentFolder[] | null>(null);
 
@@ -529,7 +533,10 @@ function FolderPicker({
   }, []);
 
   // Folders that are already projects aren't offered again.
-  const taken = useMemo(() => new Set(projects.filter((p) => p.kind === "folder" && p.source).map((p) => p.source)), [projects]);
+  const taken = useMemo(
+    () => new Set([...projects.filter((p) => p.kind === "folder" && p.source).map((p) => p.source), ...exclude]),
+    [projects, exclude],
+  );
   const offered = (recent ?? []).filter((folder) => !taken.has(folder.path)).slice(0, 8);
 
   return (

@@ -15,6 +15,7 @@ import { relay } from "./devices/relay.ts";
 import { addresses, selfDevice, webPort } from "./devices/identity.ts";
 import { listeners } from "./listeners.ts";
 import { migrateRepoBrains } from "./projects/projects.ts";
+import { migrateProjectRepos } from "./projects/repos.ts";
 import { startMemory, stopMemory } from "./memory/start.ts";
 import { tokenProblem } from "./session.ts";
 import { slack } from "./slack.ts";
@@ -64,6 +65,8 @@ void listeners.start(app);
 
 // Repo brains learned before projects existed become GitHub projects (once).
 migrateRepoBrains();
+// Workspaces (module 11): every project with code gets its repo or folder as its primary repo (once).
+migrateProjectRepos();
 // Memory repo (module 10): old memories become a git repo (once), the index is rebuilt; sync and Dreaming start.
 void startMemory();
 computerManager.startIdleReaper();

@@ -13,13 +13,15 @@ import { cloneUrl, worktrees } from "../tasks/worktree.ts";
 import { worktreeSetup } from "../worktrees/setup.ts";
 import { FolderRefused, gitState, resolveFolder, tildePath } from "./folders.ts";
 import { projects } from "./projects.ts";
+import { projectRepos, type RepoRecord } from "./repos.ts";
 
 /**
  * The project folder on an agent's computer (module 06). A GitHub or topic project lives in
  * ~/projects/<slug> on every computer that works on it: each agent has its own clone, like
  * teammates on their own laptops, set up the same way. A folder project is the user's folder on
  * this Mac, used in place by local computers through the sandbox's folder grant, and only by
- * chats and tasks in that project.
+ * chats and tasks in that project. A project with several repos (module 11) has each GitHub repo
+ * cloned next to the primary's (~/projects/<slug>.<name>), and each folder with its own grant.
  */
 
 const SHELL_TIMEOUT_MS = 60_000;
@@ -28,11 +30,11 @@ const WORKTREES = ".tot-worktrees";
 
 export const NEEDS_LOCAL = "This project's folder is on your Mac, so it needs an agent with a local computer.";
 
-/** Project folders already set up on a computer this run ("agentId:projectId"): chats don't check before every command. */
+/** Project folders already set up on a computer this run ("agentId:~/projects/…"): chats don't check before every command. */
 const ready = new Set<string>();
 /** Computers whose old ~/repos clones were moved into project folders this run. */
 const migrated = new Set<string>();
-/** One setup at a time per project on a computer: two tasks starting together mustn't both clone it. */
+/** One setup at a time per project folder on a computer: two tasks starting together mustn't both clone it. */
 const setups = new Map<string, Promise<string>>();
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -56,27 +58,41 @@ function sameRepo(remote: string, source: string): boolean {
   return clean(remote) === clean(url);
 }
 
+/** A GitHub repo's clone on the computer: its source, and its folder under ~/projects ("web", "web.api"). */
+interface Clone {
+  source: string;
+  dir: string;
+}
+
+/** The project's GitHub repos' clones (module 11: the primary's ~/projects/<slug>, and its added repos' next to it). */
+function clonesOf(project: Project): Clone[] {
+  return projectRepos
+    .list(project.id)
+    .filter((repo) => repo.kind === "github" && repo.checkout?.startsWith("~/projects/"))
+    .map((repo) => ({ source: repo.source, dir: repo.checkout!.slice("~/projects/".length) }));
+}
+
 /**
- * Moves the ~/repos/<name> clones of GitHub projects to ~/projects/<slug>, leaving a symlink at the
- * old path so old tasks' worktrees and wiki pages still resolve (and repairing the worktrees' links
- * to the new place). Only a real folder whose origin is the project's repo moves, and only into a
- * free ~/projects/<slug>, so running it again changes nothing.
+ * Moves the ~/repos/<name> clones of GitHub projects' repos to their folders in ~/projects, leaving a
+ * symlink at the old path so old tasks' worktrees and wiki pages still resolve (and repairing the
+ * worktrees' links to the new place). Only a real folder whose origin is the repo moves, and only into
+ * a free folder, so running it again changes nothing.
  */
-async function moveClones(active: ActiveComputer, list: Project[]): Promise<void> {
-  const candidates = list.filter((p) => p.kind === "github" && p.source).map((project) => ({ project, name: cloneFolder(project.source!) }));
+async function moveClones(active: ActiveComputer, list: Clone[]): Promise<void> {
+  const candidates = list.map((clone) => ({ ...clone, name: cloneFolder(clone.source) }));
   if (!candidates.length) return;
   const found = await sh(
     active,
     [
       `found() { [ -d "repos/$1" ] && [ ! -L "repos/$1" ] && [ -e "repos/$1/.git" ] && [ ! -e "projects/$2" ] && [ ! -L "projects/$2" ] && printf '%s\\t%s\\n' "$2" "$(git -C "repos/$1" config --get remote.origin.url)"; true; }`,
-      ...candidates.map(({ project, name }) => `found ${quote(name)} ${quote(project.slug)}`),
+      ...candidates.map(({ dir, name }) => `found ${quote(name)} ${quote(dir)}`),
     ].join("\n"),
   );
   const remotes = new Map(found.split("\n").filter(Boolean).map((line) => line.split("\t") as [string, string]));
-  const moves = new Map<string, string>(); // name → slug: one project per old clone
-  for (const { project, name } of candidates) {
-    const remote = remotes.get(project.slug);
-    if (remote && !moves.has(name) && sameRepo(remote, project.source!)) moves.set(name, project.slug);
+  const moves = new Map<string, string>(); // name → folder: one repo per old clone
+  for (const { source, dir, name } of candidates) {
+    const remote = remotes.get(dir);
+    if (remote && !moves.has(name) && sameRepo(remote, source)) moves.set(name, dir);
   }
   if (!moves.size) return;
   await sh(
@@ -89,13 +105,21 @@ async function moveClones(active: ActiveComputer, list: Project[]): Promise<void
   console.log(`[tot] moved ${[...moves.keys()].map((name) => `~/repos/${name}`).join(", ")} into ~/projects`);
 }
 
-/** Clones a GitHub project into ~/projects/<slug>, unless it's there (or an old ~/repos clone can move there). */
-async function clone(active: ActiveComputer, project: Project, path: string): Promise<void> {
+/**
+ * Clones a GitHub repo into its folder in ~/projects, unless it's there (or an old ~/repos clone can move
+ * there). An added repo's folder (module 11) that holds a clone of another repo (one removed from the
+ * project, then a new one added under its name) is refused rather than used.
+ */
+async function clone(active: ActiveComputer, project: Project, repo: Clone, path: string): Promise<void> {
   const has = async () => (await sh(active, `test -e ${quote(`${path}/.git`)} && echo yes || true`)).trim() === "yes";
-  if (await has()) return;
-  await moveClones(active, [project]);
-  if (await has()) return;
-  const url = cloneUrl(project.source ?? "");
+  if (!(await has())) await moveClones(active, [repo]);
+  if (await has()) {
+    if (repo.dir === project.slug) return;
+    const remote = (await sh(active, `git -C ${quote(path)} config --get remote.origin.url || true`)).trim();
+    if (remote && !sameRepo(remote, repo.source)) throw new Error(`~/${path} holds a clone of another repo. Move it aside, then try again.`);
+    return;
+  }
+  const url = cloneUrl(repo.source);
   if (!url) throw new Error(`${project.name} has no repo to clone.`);
   // With the agent's GitHub login, set up on the computer by the computer manager.
   await sh(active, `mkdir -p projects && git clone --quiet ${quote(url)} ${quote(path)}`, CLONE_TIMEOUT_MS);
@@ -130,20 +154,21 @@ function forget(agentId: string): void {
 
 export const checkout = {
   /**
-   * Makes the project folder exist on the agent's computer, and returns its path there:
-   * GitHub projects are cloned to ~/projects/<slug> (with the agent's git login), topic projects
-   * get an empty ~/projects/<slug>, and a folder project is checked and prepared for tasks
-   * (see usableFolder; it needs a local computer).
+   * Makes a project folder exist on the agent's computer, and returns its path there: a GitHub repo is
+   * cloned to its folder in ~/projects (with the agent's git login), a topic project gets an empty
+   * ~/projects/<slug>, and a folder on this Mac is checked and prepared for tasks (see usableFolder; it
+   * needs a local computer). Module 11: `repo` is one of the project's repos; without it, the primary.
    */
-  ensure(agentId: string, project: Project): Promise<string> {
-    if (project.kind === "folder") {
+  ensure(agentId: string, project: Project, repo: RepoRecord | null = projectRepos.primary(project.id)): Promise<string> {
+    if (repo?.kind === "folder") {
       return Promise.resolve().then(() => {
-        const real = checkout.usableFolder(agentId, project, { forTasks: true });
+        const real = checkout.usableRepoFolder(agentId, project, repo, { forTasks: true });
         prepareFolder(real);
         return real;
       });
     }
-    const key = `${agentId}:${project.id}`;
+    const folder = repo ? projectRepos.folder(repo) : `~/projects/${project.slug}`;
+    const key = `${agentId}:${folder}`;
     const previous = setups.get(key) ?? Promise.resolve("");
     const next = previous
       .catch(() => "")
@@ -151,10 +176,9 @@ export const checkout = {
         const active = await computerManager.ensure(agentId);
         // A computer made just now (or made again) has none of the folders this run knew about.
         if (active.event === "created") forget(agentId);
-        const folder = projects.folder(project)!;
         if (ready.has(key)) return folder;
-        const path = `projects/${project.slug}`;
-        if (project.kind === "github") await clone(active, project, path);
+        const path = folder.slice(2);
+        if (repo) await clone(active, project, { source: repo.source, dir: path.slice("projects/".length) }, path);
         else await sh(active, `mkdir -p ${quote(path)}`);
         ready.add(key);
         return folder;
@@ -175,8 +199,27 @@ export const checkout = {
   async migrate(agentId: string, active: ActiveComputer): Promise<void> {
     const key = `${agentId}:${active.externalId}`;
     if (migrated.has(key)) return;
-    await moveClones(active, [...projects.list(), ...projects.list({ archived: true })]);
+    await moveClones(active, [...projects.list(), ...projects.list({ archived: true })].flatMap(clonesOf));
     migrated.add(key);
+  },
+
+  /**
+   * What a chat's computer tools need first (module 11): every GitHub repo of the project cloned, or a
+   * topic project's folder made. Folders on this Mac need nothing here. With one repo (or none) it throws
+   * as ensure does; with several it returns notes for the agent on those that couldn't be set up, and
+   * sets up the others.
+   */
+  async ensureAll(agentId: string, project: Project): Promise<string[]> {
+    const repos = projectRepos.list(project.id);
+    if (repos.length <= 1) {
+      if (repos[0]?.kind !== "folder") await checkout.ensure(agentId, project, repos[0] ?? null);
+      return [];
+    }
+    const notes: string[] = [];
+    for (const repo of repos.filter((each) => each.kind === "github")) {
+      await checkout.ensure(agentId, project, repo).catch((err) => notes.push(`${repo.name} (${repo.source}) couldn't be set up: ${errorText(err)}`));
+    }
+    return notes;
   },
 
   /** Tests: forget what this run has set up and moved, as a restarted server would. */
@@ -191,18 +234,25 @@ export const checkout = {
    * isn't on this Mac. Tasks also need a git repo of its own (`forTasks`).
    */
   usableFolder(agentId: string, project: Project, { forTasks = false } = {}): string {
-    const shown = tildePath(project.source ?? "");
+    const primary = projectRepos.primary(project.id);
+    if (primary?.kind !== "folder") throw new HttpError(400, `${project.name} isn't a folder on this Mac.`);
+    return checkout.usableRepoFolder(agentId, project, primary, { forTasks });
+  },
+
+  /** usableFolder for one of the project's folder repos (module 11): each has its own grant. */
+  usableRepoFolder(agentId: string, project: Project, repo: RepoRecord, { forTasks = false } = {}): string {
+    const shown = tildePath(repo.source);
     if (project.archived) throw new HttpError(400, `The ${project.name} project is archived.`);
     const kind = computerManager.kindFor(agentId);
     if (kind !== "local") throw new HttpError(400, kind ? NEEDS_LOCAL : "Turn on the local computer in Settings → Computer to work in this folder.");
-    if (!project.folderGranted) throw new HttpError(400, `Agents can't use ${shown} yet: allow it on the ${project.name} project's page.`);
+    if (!repo.folderGranted) throw new HttpError(400, `Agents can't use ${shown} yet: allow it on the ${project.name} project's page.`);
     let real: string;
     try {
-      real = resolveFolder(project.source ?? "");
+      real = resolveFolder(repo.source);
     } catch (err) {
       throw new HttpError(400, err instanceof FolderRefused ? `${shown} can't be used: ${err.message}` : errorText(err));
     }
-    if (real !== project.source) throw new HttpError(400, `${shown} has moved or changed. Add it again as a new project.`);
+    if (real !== repo.source) throw new HttpError(400, `${shown} has moved or changed. Add it again as a new ${repo.primary ? "project" : "repo"}.`);
     if (forTasks) {
       const git = gitState(real);
       if (git === "none") throw new HttpError(400, `${shown} isn't a git repo, so tasks can't start in it. Agents can still read it in chats.`);
@@ -215,16 +265,39 @@ export const checkout = {
 };
 
 /**
- * The folder grant a chat's or task's commands get: only for a chat in a folder project the user
- * allowed, never for any other chat. A task also gets its own branch and worktree in it. Throws,
- * in words for the agent, when the folder can't be used.
+ * The folder grant a chat's or task's commands get: only for a chat in a project with a folder on this
+ * Mac the user allowed, never for any other chat. A coding task in a folder repo gets that folder, with
+ * its own branch and worktree in it; one in a GitHub repo gets none (its clone is on its computer). A
+ * chat, or a task without code, gets the project's folders to read. Module 11: a project's other allowed
+ * folders come along as `reads`. Throws, in words for the agent, when the task's folder (or a folder
+ * project's own) can't be used.
  */
 export function grantFor(chat: Pick<ConversationRecord, "agentId" | "projectId" | "kind" | "task">): FolderGrant | null {
   const project = projects.get(chat.projectId);
-  if (project?.kind !== "folder") return null;
-  const folder = checkout.usableFolder(chat.agentId, project);
-  const repo = chat.kind === "task" ? chat.task?.repo : null;
-  return repo && repo.folder === folder ? { folder, task: { branch: repo.branch, worktree: basename(repo.worktree) } } : { folder };
+  if (!project) return null;
+  const repos = projectRepos.list(project.id);
+  const taskRepo = chat.kind === "task" ? chat.task?.repo : null;
+  const own = taskRepo ? projectRepos.forTask({ projectId: project.id, task: chat.task }) : null;
+  // A clone needs no grant; nor does a repo of no project's (a topic project's task), and a folder the project no longer holds gets none.
+  if (taskRepo && own?.kind !== "folder") return null;
+  const usable = (repo: RepoRecord) => {
+    try {
+      return checkout.usableRepoFolder(chat.agentId, project, repo);
+    } catch {
+      return null;
+    }
+  };
+  // The folder it works in (a task's), or else the primary when it's a folder: these must be usable.
+  const first = own ?? (repos[0]?.kind === "folder" ? repos[0] : null);
+  const folder = first ? checkout.usableRepoFolder(chat.agentId, project, first) : null;
+  const others = repos
+    .filter((repo) => repo.kind === "folder" && repo.name !== first?.name)
+    .map(usable)
+    .filter((path): path is string => Boolean(path));
+  const main = folder ?? others.shift();
+  if (!main) return null;
+  const reads = others.length ? { reads: others } : {};
+  return taskRepo && taskRepo.folder === main ? { folder: main, task: { branch: taskRepo.branch, worktree: basename(taskRepo.worktree) }, ...reads } : { folder: main, ...reads };
 }
 
 /**
@@ -237,14 +310,15 @@ export async function forTools(
   active: ActiveComputer,
 ): Promise<{ grant: FolderGrant | null; note: string }> {
   const project = projects.get(chat.projectId);
-  if (!project || (project.archived && project.kind !== "folder")) return { grant: null, note: "" };
+  const folders = project ? projectRepos.list(project.id).filter((repo) => repo.kind === "folder") : [];
+  if (!project || (project.archived && !folders.length)) return { grant: null, note: "" };
   try {
-    if (project.kind !== "folder") {
-      await checkout.ensure(chat.agentId, project);
-      return { grant: null, note: "" };
-    }
-    if (active.backend.kind !== "local") return { grant: null, note: `[${NEEDS_LOCAL}]\n` };
-    return { grant: grantFor(chat), note: "" };
+    // Every GitHub repo cloned (module 11: a project may have several), or a topic's folder made.
+    const problems = project.archived ? [] : await checkout.ensureAll(chat.agentId, project);
+    const note = problems.length ? `[Not every repo of the project could be set up: ${problems.join("; ")}]\n` : "";
+    if (!folders.length) return { grant: null, note };
+    if (active.backend.kind !== "local") return { grant: null, note: project.kind === "folder" ? `${note}[${NEEDS_LOCAL}]\n` : note };
+    return { grant: grantFor(chat), note };
   } catch (err) {
     return { grant: null, note: `[The project's folder can't be used right now: ${errorText(err)}]\n` };
   }
@@ -262,7 +336,9 @@ export function prepareTask(task: TaskRecord): Promise<TaskRepo> {
 /** prepareTask, for a caller that's already running alone for the task (inside worktrees.forTask). */
 export async function prepareTaskNow(task: TaskRecord): Promise<TaskRepo> {
   const project = projects.get(task.projectId);
-  if (project && project.kind !== "none") await checkout.ensure(task.agentId, project);
+  // Module 11: the project repo it works in (a task of a topic project, or of a repo since removed, sets up on its own).
+  const own = project ? projectRepos.forTask(task) : null;
+  if (project && own) await checkout.ensure(task.agentId, project, own);
   const grant = grantFor(task);
   const { repo, created } = await worktrees.ensure(task.agentId, task.task.repo!, grant);
   // Set up only when this call made the worktree: two replies at once don't both run the setup.

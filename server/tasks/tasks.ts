@@ -29,6 +29,7 @@ import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { checkout, grantFor, prepareTaskNow } from "../projects/checkout.ts";
 import { projects } from "../projects/projects.ts";
+import { projectRepos } from "../projects/repos.ts";
 import { ticketKeyOf } from "../projects/tickets.ts";
 import { messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
@@ -90,8 +91,9 @@ function cleanRepo(value: unknown): string | undefined {
 }
 
 /**
- * A new task's repo. Inside a project with code it's always the project's, in the project's folder
- * (module 06); a folder on this Mac must be allowed, a git repo, and on a local computer.
+ * A new task's repo. Inside a project with code it's one of the project's repos, in its folder (module
+ * 06): the one `repo` names, or the primary (module 11); a folder on this Mac must be allowed, a git repo,
+ * and on a local computer.
  */
 function taskRepo(
   agentId: string,
@@ -101,12 +103,15 @@ function taskRepo(
   baseBranch?: string,
   ticketKey?: string | null,
 ): TaskRepo | null {
-  if (project?.kind === "folder") checkout.usableFolder(agentId, project, { forTasks: true });
-  const projectSource = project ? projects.taskSource(project) : null;
-  const source = cleanRepo(projectSource ?? repo);
-  if (!source) return null;
-  const planned = planRepo(source, title, baseBranch ?? project?.defaultBranch ?? undefined, ticketKey);
-  return projectSource && project ? inFolder(planned, projects.folder(project)!) : planned;
+  const own = project ? projectRepos.pick(project, repo) : null;
+  if (!project || !own) {
+    const source = cleanRepo(repo);
+    return source ? planRepo(source, title, baseBranch, ticketKey) : null;
+  }
+  if (own.kind === "folder") checkout.usableRepoFolder(agentId, project, own, { forTasks: true });
+  const source = cleanRepo(own.source)!;
+  const planned = planRepo(source, title, baseBranch ?? own.defaultBranch ?? undefined, ticketKey);
+  return { ...inFolder(planned, projectRepos.folder(own)), repoName: own.name };
 }
 
 function cleanModel(value: unknown): string | undefined {

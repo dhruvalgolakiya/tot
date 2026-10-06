@@ -582,6 +582,27 @@ if (!hasColumn("memories_legacy", "import_state")) db.exec(`ALTER TABLE memories
 if (!hasColumn("projects", "setup_command")) db.exec(`ALTER TABLE projects ADD COLUMN setup_command TEXT`);
 if (!hasColumn("projects", "copy_files")) db.exec(`ALTER TABLE projects ADD COLUMN copy_files TEXT NOT NULL DEFAULT '[]'`);
 
+// Workspaces (roadmap module 11, lane A; server/projects/repos.ts): a project's repos, any mix of GitHub repos and
+// folders on this Mac. The primary is the one with the lowest position, and the project's own kind, source,
+// default_branch and folder_granted_at mirror it. checkout: where a GitHub repo is cloned on each agent's computer
+// (~/projects/<slug> for the repo a project had before 11, ~/projects/<slug>.<name> for added ones), fixed when the
+// repo is added so a rename or a new primary never moves a clone; NULL for a folder (used in place). Existing
+// projects get their one primary row from repos.ts (migrateProjectRepos), keeping today's checkout.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS project_repos (
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL COLLATE NOCASE,
+    kind TEXT NOT NULL,
+    source TEXT NOT NULL,
+    default_branch TEXT,
+    folder_granted_at INTEGER,
+    position INTEGER NOT NULL,
+    checkout TEXT,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, name)
+  );
+`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

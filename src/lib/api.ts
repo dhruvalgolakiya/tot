@@ -1,4 +1,5 @@
 import type {
+  AddProjectRepoRequest,
   Brain,
   BrainAccess,
   BrainInput,
@@ -72,6 +73,7 @@ import type {
   UpdateDeviceRequest,
   UpdateRemoteAccessRequest,
   UpdateProjectRequest,
+  UpdateProjectRepoRequest,
   WikiPage,
   WikiPageInput,
   WikiPagePatch,
@@ -252,6 +254,15 @@ export const api = {
   detectProjectSetup: (id: string) => request<SetupDetection>("GET", `/projects/${seg(id)}/setup-detect`),
 
   // Module 11 · lane A (a project's repos).
+  /** Adds a GitHub repo, or a folder on this Mac (`grant` once the user said yes), to a project; resolves with the project. */
+  addProjectRepo: (projectId: string, body: AddProjectRepoRequest) => request<Project>("POST", `/projects/${seg(projectId)}/repos`, body),
+  /** Renames a repo (its clone stays where it is), sets its base branch, or makes it the primary. */
+  updateProjectRepo: (projectId: string, name: string, body: UpdateProjectRepoRequest) =>
+    request<Project>("PATCH", `/projects/${seg(projectId)}/repos/${seg(name)}`, body),
+  /** 409 while a task still has work in it; its files stay where they are. */
+  removeProjectRepo: (projectId: string, name: string) => request<Project>("DELETE", `/projects/${seg(projectId)}/repos/${seg(name)}`),
+  /** The user's OK for a folder repo (the consent dialog). */
+  grantProjectRepo: (projectId: string, name: string) => request<Project>("POST", `/projects/${seg(projectId)}/repos/${seg(name)}/grant`, {}),
 
   // Module 11 · lane B (knowledge: status, panel).
 

@@ -22,6 +22,7 @@ import type { FolderGrant } from "../computer/types.ts";
 import { paths } from "../config.ts";
 import { hostGitEnv } from "../git-env.ts";
 import { projects } from "../projects/projects.ts";
+import { projectRepos } from "../projects/repos.ts";
 import { taskStore, type TaskRecord } from "../tasks/store.ts";
 import { homeRelative } from "../tasks/worktree.ts";
 import { scrub } from "../trust/shell.ts";
@@ -73,8 +74,10 @@ export function detectForProject(project: Project): SetupDetection {
   } catch {
     return NOTHING;
   }
+  // Module 11: the primary repo's clone (~/projects/<slug> for a project from before 11).
+  const dir = projectRepos.primary(project.id)?.checkout?.replace(/^~\/projects\//, "") ?? project.slug;
   for (const home of homes) {
-    const clone = join(paths.computers, home, "projects", project.slug);
+    const clone = join(paths.computers, home, "projects", dir);
     if (existsSync(join(clone, ".git"))) return detectIn(clone);
   }
   return NOTHING;
@@ -179,7 +182,8 @@ function lastLines(...outputs: string[]): string {
 
 /** Runs the worktree's setup command on the agent's computer and records how it went in TaskInfo.setup. */
 async function runSetup(task: TaskRecord, repo: TaskRepo, grant: FolderGrant | null, note: string): Promise<TaskSetup> {
-  const configured = projects.get(task.projectId)?.setupCommand;
+  // Module 11: the project's setup command is its primary repo's; another repo's comes from its own lockfile.
+  const configured = projectRepos.forTask(task)?.primary === false ? null : projects.get(task.projectId)?.setupCommand;
   const active = await computerManager.ensure(task.agentId);
   const ports = taskStore.get(task.id)?.task.ports;
   const exec = (command: string, timeoutMs: number) =>

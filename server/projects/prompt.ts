@@ -3,13 +3,14 @@ import { brains } from "../data/brains.ts";
 import { wiki } from "../data/wiki.ts";
 import { gitState } from "./folders.ts";
 import { projects, tildePath } from "./projects.ts";
+import { projectRepos, type RepoRecord } from "./repos.ts";
 
 /**
  * What a chat or task in a project is told about it (module 06): one short section, always the same
  * shape, so every agent reads it the same way. It sits between `# Project: <name>` and the
  * <project></project> tags, which is how a frozen prompt's old section is found and replaced.
  * A chat in no project gets the list of projects instead (`# Projects`, <projects></projects>), so
- * its agent can file it.
+ * its agent can file it. A project with several repos (module 11) lists them, one line each.
  */
 
 const OVERVIEW_MAX = 4000;
@@ -25,6 +26,28 @@ function where(project: Project): string {
   if (project.kind === "github") return `GitHub ${project.source} · ${branch} · files at ${folder}`;
   if (project.kind === "folder") return `Folder on the user's Mac, ${tildePath(project.source ?? "")} · ${branch}`;
   return `No code. Shared files at ${folder} (drafts, notes, exports); edit them freely.`;
+}
+
+/** One repo of a project with several (module 11): its name, what it is, its base branch and where its files are. */
+function repoLine(repo: RepoRecord): string {
+  const label = `- ${repo.name}${repo.primary ? " (primary)" : ""}`;
+  const branch = `base branch ${repo.defaultBranch ?? "is the repo's default"}`;
+  if (repo.kind === "github") return `${label}: GitHub ${repo.source} · ${branch} · files at ${projectRepos.folder(repo)}`;
+  if (!repo.folderGranted) return `${label}: folder on the user's Mac, ${tildePath(repo.source)} · the user hasn't let agents into it yet (they can allow it on the project's page in TOT)`;
+  const git = gitState(repo.source) === "repo" ? "" : " · not a git repo, so tasks can't start in it";
+  return `${label}: folder on the user's Mac · ${branch} · files at ${repo.source}${git}`;
+}
+
+function reposWhere(repos: RepoRecord[]): string {
+  return [`Repos (each task works in one; task_start's \`repo\` takes its name, the primary when left out):`, ...repos.map(repoLine)].join("\n");
+}
+
+function reposRule(repos: RepoRecord[], inTask: boolean): string {
+  if (inTask) return "You're one task in this project: change files only in your own task folder (your worktree), never in the repos' folders themselves.";
+  const folders = repos.some((repo) => repo.kind === "folder")
+    ? " A folder on the user's Mac is at its full path (~ on your computer is your own home)."
+    : "";
+  return `Look in the repos' folders, but don't change them: start a task for any change, in the repo it's about; split work across repos into one task per repo.\nEach task gets its own branch (tot/…) and folder.${folders}`;
 }
 
 function rule(project: Project, inTask: boolean): string {
@@ -43,14 +66,17 @@ export function projectSection(project: Project, { inTask = false }: { inTask?: 
   const brain = brains.get(project.brainId);
   const overview = brain ? wiki.overview(brain.id).content.trim() : "";
   const instructions = project.instructions.trim().replace(/\n{2,}/g, "\n");
+  // Module 11: a project with several repos lists them (one repo reads as it did before).
+  const repos = projectRepos.list(project.id);
+  const several = repos.length > 1;
   const lines = [
-    where(project),
+    several ? reposWhere(repos) : where(project),
     instructions && `Instructions: ${instructions}`,
     brain &&
       (overview
         ? `Brain: "${brain.name}" (its Overview is below; search it with wiki_search).`
         : `Brain: "${brain.name}", empty so far: when you learn something durable about this project, write it there (wiki_write).`),
-    rule(project, inTask),
+    several ? reposRule(repos, inTask) : rule(project, inTask),
     overview &&
       `Overview:\n${overview.length > OVERVIEW_MAX ? `${overview.slice(0, OVERVIEW_MAX).trimEnd()}\n… (truncated: wiki_read for the rest)` : overview}`,
   ].filter(Boolean);
@@ -58,6 +84,8 @@ export function projectSection(project: Project, { inTask = false }: { inTask?: 
 }
 
 function kindLine(project: Project): string {
+  const repos = project.repos ?? [];
+  if (repos.length > 1) return `${repos.length} repos: ${repos.map((repo) => repo.name).join(", ")}`;
   if (project.kind === "github") return `GitHub ${project.source}`;
   if (project.kind === "folder") return `folder ${tildePath(project.source ?? "")}`;
   return "topic, no files";

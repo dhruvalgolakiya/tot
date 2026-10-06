@@ -80,12 +80,15 @@ export function gitState(folder: string): "repo" | "linked" | "none" {
 }
 
 /**
- * A grant checked again right before a sandboxed command uses it: its folder must still resolve to
- * itself and pass every rule, and a task's branch and worktree must be names TOT made.
+ * A grant checked again right before a sandboxed command uses it: its folder (and the project's other
+ * folders it may read, module 11) must still resolve to itself and pass every rule, and a task's branch
+ * and worktree must be names TOT made.
  */
 export function verifyGrant(grant: FolderGrant): FolderGrant {
-  const real = resolveFolder(grant.folder);
-  if (real !== grant.folder) throw new FolderRefused(`The project's folder ${tildePath(grant.folder)} has moved or changed. Add it again.`);
+  for (const folder of [grant.folder, ...(grant.reads ?? [])]) {
+    if (resolveFolder(folder) !== folder) throw new FolderRefused(`The project's folder ${tildePath(folder)} has moved or changed. Add it again.`);
+  }
+  const real = grant.folder;
   if (grant.task) {
     const { branch, worktree } = grant.task;
     if (!BRANCH.test(branch) || branch.includes("..") || !WORKTREE_NAME.test(worktree) || worktree.startsWith(".")) {

@@ -49,7 +49,8 @@ const TOT_PORTS = [...new Set([PORT, EXECUTOR_PORT, WEB_PORT])];
  */
 function grantRules(grant: FolderGrant | null | undefined): { read: string; write: string } {
   if (!grant) return { read: "", write: "" };
-  const read = `\n  (subpath ${sbplString(grant.folder)})`;
+  // The project's other folders (module 11) are only ever read.
+  const read = [grant.folder, ...(grant.reads ?? [])].map((folder) => `\n  (subpath ${sbplString(folder)})`).join("");
   if (!grant.task) return { read, write: "" };
   const git = join(grant.folder, ".git");
   const { branch, worktree } = grant.task;
@@ -161,13 +162,13 @@ function inside(workspace: string, path: string): string {
   return real;
 }
 
-/** A path in the granted folder (checked again now), or null when it isn't in it. */
+/** A path in the granted folder, or one of its readable ones (checked again now); null when it isn't in them. */
 function inGrant(workspace: string, path: string, grant: FolderGrant | null | undefined): string | null {
   if (!grant) return null;
   if (!SANDBOXED) throw new Error("Folders on this Mac need the macOS sandbox, which this computer doesn't have.");
   verifyGrant(grant);
   const real = realLocation(workspace, path, true);
-  return isIn(real, grant.folder) ? real : null;
+  return [grant.folder, ...(grant.reads ?? [])].some((folder) => isIn(real, folder)) ? real : null;
 }
 
 /** A command's working directory: an existing folder in the granted folder, or one in the workspace (made if needed). */

@@ -28,7 +28,7 @@ function describe(task: TaskRecord): string {
   const lines = [
     `- ${task.id} · “${task.title}”${role ? ` · ${role}${tier ? ` (${tier})` : ""}` : ""} · ${status}${status === "queued" && queuePosition ? ` (#${queuePosition} in line)` : ""}`,
   ];
-  if (repo) lines.push(`  repo ${repo.source} · branch ${repo.branch}`);
+  if (repo) lines.push(`  repo ${repo.repoName ? `${repo.repoName} (${repo.source})` : repo.source} · branch ${repo.branch}`);
   if (plan.length) lines.push(`  plan: ${plan.filter((step) => step.done).length}/${plan.length} steps done`);
   if (progress) lines.push(`  now: ${progress}`);
   if (question) lines.push(`  waiting for the user: ${question}`);
@@ -54,7 +54,9 @@ const sessionShape = {
   repo: z
     .string()
     .optional()
-    .describe('For code: GitHub "owner/name", a git URL, or a folder on your computer like ~/repos/web. In a project with code, leave it out: the project\'s repo is used.'),
+    .describe(
+      'For code: GitHub "owner/name", a git URL, or a folder on your computer like ~/repos/web. In a project with code: the name of one of its repos (see the Project section), or leave it out for its primary repo.',
+    ),
   base_branch: z.string().optional().describe("Branch to start from (default: the repo's default branch)"),
   constraints: z.array(z.string()).max(20).optional().describe("Rules it must follow"),
   context: z.array(z.string()).max(20).optional().describe("Brain pages, files and links to read first"),

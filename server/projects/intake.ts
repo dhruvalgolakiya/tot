@@ -28,7 +28,8 @@ function takes(project: Project, work: Work): boolean {
   if (ticket?.kind === "linear") return project.intake.linearTeams.includes(ticket.key.split("-")[0]!);
   if (ticket?.kind === "github") {
     const repo = ticket.key.slice(0, ticket.key.lastIndexOf("#")).toLowerCase();
-    return project.kind === "github" && project.source?.toLowerCase() === repo;
+    // Module 11: an issue or PR of any of its GitHub repos.
+    return (project.repos ?? []).some((each) => each.kind === "github" && each.source.toLowerCase() === repo);
   }
   return false;
 }

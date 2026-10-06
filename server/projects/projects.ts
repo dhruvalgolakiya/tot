@@ -8,6 +8,7 @@ import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { cleanCopyFiles, cleanSetupCommand } from "../worktrees/fields.ts";
 import { FolderRefused, resolveFolder } from "./folders.ts";
+import { projectRepos } from "./repos.ts";
 
 export { tildePath } from "./folders.ts";
 
@@ -50,6 +51,8 @@ function toProject(row: Row): Project {
     // Module 09: what every new task worktree gets.
     setupCommand: (row.setup_command as string | null) ?? null,
     copyFiles: parseJson<string[]>(row.copy_files, []),
+    // Module 11: its repos, the primary first (kind, source, defaultBranch and folderGranted above mirror it).
+    repos: projectRepos.list(id).map(projectRepos.toPublic),
   };
 }
 
@@ -175,6 +178,8 @@ export const projects = {
     db.prepare(
       `INSERT INTO projects (id, name, slug, kind, source, brain_id, folder_granted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, name, uniqueSlug(name), kind, source, brain.id, granted, now, now);
+    // Module 11: its repo or folder is its primary repo (in ~/projects/<slug>, or the folder itself).
+    projectRepos.list(id);
     appEvents.publish({ type: "brains", brains: brains.list() });
     return publish(projects.get(id)!);
   },
@@ -198,6 +203,11 @@ export const projects = {
     db.prepare(
       `UPDATE projects SET name = ?, instructions = ?, default_branch = ?, intake = ?, setup_command = ?, copy_files = ?, updated_at = ? WHERE id = ?`,
     ).run(name, instructions, branch, JSON.stringify(intake), setupCommand, JSON.stringify(copyFiles), Date.now(), id);
+    // Module 11: the project's base branch is its primary repo's.
+    const primary = projectRepos.primary(id);
+    if (patch.defaultBranch !== undefined && primary) {
+      db.prepare(`UPDATE project_repos SET default_branch = ? WHERE project_id = ? AND name = ?`).run(branch, id, primary.name);
+    }
     return publish(projects.get(id)!);
   },
 
@@ -213,8 +223,8 @@ export const projects = {
     if (cleanFolderSource(project.source) !== project.source) {
       throw new HttpError(400, "That folder has moved or changed since the project was made. Add it again as a new project.");
     }
-    db.prepare(`UPDATE projects SET folder_granted_at = ?, updated_at = ? WHERE id = ?`).run(Date.now(), Date.now(), id);
-    return publish(projects.get(id)!);
+    // Module 11: the grant is its primary repo's (the project's mirrors it).
+    return projectRepos.grant(id, projectRepos.primary(id)!.name);
   },
 
   /** Hides the project; its chats stay filed under it, and its brain stays. */
@@ -262,9 +272,12 @@ export const projects = {
 
   /**
    * Where the project's files are on an agent's computer: ~/projects/<slug> for GitHub and topic
-   * projects (see checkout.ts), and the folder's own path for a folder on this Mac.
+   * projects (see checkout.ts), and the folder's own path for a folder on this Mac. With several
+   * repos (module 11), its primary repo's.
    */
   folder(project: Project): string | null {
+    const primary = projectRepos.primary(project.id);
+    if (primary) return projectRepos.folder(primary);
     if (project.kind === "folder") return project.source;
     return `~/projects/${project.slug}`;
   },

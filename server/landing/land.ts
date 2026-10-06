@@ -8,6 +8,7 @@ import { githubFullName } from "../data/brains.ts";
 import { githubAccessFor, type AgentGitHub } from "../persona-github.ts";
 import { grantFor } from "../projects/checkout.ts";
 import { projects } from "../projects/projects.ts";
+import { projectRepos } from "../projects/repos.ts";
 import { runLoop } from "../tasks/run-loop.ts";
 import { ACTIVE, FINISHED, taskStore, type TaskRecord } from "../tasks/store.ts";
 import { tasks } from "../tasks/tasks.ts";
@@ -75,11 +76,15 @@ function requireRepo(task: TaskRecord) {
   return repo;
 }
 
-/** Where a task's code can land: the user's folder on this Mac (a folder project), and/or a GitHub repo ("owner/name"). */
+/**
+ * Where a task's code can land: the user's folder on this Mac (a folder project), and/or a GitHub repo ("owner/name").
+ * Module 11: the project repo the task works in decides (merging then goes into that folder, through its grant).
+ */
 function destinations(task: TaskRecord): { folder: boolean; github: string | null } {
-  const project = projects.get(task.projectId);
-  if (project?.kind === "folder") return { folder: true, github: null };
-  const source = project?.kind === "github" && project.source ? project.source : task.task.repo!.source;
+  const own = projectRepos.forTask(task);
+  const project = own ? null : projects.get(task.projectId);
+  if (own?.kind === "folder" || project?.kind === "folder") return { folder: true, github: null };
+  const source = own?.source ?? (project?.kind === "github" && project.source ? project.source : task.task.repo!.source);
   return { folder: false, github: githubFullName(cloneUrl(source) ?? "") };
 }
 

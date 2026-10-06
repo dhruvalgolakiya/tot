@@ -3,6 +3,7 @@ import { brains } from "../data/brains.ts";
 import { conversations } from "../data/conversations.ts";
 import { grantFor } from "../projects/checkout.ts";
 import { projects } from "../projects/projects.ts";
+import { projectRepos } from "../projects/repos.ts";
 import { isTask, taskStore, type TaskRecord } from "../tasks/store.ts";
 import { cloneUrl } from "../tasks/worktree.ts";
 import { blocks, COMMAND_GATES, runGates } from "../trust/gates.ts";
@@ -35,6 +36,8 @@ export function profileFor(task: TaskRecord): { brainId: string; profile: RepoPr
   const project = projects.get(task.projectId);
   const brainId = project && project.kind !== "none" ? project.brainId : brains.forSource(cloneUrl(repo.source) ?? repo.source)?.id;
   if (!brainId) return null;
+  // Module 11: the project's saved profile is its primary repo's; another repo's checks are read from its worktree.
+  if (projectRepos.forTask(task)?.primary === false) return { brainId, profile: null };
   try {
     return { brainId, profile: repoProfiles.get(brainId) ?? null };
   } catch {

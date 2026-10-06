@@ -1180,6 +1180,14 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/projects/:id/grant              -> Project  (folder projects: the user's OK for agents to read the folder and make tot/… branches in it)
 // POST   /api/projects/:id/learn              { agentId } -> { conversationId, runId }  (Learn a repo into its brain; a folder project needs its grant and a local computer)
 //
+// A project's repos (module 11 · lane A; Project.repos lists them, the primary first)
+// POST   /api/projects/:id/repos              AddProjectRepoRequest -> Project  (201; a GitHub repo is cloned at ~/projects/<slug>.<name>, a folder used in
+//                                              place with its own grant; 409 for a repo or name the project has already)
+// PATCH  /api/projects/:id/repos/:name        UpdateProjectRepoRequest -> Project  (rename: its tasks follow, its clone stays; primary: true makes it the primary)
+// DELETE /api/projects/:id/repos/:name        -> Project  (409 while a task has work in it: still going, or a worktree not landed or discarded;
+//                                              its clones and folder stay where they are)
+// POST   /api/projects/:id/repos/:name/grant  -> Project  (folder repos: the user's OK for agents to read it and make tot/… branches in it)
+//
 // Worktree lifecycle (module 09 · lane C; a project's setupCommand and copyFiles go through PATCH /api/projects/:id)
 // GET    /api/projects/:id/setup-detect       -> SetupDetection  (the setup command its lockfile implies, for the Worktree setup dialog)
 // POST   /api/tasks/:id/preview/stop          -> Conversation  (stops the task's preview; TaskInfo.preview becomes null)

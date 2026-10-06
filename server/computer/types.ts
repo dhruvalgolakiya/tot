@@ -20,6 +20,8 @@ export interface FolderGrant {
   folder: string;
   /** For a task: its branch ("tot/…") and its worktree's folder name in <folder>/.tot-worktrees. */
   task?: { branch: string; worktree: string };
+  /** Module 11: the project's other allowed folders (its other folder repos), readable only; real paths too. */
+  reads?: string[];
 }
 
 /** GUI control of a computer's desktop ("computer use"). Coordinates are real screen pixels. */

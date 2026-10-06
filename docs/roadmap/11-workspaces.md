@@ -92,7 +92,7 @@ MCP tool registration points in `server/mcp/server.ts`: lane D adds `registerLea
 ## Milestones
 
 - [ ] **M0 · Contract** (lead).
-- [ ] **M1 · Multi-repo projects** (A).
+- [x] **M1 · Multi-repo projects** (A). `project_repos` with every existing project's repo migrated as its primary (checkout kept), added GitHub repos cloned at `~/projects/<slug>.<name>`, folder repos with their own grant (a chat reads every allowed folder), tasks by repo name with `repoName`, landing and checks per repo, the four repo routes, `ProjectRepos` + Add repo, the composer's repo picker, repo names on mission cards (`server/project-repos.test.ts`).
 - [ ] **M2 · One knowledge base** (B).
 - [ ] **M3 · Auto-update** (C).
 - [ ] **M4 · Lead, one screen, Home** (D).

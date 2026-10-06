@@ -1178,7 +1178,7 @@ export async function sendMessage(
  * show there); from a project's page, a task in that project (it shows in the page's list); from an agent's
  * home, a task that opens. The request id makes a double click start it once.
  */
-export async function startTask(goal: string, requestId = newRequestId()): Promise<boolean> {
+export async function startTask(goal: string, requestId = newRequestId(), repo?: string): Promise<boolean> {
   const body = goal.trim();
   if (!body || get().sending) return false;
   set({ sending: true });
@@ -1186,14 +1186,15 @@ export async function startTask(goal: string, requestId = newRequestId()): Promi
   try {
     const s = get();
     const chat = selectCurrentConversation(s);
+    // Module 11: `repo` names one of the project's repos (the primary when it's left out).
     if (chat) {
-      const task = await api.startTaskFromChat(chat.id, { goal: body, requestId });
+      const task = await api.startTaskFromChat(chat.id, { goal: body, requestId, repo });
       set((s2) => ({ conversations: upsertConversation(s2.conversations, task) }));
       void loadConversation(chat.id);
       return true;
     }
     const projectId = s.page === "project" ? s.projectId : null;
-    const task = await api.startTask({ agentId: selectActiveAgentId(s) ?? undefined, projectId, goal: body, requestId });
+    const task = await api.startTask({ agentId: selectActiveAgentId(s) ?? undefined, projectId, goal: body, requestId, repo });
     set((s2) => ({ conversations: upsertConversation(s2.conversations, task) }));
     if (!projectId) navigateToConversation(task.id);
     return true;

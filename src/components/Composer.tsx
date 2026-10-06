@@ -4,6 +4,8 @@ import { ArrowUp, Columns2, Lightbulb, ListTodo, LoaderCircle, MessageSquare, Pl
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
 import { bestOfLabel, bestOfProviders, newRequestId, parallelMessage, parseSlash, SLASH_COMMANDS, slashQuery, type SlashCommandName } from "../lib/mission";
+import { pickableRepos } from "../lib/project-repos";
+import { useProjects } from "../lib/projects";
 import { isSteerable, isTask } from "../lib/tasks";
 import {
   clearComposerDraft,
@@ -19,6 +21,7 @@ import {
 } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
+import { TaskRepoPicker } from "./projects/TaskRepoPicker";
 import { Kbd } from "./ui/Kbd";
 import { Tip } from "./ui/Tip";
 import { VoiceInputButton } from "./voice";
@@ -67,6 +70,12 @@ export function Composer({
   /** The last task start's text and request id: sending the same text again after a failure reuses the id, so it starts once. */
   const pendingRequest = useRef<{ text: string; id: string } | null>(null);
   const providers = useStore((s) => s.providers);
+  // Module 11: in a project with several repos, which one a task starts in (null: the primary).
+  const pageProjectId = useStore((s) => (s.page === "project" ? s.projectId : null));
+  const projectId = conversation ? conversation.projectId : pageProjectId;
+  const repos = pickableRepos(useProjects((s) => s.projects.find((p) => p.id === projectId)));
+  const [taskRepo, setTaskRepo] = useState<string | null>(null);
+  useEffect(() => setTaskRepo(null), [projectId]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // A message sent from a project's page that failed once its chat had opened: put its text back here.
@@ -166,7 +175,8 @@ export function Composer({
       pendingRequest.current = { text: value, id: requestId };
       setText("");
       setInterim("");
-      const started = kind === "task" ? await startTask(goal, requestId) : await startBestOf(goal, requestId);
+      const repo = taskRepo && repos.some((each) => each.name === taskRepo) ? taskRepo : undefined;
+      const started = kind === "task" ? await startTask(goal, requestId, repo) : await startBestOf(goal, requestId);
       if (started) pendingRequest.current = null;
       else setText((current) => current || value);
       return;
@@ -427,6 +437,9 @@ export function Composer({
               <span className="hidden sm:inline">Task</span>
             </button>
           </Tip>
+        )}
+        {sendsTask && command?.command !== "best-of" && repos.length > 0 && (
+          <TaskRepoPicker repos={repos} value={taskRepo} onChange={setTaskRepo} className={clsx(pill, "data-[state=open]:bg-selected data-[state=open]:text-fg")} />
         )}
         {!steering && !sendsTask && (
           <Tip content="Use the strongest model with extra effort, for your next message only">

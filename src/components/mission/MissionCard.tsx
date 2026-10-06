@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { ArrowUpRight, CircleCheck, CircleDashed, CircleX, GitBranch, LoaderCircle, TriangleAlert } from "lucide-react";
 import type { Agent, MissionOverlap, TaskChecks } from "@shared/types";
 import { CHECKS_LABELS, landingLine } from "../../lib/mission";
+import { useProjects } from "../../lib/projects";
 import { comparePath, conversationPath } from "../../lib/router";
 import { taskElapsed, type TaskConversation } from "../../lib/tasks";
 import { navigateToCompare, navigateToConversation, useStore } from "../../store";
@@ -70,6 +71,9 @@ export function MissionCard({
   const CheckIcon = checks ? CHECK_ICONS[checks.state] : null;
   const waiting = status === "needs-input" || pendingApproval;
   const bestOf = groupKind === "best-of" ? group : null;
+  // Module 11: in a project with several repos, the one the task works in.
+  const severalRepos = useProjects((s) => (s.projects.find((p) => p.id === task.projectId)?.repos?.length ?? 0) > 1);
+  const repoName = severalRepos ? repo?.repoName : null;
 
   const open = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
@@ -112,6 +116,7 @@ export function MissionCard({
       {repo && (
         <p className="flex min-w-0 items-center gap-1.5 text-xs text-fg-subtle">
           <GitBranch className="size-3.5 shrink-0" />
+          {repoName && <span className="max-w-24 shrink-0 truncate font-medium text-fg-muted">{repoName}</span>}
           <span className="min-w-0 truncate font-mono">{repo.branch}</span>
           <span className="ml-auto shrink-0 font-mono tabular-nums">
             {stats ? (
