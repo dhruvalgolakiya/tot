@@ -6,6 +6,7 @@ import { appEvents } from "../app-events.ts";
 import { brains, BrainError, githubFullName } from "../data/brains.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { db, parseJson, type Row } from "../db.ts";
+import { cleanCopyFiles, cleanSetupCommand } from "../worktrees/fields.ts";
 import { FolderRefused, resolveFolder } from "./folders.ts";
 
 export { tildePath } from "./folders.ts";
@@ -46,6 +47,9 @@ function toProject(row: Row): Project {
     updatedAt: Number(row.updated_at),
     chats: Number(counts.chats ?? 0),
     running: Number(counts.running ?? 0),
+    // Module 09: what every new task worktree gets.
+    setupCommand: (row.setup_command as string | null) ?? null,
+    copyFiles: parseJson<string[]>(row.copy_files, []),
   };
 }
 
@@ -185,15 +189,15 @@ export const projects = {
       patch.defaultBranch === undefined ? project.defaultBranch : (patch.defaultBranch ?? "").trim() || null;
     if (branch && !/^[\w./-]+$/.test(branch)) throw new HttpError(400, "That isn't a branch name.");
     const intake = patch.intake ? { ...project.intake, ...cleanIntake(patch.intake) } : project.intake;
+    const setupCommand = patch.setupCommand === undefined ? (project.setupCommand ?? null) : cleanSetupCommand(patch.setupCommand);
+    const copyFiles = patch.copyFiles === undefined ? (project.copyFiles ?? []) : cleanCopyFiles(patch.copyFiles);
+    if (patch.copyFiles !== undefined && copyFiles.length && project.kind !== "folder") {
+      throw new HttpError(400, "Only a folder project on this Mac has files to copy into its worktrees.");
+    }
     // The slug stays as it was: it names the project's folder on every agent's computer.
-    db.prepare(`UPDATE projects SET name = ?, instructions = ?, default_branch = ?, intake = ?, updated_at = ? WHERE id = ?`).run(
-      name,
-      instructions,
-      branch,
-      JSON.stringify(intake),
-      Date.now(),
-      id,
-    );
+    db.prepare(
+      `UPDATE projects SET name = ?, instructions = ?, default_branch = ?, intake = ?, setup_command = ?, copy_files = ?, updated_at = ? WHERE id = ?`,
+    ).run(name, instructions, branch, JSON.stringify(intake), setupCommand, JSON.stringify(copyFiles), Date.now(), id);
     return publish(projects.get(id)!);
   },
 

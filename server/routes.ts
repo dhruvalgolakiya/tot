@@ -68,6 +68,9 @@ import { personaGitHub } from "./persona-github.ts";
 import { orchestrationRoutes } from "./orchestration/routes.ts";
 import { taskQueue } from "./tasks/queue.ts";
 import { taskRoutes } from "./tasks/routes.ts";
+import { landingRoutes } from "./landing/routes.ts";
+import { missionRoutes } from "./mission/routes.ts";
+import { worktreeRoutes } from "./worktrees/routes.ts";
 import { chatRoutes } from "./chats/routes.ts";
 import { projectRoutes } from "./projects/routes.ts";
 import { projects } from "./projects/projects.ts";
@@ -344,6 +347,10 @@ api.post("/conversations/:id/computer/stop", async (c) => {
 });
 
 api.route("/", taskRoutes);
+// Module 09: mission control (lanes A, B, C).
+api.route("/", landingRoutes);
+api.route("/", missionRoutes);
+api.route("/", worktreeRoutes);
 api.route("/", chatRoutes);
 api.route("/", projectRoutes);
 api.route("/", deviceRoutes);
@@ -898,14 +905,19 @@ api.patch("/settings", async (c) => {
       if (!Number.isInteger(n) || n < 1 || n > max) throw new HttpError(400, `${what} must be between 1 and ${max}.`);
       return n;
     };
-    const { perAgentLimit, globalLimit, resumeInterrupted, notifySlackUserId, switchProviders, missionTokenBudget, maxChildren, wakeChats } = patch.tasks;
+    const { perAgentLimit, globalLimit, resumeInterrupted, notifySlackUserId, switchProviders, missionTokenBudget, maxChildren, wakeChats, worktreeCleanupDays } = patch.tasks;
     const budget = Number(missionTokenBudget);
     if (missionTokenBudget !== undefined && (!Number.isInteger(budget) || budget < 0)) throw new HttpError(400, "The token budget must be a whole number (0 for no limit).");
+    const cleanupDays = Number(worktreeCleanupDays);
+    if (worktreeCleanupDays !== undefined && (!Number.isInteger(cleanupDays) || cleanupDays < 0 || cleanupDays > 365)) {
+      throw new HttpError(400, "Worktree cleanup must be between 0 (never) and 365 days.");
+    }
     patch.tasks = {
       ...(perAgentLimit !== undefined ? { perAgentLimit: limit(perAgentLimit, 10, "Tasks per agent") } : {}),
       ...(globalLimit !== undefined ? { globalLimit: limit(globalLimit, 20, "Tasks at once") } : {}),
       ...(maxChildren !== undefined ? { maxChildren: limit(maxChildren, 20, "Tasks one chat or task can start") } : {}),
       ...(missionTokenBudget !== undefined ? { missionTokenBudget: budget } : {}),
+      ...(worktreeCleanupDays !== undefined ? { worktreeCleanupDays: cleanupDays } : {}),
       ...(typeof resumeInterrupted === "boolean" ? { resumeInterrupted } : {}),
       ...(typeof switchProviders === "boolean" ? { switchProviders } : {}),
       ...(typeof wakeChats === "boolean" ? { wakeChats } : {}),

@@ -13,6 +13,7 @@ import type {
   StartTaskRequest,
   TaskBrief,
   TaskChanges,
+  TaskGroupKind,
   TaskInfo,
   TaskPatch,
   TaskRepo,
@@ -26,15 +27,17 @@ import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
-import { checkout, grantFor, prepareTask } from "../projects/checkout.ts";
+import { checkout, grantFor, prepareTaskNow } from "../projects/checkout.ts";
 import { projects } from "../projects/projects.ts";
 import { ticketKeyOf } from "../projects/tickets.ts";
 import { messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
 import { settings } from "../data/settings.ts";
+import { taskChecks } from "../landing/checks.ts";
 import { checkSpawn, childDepth } from "../orchestration/budget.ts";
 import { otherProvider, ROLE_NAMES, ROLES } from "../orchestration/roles.ts";
 import { roleTier, TIERS } from "../orchestration/tiers.ts";
+import { previews } from "../worktrees/preview.ts";
 import { taskQueue } from "./queue.ts";
 import { runLoop } from "./run-loop.ts";
 import { steer } from "./steer.ts";
@@ -122,6 +125,8 @@ export interface CreateTaskInput extends StartTaskRequest {
   group?: string | null;
   then?: "synthesize" | null;
   brief?: TaskBrief | null;
+  /** What the group is (module 09): split from one job, or the same job on several providers. */
+  groupKind?: TaskGroupKind | null;
 }
 
 function cleanRole(value: unknown): Role | null {
@@ -195,15 +200,17 @@ function reportToParent(task: TaskRecord): void {
   const parent = task.parentId ? conversations.get(task.parentId) : null;
   if (!parent || removing.has(task.id)) return;
   conversations.update(parent.id, { childResults: [...new Set([...parent.childResults, task.id])] });
-  const text = endingNotice(task);
-  messages.insert({
-    id: randomUUID(),
-    conversationId: parent.id,
-    role: "assistant",
-    parts: [{ type: "notice", id: `n_${randomUUID().slice(0, 12)}`, kind: task.task.status === "done" ? "info" : "warning", text }],
-    status: "complete",
-    createdAt: Date.now(),
-  });
+  // A best-of run (module 09) ends with one notice for the whole group, once they've all finished (mission/best-of.ts).
+  if (task.task.groupKind !== "best-of") {
+    messages.insert({
+      id: randomUUID(),
+      conversationId: parent.id,
+      role: "assistant",
+      parts: [{ type: "notice", id: `n_${randomUUID().slice(0, 12)}`, kind: task.task.status === "done" ? "info" : "warning", text: endingNotice(task) }],
+      status: "complete",
+      createdAt: Date.now(),
+    });
+  }
   publishConversation(parent.id, true);
   chatWakes.flag(task);
 }
@@ -239,6 +246,7 @@ function create(input: CreateTaskInput): TaskRecord {
       group: input.group ?? null,
       then: input.then ?? null,
       brief: input.brief ?? null,
+      ...(input.groupKind ? { groupKind: input.groupKind } : {}),
     },
   });
   const task = taskStore.get(record.id)!;
@@ -391,11 +399,24 @@ export const tasks = {
       if (request.attachments?.length) throw new HttpError(409, "Attach files once the task has stopped, or send the note as text.");
       return { steered: steer(taskId, request.text ?? "") };
     }
-    // Picking a coding task up again: its worktree must be there before the turn.
-    if (task.task.repo && !task.task.repo.headSha) {
-      taskStore.patch(taskId, { repo: await prepareTask(task) });
-    }
-    if (!taskStore.transition(taskId, "running")) throw new HttpError(409, `A ${status} task can't take messages.`);
+    // Picking it up again, alone for the task (worktrees.forTask): cleanup can't take its worktree meanwhile.
+    const pickedUp = await worktrees.forTask(taskId, async () => {
+      const current = taskStore.require(taskId);
+      // Someone else picked it up first: this message goes to it as theirs does.
+      if (current.task.status !== status) return false;
+      const { landing } = current.task;
+      // Merged or discarded, its worktree is gone: new work gets a new one (from the base when its branch went too), and can land again.
+      const reopened = landing?.kind === "merged" || landing?.kind === "discarded";
+      const repo = current.task.repo && reopened ? { ...current.task.repo, headSha: null } : current.task.repo;
+      // A coding task's worktree must be there before the turn.
+      if (repo && !repo.headSha) {
+        const prepared = await prepareTaskNow({ ...current, task: { ...current.task, repo } });
+        taskStore.patch(taskId, { repo: prepared, ...(reopened ? { landing: null } : {}) });
+      }
+      if (!taskStore.transition(taskId, "running")) throw new HttpError(409, `A ${status} task can't take messages.`);
+      return true;
+    });
+    if (!pickedUp) return tasks.message(taskId, request);
     let started: SendMessageResponse;
     try {
       started = await runLoop.send(taskId, request, runLoop.turnOptions(task));
@@ -415,10 +436,12 @@ export const tasks = {
     if (!FINISHED.has(task.task.status)) taskStore.transition(taskId, "stopped");
     runRegistry.activeFor(taskId)?.stop();
     await runLoop.settled(taskId);
+    // Its preview (module 09) goes before its worktree does.
+    await previews.stop(taskId);
     if (task.task.repo?.headSha) {
       const repo = task.task.repo;
       await Promise.resolve()
-        .then(() => worktrees.remove(task.agentId, repo, { deleteBranch, grant: grantFor(task) }))
+        .then(() => worktrees.remove(task.agentId, repo, { deleteBranch, force: true, grant: grantFor(task) }))
         .catch((err) => {
           console.warn(`[tot] couldn't remove the worktree of task ${taskId}:`, err instanceof Error ? err.message : err);
         });
@@ -448,6 +471,8 @@ export const tasks = {
     taskQueue.start();
     const offChange = taskStore.onChange((task) => {
       if (FINISHED.has(task.task.status)) reportToParent(task);
+      // Module 09: a coding task that's done gets its repo's checks.
+      if (task.task.status === "done" && task.task.repo) taskChecks.afterDone(task.id);
     });
     const offApprovals = appEvents.subscribe((event) => {
       if (event.type !== "approval") return;
@@ -477,6 +502,7 @@ export const tasks = {
       }
     }
     taskQueue.pump();
+    taskChecks.recover();
   },
 
   /** The server is stopping: running turns get stopped, and their tasks resume (or show as interrupted) next time. */

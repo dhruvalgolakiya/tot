@@ -1,7 +1,11 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import type { Settings } from "@shared/types";
-import { TASK_LIMITS, isValidBudget, isValidTaskLimit, type SettingsSectionProps } from "../../lib/settings";
-import { useStore } from "../../store";
+import { api } from "../../lib/api";
+import { CLEANUP_DAYS, TASK_LIMITS, isValidBudget, isValidCleanupDays, isValidTaskLimit, type SettingsSectionProps } from "../../lib/settings";
+import { notifyError, useStore } from "../../store";
 import { SettingRow } from "../settings/SettingRow";
+import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { Select } from "../ui/Select";
 import { Switch } from "../ui/Switch";
@@ -25,12 +29,36 @@ function LimitInput({ id, value, max, onChange }: { id: string; value: number; m
   );
 }
 
-/** Settings → Tasks: how many run at once, what happens after a restart, and who hears when they finish. */
+/** "Clean up now" (module 09): removes old worktrees with the days on screen, saved or not, and says how many went. */
+function CleanUpNow({ days }: { days: number }) {
+  const [busy, setBusy] = useState(false);
+
+  async function run() {
+    setBusy(true);
+    try {
+      const { removed } = await api.cleanUpWorktrees(days);
+      toast.success(removed ? `Removed ${removed} worktree${removed === 1 ? "" : "s"}` : "Nothing to clean up");
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Button size="sm" variant="secondary" disabled={busy || !isValidCleanupDays(days) || days < 1} onClick={() => void run()}>
+      {busy ? "Cleaning up…" : "Clean up now"}
+    </Button>
+  );
+}
+
+/** Settings → Tasks: how many run at once, what happens after a restart, who hears when they finish, and old worktrees. */
 export function TasksSettings({ draft, onChange }: SettingsSectionProps) {
   const tasks = draft.tasks;
   const slack = useStore((s) => s.slack);
   const update = (patch: Partial<TasksDraft>) => onChange({ ...draft, tasks: { ...tasks, ...patch } });
   const people = slack?.state === "connected" ? slack.allowedUsers : [];
+  const cleanupDays = tasks.worktreeCleanupDays;
 
   return (
     <div className="space-y-8">
@@ -139,6 +167,49 @@ export function TasksSettings({ draft, onChange }: SettingsSectionProps) {
             }
           />
         </Card>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-fg">Worktrees</h2>
+        <Card padding="none" className="divide-y divide-hairline">
+          <SettingRow
+            className="px-4"
+            htmlFor="tasks-cleanup"
+            title="Remove finished worktrees after"
+            description="A task that finished but was never merged, opened as a pull request or discarded keeps its worktree this long. Its branch always stays. 0 keeps them."
+            control={
+              <div className="flex items-center gap-1.5">
+                <input
+                  id="tasks-cleanup"
+                  type="number"
+                  inputMode="numeric"
+                  min={CLEANUP_DAYS.min}
+                  max={CLEANUP_DAYS.max}
+                  value={Number.isNaN(cleanupDays) ? "" : cleanupDays}
+                  onChange={(event) => update({ worktreeCleanupDays: event.target.valueAsNumber })}
+                  aria-invalid={!isValidCleanupDays(cleanupDays)}
+                  className="input input-sm w-20 text-right tabular-nums"
+                />
+                <span className="text-xs text-fg-subtle">days</span>
+              </div>
+            }
+          />
+          <SettingRow
+            className="px-4"
+            title="Remove them now"
+            description={
+              isValidCleanupDays(cleanupDays) && cleanupDays >= 1
+                ? `Clean up worktrees older than ${cleanupDays} day${cleanupDays === 1 ? "" : "s"} now, instead of at the daily sweep.`
+                : "Cleanup is off. Set a number of days to remove old worktrees."
+            }
+            control={<CleanUpNow days={cleanupDays} />}
+          />
+        </Card>
+        {!isValidCleanupDays(cleanupDays) && (
+          <p className="text-xs text-danger">
+            Use a whole number of days, {CLEANUP_DAYS.min}–{CLEANUP_DAYS.max}.
+          </p>
+        )}
       </section>
     </div>
   );

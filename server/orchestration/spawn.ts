@@ -49,6 +49,7 @@ export function spawnMany(parentId: string, specs: SpawnSpec[], opts: { then?: "
       repo: spec.repo,
       baseBranch: spec.baseBranch,
       group,
+      groupKind: group ? "parallel" : null,
       then: opts.then ?? null,
       brief: { goal: spec.goal, constraints: spec.constraints ?? [], context: spec.context ?? [], done: spec.done ?? "" },
     }),

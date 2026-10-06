@@ -1,6 +1,7 @@
 import type { HandoffPacket, TaskInfo } from "../../shared/types.ts";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
 import { ROLES } from "../orchestration/roles.ts";
+import { worktreeNotes } from "../worktrees/prompt.ts";
 
 /** Tasks can start tasks this many levels below the user's chat. */
 export const MAX_DEPTH = 2;
@@ -25,7 +26,7 @@ ${FAN_OUT}`;
 const FAN_OUT = `When to fan out with task_spawn_many: independent sub-questions (one researcher per vendor), a search across many files or sources, or work bigger than one sitting. Give each session a role — explorer (where/how, fast), planner, implementer (makes the change), tester, reviewer (runs on the other provider), researcher, writer — and pass then: "synthesize" to get one turn here with all their results to combine. Don't fan out for small or sequential work, or while the user is mid-conversation with you; at most 6 tasks per chat.`;
 
 /** Inside a task: its goal, role, where to work, and how to report. */
-export function taskSection(task: Pick<TaskInfo, "goal" | "repo" | "role" | "depth">): string {
+export function taskSection(task: Pick<TaskInfo, "goal" | "repo" | "role" | "depth" | "ports" | "setup">): string {
   const { repo, role } = task;
   const code = repo
     ? `
@@ -33,7 +34,8 @@ Repository: ${repo.source}, on your computer at ${repo.folder}.
 Your branch: ${repo.branch}${repo.baseBranch ? ` (from ${repo.baseBranch})` : ""}, checked out in its own git worktree: ${repo.worktree}
 - That worktree is your working directory: computer_exec starts there unless you pass a \`cwd\` (relative to your home folder), and relative paths in computer_read_file / computer_write_file resolve there. Keep every change inside it.
 - Other tasks may be working on the same repo at the same time, each in its own worktree. Never touch other worktrees, the main checkout in ${repo.folder}, or the base branch.
-- Commit your work on your branch in small steps with clear messages. Never push or open pull requests: TOT handles that separately.`
+- Commit your work on your branch in small steps with clear messages. Never push or open pull requests: TOT handles that separately.
+${worktreeNotes(task)}`
     : "";
   return `${TASK_SECTION_TITLE}
 You're working on a task. It runs in the background: work through it on your own until it's done. TOT keeps sending you turns while you make progress, and the user may read along and add notes.

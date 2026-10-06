@@ -66,6 +66,34 @@ export function conversationIdFromPath(pathname: string): string | null {
   }
 }
 
+/** "/mission" (every project) or "/mission?project=:id": mission control, the board of tasks (module 09). */
+export const MISSION_PATH = "/mission";
+
+export function missionPath(projectId?: string | null): string {
+  return projectId ? `${MISSION_PATH}?project=${encodeURIComponent(projectId)}` : MISSION_PATH;
+}
+
+/** The project mission control is filtered to, when the URL is "/mission[?project=:id]"; undefined on another page. */
+export function missionFromLocation(pathname: string, search: string): { projectId: string | null } | undefined {
+  if (pathname !== MISSION_PATH && pathname !== `${MISSION_PATH}/`) return undefined;
+  return { projectId: new URLSearchParams(search).get("project") || null };
+}
+
+/** "/tasks/compare/:group": a best-of run's tasks side by side (module 09). */
+export function comparePath(group: string): string {
+  return `/tasks/compare/${encodeURIComponent(group)}`;
+}
+
+export function compareGroupFromPath(pathname: string): string | null {
+  const match = /^\/tasks\/compare\/([^/]+)\/?$/.exec(pathname);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
 export const MASCOTS_PATH = "/mascots";
 /** Dev page for module 03's checks and reviewer until tasks exist. */
 export const TRUST_LAB_PATH = "/dev/trust";

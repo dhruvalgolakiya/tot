@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { TaskChangedFile, TaskChanges, TaskRepo } from "../../shared/types.ts";
+import type { TaskChangedFile, TaskChanges, TaskDiffStats, TaskRepo } from "../../shared/types.ts";
 import { quote } from "../computer/github-login.ts";
 import { computerManager } from "../computer/manager.ts";
 import type { FolderGrant } from "../computer/types.ts";
@@ -21,6 +21,8 @@ const GIT_TIMEOUT_MS = 120_000;
 const CLONE_TIMEOUT_MS = 10 * 60_000;
 const PATCH_LIMIT = 300_000;
 const MAX_UNTRACKED = 50;
+/** Paths kept in a task's diff stats (module 09): enough to spot overlaps between tasks. */
+const MAX_STAT_PATHS = 200;
 
 /** "fix the flaky checkout test" → "fix-the-flaky-checkout-test" (short, safe in a branch name). */
 export function slugify(text: string, max = 32): string {
@@ -125,7 +127,10 @@ async function baseRef(agentId: string, repo: TaskRepo, grant?: FolderGrant | nu
   return (await succeeds(agentId, `git rev-parse --verify --quiet ${quote(`${first}^{commit}`)}`, { cwd: repo.folder, grant })) ? first : second;
 }
 
-/** One setup at a time per repo on a computer: two tasks starting together mustn't both clone it, or race on `git worktree add`. */
+/**
+ * One setup at a time per repo on a computer ("<agentId>:<folder>"): two tasks starting together mustn't
+ * both clone it, or race on `git worktree add`. And one change at a time to a task's worktree ("task:<id>").
+ */
 const setups = new Map<string, Promise<unknown>>();
 
 function oneAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
@@ -151,7 +156,7 @@ async function defaultBranch(agentId: string, folder: string, grant?: FolderGran
  * .tot-worktrees and kept it out of the user's `git status`: the sandbox lets the task write its
  * own worktree and branch, nothing around them.
  */
-async function setUp(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<TaskRepo> {
+async function setUp(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<{ repo: TaskRepo; created: boolean }> {
   const { folder } = repo;
   const here = { cwd: folder, grant };
   if (!(await succeeds(agentId, "test -e .git", here))) {
@@ -168,7 +173,8 @@ async function setUp(agentId: string, repo: TaskRepo, grant?: FolderGrant | null
   const baseBranch = repo.baseBranch || (await defaultBranch(agentId, folder, grant));
   const planned: TaskRepo = { ...repo, baseBranch };
   const relative = `${WORKTREES}/${repo.worktree.split("/").pop()}`;
-  if (!(await succeeds(agentId, `test -e ${quote(`${relative}/.git`)}`, here))) {
+  const created = !(await succeeds(agentId, `test -e ${quote(`${relative}/.git`)}`, here));
+  if (created) {
     // Keep worktrees out of the main checkout's `git status`.
     if (!grant) {
       await run(
@@ -186,17 +192,28 @@ async function setUp(agentId: string, repo: TaskRepo, grant?: FolderGrant | null
       here,
     );
   }
-  return { ...planned, headSha: await worktrees.head(agentId, planned, grant) };
+  return { repo: { ...planned, headSha: await worktrees.head(agentId, planned, grant) }, created };
 }
 
 export const worktrees = {
   /**
    * Makes sure the task's worktree exists: clones the repo if it isn't on the computer yet
    * (with the agent's GitHub login, set up by the computer manager), fetches, and adds the
-   * branch's worktree from the base. Returns the repo with its base branch and head filled in.
+   * branch's worktree from the base. Returns the repo with its base branch and head filled in,
+   * and whether the worktree was made just now (decided under the repo's setup lock, so two
+   * callers never both see it as new).
    */
-  ensure(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<TaskRepo> {
+  ensure(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<{ repo: TaskRepo; created: boolean }> {
     return oneAtATime(`${agentId}:${repo.folder}`, () => setUp(agentId, repo, grant));
+  },
+
+  /**
+   * Runs `work` alone for the task (module 09): setting up its worktree (prepareTask), picking it up
+   * again (tasks.message), merging or discarding it and cleanup wait for each other, so none acts on a
+   * worktree another is making or removing. Not re-entrant: `work` mustn't wait for the same task's turn.
+   */
+  forTask<T>(taskId: string, work: () => Promise<T>): Promise<T> {
+    return oneAtATime(`task:${taskId}`, work);
   },
 
   /** The branch's newest commit; null when the worktree isn't there. */
@@ -256,18 +273,70 @@ export const worktrees = {
   },
 
   /**
-   * Removes the task's worktree. Its branch stays, unless `deleteBranch` and it was never
+   * How much the task changed, cheaply enough to run after every turn (module 09): numstat against
+   * the merge-base, committed or not, with untracked files counted as added lines; at most
+   * `MAX_STAT_PATHS` paths are kept, the totals cover everything.
+   */
+  async stats(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<TaskDiffStats> {
+    const ref = await baseRef(agentId, repo, grant);
+    const script = [
+      "set -e",
+      `base=$(git merge-base ${quote(ref)} HEAD)`,
+      "echo '@@HEAD'; git rev-parse HEAD",
+      `echo '@@NUMSTAT'; git diff --numstat -M "$base"`,
+      "echo '@@UNTRACKED'; git ls-files --others --exclude-standard | wc -l | tr -d ' '",
+      `git ls-files --others --exclude-standard | head -n ${MAX_STAT_PATHS} | while IFS= read -r f; do printf '%s\\t%s\\n' "$(wc -l < "$f" 2>/dev/null | tr -d ' ')" "$f"; done`,
+    ].join("\n");
+    const out = await run(agentId, script, { cwd: repo.worktree, grant });
+    const [, head = "", numstat = "", untracked = ""] = out.split(/^@@(?:HEAD|NUMSTAT|UNTRACKED)\n/m);
+    const paths: string[] = [];
+    let files = 0;
+    let added = 0;
+    let removed = 0;
+    for (const line of numstat.split("\n").filter(Boolean)) {
+      const [plus = "0", minus = "0", ...rest] = line.split("\t");
+      files++;
+      added += Number(plus) || 0;
+      removed += Number(minus) || 0;
+      // Renames read "old => new" or "dir/{old => new}"; keep the new path.
+      if (paths.length < MAX_STAT_PATHS) paths.push(rest.join("\t").replace(/\{[^}]* => ([^}]*)\}/, "$1").replace(/^.* => /, ""));
+    }
+    const [count = "0", ...listed] = untracked.split("\n").filter(Boolean);
+    files += Number(count) || 0;
+    for (const line of listed) {
+      const [lines = "0", ...rest] = line.split("\t");
+      added += Number(lines) || 0;
+      if (paths.length < MAX_STAT_PATHS) paths.push(rest.join("\t"));
+    }
+    return { files, added, removed, paths, headSha: head.trim() || null, at: Date.now() };
+  },
+
+  /**
+   * What's changed in the worktree and not committed, as `git status --porcelain` lines (new files
+   * included, ignored ones not); none when the worktree isn't there.
+   */
+  async uncommitted(agentId: string, repo: TaskRepo, grant?: FolderGrant | null): Promise<string[]> {
+    const relative = `${WORKTREES}/${repo.worktree.split("/").pop()}`;
+    // From the repo folder: a worktree that's gone must not read as the main checkout's status.
+    const out = await run(agentId, `cd ${quote(relative)} 2>/dev/null && test -e .git || exit 0\ngit status --porcelain | head -n 50`, { cwd: repo.folder, grant });
+    return out.split("\n").filter(Boolean);
+  },
+
+  /**
+   * Removes the task's worktree. Only a clean one (git refuses when there are changes or new files
+   * that aren't committed; ignored files go with it), unless `force`: discarding or deleting the task,
+   * where the user asked for its work to go. Its branch stays, unless `deleteBranch` and it was never
    * pushed (no remote branch contains it), so nothing that exists elsewhere is lost.
    */
   async remove(
     agentId: string,
     repo: TaskRepo,
-    { deleteBranch = false, grant }: { deleteBranch?: boolean; grant?: FolderGrant | null } = {},
+    { deleteBranch = false, force = false, grant }: { deleteBranch?: boolean; force?: boolean; grant?: FolderGrant | null } = {},
   ): Promise<{ branchDeleted: boolean }> {
     const here = { cwd: repo.folder, grant };
     const relative = `${WORKTREES}/${repo.worktree.split("/").pop()}`;
     if (await succeeds(agentId, `test -e ${quote(relative)}`, here)) {
-      await run(agentId, `git worktree remove --force ${quote(relative)}`, here);
+      await run(agentId, `git worktree remove ${force ? "--force " : ""}${quote(relative)}`, here);
     }
     await run(agentId, "git worktree prune", here).catch(() => {});
     if (!deleteBranch) return { branchDeleted: false };

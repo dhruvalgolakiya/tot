@@ -170,16 +170,26 @@ function folderGrant(task: TaskRecord) {
   }
 }
 
-/** After a turn: add up its tokens and note where the branch is now. */
+/** After a turn: add up its tokens and note where the branch is now, and how much it changed (module 09). */
 async function recordTurn(task: TaskRecord, reply: Message | undefined): Promise<Snapshot> {
-  const usage = {
-    inputTokens: task.task.usage.inputTokens + (reply?.usage?.inputTokens ?? 0),
-    outputTokens: task.task.usage.outputTokens + (reply?.usage?.outputTokens ?? 0),
-  };
   const repo = task.task.repo;
-  const headSha = repo ? await worktrees.head(task.agentId, repo, folderGrant(task)) : null;
-  const updated = taskStore.patch(task.id, { usage, ...(repo ? { repo: { ...repo, headSha: headSha ?? repo.headSha } } : {}) });
-  return snapshot(updated ?? task);
+  const grant = repo ? folderGrant(task) : null;
+  const headSha = repo ? await worktrees.head(task.agentId, repo, grant) : null;
+  const stats = repo && headSha ? await worktrees.stats(task.agentId, repo, grant).catch(() => null) : null;
+  // Against the task as it is now: what changed while git ran (its repo, its usage) stays, only the head and stats are new.
+  const current = taskStore.get(task.id);
+  if (!current) return snapshot(task);
+  const usage = {
+    inputTokens: current.task.usage.inputTokens + (reply?.usage?.inputTokens ?? 0),
+    outputTokens: current.task.usage.outputTokens + (reply?.usage?.outputTokens ?? 0),
+  };
+  const now = current.task.repo;
+  const updated = taskStore.patch(task.id, {
+    usage,
+    ...(now && headSha ? { repo: { ...now, headSha } } : {}),
+    ...(stats ? { stats } : {}),
+  });
+  return snapshot(updated ?? current);
 }
 
 function fail(taskId: string, summary: string): void {

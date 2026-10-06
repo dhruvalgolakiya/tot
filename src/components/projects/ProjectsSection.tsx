@@ -9,6 +9,7 @@ import { isOpenTask, isTask } from "../../lib/tasks";
 import { toMs } from "../../lib/format";
 import { navigateToProject, selectActiveAgent, selectActiveAgentId, selectCurrentConversation, useStore } from "../../store";
 import { ConversationItem } from "../ConversationItem";
+import { MissionButton } from "../mission/MissionButton";
 import { TaskRow } from "../tasks/TaskRow";
 import { listRowClass } from "../ui/ListRow";
 import { StatusDot } from "../ui/StatusDot";
@@ -70,7 +71,13 @@ export function ProjectsSection({ query }: { query: string }) {
 
   return (
     <section aria-label="Projects" className="mt-2 pb-2">
-      {live.length > 0 && <h2 className="group-label px-2.5 pb-1">Projects</h2>}
+      {live.length > 0 && (
+        <div className="group/projects flex items-center pr-1 pb-1 pl-2.5">
+          <h2 className="group-label mr-auto">Projects</h2>
+          {/* Mission control (module 09): the tasks in every project, on one board. */}
+          <MissionButton group="projects" />
+        </div>
+      )}
       <ul className="space-y-px">
         {rows.map(({ project, list, nested, open }) => (
           <ProjectRow

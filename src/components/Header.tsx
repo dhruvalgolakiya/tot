@@ -33,6 +33,8 @@ export function Header() {
   const conversation = useStore(selectCurrentConversation);
   const slackUrl = conversation?.origin?.kind === "slack" ? conversation.origin.url : null;
   const task = isTask(conversation) ? conversation : null;
+  // Mission control and the compare view (module 09) span every agent's tasks: no model to pick there.
+  const board = useStore((s) => s.page === "mission" || s.page === "compare");
 
   return (
     <header className="app-drag-region absolute inset-x-0 top-0 z-10 flex h-14 shrink-0 items-center gap-1 bg-canvas px-3">
@@ -58,7 +60,7 @@ export function Header() {
         </>
       )}
       {/* On desktop the agent rail already shows whose chat this is. */}
-      {agent && !task && (
+      {agent && !task && !board && (
         <button
           type="button"
           onClick={() => navigateToAgentHome(agent.id)}
@@ -75,7 +77,7 @@ export function Header() {
           <ChatProjectCrumb chat={task} withTitle={false} />
           <TaskHeaderInfo task={task} />
         </>
-      ) : (
+      ) : board ? null : (
         <>
           <ModelPicker />
           <DeviceChip agent={agent} />
@@ -99,7 +101,7 @@ export function Header() {
             </a>
           </Tip>
         )}
-        <ComputerChip />
+        {!board && <ComputerChip />}
       </div>
     </header>
   );

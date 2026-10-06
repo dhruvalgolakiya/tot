@@ -18,11 +18,13 @@ import { migrateRepoBrains } from "./projects/projects.ts";
 import { tokenProblem } from "./session.ts";
 import { slack } from "./slack.ts";
 import { fanIn } from "./orchestration/fanin.ts";
+import { missionWatch } from "./mission/watch.ts";
 import { taskFailover } from "./orchestration/failover.ts";
 import { handoffs } from "./orchestration/handoff.ts";
 import { taskNotifications } from "./tasks/notify.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { chatWakes } from "./tasks/wake.ts";
+import { worktreeLifecycle } from "./worktrees/lifecycle.ts";
 
 // The Mac app (module 08) runs TOT with Electron's Node, which ELECTRON_RUN_AS_NODE=1 switches on. Children
 // mustn't inherit it: an agent running another Electron app's CLI would get a bare Node instead.
@@ -73,8 +75,11 @@ wikiKeeper.start();
 // Before tasks: tasks cut off by the restart (and not resuming) wake the chats that started them.
 chatWakes.start();
 tasks.start();
+// Module 09: previews from before the restart are gone, old worktrees are swept daily.
+worktreeLifecycle.start();
 taskNotifications.start();
 fanIn.start();
+missionWatch.start();
 taskFailover.start();
 handoffs.start();
 
@@ -93,7 +98,14 @@ async function shutdown(signal: string) {
   // Chats waiting to be told about their tasks get told after the restart.
   chatWakes.stop();
   runRegistry.stopAll();
-  await Promise.allSettled([computerManager.shutdown(), stopCodex(), apps.stop({ keepEnabled: true }), slack.stop(), mailboxes.stopAll()]);
+  await Promise.allSettled([
+    computerManager.shutdown(),
+    worktreeLifecycle.shutdown(),
+    stopCodex(),
+    apps.stop({ keepEnabled: true }),
+    slack.stop(),
+    mailboxes.stopAll(),
+  ]);
   server.close();
   process.exit(0);
 }

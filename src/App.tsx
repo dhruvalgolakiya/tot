@@ -7,6 +7,8 @@ import { ChatView } from "./components/ChatView";
 import { ComputerPanel } from "./components/ComputerPanel";
 import { Header } from "./components/Header";
 import { MascotGallery } from "./components/mascot";
+import { CompareView } from "./components/mission/CompareView";
+import { MissionControl } from "./components/mission/MissionControl";
 import { NewAgentDialog } from "./components/NewAgentDialog";
 import { NewProjectDialog } from "./components/projects/NewProjectDialog";
 import { ProjectPage } from "./components/projects/ProjectPage";
@@ -101,7 +103,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.title = title ? `${title} · TOT` : page === "settings" ? "Settings · TOT" : "TOT";
+    document.title = title
+      ? `${title} · TOT`
+      : page === "settings"
+        ? "Settings · TOT"
+        : page === "mission"
+          ? "Mission control · TOT"
+          : page === "compare"
+            ? "Compare · TOT"
+            : "TOT";
   }, [title, page]);
 
   useGlobalShortcuts();
@@ -133,6 +143,10 @@ export default function App() {
                 <WikiView key={viewKey} />
               ) : page === "project" ? (
                 <ProjectPage key={viewKey} />
+              ) : page === "mission" ? (
+                <MissionControl key={viewKey} />
+              ) : page === "compare" ? (
+                <CompareView key={viewKey} />
               ) : (
                 <ChatView key={viewKey} />
               )}
