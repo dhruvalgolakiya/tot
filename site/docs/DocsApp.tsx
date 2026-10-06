@@ -13,7 +13,7 @@ import { GROUPS, PAGES, pageFor, type DocPage } from "./manifest";
 import { Markdown } from "./Markdown";
 import { hrefFor, onDocsLinkClick, useSlug } from "./router";
 import { Search } from "./Search";
-import { StatusChip } from "./StatusChip";
+import { StatusChip, StatusMark } from "./StatusChip";
 
 const MOD = isMac ? "⌘" : "Ctrl ";
 
@@ -145,7 +145,7 @@ function Nav({ current, onNavigate, touch = false }: { current: string; onNaviga
     <nav aria-label="Docs" className="space-y-7">
       {GROUPS.map((group) => (
         <div key={group}>
-          <p className="group-label px-2.5 pb-1.5">{group}</p>
+          <p className="px-2.5 pb-1.5 text-[13px] font-medium text-fg-subtle">{group}</p>
           <ul className="space-y-px">
             {PAGES.filter((page) => page.group === group).map((page) => {
               const active = page.slug === current;
@@ -158,7 +158,7 @@ function Nav({ current, onNavigate, touch = false }: { current: string; onNaviga
                     onClick={(event) => onDocsLinkClick(event, href, onNavigate)}
                     className={clsx(
                       "flex items-center rounded-lg px-2.5 transition-colors",
-                      touch ? "min-h-10 text-[15px]" : "min-h-8 py-1 text-ui",
+                      touch ? "min-h-10 text-[15px]" : "min-h-9 py-1 text-sm",
                       active ? "bg-selected font-medium text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
                     )}
                   >
@@ -236,26 +236,28 @@ function PageHeader({ page }: { page: DocPage }) {
       ) : (
         <Mascot spec={crew[page.mascot].spec} state={page.mood ?? "idle"} size={52} className="-ml-1" />
       )}
-      <p className="group-label mt-5">{home ? "TOT docs" : page.group}</p>
+      <p className="group-label mt-5 flex items-center gap-2">
+        {home ? "TOT docs" : page.group}
+        {page.status && (
+          <>
+            <span aria-hidden="true" className="text-fg-subtle/60">
+              ·
+            </span>
+            <StatusMark status={page.status} />
+          </>
+        )}
+      </p>
       <h1 className="mt-1.5 font-display text-[2.375rem] leading-[1.1] font-semibold tracking-tight text-balance text-fg-strong sm:text-[2.75rem]">
         {smarten(page.title)}
       </h1>
       <p className="mt-3 text-lg leading-relaxed text-pretty text-fg-muted">{smarten(page.description)}</p>
-      {page.status && (
-        <div className="mt-6 flex items-start gap-3 rounded-xl border border-hairline px-4 py-3">
-          <StatusChip status={page.status} />
-          <p className="min-w-0 pt-0.5 text-sm text-fg-muted">
-            {page.status === "available" ? "Everything on this page works today." : smarten(page.missing ?? "")}
-            {page.status !== "available" && (
-              <>
-                {" "}
-                <a href={hrefFor("not-yet")} onClick={(event) => onDocsLinkClick(event, hrefFor("not-yet"))} className="link-muted whitespace-nowrap">
-                  What’s not built yet
-                </a>
-              </>
-            )}
-          </p>
-        </div>
+      {page.status && page.status !== "available" && page.missing && (
+        <p className="mt-4 text-sm text-fg-subtle">
+          {smarten(page.missing)}{" "}
+          <a href={hrefFor("not-yet")} onClick={(event) => onDocsLinkClick(event, hrefFor("not-yet"))} className="link-muted whitespace-nowrap">
+            What’s not built yet
+          </a>
+        </p>
       )}
     </header>
   );
@@ -341,7 +343,7 @@ function OnThisPage({ headings }: { headings: Heading[] }) {
   const active = useActiveHeading(headings);
   return (
     <nav aria-label="On this page">
-      <p className="group-label pb-2">On this page</p>
+      <p className="pb-2 text-[13px] font-medium text-fg-subtle">On this page</p>
       <ul className="space-y-0.5">
         {headings.map((heading) => (
           <li key={heading.id}>
@@ -350,7 +352,7 @@ function OnThisPage({ headings }: { headings: Heading[] }) {
               onClick={(event) => onDocsLinkClick(event, `#${heading.id}`)}
               aria-current={heading.id === active ? "location" : undefined}
               className={clsx(
-                "block py-1 text-ui leading-snug transition-colors",
+                "block py-1 text-[13.5px] leading-snug transition-colors",
                 heading.depth === 3 && "pl-3",
                 heading.id === active ? "text-fg" : "text-fg-subtle hover:text-fg-muted",
               )}
