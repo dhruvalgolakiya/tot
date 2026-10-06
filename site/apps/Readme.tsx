@@ -34,6 +34,9 @@ export function Readme() {
         <button type="button" onClick={() => open("features")} className={pillClass()}>
           What's inside
         </button>
+        <a href="/docs" className="inline-flex h-9 items-center px-2 text-sm font-medium text-fg-muted transition-colors hover:text-fg max-sm:px-0">
+          Read the docs
+        </a>
       </div>
       <p className="mt-5 text-xs text-fg-subtle">Claude Pro or Max · ChatGPT Plus or Pro · your Mac, and your phone</p>
     </div>

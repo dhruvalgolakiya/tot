@@ -25,7 +25,7 @@ export const FAQ: { q: string; a: string }[] = [
   { q: "Why the mascots?", a: "A spinner can't look guilty when the tests fail." },
   {
     q: "Can I use it from my phone?",
-    a: "Yes. Set an access token and open it on your Wi-Fi, or from anywhere through an HTTPS tunnel. Voice input works over HTTPS.",
+    a: "Yes. In Settings → Devices, choose a password and scan the QR code with your phone. It works on your Wi-Fi, or from anywhere with Tailscale.",
   },
 ];
 

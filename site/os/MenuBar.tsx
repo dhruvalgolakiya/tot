@@ -96,6 +96,7 @@ export function MenuBar({
         </Menu>
 
         <Menu label="Help" trigger="Help">
+          <Item onSelect={() => location.assign("/docs")}>Docs</Item>
           <Item onSelect={() => open("help")}>Ask Tot</Item>
           <Item onSelect={() => open("features")}>What's inside</Item>
           <Item onSelect={() => open("roadmap")}>Roadmap</Item>
@@ -127,6 +128,12 @@ export function MenuBar({
         <span className="px-1 text-fg tabular-nums">
           {now.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
         </span>
+        <a
+          href="/docs"
+          className="flex h-6 items-center rounded-full px-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+        >
+          Docs
+        </a>
         <button
           type="button"
           onClick={() => open("terminal")}

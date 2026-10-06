@@ -7,7 +7,7 @@ const RULES = [
   "push to main",
   "email anyone without asking",
   "touch your Mac's files",
-  "talk to strangers (no token, no entry)",
+  "talk to strangers (no password, no entry)",
   "blab your secrets",
 ];
 
