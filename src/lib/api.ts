@@ -317,6 +317,8 @@ export const api = {
   grantProjectFolder: (id: string) => request<Project>("POST", `/projects/${seg(id)}/grant`, {}),
   /** Git folders on this Mac, for the folder picker: `path` is absolute, `label` is "~/…". */
   recentProjectFolders: () => request<{ path: string; label: string }[]>("GET", "/projects/folders/recent"),
+  /** macOS's folder picker, opened by the server on this Mac (a browser tab here): the folder, or null when cancelled. */
+  pickProjectFolder: () => request<{ path: string | null }>("POST", "/projects/folders/pick", {}),
 
   /** Brains: knowledge bases at the app level — each agent's private notebook, and shared ones attached to agents. */
   listBrains: () => request<Brain[]>("GET", "/brains"),

@@ -95,6 +95,13 @@ export const callerOf = (c: Context): Caller => authOf(c).caller;
 /** The request comes straight from this computer. */
 export const onThisMachine = (c: Context): boolean => authOf(c).local;
 
+/**
+ * Stricter than onThisMachine, for what happens on this Mac's screen (a folder picker): the connection itself comes
+ * from this machine, unforwarded, to a loopback name, whether or not sign-in is set up (without it, every caller
+ * counts as local), and it isn't a paired device.
+ */
+export const straightFromThisMachine = (c: Context): boolean => requestIsLocal(c) && callerOf(c).kind !== "device";
+
 export const isAuthenticated = (c: Context) => typeof decide(c) === "object";
 
 /** The signed-in browser asking, or null (this computer without a session, a script, or a paired device). */

@@ -275,6 +275,13 @@ utimesSync(join(meet, ".git"), now, now);
 utimesSync(join(HOME, "code/other/.git"), now - 60, now - 60);
 utimesSync(join(HOME, "dev/base/.git"), now - 120, now - 120);
 
+// The folder picker opens on this Mac only: a request relayed from elsewhere never opens one (it would hang here).
+const relayed = await fetch(`http://127.0.0.1:${PORT}/api/projects/folders/pick`, {
+  method: "POST",
+  headers: { "content-type": "application/json", "x-forwarded-for": "192.168.1.50" },
+  body: "{}",
+});
+check("the folder picker: refused to anyone but this Mac", relayed.status === 401 || relayed.status === 403, String(relayed.status));
 const recent = (await request<RecentFolder[]>("GET", "/projects/folders/recent")).data;
 check(
   "recent git folders: one level deep in the usual folders, newest first, as ~/… labels",

@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import clsx from "clsx";
 import { RadioGroup } from "radix-ui";
 import { toast } from "sonner";
-import { Check, LoaderCircle, Lock } from "lucide-react";
+import { Check, FolderOpen, LoaderCircle, Lock } from "lucide-react";
 import type { GitHubRepo, GitHubStatus, Project, ProjectKind } from "@shared/types";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { api, ApiError, errorMessage } from "../../lib/api";
+import { totDesktop } from "../../lib/desktop";
 import { onDevice } from "../../lib/devices";
 import { relativeTime } from "../../lib/format";
 import { selectDevice, useDevices } from "../../lib/remote";
@@ -505,6 +506,9 @@ function RepoOption({ repo, index, selected, onSelect }: { repo: GitHubRepo; ind
 type RecentFolder = { path: string; label: string };
 
 /** Also module 11's Add repo dialog (AddRepoDialog.tsx), where `exclude` holds the project's own folders. */
+/** Hosts a browser on this Mac itself uses for TOT. */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
 export function FolderPicker({
   device,
   value,
@@ -539,18 +543,42 @@ export function FolderPicker({
   );
   const offered = (recent ?? []).filter((folder) => !taken.has(folder.path)).slice(0, 8);
 
+  // macOS's folder picker: a sheet in the Mac app, else opened by the server for a browser on this Mac. Not for a
+  // folder on another device (this Mac's picker would show this Mac's folders), nor from a phone.
+  const canPick = !device && (Boolean(totDesktop?.pickFolder) || LOOPBACK_HOSTS.has(window.location.hostname));
+  const [picking, setPicking] = useState(false);
+  async function pick() {
+    setPicking(true);
+    try {
+      const path = totDesktop?.pickFolder ? await totDesktop.pickFolder() : (await api.pickProjectFolder()).path;
+      if (path) onChange(tildePath(path));
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setPicking(false);
+    }
+  }
+
   return (
     <Field label="Folder" htmlFor="new-project-folder" hint="A git folder inside your home folder works best.">
-      <input
-        id="new-project-folder"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="~/code/web"
-        autoFocus
-        autoComplete="off"
-        spellCheck={false}
-        className="input font-mono text-ui"
-      />
+      <div className="flex items-center gap-2">
+        <input
+          id="new-project-folder"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="~/code/web"
+          autoFocus
+          autoComplete="off"
+          spellCheck={false}
+          className="input min-w-0 flex-1 font-mono text-ui"
+        />
+        {canPick && (
+          <Button className="shrink-0" disabled={picking} onClick={() => void pick()}>
+            {picking ? <LoaderCircle className="animate-spin" /> : <FolderOpen />}
+            Choose…
+          </Button>
+        )}
+      </div>
       {offered.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
           <span className="mr-0.5 text-xs text-fg-subtle">Recent</span>

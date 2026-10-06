@@ -2,11 +2,12 @@ import { Hono, type Context } from "hono";
 import type { CreateProjectRequest, UpdateProjectRequest } from "../../shared/types.ts";
 import { learnRepo } from "../agent/learn-repo.ts";
 import { HttpError } from "../agent/orchestrator.ts";
+import { straightFromThisMachine } from "../auth.ts";
 import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { appEvents } from "../app-events.ts";
 import { checkout } from "./checkout.ts";
-import { recentGitFolders } from "./folders.ts";
+import { pickFolderOnThisMac, recentGitFolders } from "./folders.ts";
 import { projects } from "./projects.ts";
 import { projectRepos } from "./repos.ts";
 
@@ -30,6 +31,16 @@ projectRoutes.get("/projects", (c) => c.json(projects.list({ archived: c.req.que
 
 /** Git folders on this Mac for the New project picker. */
 projectRoutes.get("/projects/folders/recent", (c) => c.json(recentGitFolders()));
+
+/** macOS's folder picker, on this Mac: { path } (null when cancelled). Only for a browser on this Mac itself. */
+projectRoutes.post("/projects/folders/pick", async (c) => {
+  if (!straightFromThisMachine(c)) throw new HttpError(403, "The folder picker opens on the Mac itself. Type the folder's path instead.");
+  try {
+    return c.json({ path: await pickFolderOnThisMac() });
+  } catch (err) {
+    throw new HttpError(409, err instanceof Error ? err.message : String(err));
+  }
+});
 
 projectRoutes.post("/projects", async (c) => c.json(projects.create(await body<CreateProjectRequest>(c)), 201));
 

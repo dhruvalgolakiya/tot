@@ -9,6 +9,8 @@ export interface TotDesktopBridge {
   getOpenAtLogin(): Promise<boolean>;
   /** Resolves to the new state. */
   setOpenAtLogin(open: boolean): Promise<boolean>;
+  /** The macOS folder picker as a sheet on TOT's window: the folder chosen, or null when cancelled. Missing in Mac apps before it. */
+  pickFolder?(): Promise<string | null>;
 }
 
 declare global {

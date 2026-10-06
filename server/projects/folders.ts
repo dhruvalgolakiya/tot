@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
@@ -138,4 +139,26 @@ export function recentGitFolders(): RecentFolder[] {
     .sort((a, b) => b[1] - a[1])
     .slice(0, MAX_RECENT)
     .map(([path]) => ({ path, label: tildePath(path) }));
+}
+
+/**
+ * macOS's folder picker, shown on this Mac (a browser tab here; the Mac app uses its own sheet): the folder chosen,
+ * or null when the user cancels. One at a time. The caller checks that the request comes from this Mac.
+ */
+let picking = false;
+export function pickFolderOnThisMac(): Promise<string | null> {
+  if (process.platform !== "darwin") return Promise.reject(new Error("The folder picker is only on a Mac."));
+  if (picking) return Promise.reject(new Error("A folder picker is open already."));
+  picking = true;
+  // `activate` brings osascript's own dialog to the front (no permission needed: it's the current app).
+  const script = ['activate', 'set chosen to choose folder with prompt "Choose a folder for TOT" default location (path to home folder)', "POSIX path of chosen"];
+  return new Promise<string | null>((resolve, reject) => {
+    execFile("/usr/bin/osascript", script.flatMap((line) => ["-e", line]), { timeout: 10 * 60_000 }, (error, stdout, stderr) => {
+      picking = false;
+      if (!error) return resolve(stdout.trim().replace(/(.)\/$/, "$1") || null);
+      // Cancel is error -128.
+      if (/-128/.test(String(stderr)) || /-128/.test(error.message)) return resolve(null);
+      reject(new Error(`The folder picker didn't open: ${String(stderr).trim() || error.message}`));
+    });
+  });
 }

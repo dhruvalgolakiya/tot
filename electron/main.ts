@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   nativeImage,
@@ -382,6 +383,19 @@ ipcMain.handle("tot:set-open-at-login", (event, open: unknown) => {
   fromApp(event);
   if (typeof open !== "boolean") throw new Error("Expected true or false.");
   return setOpenAtLogin(open);
+});
+/** The folder picker for a new project or repo: a sheet on the asking window, starting in the home folder. */
+ipcMain.handle("tot:pick-folder", async (event) => {
+  fromApp(event);
+  const options: Electron.OpenDialogOptions = {
+    title: "Choose a folder",
+    buttonLabel: "Choose",
+    defaultPath: homedir(),
+    properties: ["openDirectory", "createDirectory"],
+  };
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const { canceled, filePaths } = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+  return canceled ? null : (filePaths[0] ?? null);
 });
 
 // ---------------------------------------------------------------------------
