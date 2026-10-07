@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { LoaderCircle, Lock } from "lucide-react";
 import { Mascot } from "../../src/components/mascot";
 import { StatusDot } from "../../src/components/ui/StatusDot";
+import { useResolvedTheme } from "../../src/lib/theme";
 import { crew, type CrewMember } from "../crew";
 import { ClaudeMark, OpenAIMark } from "../os/BrandMarks";
 import { WORKING } from "./DemoLedger";
@@ -97,12 +98,14 @@ export function Crew() {
 
 function Row({ member, seconds }: { member: Member; seconds: number }) {
   const { name, spec } = crew[member.who];
+  // The islands at night in dark mode, at sunrise in light mode, like the scene above.
+  const dawn = useResolvedTheme() === "light";
   return (
     <div className={`flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3.5 md:grid ${COLUMNS}`}>
       <div className="flex w-full min-w-0 items-center gap-4 md:w-auto">
         <div className="relative shrink-0">
           <img
-            src={`/hero/islands/${member.island.file}.webp`}
+            src={`/hero/islands/${member.island.file}${dawn ? "-dawn" : ""}.webp`}
             alt={`${member.island.name} island`}
             width={84}
             height={56}
