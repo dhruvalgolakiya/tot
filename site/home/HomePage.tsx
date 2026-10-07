@@ -15,8 +15,11 @@ export function HomePage() {
     <div className="min-h-dvh bg-canvas text-fg">
       <TopBar />
       <main>
-        <section className="relative flex min-h-[86svh] flex-col items-center justify-end px-4 pt-32 pb-12 sm:pb-16">
-          <HeroArt />
+        <section className="relative flex min-h-[86svh] flex-col items-center justify-end px-4 pt-32 pb-12 sm:pb-16 md:min-h-[min(86svh,calc(100vw*9/21+18rem))]">
+          {/* The scene is a band across the top (21:9, or 3:2 on phones) rather than filling the tall hero, which would
+              zoom it in until its subject sat behind the headline. On tall screens the hero is no taller than the band
+              plus the text, so the text still meets the scene. */}
+          <HeroArt className="bottom-auto aspect-[3/2] md:aspect-[21/9]" />
           <div className="hero-copy relative flex w-full max-w-2xl flex-col items-center text-center">
             <p className="inline-flex items-center gap-2 rounded-full border border-edge bg-canvas/60 px-3 py-1 text-xs text-fg-muted backdrop-blur-sm">
               <ClaudeMark className="size-3.5" />

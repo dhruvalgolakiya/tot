@@ -408,7 +408,7 @@
   }
   .hero-art img {
     /* The scenes keep their subject in the left third: crop from the right first on narrow screens. */
-    object-position: 22% 50%;
+    object-position: 15% 50%;
   }
   /* Text standing on the scene: a soft halo in the canvas color keeps it readable over bright clouds. */
   .hero-copy {
