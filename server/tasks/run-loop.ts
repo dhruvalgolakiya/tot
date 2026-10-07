@@ -193,6 +193,19 @@ async function recordTurn(task: TaskRecord, reply: Message | undefined): Promise
   return snapshot(updated ?? current);
 }
 
+/**
+ * Records a turn the loop didn't start once it ends: a message picked the task up again with a turn of its own
+ * (tasks.message). The loop waits for that turn but doesn't record it, so without this its branch head and tokens
+ * would be lost whenever it finished the task.
+ */
+async function recordRun(taskId: string, runId: string): Promise<void> {
+  const end = await runEnd(runId);
+  await tick();
+  if (shuttingDown) return;
+  const task = taskStore.get(taskId);
+  if (task) await recordTurn(task, end?.message);
+}
+
 function fail(taskId: string, summary: string): void {
   taskStore.transition(taskId, "failed", { summary });
 }
@@ -380,6 +393,9 @@ export const runLoop = {
   },
 
   /** Tests: start turns with a fake instead of the real models, and undo a simulated shutdown. */
+  /** A turn started outside the loop (tasks.message): recorded once it ends. */
+  recordRun,
+
   useSender(fake: Sender): void {
     send = fake;
   },

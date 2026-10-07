@@ -33,6 +33,8 @@ const FIRST_POLL_MS = 20_000;
 const NO_CHECKS_AFTER_MS = 10 * 60_000;
 /** A failure is news this long after the head came, even while other checks still run. */
 const FAIL_EARLY_AFTER_MS = 15 * 60_000;
+/** Settled checks on a head are still looked at this long after it came (late workflows, re-runs). */
+const RECHECK_MS = 6 * 60 * 60_000;
 /** Open PRs read per repo when watching all of them, the most recently updated first. */
 const MAX_OPEN = 30;
 /** Comment and review ids remembered per PR. */
@@ -42,6 +44,11 @@ const SINCE_MARGIN_MS = 30 * 60_000;
 const MAX_BACKOFF_MS = 60 * 60_000;
 /** A repo GitHub won't show is tried again after this long. */
 const REPO_RETRY_MS = 60 * 60_000;
+
+/** Who can push to the repo: what they write may go to a task. Anyone else's words stay on GitHub (only that they spoke reaches the Lead). */
+const COLLABORATORS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+const outsider = (said: { author_association?: string }) => said.author_association !== undefined && !COLLABORATORS.has(said.author_association);
+const OUTSIDER_NOTE = "Not a collaborator on the repo: their words aren't passed on; read them on GitHub.";
 
 const FAILING = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"]);
 
@@ -87,6 +94,7 @@ interface CommitStatus {
 interface Review {
   id: number;
   user: User | null;
+  author_association?: string;
   state: string;
   body: string | null;
   html_url: string;
@@ -96,6 +104,7 @@ interface Review {
 interface Comment {
   id: number;
   user: User | null;
+  author_association?: string;
   body: string;
   html_url: string;
   created_at: string;
@@ -246,6 +255,9 @@ interface Look {
   posted: LeadSignal[];
 }
 
+/** How recently a TOT PR must have been opened for the first look at it to count as news. */
+const FIRST_LOOK_NEWS_MS = 60 * 60_000;
+
 /** One PR, looked at now: its new facts posted to the Lead, what was seen saved. */
 async function lookAt(look: Look, watched: Watched): Promise<void> {
   const { project, token, logins } = look;
@@ -253,9 +265,10 @@ async function lookAt(look: Look, watched: Watched): Promise<void> {
   const before = seenStore.get(project.id, repo, number);
   if (before?.done) return;
   const seen: Seen = { ...(before ?? NEW_SEEN), reviews: [...(before?.reviews ?? [])], comments: [...(before?.comments ?? [])] };
-  // A PR TOT didn't open is looked at once without a word: only what changes after is news.
-  const quiet = !before && !task;
   const now = Date.now();
+  // A PR TOT didn't open is looked at once without a word: only what changes after is news. So is a TOT PR opened
+  // a while before TOT first watches it (an upgrade, watching turned on later): its old reviews are old news.
+  const quiet = !before && (!task || now - (task.task.landing?.at ?? 0) > FIRST_LOOK_NEWS_MS);
 
   let pr: Pull;
   try {
@@ -295,16 +308,17 @@ async function lookAt(look: Look, watched: Watched): Promise<void> {
   // A new head: its checks start over.
   if (pr.head.sha !== seen.head) Object.assign(seen, { head: pr.head.sha, headAt: now, checks: null });
 
-  // Checks, until they settle for this head.
-  if (seen.checks === null) {
+  // Checks, until they settle for this head, and for a while after: a workflow that registers late, or a re-run on the
+  // same head, can turn it red (or green) again. Only a change is news; ETags make the re-reads free.
+  if (seen.checks === null || now - seen.headAt < RECHECK_MS) {
     const [runs, status] = await Promise.all([
       readGitHub<{ check_runs?: CheckRun[] }>(`/repos/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`, token),
       readGitHub<{ statuses?: CommitStatus[] }>(`/repos/${repo}/commits/${pr.head.sha}/status`, token),
     ]);
     const { outcome, failing, total } = verdict(runs.check_runs ?? [], status.statuses ?? [], now - seen.headAt);
-    if (outcome === "failed") {
+    if (outcome === "failed" && seen.checks !== "failed") {
       post("ci-failed", `ci-failed:${pr.head.sha}`, `Checks failed on ${label}`, `Failing: ${names(failing)} (${failing.length} of ${total} checks).`, `${pr.html_url}/checks`);
-    } else if (outcome === "passed" && (task || seen.lastChecks === "failed")) {
+    } else if (outcome === "passed" && seen.checks !== "passed" && (task || seen.lastChecks === "failed")) {
       post("ci-passed", `ci-passed:${pr.head.sha}`, `Checks passed on ${label}`, `${total} check${total === 1 ? "" : "s"} passed.`, `${pr.html_url}/checks`);
     }
     if (outcome) Object.assign(seen, { checks: outcome, lastChecks: outcome === "none" ? seen.lastChecks : outcome });
@@ -341,7 +355,7 @@ async function lookAt(look: Look, watched: Watched): Promise<void> {
       reviewIds.add(review.id);
       if (ours(review.user) || !fresh(review.submitted_at)) continue;
       const lines = reviewComments.filter((comment) => comment.pull_request_review_id === review.id);
-      const said = [firstLines(review.body, 4, 600), ...lines.slice(0, 5).map(lineOf), lines.length > 5 ? `…and ${lines.length - 5} more comments` : ""].filter(Boolean).join("\n");
+      const said = outsider(review) ? OUTSIDER_NOTE : [firstLines(review.body, 4, 600), ...lines.slice(0, 5).map(lineOf), lines.length > 5 ? `…and ${lines.length - 5} more comments` : ""].filter(Boolean).join("\n");
       for (const comment of lines) commentIds.add(comment.id);
       const who = `@${review.user!.login}`;
       if (review.state === "CHANGES_REQUESTED") post("changes-requested", `review:${review.id}`, `${who} asked for changes on ${label}`, said || null, review.html_url);
@@ -353,14 +367,14 @@ async function lookAt(look: Look, watched: Watched): Promise<void> {
       if (commentIds.has(comment.id) || drafts.has(comment.pull_request_review_id ?? -1)) continue;
       commentIds.add(comment.id);
       if (ours(comment.user) || !fresh(comment.created_at)) continue;
-      post("review-comment", `review-comment:${comment.id}`, `@${comment.user!.login} commented on ${comment.path ?? "the code"} in ${label}`, firstLines(comment.body), comment.html_url);
+      post("review-comment", `review-comment:${comment.id}`, `@${comment.user!.login} commented on ${comment.path ?? "the code"} in ${label}`, outsider(comment) ? OUTSIDER_NOTE : firstLines(comment.body), comment.html_url);
     }
     // The conversation (not bots: deploy previews and coverage reports aren't news).
     for (const comment of comments) {
       if (commentIds.has(comment.id)) continue;
       commentIds.add(comment.id);
       if (ours(comment.user) || comment.user?.type === "Bot" || !fresh(comment.created_at)) continue;
-      post("comment", `comment:${comment.id}`, `@${comment.user!.login} commented on ${label}`, firstLines(comment.body), comment.html_url);
+      post("comment", `comment:${comment.id}`, `@${comment.user!.login} commented on ${label}`, outsider(comment) ? OUTSIDER_NOTE : firstLines(comment.body), comment.html_url);
     }
     Object.assign(seen, { reviews: [...reviewIds], comments: [...commentIds], updatedAt: pr.updated_at ?? null, readAt: now });
   }

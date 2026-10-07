@@ -430,7 +430,9 @@ export const tasks = {
       taskStore.transition(taskId, "failed", { summary: err instanceof Error ? err.message : String(err) });
       throw err;
     }
-    // The loop waits for this turn, then keeps the task going.
+    // This turn is recorded when it ends (its branch head, its tokens), even if it finishes the task; the loop waits
+    // for it, then keeps the task going.
+    void runLoop.recordRun(taskId, started.runId).catch((err) => console.warn("[tot] couldn't record a task's turn:", err instanceof Error ? err.message : err));
     runLoop.start(taskId);
     return { started };
   },

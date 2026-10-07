@@ -46,6 +46,7 @@ import { deviceSection } from "../devices/prompt.ts";
 import { projectList, projectNote, projectSection } from "../projects/prompt.ts";
 import { leadNote, leadSection } from "../lead/prompt.ts";
 import { leadSession } from "../lead/session.ts";
+import { leadSignals } from "../signals/store.ts";
 import { promptMemory } from "../memory/prompt.ts";
 
 export class HttpError extends Error {
@@ -96,6 +97,8 @@ export interface TurnOptions {
   tier?: Tier;
   /** Auto only: the provider to run on when it can (a reviewer on the other provider, a switch after a limit). */
   prefer?: ProviderId | null;
+  /** A Lead's wake (module 12): the signals its preamble carries, new to the model though already marked read. */
+  signalIds?: string[];
 }
 
 export async function sendMessage(
@@ -140,7 +143,7 @@ export async function sendMessage(
 
   const history = messages.listByConversation(conversationId);
   // A project's Lead whose conversation got long carries on in a fresh session from the project's state (module 12).
-  const fresh = options.freshSession ? null : leadSession.freshStart(conversation, history);
+  const fresh = options.freshSession ? null : leadSession.freshStart(conversation, history, Date.now(), options.signalIds);
   // A new chat's first message: a ticket link in it sets the chat's origin, and may file it (module 06).
   const filed = options.auto || history.some((m) => m.role === "user") ? null : intake.firstMessage(conversation, text);
   const now = Date.now();
@@ -282,8 +285,10 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   // Where this reply ends up in its provider session, so a fork can start there.
   const place: { session?: string; ref?: string } = {};
 
+  // A Lead's signals this turn's note carries (module 12): unread again if the model never answered.
+  const heardSignals: string[] = [];
   try {
-    const { text, images, systemPrompt } = await prepareTurn(ctx);
+    const { text, images, systemPrompt } = await prepareTurn(ctx, heardSignals);
 
     // As much of the conversation as fits a new model's budget, with a pointer to the rest.
     const withTranscript = () =>
@@ -386,6 +391,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
     error = undefined;
   }
 
+  if (status !== "complete" && heardSignals.length && !builder.hasContent) leadSignals.markUnread(heardSignals);
   unsubscribe();
   run.steer = undefined;
   const final = builder.finish(status, error);
@@ -400,7 +406,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
 }
 
 /** The model-facing prompt (attachments folded in) and the chat's system prompt, frozen on first use. */
-async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: TurnInput["images"]; systemPrompt: string }> {
+async function prepareTurn(ctx: TurnContext, heardSignals: string[] = []): Promise<{ text: string; images: TurnInput["images"]; systemPrompt: string }> {
   const { conversation } = ctx;
   // Attached files: images for the model, small text inline, the rest onto the agent's computer.
   const prepared = await prepareAttachments(ctx.attachments, conversation.agentId);
@@ -420,7 +426,7 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
   // Brains this message is about (its repo, URL, @name…) that the chat hasn't been shown yet.
   const brainNote = ctx.text ? brainHints(conversation.agentId, conversation.id, ctx.text) : "";
   // Results of tasks this chat started that finished since its model last heard, and what its forks brought back.
-  const tasksNote = childResultsNote(conversation);
+  const tasksNote = childResultsNote(conversation, heardSignals);
   const mergeNote = forks.takeNotes(conversation);
   // Chats the user attached to this message, as reference.
   const attached = attachedNote(ctx.contextChats);
@@ -499,7 +505,7 @@ export function promptGitHubAccess(agentId: string): GitHubAccess {
   return { login: account.login, allowWrites: account.allowWrites, source: account.source, asPersona };
 }
 
-export function mcpServersFor(conversation: Pick<ConversationRecord, "id" | "agentId">, provider: ProviderId): McpServerSpec[] {
+export function mcpServersFor(conversation: Pick<ConversationRecord, "id" | "agentId"> & { lead?: boolean }, provider: ProviderId): McpServerSpec[] {
   const tot: McpServerSpec = {
     name: "tot",
     type: "http",
@@ -520,15 +526,17 @@ export function mcpServersFor(conversation: Pick<ConversationRecord, "id" | "age
   // The agent's GitHub account (its persona's own, else the user's), through GitHub's own MCP server: read-only
   // (enforced by GitHub) unless writes are allowed, and even then without tools that merge, delete or commit straight to a branch.
   const who = githubAccessFor(conversation.agentId);
+  // A project's Lead (module 12) never writes to GitHub on its own: pushing and landing go through its cards.
+  const writes = Boolean(who?.allowWrites) && !conversation.lead;
   const githubServer: McpServerSpec[] =
     who && !extra.some((spec) => spec.name.toLowerCase() === "github")
       ? [
           {
             name: "github",
             type: "http",
-            url: `${GITHUB_MCP_URL}/${who.allowWrites ? "" : "readonly"}`,
-            headers: { Authorization: `Bearer ${who.token}`, ...(who.allowWrites ? {} : { "X-MCP-Readonly": "true" }) },
-            ...(who.allowWrites ? { disabledTools: GITHUB_BLOCKED_TOOLS } : {}),
+            url: `${GITHUB_MCP_URL}/${writes ? "" : "readonly"}`,
+            headers: { Authorization: `Bearer ${who.token}`, ...(writes ? {} : { "X-MCP-Readonly": "true" }) },
+            ...(writes ? { disabledTools: GITHUB_BLOCKED_TOOLS } : {}),
           },
         ]
       : [];

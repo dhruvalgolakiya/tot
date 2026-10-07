@@ -43,11 +43,22 @@ An agent's home screen — what you see with no chat open — lists your project
 Each project has one pinned chat, titled **Lead**, that you run the project from. TOT makes it the first time you open the project, and opens it every time after.
 
 - It plans the work, and can start a task in each of the project's repos.
-- It watches every task in the project — not only the ones it started — and wakes up when one finishes or needs you.
+- It watches every task in the project, not only the ones it started, and wakes up when one finishes or needs you. It can also stop, pause or resume a task.
 - It keeps the project's knowledge current as work lands.
-- **It never lands anything on its own.** Before a merge or a draft PR, it shows you a card: what lands, where, and why. The card waits for you — hours or days, however long you take, even long after the Lead has stopped typing. Only your **Approve** lands exactly the commit the card showed; **Deny** does nothing.
+- **It hears about things on its own.** A pull request's checks failing or passing, a review asking for changes, a comment, a merge or a conflict; a ticket from the project's Slack channels, Linear teams or GitHub issues; a schedule you set. It acts by starting or steering tasks, and tells you. These show under **Signals** on the Board.
+- **It never lands or posts anything on its own.** Before a merge, a draft PR, or pushing review fixes to an open draft PR, it shows you a card: what, where, and why. The card waits for you, however long you take, even after the Lead has stopped typing. Only your **Approve** lands exactly the commit the card showed; **Deny** does nothing. It never comments on GitHub or posts to Slack or Linear.
 
-Ask it things like "where do things stand?" or "land what's ready", or just tell it what you want built next.
+Ask it things like "where do things stand?" or "land what's ready", or just tell it what you want built next. When you create a project, **What do you want built first?** goes straight to its Lead.
+
+### Subscriptions
+
+The project's **…** menu → **Subscriptions** sets what the Lead hears about:
+
+- **Pull requests:** off, the draft PRs TOT opened (the default), or every open PR in the project's GitHub repos. TOT only reads them, using your GitHub connection. Comments and reviews from people who aren't collaborators on the repo are noted, but their text isn't passed on.
+- **Tickets:** the project's Slack channels and Linear teams.
+- **Schedules:** for example "every weekday at 9: what's stuck?". At its time, a schedule wakes the Lead with its prompt, in the Lead's chat rather than a new one.
+
+The Lead wakes at most 12 times an hour for these. When its conversation gets long, it carries on in a fresh session from the project's current state, so it stays quick over months.
 
 ## More than one repo
 

@@ -224,14 +224,17 @@ export const leadSession = {
    * preamble its fresh session starts from and a notice for the user; otherwise (or when the state can't be read)
    * null, and the turn resumes its session as usual.
    */
-  freshStart(conversation: Pick<ConversationRecord, "id" | "lead" | "projectId">, history: Message[], now = Date.now()): { preamble: string; notice: string } | null {
+  freshStart(conversation: Pick<ConversationRecord, "id" | "lead" | "projectId">, history: Message[], now = Date.now(), carried: string[] = []): { preamble: string; notice: string } | null {
     if (!conversation.lead || !conversation.projectId) return null;
     const context = lastTurnContext(history);
     if (context === null || context <= LEAD_FRESH_TOKENS) return null;
     const project = projects.get(conversation.projectId);
     if (!project) return null;
     try {
-      const preamble = leadPreamble(leadState(conversation, project, history, context, now));
+      const state = leadState(conversation, project, history, context, now);
+      // A wake's own signals were marked read just before its turn: for this turn they're new, not "already seen".
+      state.signals = state.signals.map((signal) => (carried.includes(signal.id) ? { ...signal, readAt: null } : signal));
+      const preamble = leadPreamble(state);
       return { preamble, notice: `Started a fresh session from the project's state: the conversation had reached about ${Math.round(context / 1000)}k tokens.` };
     } catch (err) {
       console.warn(`[tot] couldn't gather the project's state for the Lead ${conversation.id}; resuming its session:`, err instanceof Error ? err.message : err);

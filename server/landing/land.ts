@@ -16,7 +16,7 @@ import { cloneUrl, worktrees } from "../tasks/worktree.ts";
 import { previews } from "../worktrees/preview.ts";
 import { profileFor, taskChecks } from "./checks.ts";
 import { folderGit, gitWords, inWorktree, onComputer, sectionsOf, statusPath, worktreeState, type WorktreeState } from "./git.ts";
-import { openDraftPr, pushToDraftPr } from "./pr.ts";
+import { openDraftPr, readPullRequest, pushToDraftPr } from "./pr.ts";
 
 /**
  * Landing a finished coding task (module 09, lane A): how it can land right now, merging it into
@@ -327,9 +327,16 @@ async function assessFix(task: TaskRecord): Promise<{ fix: DraftPrFix; tree: Wor
   if (!FINISHED.has(task.task.status)) return refused("Wait for the task to finish, or stop it.");
   if (!destinations(task).github) return refused("Draft PRs are for GitHub projects.");
   if (!TOT_BRANCH.test(repo.branch)) return refused("Only TOT's own tot/… branches are pushed.");
-  const writes = writesProblem(githubAccessFor(task.agentId));
+  const writesAccess = githubAccessFor(task.agentId);
+  const writes = writesProblem(writesAccess);
   if (writes) return refused(writes);
   if (!fix.pushedSha || !SHA.test(fix.pushedSha)) return refused(`TOT doesn't know which commit ${name} has.`);
+  // The PR as GitHub has it now: still open, and still on the commit TOT pushed (nobody else pushed to it).
+  const live = await readPullRequest(destinations(task).github!, pr.number, writesAccess!.token);
+  if (live === null) return refused(`Couldn't check ${name} on GitHub right now. Try again in a moment.`);
+  if (live === "gone") return refused(`GitHub doesn't know ${name} any more.`);
+  if (!live.open) return refused(`${name} is ${live.merged ? "merged" : "closed"}: there's nothing to push to. Start a new task for more changes.`);
+  if (live.headSha && live.headSha !== fix.pushedSha) return refused(`${name} has commits TOT didn't push (its branch moved on GitHub), and TOT never force-pushes. Pull them into the task first.`);
   let grant: FolderGrant | null = null;
   try {
     grant = grantFor(task);

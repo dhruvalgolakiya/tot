@@ -43,7 +43,11 @@ process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this 
 // --- A fake GitHub: who the token is, and the pull requests opened ------------------------------
 const TOKEN = "ghp_controlstoken0123456789";
 const pulls: { repo: string; body: Record<string, unknown> }[] = [];
+/** The PR as GitHub has it (read by the push card's check): open or closed, on the branch's commit in the bare repo. */
+let prState: "open" | "closed" = "open";
+let prHeadOf: () => string = () => "";
 const fake = new Hono()
+  .get("/repos/:owner/:repo/pulls/:number", (c) => c.json({ number: Number(c.req.param("number")), state: prState, merged: false, head: { sha: prHeadOf() } }))
   .get("/user", (c) => {
     if (c.req.header("authorization") !== `Bearer ${TOKEN}`) return c.json({ message: "Bad credentials" }, 401);
     c.header("x-oauth-scopes", "repo, read:org");
@@ -420,6 +424,7 @@ if (!localSandboxed) {
   await until(() => taskStore.get(created.id)?.task.checks != null && !taskChecks.isRunning(created.id));
   const branch = prepared.branch;
   const onGitHub = () => git(bare, "rev-parse", branch);
+  prHeadOf = onGitHub;
   const setHead = (sha: string) => taskStore.patch(created.id, { repo: { ...taskStore.get(created.id)!.task.repo!, headSha: sha } });
   const answer = (id: string, decision: "accept" | "decline") => request<{ status: string; ok: boolean; text: string; error?: string }>("POST", `/lead/asks/${id}`, { decision });
 
@@ -450,7 +455,7 @@ if (!localSandboxed) {
       card.lead.taskId === created.id &&
       card.message.startsWith("Push 2 new commits to draft PR #12?") &&
       card.message.includes(`${branch} @ ${second.slice(0, 7)} (“Fix the footer”)`) &&
-      card.message.includes("- Style the footer\n- Rename the footer class") &&
+      card.message.includes("• Style the footer\n• Rename the footer class") &&
       card.message.endsWith("Addresses the review."),
     `${r.text} ⏎ ${card?.message}`,
   );
@@ -498,6 +503,14 @@ if (!localSandboxed) {
 
   const fourth = commit(worktree, { "notes.txt": "notes\n" }, "Add notes");
   setHead(fourth);
+  prState = "closed";
+  r = await webTools.call("task_land", { task_id: created.id, reason: "More." });
+  check("the PR was closed on GitHub: not asked, nothing pushed", r.isError && r.text.includes("draft PR #12 is closed") && !turn.card() && onGitHub() !== fourth, r.text);
+  prState = "open";
+  prHeadOf = () => "0123456789abcdef0123456789abcdef01234567";
+  r = await webTools.call("task_land", { task_id: created.id, reason: "More." });
+  check("someone else pushed to the PR on GitHub: not asked (TOT never force-pushes)", r.isError && r.text.includes("commits TOT didn't push") && !turn.card(), r.text);
+  prHeadOf = onGitHub;
   await github.setAllowWrites(false);
   r = await webTools.call("task_land", { task_id: created.id, reason: "More." });
   check("GitHub writes off: not asked", r.isError && r.text.includes("Turn on GitHub writes") && !turn.card(), r.text);

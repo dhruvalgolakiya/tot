@@ -79,7 +79,7 @@ export function toolTitle(name: string, input: unknown): string {
     case "task_message":
       return "Sent a task a note";
     case "task_update":
-      return args.question ? "Asked you a question" : args.plan ? "Updated its plan" : "Noted its progress";
+      return args.question ? "Asked you a question" : "Noted its progress";
     case "task_finish":
       return args.outcome === "failed" ? "Reported the task failed" : "Finished the task";
     // A project's Lead (module 11).
@@ -91,6 +91,17 @@ export function toolTitle(name: string, input: unknown): string {
       return "Updated a task from its base";
     case "task_discard":
       return "Asked to discard a task";
+    // Module 12: the Lead's controls.
+    case "task_stop":
+      return "Stopped a task";
+    case "task_pause":
+      return "Paused a task";
+    case "task_resume":
+      return "Resumed a task";
+    case "memory_update":
+      return "Memory updated";
+    case "memory_read":
+      return "Read memory";
     default:
       return name.includes("/") ? `Used ${name}` : name;
   }

@@ -157,9 +157,11 @@ export const LEAD_NEWS = "Tasks in this project have news: finished, or waiting 
  * Results of a chat's tasks that finished since its model last heard, as a note for its next turn; "" when none.
  * A project's Lead also gets its unread signals (module 12), which are then read.
  */
-export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults" | "lead" | "projectId">): string {
+export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults" | "lead" | "projectId">, heard?: string[]): string {
   const signals = conversation.lead && conversation.projectId ? leadSignals.unread(conversation.projectId) : [];
   leadSignals.markRead(signals.map((signal) => signal.id));
+  // The caller puts them back if the turn doesn't get through (agent/orchestrator.ts executeTurn).
+  heard?.push(...signals.map((signal) => signal.id));
   if (!conversation.childResults.length) return signalsNote(signals);
   markResultsRead(conversation.id, conversation.childResults);
   const results = resultsNote(conversation.childResults, conversation.lead ? "Tasks in this project have news since your last reply: finished, or waiting for input." : "Tasks you started have finished since your last reply.");

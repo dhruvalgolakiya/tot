@@ -89,6 +89,8 @@ settings.patch({ computer: { mode: "local" } });
 
 // --- Fake model turns: each records what it was asked, then finishes its task ---------------------
 const sent: { taskId: string; text: string }[] = [];
+/** Work a turn does before it finishes its task (e.g. a review fix committed on its branch). */
+const turnWork = new Map<string, () => void>();
 async function fakeSend(conversationId: string, request: SendMessageRequest, _options: TurnOptions = {}) {
   if (runRegistry.activeFor(conversationId)) throw new HttpError(409, "Busy.");
   sent.push({ taskId: conversationId, text: request.text });
@@ -103,6 +105,10 @@ async function fakeSend(conversationId: string, request: SendMessageRequest, _op
   void (async () => {
     await sleep(20);
     builder.apply({ type: "text-delta", blockId: randomUUID(), delta: "Done." });
+    const work = turnWork.get(conversationId);
+    turnWork.delete(conversationId);
+    // Like a real turn, the work lands well after the loop has looked at the worktree.
+    if (work) await sleep(800).then(work);
     if (taskStore.get(conversationId)?.task.status === "running") tasks.finish(conversationId, "done", "Rebased and resolved the conflicts.");
     const final = builder.finish("complete");
     messages.save(final);
@@ -516,12 +522,22 @@ res = await call("POST", `/tasks/${footer.id}/land`, { method: "pr" });
 check("opening it again is refused", res.status === 409 && /draft PR #12/.test(res.data.error), JSON.stringify(res.data));
 res = await call("POST", `/tasks/${footer.id}/discard`);
 check("…and so is discarding it (close the PR on GitHub)", res.status === 409 && pushedRefs().includes(footerBranch), JSON.stringify(res.data));
+let reviewFix = "";
+turnWork.set(footer.id, () => {
+  reviewFix = commit(local(footer.task.repo!.worktree), { "footer.txt": "footer, reviewed\n" }, "Address the review comments");
+});
 await tasks.message(footer.id, { text: "Address the review comments" });
 await until(() => taskStore.get(footer.id)?.task.status === "done");
 check(
   "a draft PR's task picked up again keeps its PR (the branch carries on)",
   taskStore.get(footer.id)?.task.landing?.kind === "pr" && existsSync(local(footer.task.repo!.worktree)),
   JSON.stringify(taskStore.get(footer.id)?.task.landing),
+);
+await until(() => taskStore.get(footer.id)?.task.repo?.headSha === reviewFix, 5000).catch(() => {});
+check(
+  "…and the commit that turn made is the task's head (a message's turn is recorded, even when it finishes the task)",
+  Boolean(reviewFix) && taskStore.get(footer.id)?.task.repo?.headSha === reviewFix,
+  `${taskStore.get(footer.id)?.task.repo?.headSha} vs ${reviewFix}`,
 );
 
 // =============================================================================

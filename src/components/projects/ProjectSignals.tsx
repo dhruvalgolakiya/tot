@@ -126,9 +126,11 @@ export function ProjectSignals({ project }: { project: Project }) {
       )}
       {signals && !signals.length && (
         <p className="text-xs leading-relaxed text-fg-subtle">
-          {watching
-            ? "When a pull request's checks or reviews change, or a ticket or schedule comes in, the Lead hears about it, and it shows here."
-            : "When a ticket or schedule comes in, the Lead hears about it, and it shows here. Pull requests aren't watched for this project."}
+          {!(project.repos?.length ? project.repos.some((repo) => repo.kind === "github") : project.kind === "github")
+            ? "When a ticket or schedule comes in, the Lead hears about it, and it shows here."
+            : watching
+              ? "When a pull request's checks or reviews change, or a ticket or schedule comes in, the Lead hears about it, and it shows here."
+              : "When a ticket or schedule comes in, the Lead hears about it, and it shows here. Pull requests aren't watched for this project."}
         </p>
       )}
       {shown.length > 0 && (

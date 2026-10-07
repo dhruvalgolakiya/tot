@@ -92,7 +92,7 @@ const ENDINGS: Partial<Record<TaskStatus, string>> = { stopped: "was stopped", i
  * The wake's own message, shown as a quiet divider: `2 tasks finished: “Fix checkout”, “Update docs”.` A Lead's
  * signals (module 12) follow: `Checks failed on draft PR #12 “Fix cart”.`
  */
-export function wakeText(ids: string[], signals: Pick<LeadSignal, "title">[] = []): string {
+export function wakeText(ids: string[], signals: Pick<LeadSignal, "title" | "kind">[] = []): string {
   return [ids.length ? tasksText(ids) : "", signalsText(signals)].filter(Boolean).join(" ");
 }
 
@@ -189,7 +189,7 @@ async function wake(chatId: string): Promise<void> {
     leadSignals.markRead(signalIds);
     let runId: string;
     try {
-      ({ runId } = await runLoop.send(chatId, { text: wakeText(ids, signals) }, { auto: true, keepTitle: true, preamble: note }));
+      ({ runId } = await runLoop.send(chatId, { text: wakeText(ids, signals) }, { auto: true, keepTitle: true, preamble: note, signalIds }));
       if (signals.length) signalWakes.record(chat.projectId!);
     } catch (err) {
       restore(chatId, ids);

@@ -4,6 +4,7 @@ import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { messages } from "../data/messages.ts";
+import { scrub } from "../trust/secrets.ts";
 import { leadInbox } from "../lead/inbox.ts";
 import { projects } from "./projects.ts";
 import { detectTicket, ticketOrigin, type Ticket } from "./tickets.ts";
@@ -92,7 +93,8 @@ export const intake = {
       {
         kind: "ticket",
         title: `${ticket ? ticket.key : "A request"} from ${request.who} ${request.where}`,
-        detail: text.length > MAX_TICKET ? `${text.slice(0, MAX_TICKET - 1).trimEnd()}…` : text,
+        // Kept for days and shown to the Lead: no keys or passwords someone pasted.
+        detail: scrub(text.length > MAX_TICKET ? `${text.slice(0, MAX_TICKET - 1).trimEnd()}…` : text),
         url: ticket?.url ?? request.url ?? null,
         repoName: null,
         taskId: null,

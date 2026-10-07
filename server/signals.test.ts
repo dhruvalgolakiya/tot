@@ -292,8 +292,8 @@ check("…a note in the Lead's chat", notices().includes("Checks failed on draft
 check("…and only the conversation wasn't read again (it didn't change)", !gh.calls.some((c) => c.includes("/comments") || c.includes("/reviews")), gh.calls.join(", "));
 await until(() => leadTurns().length > 0);
 check(
-  "the Lead is woken with one auto turn listing it",
-  leadTurns().length === 1 && leadTurns()[0]!.auto && leadTurns()[0]!.text === "Checks failed on draft PR #12 “Fix cart”." && leadTurns()[0]!.preamble.includes('"kind": "ci-failed"') && leadTurns()[0]!.preamble.includes("Failing: build, lint"),
+  "the Lead is woken with one auto turn (in TOT's own words) whose note lists it",
+  leadTurns().length === 1 && leadTurns()[0]!.auto && leadTurns()[0]!.text === "News: checks failed on a pull request." && leadTurns()[0]!.preamble.includes('"kind": "ci-failed"') && leadTurns()[0]!.preamble.includes("Failing: build, lint"),
   JSON.stringify(leadTurns()),
 );
 await settled();
@@ -302,7 +302,7 @@ check("…and the signal is read once the turn has it", leadSignals.get(red!.id)
 gh.calls.length = 0;
 await prWatch.tick();
 check("looking again: the same failure isn't news twice", signalsOf().length === 1 && leadTurns().length === 1, JSON.stringify(signalsOf().map((s) => s.title)));
-check("…and settled checks aren't read again for the same head", !gh.calls.some((c) => c.includes("check-runs")), gh.calls.join(", "));
+check("…though settled checks are read again for a while (late workflows, re-runs)", gh.calls.some((c) => c.includes("check-runs")), gh.calls.join(", "));
 
 // The task pushed a fix: a new head, its checks pass.
 pull("acme/web", 12, { head: { sha: "head-2", ref: "tot/fix-cart-ab12" } });
@@ -345,7 +345,7 @@ await sleep(400);
 const both = leadTurns().slice(turnsBefore);
 check(
   "signals that come together wake the Lead once",
-  both.length === 1 && both[0]!.text === "2 updates: @alice asked for changes on draft PR #12 “Fix cart”; @bob commented on draft PR #12 “Fix cart”.",
+  both.length === 1 && both[0]!.text === "2 updates: a review asked for changes, a comment on a pull request.",
   JSON.stringify(both.map((t) => t.text)),
 );
 await settled();
@@ -395,7 +395,7 @@ await sleep(300);
 check("while TOT is stopping, a new signal waits (no turn)", Boolean(pending) && leadTurns().length === turnsAtRestart && conversations.get(lead.id)!.wakePending);
 chatWakes.start();
 await until(() => leadTurns().length > turnsAtRestart);
-check("…and wakes the Lead once it's back", leadTurns().at(-1)?.text === "Weekday check-in: what's stuck?" && leadSignals.get(pending!.id)?.readAt !== null, JSON.stringify(leadTurns().at(-1)));
+check("…and wakes the Lead once it's back", leadTurns().at(-1)?.text === "News: schedule “Weekday check-in: what's stuck”." && leadSignals.get(pending!.id)?.readAt !== null, JSON.stringify(leadTurns().at(-1)));
 await settled();
 
 // =============================================================================
@@ -516,7 +516,7 @@ check(
   JSON.stringify(ticket),
 );
 await until(() => leadTurns().length > turnsBeforeTicket);
-check("…which wakes the Lead", leadTurns().at(-1)?.text === "acme/web#7 from Alex Kim in #web-bugs." && leadTurns().at(-1)!.preamble.includes('"kind": "ticket"'), JSON.stringify(leadTurns().at(-1)));
+check("…which wakes the Lead", leadTurns().at(-1)?.text === "News: a new ticket." && leadTurns().at(-1)!.preamble.includes('"kind": "ticket"'), JSON.stringify(leadTurns().at(-1)));
 await settled();
 const again = intake.toLead({ slackChannel: "web-bugs", text: "The cart button is broken", who: "Alex Kim", where: "in #web-bugs", key: "slack:C1:1.0" });
 check("the same message seen twice: one ticket", again?.id === web.id && signalsOf().filter((s) => s.kind === "ticket").length === 1);
@@ -544,7 +544,7 @@ check(
   `${leadTurns().length - turnsAtBound} turns`,
 );
 await until(() => leadTurns().length > turnsAtBound, 5000);
-check("…and wakes the Lead once the next one fits", leadTurns().at(-1)?.text === "@erin commented on PR #9." && leadSignals.get(bounded.id)?.readAt !== null, JSON.stringify(leadTurns().at(-1)));
+check("…and wakes the Lead once the next one fits", leadTurns().at(-1)?.text === "News: a comment on a pull request." && leadSignals.get(bounded.id)?.readAt !== null, JSON.stringify(leadTurns().at(-1)));
 await settled();
 
 // The Lead's own next turn reads unread signals too (the note its turn starts with).

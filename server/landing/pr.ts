@@ -115,6 +115,22 @@ export async function openDraftPr(
 }
 
 /**
+ * A pull request as GitHub has it now (read only): open or not, merged, and its head commit. Null when GitHub
+ * couldn't be asked; "gone" when it doesn't know the PR.
+ */
+export async function readPullRequest(repo: string, number: number, token: string): Promise<{ open: boolean; merged: boolean; headSha: string } | "gone" | null> {
+  try {
+    const res = await githubApi(`/repos/${repo}/pulls/${number}`, token);
+    if (res.status === 404 || res.status === 410) return "gone";
+    if (!res.ok) return null;
+    const pr = (await res.json()) as { state?: string; merged?: boolean; merged_at?: string | null; head?: { sha?: string } };
+    return { open: pr.state === "open", merged: Boolean(pr.merged || pr.merged_at), headSha: pr.head?.sha ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Module 12: pushes a draft PR's branch forward to `headSha`, the commit the user approved on the Lead's card (review
  * fixes made after the PR was opened). Exactly that commit goes up as the branch, never with force: a branch GitHub
  * has moved on from, or one rewritten here, is refused by git and nothing changes.

@@ -17,10 +17,16 @@ export const SECTION_TITLES: Record<MissionSection, string> = {
   landed: "Landed",
 };
 
+/** Statuses a task can't move on from by itself. */
+const FINISHED_STATUSES = new Set(["done", "failed", "stopped", "interrupted"]);
+
 /** Where a task sits on the board: waiting on the user, working, finished with code to land, or landed (or finished without code). */
 export function missionSection(task: TaskConversation): MissionSection {
   const { status, landing, repo } = task.task;
-  if (landing) return "landed";
+  // A draft PR is landed, until its task works on it again (review fixes): then it's working, and once those new
+  // commits wait to be pushed, ready to land again (module 12).
+  const prWithNews = landing?.kind === "pr" && (!FINISHED_STATUSES.has(status) || (Boolean(repo?.headSha) && repo?.headSha !== landing.sha));
+  if (landing && !prWithNews) return "landed";
   if (status === "needs-input" || status === "failed" || status === "interrupted") return "needs-you";
   if (status === "running" || status === "queued" || status === "paused") return "working";
   return repo?.headSha ? "ready" : "landed";

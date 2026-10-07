@@ -64,8 +64,8 @@ export function registerLeadTools(server: McpServer, conversation: ConversationR
     if (leadAsks.openFor(task.id, "push", headSha)) return reply(`The user has a card for pushing “${task.title}” at ${headSha.slice(0, 7)} to ${pr} already; it's waiting for their answer. Don't ask again.`);
     const checks = task.task.checks;
     const state = checks && checks.headSha === headSha ? { running: "checks running", passing: "checks passing", failing: "checks failing", none: "no checks" }[checks.state] : null;
-    const shown = fix.commits.slice(0, 5).map((subject) => `- ${subject.length > 100 ? `${subject.slice(0, 99)}…` : subject}`);
-    const more = fix.count > shown.length ? [`- …and ${plural(fix.count - shown.length, "more commit")}`] : [];
+    const shown = fix.commits.slice(0, 5).map((subject) => `• ${subject.length > 100 ? `${subject.slice(0, 99)}…` : subject}`);
+    const more = fix.count > shown.length ? [`• …and ${plural(fix.count - shown.length, "more commit")}`] : [];
     const message = [
       `Push ${plural(fix.count, "new commit")} to ${pr}?${state ? ` · ${state}` : ""}`,
       `${task.task.repo!.repoName ? `${task.task.repo!.repoName} · ` : ""}${task.task.repo!.branch} @ ${headSha.slice(0, 7)} (“${task.title}”)`,

@@ -14,10 +14,16 @@ import { isTask, type TaskRecord } from "../tasks/store.ts";
 
 export type BoardSection = "needs-you" | "working" | "ready" | "done" | "landed";
 
+/** Statuses a task can't move on from by itself. */
+const FINISHED_STATUSES = new Set(["done", "failed", "stopped", "interrupted"]);
+
 /** Where a task sits on the board: waiting on the user, working, finished with code to land, finished without code, or landed. */
 export function boardSection(task: TaskRecord): BoardSection {
   const { status, landing, repo } = task.task;
-  if (landing) return "landed";
+  // A draft PR is landed, until its task works on it again (review fixes): then it's working, and once those new
+  // commits wait to be pushed, ready to land again (module 12).
+  const prWithNews = landing?.kind === "pr" && (!FINISHED_STATUSES.has(status) || (Boolean(repo?.headSha) && repo?.headSha !== landing.sha));
+  if (landing && !prWithNews) return "landed";
   if (status === "needs-input" || status === "failed" || status === "interrupted") return "needs-you";
   if (status === "running" || status === "queued" || status === "paused") return "working";
   return repo?.headSha ? "ready" : "done";
