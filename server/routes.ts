@@ -76,6 +76,8 @@ import { projectRepoRoutes } from "./projects/repos-routes.ts";
 import { knowledgeRoutes } from "./knowledge/routes.ts";
 import { knowledgeAutoRoutes } from "./knowledge/auto-routes.ts";
 import { leadRoutes } from "./lead/routes.ts";
+import { projectScheduleRoutes } from "./projects/schedules-routes.ts";
+import { signalRoutes } from "./signals/routes.ts";
 import { projects } from "./projects/projects.ts";
 import { isTask } from "./tasks/store.ts";
 import { tasks } from "./tasks/tasks.ts";
@@ -367,6 +369,8 @@ api.route("/", projectRepoRoutes);
 api.route("/", knowledgeRoutes);
 api.route("/", knowledgeAutoRoutes);
 api.route("/", leadRoutes);
+api.route("/", signalRoutes);
+api.route("/", projectScheduleRoutes);
 api.route("/", deviceRoutes);
 api.route("/", orchestrationRoutes);
 

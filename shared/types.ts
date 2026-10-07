@@ -154,6 +154,8 @@ export interface Routine {
   /** The chat created by the most recent run. */
   lastConversationId: string | null;
   createdAt: number;
+  /** Module 12: a project's schedule. It runs in the project's Lead (a "schedule" signal), not a new chat. */
+  projectId?: string | null;
 }
 
 export interface RoutineInput {
@@ -161,6 +163,8 @@ export interface RoutineInput {
   prompt: string;
   schedule: RoutineSchedule;
   enabled?: boolean;
+  /** Module 12: a project's schedule (see Routine.projectId). */
+  projectId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1610,6 +1614,48 @@ export interface HomeProject {
   leadChatId: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Coordinator (module 12): the Lead hears about pull requests, tickets and schedules on its own
+// ---------------------------------------------------------------------------
+
+/** Which pull requests a project's Lead hears about: none, the draft PRs TOT opened for its tasks, or every open PR in its GitHub repos. */
+export type PullRequestWatch = "off" | "tot" | "all";
+
+export interface ProjectSubscriptions {
+  pullRequests: PullRequestWatch;
+}
+
+export type UpdateProjectSubscriptionsRequest = Partial<ProjectSubscriptions>;
+
+export type LeadSignalKind =
+  | "ci-failed"
+  | "ci-passed"
+  | "changes-requested"
+  | "review-comment"
+  | "comment"
+  | "pr-merged"
+  | "pr-closed"
+  | "pr-conflict"
+  | "ticket"
+  | "schedule";
+
+/** Something a project's Lead heard about on its own (GET /api/projects/:id/signals); unread until its turn has seen it. */
+export interface LeadSignal {
+  id: string;
+  projectId: string;
+  kind: LeadSignalKind;
+  /** One line, e.g. "Checks failed on draft PR #12 “Fix cart”". */
+  title: string;
+  /** More: the failing checks, a comment's first lines, a ticket's text, a schedule's prompt. */
+  detail: string | null;
+  url: string | null;
+  repoName: string | null;
+  taskId: string | null;
+  prNumber: number | null;
+  at: number;
+  readAt: number | null;
+}
+
 export interface StartTaskRequest {
   /** Defaults to a short title made from the goal. */
   title?: string;
@@ -2013,6 +2059,8 @@ export interface Project {
   repos?: ProjectRepo[];
   /** Module 11: its Lead chat, once created. */
   leadChatId?: string | null;
+  /** Module 12: what the Lead hears about on its own (default { pullRequests: "tot" }). */
+  subscriptions?: ProjectSubscriptions;
 }
 
 export interface CreateProjectRequest {
@@ -2023,6 +2071,8 @@ export interface CreateProjectRequest {
   name?: string;
   /** Folder projects: the user already said yes to the consent dialog (else POST /api/projects/:id/grant later). */
   grant?: boolean;
+  /** Module 12: what you want built first; sent to the project's Lead once the project is ready (a folder: once it's allowed). */
+  firstMessage?: string;
 }
 
 /** A git folder on this Mac, offered by the New project picker. */

@@ -290,6 +290,10 @@ export const api = {
   undoKnowledgeUpdate: (projectId: string, updateId: string) =>
     request<KnowledgeUpdate>("POST", `/projects/${seg(projectId)}/knowledge/updates/${seg(updateId)}/undo`, {}),
 
+  // Module 12 · lane A (signals, subscriptions).
+
+  // Module 12 · lane B (schedules).
+
   // Module 11 · lane D (the Lead, Home).
   /** The project's Lead chat: made the first time (with `agentId`, else the agent most active in the project), the same one after. */
   openLead: (projectId: string, agentId?: string | null) =>
