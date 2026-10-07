@@ -45,6 +45,7 @@ import { projects } from "../projects/projects.ts";
 import { deviceSection } from "../devices/prompt.ts";
 import { projectList, projectNote, projectSection } from "../projects/prompt.ts";
 import { leadNote, leadSection } from "../lead/prompt.ts";
+import { leadSession } from "../lead/session.ts";
 import { promptMemory } from "../memory/prompt.ts";
 
 export class HttpError extends Error {
@@ -138,6 +139,8 @@ export async function sendMessage(
   const route = result.route;
 
   const history = messages.listByConversation(conversationId);
+  // A project's Lead whose conversation got long carries on in a fresh session from the project's state (module 12).
+  const fresh = options.freshSession ? null : leadSession.freshStart(conversation, history);
   // A new chat's first message: a ticket link in it sets the chat's origin, and may file it (module 06).
   const filed = options.auto || history.some((m) => m.role === "user") ? null : intake.firstMessage(conversation, text);
   const now = Date.now();
@@ -189,13 +192,14 @@ export async function sendMessage(
     history,
     attachments,
     contextChats,
-    preamble: options.preamble,
+    preamble: [fresh?.preamble, options.preamble].filter(Boolean).join("\n\n") || undefined,
     autoTitle: isFirstTurn,
     auto: parseModelId(modelId) === "auto",
     complexity,
     tier: options.tier,
     thinkHarder: Boolean(request.thinkHarder),
-    freshSession: Boolean(options.freshSession),
+    freshSession: Boolean(options.freshSession || fresh),
+    notice: fresh?.notice,
     maxSteps: options.maxSteps,
   }).catch((err) => {
     // executeTurn handles provider failures itself; this only catches setup bugs, so the
@@ -232,6 +236,8 @@ interface TurnContext {
   tier?: Tier;
   thinkHarder: boolean;
   freshSession: boolean;
+  /** A note for the user at the top of the reply (a Lead starting a fresh session). */
+  notice?: string;
   maxSteps?: number;
 }
 
@@ -265,6 +271,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
     model: ctx.route.model,
     routeReason: ctx.route.reason,
   });
+  if (ctx.notice) builder.notice("info", ctx.notice);
   const unsubscribe = bus.subscribe(conversation.agentId, (event) => run.push(event));
   const title = ctx.autoTitle ? generateTitle(conversation.id, ctx.text || ctx.attachments.map((f) => f.name).join(", "), run) : null;
 

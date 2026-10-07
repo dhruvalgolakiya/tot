@@ -7,6 +7,7 @@ import { handoffs } from "../orchestration/handoff.ts";
 import { ROLE_NAMES, toResult } from "../orchestration/roles.ts";
 import { spawnMany, type SpawnSpec } from "../orchestration/spawn.ts";
 import { runRegistry } from "../agent/runs.ts";
+import { LEAD_NO_WAIT } from "../lead/prompt.ts";
 import { registerPreviewTools } from "../worktrees/tools.ts";
 import { markResultsRead, MAX_DEPTH, planPath, resultBlock } from "./prompt.ts";
 import { taskRequests } from "./requests.ts";
@@ -151,6 +152,8 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     },
     ({ request_id, wait, wait_minutes, ...input }, extra) =>
       guarded(async () => {
+        // A project's Lead never blocks on work (module 12).
+        if (wait && conversation.lead) return reply(LEAD_NO_WAIT, true);
         const { tasks: started, repeat } = taskRequests.once(conversation.id, request_id ?? null, () =>
           spawnMany(conversation.id, [toSpec(input)], { cards: { kind: "reply" } }),
         );
@@ -180,6 +183,7 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     },
     ({ sessions, then, request_id, wait, wait_minutes }, extra) =>
       guarded(async () => {
+        if (wait && conversation.lead) return reply(LEAD_NO_WAIT, true);
         if (wait && then) return reply('Pass either wait (their results in this call) or then: "synthesize" (one turn with all of them later), not both.', true);
         const { tasks: started, repeat } = taskRequests.once(conversation.id, request_id ?? null, () =>
           spawnMany(conversation.id, sessions.map(toSpec), { then, cards: { kind: "reply" } }),
