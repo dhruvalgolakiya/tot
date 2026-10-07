@@ -83,7 +83,6 @@ import type {
   UpdateDeviceRequest,
   UpdateRemoteAccessRequest,
   UpdateProjectRequest,
-  UpdateProjectSubscriptionsRequest,
   UpdateProjectRepoRequest,
   UpdateProjectSubscriptionsRequest,
   WikiPage,
@@ -314,10 +313,6 @@ export const api = {
   updateProjectSchedule: (projectId: string, routineId: string, patch: Partial<RoutineInput>) =>
     request<Routine>("PATCH", `/projects/${seg(projectId)}/schedules/${seg(routineId)}`, patch),
   deleteProjectSchedule: (projectId: string, routineId: string) => request<Ok>("DELETE", `/projects/${seg(projectId)}/schedules/${seg(routineId)}`),
-  // Lane A's subscriptions routes (the contract's), for the Subscriptions dialog; keep one copy when the lanes merge.
-  getProjectSubscriptions: (projectId: string) => request<ProjectSubscriptions>("GET", `/projects/${seg(projectId)}/subscriptions`),
-  updateProjectSubscriptions: (projectId: string, patch: UpdateProjectSubscriptionsRequest) =>
-    request<ProjectSubscriptions>("PATCH", `/projects/${seg(projectId)}/subscriptions`, patch),
 
   // Module 11 · lane D (the Lead, Home).
   /** The project's Lead chat: made the first time (with `agentId`, else the agent most active in the project), the same one after. */

@@ -242,6 +242,8 @@ export const knowledgeAuto = {
       const landing = event.conversation.task?.landing;
       if (!landing || handled.get(id) === landing.at) return;
       handled.set(id, landing.at);
+      // A draft PR that later merged (module 12's watcher marks it): its update already ran when the PR opened.
+      if (landing.kind === "merged" && landing.pr && knowledgeLog.landedRun(id)) return;
       // After the change that published this is done.
       queueMicrotask(() => {
         const task = taskStore.get(id);

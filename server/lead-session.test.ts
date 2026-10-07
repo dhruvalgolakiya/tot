@@ -149,10 +149,8 @@ check(
 );
 check("the board as mission_overview says it", preamble.includes(state.board));
 check(
-  "unread signals first, newest first, with the failing checks, the link, repo and task",
-  preamble.includes(
-    "Unread (2):\n- ci-failed · 12 min ago · Checks failed on draft PR #12 “Fix cart” · repo web · task t1 · https://github.com/acme/web/pull/12\n  lint / test (unit) / build\n- ticket · 3 h ago · Slack #shop:",
-  ),
+  "new signals are only counted: this turn's own note lists them (no doubling)",
+  preamble.includes("New (2): listed in this turn's note, after this state.") && !preamble.includes("lint / test (unit) / build"),
   preamble,
 );
 check(
@@ -205,32 +203,12 @@ check("the limit is ~120k", LEAD_FRESH_TOKENS === 120_000, String(LEAD_FRESH_TOK
 // Signals from lane A's table, read defensively
 // =============================================================================
 console.log("\n# Signals, read from lead_signals");
-const hasTable = () => Boolean(db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lead_signals'`).get());
-if (hasTable()) {
-  console.log("SKIP  lead_signals exists already (lane A merged): its own tests cover storing them");
-} else {
-  check("no lead_signals table yet: no signals, no error", recentSignals("p1").length === 0);
-  db.exec(`CREATE TABLE lead_signals (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, detail TEXT, url TEXT,
-    repo_name TEXT, task_id TEXT, pr_number INTEGER, at INTEGER NOT NULL, read_at INTEGER)`);
-  const insert = db.prepare(`INSERT INTO lead_signals (id, project_id, kind, title, detail, url, repo_name, task_id, pr_number, at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  const now = Date.now();
-  for (let i = 0; i < 30; i++) insert.run(`old${i}`, "p1", "comment", `Old comment ${i}`, null, null, null, null, null, now - (100 + i) * MIN, now - 50 * MIN);
-  insert.run("unread-old", "p1", "ticket", "An old ticket nobody read", "Please fix", null, null, null, null, now - 10 * 24 * 60 * MIN, null);
-  insert.run("new", "p1", "ci-failed", "Checks failed on draft PR #3", "lint", "https://example.com/3", "web", "t9", 3, now - MIN, null);
-  insert.run("elsewhere", "p2", "pr-merged", "Another project's PR", null, null, null, null, null, now, null);
-  let found = recentSignals("p1");
-  check(
-    "unread ones (even old) and the newest ones, newest first, this project only",
-    found[0]?.id === "new" && found.some((s) => s.id === "unread-old" && s.readAt === null) && !found.some((s) => s.id === "elsewhere") && found.length <= 12 + 6 + 1,
-    found.map((s) => s.id).join(", "),
-  );
-  check("…as LeadSignals", found[0]?.kind === "ci-failed" && found[0].prNumber === 3 && found[0].repoName === "web" && found[0].taskId === "t9" && found[0].detail === "lint");
-  db.exec(`DROP TABLE lead_signals`);
-  db.exec(`CREATE TABLE lead_signals (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, created_at INTEGER NOT NULL)`);
-  db.prepare(`INSERT INTO lead_signals (id, project_id, kind, title, created_at) VALUES (?, ?, ?, ?, ?)`).run("other-shape", "p1", "schedule", "Daily: what's stuck?", now);
-  found = recentSignals("p1");
-  check("a table shaped differently (created_at, no read_at) still reads", found.length === 1 && found[0]!.id === "other-shape" && found[0]!.at === now && found[0]!.readAt === null, JSON.stringify(found));
-  db.exec(`DROP TABLE lead_signals`);
+{
+  const { leadSignals } = await import("./signals/store.ts");
+  const added = leadSignals.add("p1", { kind: "ci-failed", title: "Checks failed on draft PR #3", detail: "lint", url: "https://example.com/3", repoName: "web", taskId: "t9", prNumber: 3 });
+  leadSignals.add("p2", { kind: "pr-merged", title: "Another project's PR", detail: null, url: null, repoName: null, taskId: null, prNumber: null });
+  const found = recentSignals("p1");
+  check("signals come from lane A's store: this project's, newest first", found.length === 1 && found[0]!.id === added!.id && found[0]!.prNumber === 3 && found[0]!.readAt === null, JSON.stringify(found));
 }
 
 // =============================================================================

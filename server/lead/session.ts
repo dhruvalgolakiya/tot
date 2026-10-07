@@ -7,6 +7,7 @@ import { wiki } from "../data/wiki.ts";
 import { db, type Row } from "../db.ts";
 import { promptMemory } from "../memory/prompt.ts";
 import { projects } from "../projects/projects.ts";
+import { leadSignals } from "../signals/store.ts";
 import { taskStore } from "../tasks/store.ts";
 import { projectBoardText } from "./board.ts";
 
@@ -108,11 +109,12 @@ function signalLine(signal: LeadSignal, now: number): string {
 }
 
 function signalsBlock(signals: LeadSignal[], now: number): string {
-  const unread = signals.filter((signal) => signal.readAt === null).slice(0, SIGNALS_UNREAD);
+  // New ones aren't repeated here: this turn's own note lists them (tasks/prompt.ts childResultsNote) and marks them read.
+  const unread = signals.filter((signal) => signal.readAt === null).length;
   const earlier = signals.filter((signal) => signal.readAt !== null).slice(0, SIGNALS_EARLIER);
-  if (!unread.length && !earlier.length) return "None yet.";
+  if (!unread && !earlier.length) return "None yet.";
   const out: string[] = [];
-  if (unread.length) out.push(`Unread (${unread.length}):\n${unread.map((signal) => signalLine(signal, now)).join("\n")}`);
+  if (unread) out.push(`New (${unread}): listed in this turn's note, after this state.`);
   if (earlier.length) out.push(`Earlier, already seen (${earlier.length}):\n${earlier.map((signal) => signalLine(signal, now)).join("\n")}`);
   return out.join("\n");
 }
@@ -179,56 +181,9 @@ ${lastMessages(state.history, state.chatId)}
 
 // --- Gathering the state --------------------------------------------------------------------------------------
 
-const str = (value: unknown) => (value === null || value === undefined || value === "" ? null : String(value));
-const num = (value: unknown) => (value === null || value === undefined || value === "" || Number.isNaN(Number(value)) ? null : Number(value));
-
-/** A row of lane A's `lead_signals`, read loosely: the columns are LeadSignal's fields in snake_case (`at` or `created_at`). */
-function toSignal(row: Row): LeadSignal | null {
-  const id = str(row.id);
-  const at = num(row.at ?? row.created_at);
-  if (!id || at === null) return null;
-  return {
-    id,
-    projectId: String(row.project_id ?? ""),
-    kind: String(row.kind ?? "signal") as LeadSignal["kind"],
-    title: str(row.title) ?? "(no title)",
-    detail: str(row.detail),
-    url: str(row.url),
-    repoName: str(row.repo_name),
-    taskId: str(row.task_id),
-    prNumber: num(row.pr_number),
-    at,
-    readAt: num(row.read_at),
-  };
-}
-
-/** Rows from the first query that works (lane A's table may not be there, or may name its columns differently); none otherwise. */
-function rowsFrom(queries: [string, unknown[]][]): Row[] {
-  for (const [sql, args] of queries) {
-    try {
-      return db.prepare(sql).all(...(args as never[])) as Row[];
-    } catch {
-      // No such table or column: try the next one.
-    }
-  }
-  return [];
-}
-
-/**
- * A project's unread signals and its latest ones, newest first, from lane A's `lead_signals` (module 12). Read
- * defensively: none when the table isn't there yet, and a plain scan when it has no `at` / `read_at` columns.
- */
+/** A project's latest signals, newest first (module 12, lane A's store): the unread ones are only counted in the preamble. */
 export function recentSignals(projectId: string): LeadSignal[] {
-  const rows = rowsFrom([
-    [
-      `SELECT * FROM (SELECT * FROM lead_signals WHERE project_id = ? AND read_at IS NULL ORDER BY at DESC LIMIT ?)
-       UNION SELECT * FROM (SELECT * FROM lead_signals WHERE project_id = ? ORDER BY at DESC LIMIT ?)`,
-      [projectId, SIGNALS_UNREAD, projectId, SIGNALS_UNREAD + SIGNALS_EARLIER],
-    ],
-    [`SELECT * FROM lead_signals WHERE project_id = ?`, [projectId]],
-  ]);
-  const signals = rows.map(toSignal).filter((signal): signal is LeadSignal => signal !== null);
-  return [...new Map(signals.map((signal) => [signal.id, signal])).values()].sort((a, b) => b.at - a.at);
+  return leadSignals.list(projectId, SIGNALS_UNREAD + SIGNALS_EARLIER);
 }
 
 /** The cards in this Lead's chat still waiting for the user (lead_asks), oldest first, as their first line says them. */
