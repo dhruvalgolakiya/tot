@@ -13,7 +13,7 @@ const INSTALL = "/docs/install";
  */
 export function HomePage() {
   return (
-    <div className="min-h-dvh bg-canvas text-fg">
+    <div className="mascot-still min-h-dvh bg-canvas text-fg">
       <TopBar />
       <main>
         <Hero />
@@ -24,9 +24,10 @@ export function HomePage() {
             Meet the crew
           </h2>
           <p className="mt-2 max-w-xl text-sm text-pretty text-fg-muted sm:text-base">
-            Every agent has a face, a computer of its own, the brains you attach to it and a model to think with. Make as many as you like.
+            Each agent works from its own island: a computer of its own, the brains you attach to it and a model to think with. Make as many as
+            you like.
           </p>
-          <div className="mt-8">
+          <div className="mt-6">
             <Crew />
           </div>
         </section>

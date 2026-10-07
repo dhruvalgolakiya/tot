@@ -176,3 +176,9 @@
     }
   }
 }
+
+/* On the landing page the mascots hold still: they blink and look around, but don't bob or bounce. Unlayered and
+   one class more specific than the mascot's own animation rules (src/components/mascot/styles.ts), so it wins. */
+.mascot-still .mascot .mascot-body-anim {
+  animation: none;
+}
