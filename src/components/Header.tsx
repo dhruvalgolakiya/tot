@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { PanelLeft, SquarePen } from "lucide-react";
 import {
   navigateToAgentHome,
@@ -28,6 +29,7 @@ import { TaskHeaderActions, TaskHeaderInfo } from "./tasks/TaskHeader";
  * border, no blur card. `bg-canvas` matches the content below it exactly, so
  * the header stays legible once that content scrolls underneath without
  * needing the old scroll-triggered blur (see `chatScrolled`/MessageList).
+ * On an agent's home it's transparent instead, over the hero's scene.
  */
 export function Header() {
   const sidebarOpen = useStore((s) => s.sidebarOpen);
@@ -41,9 +43,12 @@ export function Header() {
   // A project's page (module 11): its Lead (or a new chat in it) under the project's name and menu.
   const projectId = useStore((s) => (s.page === "project" ? s.projectId : null));
   const project = useProjects((s) => (projectId ? s.projects.find((p) => p.id === projectId) : undefined));
+  const home = useStore((s) => s.page === "home" && !s.currentId);
 
   return (
-    <header className="app-drag-region absolute inset-x-0 top-0 z-10 flex h-14 shrink-0 items-center gap-1 bg-canvas px-3">
+    <header
+      className={clsx("app-drag-region absolute inset-x-0 top-0 z-10 flex h-14 shrink-0 items-center gap-1 px-3", home ? "bg-transparent" : "bg-canvas")}
+    >
       {!sidebarOpen && (
         <>
           <Tip content="Open sidebar" side="bottom">

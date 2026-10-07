@@ -4,9 +4,8 @@ import { useAttachments } from "../hooks/useAttachments";
 import { selectActiveAgent, useStore } from "../store";
 import { AgentHome } from "./AgentHome";
 import { Composer } from "./Composer";
+import { HomeGrid } from "./home/HomeGrid";
 import { MessageList } from "./MessageList";
-import { HomeProjects } from "./projects/HomeProjects";
-import { Suggestions } from "./Suggestions";
 
 const CAPTION = "TOT runs on your own ChatGPT & Claude subscriptions.";
 
@@ -14,7 +13,7 @@ const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files"
 
 /**
  * Messages + composer. On an agent's home screen the composer sits centered
- * between the mascot and the suggestions; it keeps the same tree position
+ * between the hero and Home's cards; it keeps the same tree position
  * either way so it isn't remounted (and doesn't lose focus) when the first
  * message goes out — sendMessage sets currentId in place, without a route
  * change that would remount this view. Attachment state lives here (rather
@@ -70,8 +69,8 @@ export function ChatView() {
         <p className="shrink-0 px-4 pb-2.5 text-center text-xs text-fg-subtle">{CAPTION}</p>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-4">
-          {/* Home (module 11): every project and its Lead; the starter prompts until there are projects. */}
-          <HomeProjects fallback={<Suggestions />} />
+          {/* What's working, what's waiting on you, every project and its Lead; the starter prompts until there's anything. */}
+          <HomeGrid />
           <p className="mt-auto px-4 pt-6 pb-3 text-center text-xs text-fg-subtle">{CAPTION}</p>
         </div>
       )}

@@ -2,7 +2,7 @@ import type { MouseEvent } from "react";
 import clsx from "clsx";
 import { ArrowUpRight, CircleCheck, CircleDashed, CircleX, GitBranch, LoaderCircle, TriangleAlert } from "lucide-react";
 import type { Agent, MissionOverlap, TaskChecks } from "@shared/types";
-import { CHECKS_LABELS, landingLine } from "../../lib/mission";
+import { CHECKS_LABELS, taskStatusLine } from "../../lib/mission";
 import { useProjects } from "../../lib/projects";
 import { comparePath, conversationPath } from "../../lib/router";
 import { taskElapsed, type TaskConversation } from "../../lib/tasks";
@@ -20,27 +20,6 @@ const CHECK_ICONS: Record<TaskChecks["state"], typeof CircleCheck> = {
   failing: CircleX,
   none: CircleDashed,
 };
-
-/** What it's doing, or what it needs, in one line. */
-function statusLine(task: TaskConversation): string {
-  const info = task.task;
-  if (info.landing) return landingLine(info.landing);
-  const firstLine = (text: string | null | undefined) => text?.split("\n").find((line) => line.trim())?.trim() ?? null;
-  switch (info.status) {
-    case "needs-input":
-      return info.question ?? "Waiting for your OK";
-    case "queued":
-      return info.queuePosition ? `Waiting in line · #${info.queuePosition}` : "Waiting in line";
-    case "interrupted":
-      return "Cut off by a restart · resume it to carry on";
-    case "paused":
-      return info.progress ?? "Paused";
-    case "running":
-      return info.progress ?? info.goal;
-    default:
-      return firstLine(info.result?.summary) ?? firstLine(info.summary) ?? info.goal;
-  }
-}
 
 /** "Also changes 2 files in “Fix cart”" (and "and 1 more task" when there are several). */
 function overlapLine(overlaps: MissionOverlap[], titleOf: (id: string) => string | null): string {
@@ -108,7 +87,7 @@ export function MissionCard({
 
       <p className="flex min-w-0 items-center gap-3 text-xs">
         <span className={clsx("min-w-0 flex-1 truncate", waiting ? "text-warning" : status === "failed" ? "text-fg-muted" : "text-fg-subtle")}>
-          {pendingApproval && status !== "needs-input" ? "Waiting for your OK" : statusLine(task)}
+          {pendingApproval && status !== "needs-input" ? "Waiting for your OK" : taskStatusLine(task)}
         </span>
         {elapsed && <span className="shrink-0 text-fg-subtle tabular-nums">{elapsed}</span>}
       </p>
