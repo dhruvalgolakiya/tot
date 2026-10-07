@@ -23,12 +23,26 @@ function docsFallback(): Plugin {
   };
 }
 
+/**
+ * Link previews need the share image's full address. On Vercel the build knows the site's production domain
+ * (VERCEL_PROJECT_PRODUCTION_URL); TOT_SITE_URL overrides it. Without either the address stays relative, which
+ * most previewers still resolve.
+ */
+function siteOrigin(): Plugin {
+  const host = process.env.TOT_SITE_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  const origin = host ? (/^https?:\/\//.test(host) ? host : `https://${host}`).replace(/\/$/, "") : "";
+  return {
+    name: "tot-site-origin",
+    transformIndexHtml: { order: "pre", handler: (html) => html.replaceAll("%TOT_SITE_ORIGIN%", origin) },
+  };
+}
+
 // The public landing page and its docs: a static site with no API and no sign-in, built from TOT's own design
 // tokens and mascots. `npm run site` to work on it, `npm run site:build` for site/dist.
 export default defineConfig({
   root: here("."),
   publicDir: here("../public"),
-  plugins: [docsFallback(), react(), tailwindcss()],
+  plugins: [siteOrigin(), docsFallback(), react(), tailwindcss()],
   resolve: {
     alias: { "@shared": here("../shared") },
   },

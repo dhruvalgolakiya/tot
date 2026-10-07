@@ -61,6 +61,28 @@ export function landingLine(landing: TaskLanding): string {
   return "Discarded";
 }
 
+/** What a task is doing, or what it needs, in one line (mission control's cards and Home). */
+export function taskStatusLine(task: TaskConversation): string {
+  const info = task.task;
+  // A draft PR's task can be back at work on review fixes: then it says what it's doing, not where it landed.
+  if (info.landing && missionSection(task) === "landed") return landingLine(info.landing);
+  const firstLine = (text: string | null | undefined) => text?.split("\n").find((line) => line.trim())?.trim() ?? null;
+  switch (info.status) {
+    case "needs-input":
+      return info.question ?? "Waiting for your OK";
+    case "queued":
+      return info.queuePosition ? `Waiting in line · #${info.queuePosition}` : "Waiting in line";
+    case "interrupted":
+      return "Cut off by a restart · resume it to carry on";
+    case "paused":
+      return info.progress ?? "Paused";
+    case "running":
+      return info.progress ?? info.goal;
+    default:
+      return firstLine(info.result?.summary) ?? firstLine(info.summary) ?? info.goal;
+  }
+}
+
 export const CHECKS_LABELS: Record<TaskChecks["state"], string> = {
   running: "Checks running",
   passing: "Checks passing",

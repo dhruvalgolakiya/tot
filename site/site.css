@@ -132,6 +132,15 @@
       0 0 8px color-mix(in oklab, var(--color-canvas) 70%, transparent);
   }
 
+  /* A soft pool of canvas behind the hero's text, so it stays readable where it crosses bright clouds. */
+  .hero-scrim::before {
+    content: "";
+    position: absolute;
+    inset: -22% -18%;
+    z-index: -1;
+    background: radial-gradient(closest-side, color-mix(in oklab, var(--color-canvas) 72%, transparent), transparent);
+  }
+
   .sticky-note {
     background: linear-gradient(170deg, #fef3a0, #fde047);
     box-shadow:
@@ -166,4 +175,10 @@
       transform: translateY(100%);
     }
   }
+}
+
+/* On the landing page the mascots hold still: they blink and look around, but don't bob or bounce. Unlayered and
+   one class more specific than the mascot's own animation rules (src/components/mascot/styles.ts), so it wins. */
+.mascot-still .mascot .mascot-body-anim {
+  animation: none;
 }

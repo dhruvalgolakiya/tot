@@ -400,6 +400,46 @@
   }
 }
 
+/* Home's hero art (the app's and the public site's): the scene fades out at the bottom, into whatever canvas
+   sits behind it, so the title and composer stand on a calm, plain band. */
+@layer components {
+  .hero-art {
+    mask-image: linear-gradient(to bottom, #000 0%, #000 52%, transparent 100%);
+  }
+  .hero-art img {
+    /* The scenes keep their subject in the left third: crop from the right first on narrow screens. */
+    object-position: 15% 50%;
+  }
+  /* Text standing on the scene: a soft halo in the canvas color keeps it readable over bright clouds. */
+  .hero-copy {
+    text-shadow:
+      0 1px 2px color-mix(in oklab, var(--color-canvas) 70%, transparent),
+      0 0 24px color-mix(in oklab, var(--color-canvas) 85%, transparent);
+  }
+
+  /* Stands in until a scene's image exists (or if it fails to load): a dithered dawn, or a night sky. */
+  .hero-fallback {
+    background:
+      radial-gradient(rgb(255 255 255 / 0.22) 1px, transparent 1.2px) 0 0 / 3px 3px,
+      radial-gradient(90% 70% at 70% 100%, rgb(253 186 116 / 0.55), transparent 70%),
+      radial-gradient(70% 60% at 15% 85%, rgb(244 114 182 / 0.25), transparent 70%),
+      linear-gradient(to bottom, #b8b5e6 0%, #d9cdf0 45%, #f6d9cf 80%, #f9e7da 100%);
+  }
+  .dark .hero-fallback {
+    background:
+      radial-gradient(1.5px 1.5px at 12% 18%, rgb(255 255 255 / 0.85), transparent),
+      radial-gradient(1px 1px at 34% 9%, rgb(255 255 255 / 0.7), transparent),
+      radial-gradient(1.5px 1.5px at 58% 26%, rgb(255 255 255 / 0.8), transparent),
+      radial-gradient(1px 1px at 77% 12%, rgb(255 255 255 / 0.65), transparent),
+      radial-gradient(1px 1px at 91% 31%, rgb(255 255 255 / 0.6), transparent),
+      radial-gradient(1px 1px at 46% 40%, rgb(255 255 255 / 0.5), transparent),
+      radial-gradient(rgb(255 255 255 / 0.06) 1px, transparent 1.2px) 0 0 / 3px 3px,
+      radial-gradient(80% 60% at 70% 100%, rgb(99 102 241 / 0.35), transparent 70%),
+      radial-gradient(60% 50% at 20% 90%, rgb(8 145 178 / 0.25), transparent 70%),
+      linear-gradient(to bottom, #060914 0%, #0d1430 45%, #1d2650 78%, #283363 100%);
+  }
+}
+
 /* iOS Safari zooms the page into any focused field under 16px, so touch devices get
    16px fields. Unlayered so it wins over the text-size utilities. */
 @media (pointer: coarse) {
