@@ -13,6 +13,7 @@ import type {
   StartTaskRequest,
   TaskBrief,
   TaskChanges,
+  TaskPlan,
   TaskGroupKind,
   TaskInfo,
   TaskPatch,
@@ -25,6 +26,7 @@ import { HttpError } from "../agent/orchestrator.ts";
 import { parseModelId } from "../agent/router.ts";
 import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
+import { computerManager } from "../computer/manager.ts";
 import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { checkout, grantFor, prepareTaskNow } from "../projects/checkout.ts";
@@ -44,7 +46,8 @@ import { runLoop } from "./run-loop.ts";
 import { steer } from "./steer.ts";
 import { FINISHED, isTask, newTaskInfo, taskStore, type TaskRecord } from "./store.ts";
 import { chatWakes } from "./wake.ts";
-import { inFolder, planRepo, worktrees } from "./worktree.ts";
+import { planPath } from "./prompt.ts";
+import { homeRelative, inFolder, planRepo, worktrees } from "./worktree.ts";
 
 /**
  * Task lifecycle: creating tasks (from a chat, by the agent or the user; top-level; by turning
@@ -367,13 +370,10 @@ export const tasks = {
     return updated;
   },
 
-  /** The agent's own report (task_update): what it's doing, its checklist, or a question for the user. */
-  update(taskId: string, update: { progress?: string; plan?: TaskInfo["plan"]; question?: string }): TaskRecord {
+  /** The agent's own report (task_update): what it's doing, or a question for the user. (Its plan is a file: plan().) */
+  update(taskId: string, update: { progress?: string; question?: string }): TaskRecord {
     const task = taskStore.require(taskId);
-    const patch: Partial<TaskInfo> = {};
-    if (update.progress !== undefined) patch.progress = update.progress.trim().slice(0, 300) || null;
-    if (update.plan) patch.plan = update.plan.slice(0, 30).map((step) => ({ text: step.text.trim().slice(0, 200), done: Boolean(step.done) }));
-    taskStore.patch(taskId, patch);
+    if (update.progress !== undefined) taskStore.patch(taskId, { progress: update.progress.trim().slice(0, 300) || null });
     const question = update.question?.trim();
     if (question && (task.task.status === "running" || task.task.status === "needs-input")) {
       taskStore.transition(taskId, "needs-input", { question: question.slice(0, 1000) });
@@ -455,6 +455,27 @@ export const tasks = {
     removing.delete(taskId);
     appEvents.publish({ type: "conversation-deleted", conversationId: taskId });
     appEvents.agentChanged(task.agentId);
+  },
+
+  /**
+   * GET /api/tasks/:id/plan: the task's own plan file on its agent's computer. Read only from a computer that's on
+   * (or local, which costs nothing to reach); a cloud computer that's off isn't started just to show a plan.
+   */
+  async plan(taskId: string): Promise<TaskPlan> {
+    const task = taskStore.require(taskId);
+    const path = planPath(taskId);
+    const computer = computerManager.get(task.agentId);
+    if (!computer || (computer.kind !== "local" && computer.state !== "running")) {
+      return { path, content: null, reason: "The agent's computer is off. The plan shows here while it's on." };
+    }
+    try {
+      const active = await computerManager.ensure(task.agentId);
+      const content = await active.backend.readFile(active.externalId, homeRelative(path));
+      return { path, content: content.trim() ? content : null, reason: null };
+    } catch {
+      // No file yet (the agent hasn't written one), or it can't be read right now.
+      return { path, content: null, reason: null };
+    }
   },
 
   async changes(taskId: string): Promise<TaskChanges> {

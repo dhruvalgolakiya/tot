@@ -1191,39 +1191,6 @@ export async function sendMessage(
   }
 }
 
-/**
- * The composer's Task mode (⌘↩, /task; module 09): from a chat, a task under it (the request and its card
- * show there); from a project's page, a task in that project (it shows in the page's list); from an agent's
- * home, a task that opens. The request id makes a double click start it once.
- */
-export async function startTask(goal: string, requestId = newRequestId(), repo?: string): Promise<boolean> {
-  const body = goal.trim();
-  if (!body || get().sending) return false;
-  set({ sending: true });
-  askForNotifications();
-  try {
-    const s = get();
-    const chat = selectCurrentConversation(s);
-    // Module 11: `repo` names one of the project's repos (the primary when it's left out).
-    if (chat) {
-      const task = await api.startTaskFromChat(chat.id, { goal: body, requestId, repo });
-      set((s2) => ({ conversations: upsertConversation(s2.conversations, task) }));
-      void loadConversation(chat.id);
-      return true;
-    }
-    const projectId = s.page === "project" ? s.projectId : null;
-    const task = await api.startTask({ agentId: selectActiveAgentId(s) ?? undefined, projectId, goal: body, requestId, repo });
-    set((s2) => ({ conversations: upsertConversation(s2.conversations, task) }));
-    if (!projectId) navigateToConversation(task.id);
-    return true;
-  } catch (error) {
-    notifyError(error);
-    return false;
-  } finally {
-    set({ sending: false });
-  }
-}
-
 /** "/best-of": the same goal on each signed-in provider, from the open chat (cards there), a project's page (they show in its list) or home (the compare view opens). */
 export async function startBestOf(goal: string, requestId = newRequestId()): Promise<boolean> {
   const body = goal.trim();

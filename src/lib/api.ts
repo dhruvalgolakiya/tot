@@ -71,6 +71,7 @@ import type {
   SlackTokens,
   StartTaskRequest,
   TaskChanges,
+  TaskPlan,
   TaskLandOptions,
   TaskPatch,
   TaskStatus,
@@ -216,6 +217,8 @@ export const api = {
   taskToChat: (id: string) => request<Ok>("POST", `/tasks/${seg(id)}/to-chat`, {}),
   patchTask: (id: string, patch: TaskPatch) => request<Conversation>("PATCH", `/tasks/${seg(id)}`, patch),
   taskChanges: (id: string) => request<TaskChanges>("GET", `/tasks/${seg(id)}/changes`),
+  /** The task's own plan (its PLAN.md on the agent's computer); content null when there's none yet or the computer is off. */
+  taskPlan: (id: string) => request<TaskPlan>("GET", `/tasks/${seg(id)}/plan`),
   /** Writes a handoff, then carries on in a fresh session on the other provider. */
   continueTaskOn: (id: string, provider: ContinueOnRequest["provider"]) =>
     request<Conversation>("POST", `/tasks/${seg(id)}/continue-on`, { provider }),
@@ -242,7 +245,7 @@ export const api = {
     const qs = params.toString();
     return request<MissionOverview>("GET", `/mission${qs ? `?${qs}` : ""}`);
   },
-  /** A task started from a chat (the composer's Task mode): the request and its card are added to the chat. */
+  /** A task started from a chat (the agent's own call, not a composer toggle): the request and its card are added to the chat. */
   startTaskFromChat: (conversationId: string, body: StartTaskRequest) =>
     request<Conversation>("POST", `/conversations/${seg(conversationId)}/tasks`, body),
   /** A top-level task, from a project's page (`projectId`) or an agent's home. */

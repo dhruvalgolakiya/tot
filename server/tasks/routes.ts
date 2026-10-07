@@ -84,6 +84,9 @@ taskRoutes.patch("/tasks/:id", async (c) => {
   return c.json(toPublic(tasks.patch(c.req.param("id"), patch)));
 });
 
+/** The task's own plan: its PLAN.md on the agent's computer (TaskPlan). */
+taskRoutes.get("/tasks/:id/plan", async (c) => c.json(await tasks.plan(c.req.param("id"))));
+
 taskRoutes.get("/tasks/:id/changes", async (c) => {
   taskStore.require(c.req.param("id"));
   return c.json(await tasks.changes(c.req.param("id")));

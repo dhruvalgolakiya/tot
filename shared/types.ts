@@ -1647,6 +1647,17 @@ export interface SteerRequest {
 }
 
 /** A coding task's changes: its worktree (committed or not) against where its branch left the base. */
+/**
+ * GET /api/tasks/:id/plan: the task's own plan, a markdown file the agent keeps on its computer (outside the repo,
+ * so it's never committed). `content` is null when there's none yet, or when the computer is off (`reason` says).
+ */
+export interface TaskPlan {
+  /** Where it is on the agent's computer, e.g. "~/tot-tasks/<task id>/PLAN.md". */
+  path: string;
+  content: string | null;
+  reason: string | null;
+}
+
 export interface TaskChanges {
   baseBranch: string;
   branch: string;

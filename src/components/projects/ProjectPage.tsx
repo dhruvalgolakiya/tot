@@ -177,7 +177,6 @@ function LeadArea({ project, state, retry, newChat, phone }: { project: Project;
               key={newChat ? "new-chat" : open?.id}
               attachments={attachments}
               placeholder={newChat ? `New chat in ${project.name}…` : `Ask the Lead of ${project.name}…`}
-              taskPlaceholder={`New task in ${project.name}…`}
             />
           )}
         </div>

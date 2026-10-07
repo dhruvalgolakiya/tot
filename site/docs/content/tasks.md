@@ -1,11 +1,11 @@
-A task is work that keeps going in the background. It's a chat that works on its own: it has a goal, a status, a plan it ticks off, and, when it touches code, a branch of its own.
+A task is work that keeps going in the background. It's a chat that works on its own: it has a goal, a status, a plan it keeps as it goes, and, when it touches code, a branch of its own.
 
 **Why you'd use it:** you keep chatting while the long work runs. A task keeps going when you close the tab, and picks up again after TOT restarts.
 
 ## How a task starts
 
 - **Ask for real work in a chat.** "Fix the flaky checkout test" or "research these five vendors and compare them". The agent decides when to start a task, and can start several at once. Each one shows up in your chat as a live card.
-- **Start one yourself.** Turn on **Task** in the message box, press `⌘↩`, or type `/task`. See [Mission control](/docs/mission-control) for `/parallel` and `/best-of`.
+- **/best-of**: type `/best-of` and a goal in the message box to run it twice, once per provider, then compare. See [Mission control](/docs/mission-control#best-of-two).
 - **From a project's Lead.** A project's Lead chat plans and starts the project's tasks itself, across any of its repos, and watches every task in the project, not only the ones it started. See [Projects](/docs/projects#the-lead).
 - **From Slack or email.** A request becomes a chat, and its agent starts tasks the same way.
 
@@ -21,7 +21,7 @@ A task is always in one of these states: **Queued**, **Running**, **Needs input*
 
 Open a task to see its conversation, like any chat. The header has **Pause** (or **Resume**) and **Stop**, and a button for the task's panel, with three tabs:
 
-- **Plan**: the agent's checklist and progress.
+- **Plan**: the agent's own `PLAN.md`, kept on its computer and read here, plus its latest progress.
 - **Changes**: every file it changed, for coding tasks. This is also where you land the code.
 - **Activity**: what it did on its computer.
 

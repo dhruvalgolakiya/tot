@@ -129,13 +129,14 @@ function nextTurn(task: TaskRecord): { body: SendMessageRequest; options: TurnOp
   handOffs.delete(task.id);
   const packet = handOff ? task.task.handoff : null;
   const fresh = Boolean(packet) || (lastReply?.usage?.inputTokens ?? 0) > FRESH_SESSION_TOKENS;
-  const continuation = continuationPreamble(task.task, {
+  const continuation = continuationPreamble(task.task, task.id, {
     turn: task.task.turns + 1,
     notes: pending,
     restarted: wasRestarted,
     fresh: fresh && !packet,
     lastReply: lastReply ? messageText(lastReply) : "",
     firstTurnOfConvertedChat: task.task.turns === 0,
+    handedOff: Boolean(packet),
   });
   return {
     body: { text: pending.length ? "Continue the task, with my note in mind." : "Continue the task." },

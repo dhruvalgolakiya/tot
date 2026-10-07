@@ -8,7 +8,7 @@ import { ROLE_NAMES, toResult } from "../orchestration/roles.ts";
 import { spawnMany, type SpawnSpec } from "../orchestration/spawn.ts";
 import { runRegistry } from "../agent/runs.ts";
 import { registerPreviewTools } from "../worktrees/tools.ts";
-import { markResultsRead, MAX_DEPTH, resultBlock } from "./prompt.ts";
+import { markResultsRead, MAX_DEPTH, planPath, resultBlock } from "./prompt.ts";
 import { taskRequests } from "./requests.ts";
 import { FINISHED, isTask, taskStore, type TaskRecord } from "./store.ts";
 import { tasks } from "./tasks.ts";
@@ -212,7 +212,7 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
     "task_status",
     {
       title: "Check a task",
-      description: `The status, plan, progress and result of one task ${scope}.`,
+      description: `The status, progress, result and plan file of one task ${scope}.`,
       inputSchema: { id: z.string().min(1).describe("The task id from task_start or task_list") },
     },
     ({ id }) =>
@@ -221,12 +221,12 @@ export function registerTaskTools(server: McpServer, conversation: ConversationR
         if (!task) return reply(`No task with id ${id} ${scope === "in this project" ? "in this project" : "was started from here"}.`, true);
         // Its result has been seen now: no wake-up or next-turn note repeats it.
         markResultsRead(conversation.id, [id]);
-        const plan = task.task.plan.map((step) => `  - [${step.done ? "x" : " "}] ${step.text}`).join("\n");
         const result = task.task.result;
         const extra = result
           ? `\n  findings: ${result.findings.join("; ") || "—"}\n  sources: ${result.sources.join(", ") || "—"}\n  confidence: ${result.confidence}`
           : "";
-        return reply(`${describe(task)}${plan ? `\n  checklist:\n${plan}` : ""}${extra}`);
+        // Its plan is a file on the agent's computer (the same one this agent works on).
+        return reply(`${describe(task)}\n  plan file: ${planPath(task.id)}${extra}`);
       }),
   );
 
@@ -257,27 +257,16 @@ function registerInsideTask(server: McpServer, taskId: string): void {
     {
       title: "Update the task",
       description:
-        "Report on your task: `plan` replaces your checklist (3–8 concrete steps; tick them with done: true as you go), `progress` is one line on what you're doing now. Only when you can't continue without the user, pass `question` — the task then waits for their answer, so end your turn after asking.",
+        "Report on your task: `progress` is one line on what you're doing now. Only when you can't continue without the user, pass `question` — the task then waits for their answer, so end your turn after asking. (Your plan lives in your plan file, not here.)",
       inputSchema: {
         progress: z.string().max(300).optional().describe("One line: what you're doing now"),
-        plan: z
-          .array(z.object({ text: z.string().min(1).max(200), done: z.boolean() }))
-          .max(30)
-          .optional()
-          .describe("Your whole checklist, in order"),
         question: z.string().max(1000).optional().describe("Something only the user can answer, that blocks you"),
       },
     },
-    ({ progress, plan, question }) =>
+    ({ progress, question }) =>
       guarded(async () => {
-        const task = tasks.update(taskId, { progress, plan, question });
-        const { plan: steps } = task.task;
-        const done = steps.filter((step) => step.done).length;
-        return reply(
-          question
-            ? "Asked the user. End your turn now; the task continues when they answer."
-            : `Updated.${steps.length ? ` Plan: ${done}/${steps.length} steps done.` : ""}`,
-        );
+        tasks.update(taskId, { progress, question });
+        return reply(question ? "Asked the user. End your turn now; the task continues when they answer." : "Updated.");
       }),
   );
 

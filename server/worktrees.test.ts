@@ -275,7 +275,7 @@ if (!localSandboxed) {
       JSON.stringify(shopTask.task.setup),
     );
     check("…and the card shows what it was doing only while it ran", shopTask.task.progress === null, String(shopTask.task.progress));
-    check("…and its prompt says it ran", taskSection(shopTask.task).includes("TOT ran `npm ci` in your worktree"), taskSection(shopTask.task));
+    check("…and its prompt says it ran", taskSection(shopTask.task, shopTask.id).includes("TOT ran `npm ci` in your worktree"), taskSection(shopTask.task, shopTask.id));
     // Set up again (the run loop calls prepareTask at every start): the worktree is there, setup isn't run again.
     const setupAt = shopTask.task.setup!.at;
     await sleep(5);
@@ -362,7 +362,7 @@ if (!localSandboxed) {
       "…which the agent is told, by name",
       secretsTask.task.setup?.state === "skipped" &&
         secretsTask.task.setup.error === "Not copied from the project's folder (missing, not a file, or outside it): key.pem, certs, missing.env." &&
-        taskSection(secretsTask.task).includes("key.pem, certs, missing.env"),
+        taskSection(secretsTask.task, secretsTask.id).includes("key.pem, certs, missing.env"),
       JSON.stringify(secretsTask.task.setup),
     );
     check(

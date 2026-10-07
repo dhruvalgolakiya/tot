@@ -6,6 +6,12 @@ import { worktreeNotes } from "../worktrees/prompt.ts";
 /** Tasks can start tasks this many levels below the user's chat. */
 export const MAX_DEPTH = 2;
 
+/**
+ * Where a task keeps its own plan: a markdown file in the agent's home folder on its computer, outside every repo,
+ * so it's never committed. The agent writes and ticks it; TOT shows it on the task's Plan tab (GET /tasks/:id/plan).
+ */
+export const planPath = (taskId: string) => `~/tot-tasks/${taskId}/PLAN.md`;
+
 /** What the agent is told about tasks: in a chat (it can start them) and inside one (how to work). */
 
 export const TASK_SECTION_TITLE = "# Your task";
@@ -18,7 +24,8 @@ For real work that takes more than a few minutes — a change to a codebase, res
 - For code, pass \`repo\` (GitHub "owner/name", a git URL, or a folder on your computer such as ~/repos/web).
 - After starting tasks, tell the user in a sentence what you started; don't wait for them: when they finish, you get their results here and a turn to tell the user. For a quick one whose result you need for this answer, pass \`wait: true\` and get it in the same call. task_list and task_status show how they're doing; task_message adds an instruction to a running one.
 - When the user follows up about a task that's still running ("also check mobile", "use the staging database"), pass it on with task_message rather than starting the work again here.
-- For work big enough to need a plan, write the plan as a markdown file on your computer, next to the work (e.g. PLAN.md in the project's folder; don't commit it unless asked), and keep it current as you go. Give a task the plan file's path in its \`context\`.
+- You decide when work needs a task; the user doesn't switch modes for it. In a project, any change to code goes in a task (the project's folders are read-only in a chat).
+- For work big enough to need a plan before you split it up, write the plan as a markdown file in your home folder (e.g. ~/plans/<topic>.md), keep it current, and give each task the plan file's path in its \`context\`. Each task also keeps its own plan.
 ${FAN_OUT}`;
 }
 
@@ -26,8 +33,9 @@ ${FAN_OUT}`;
 const FAN_OUT = `When to fan out with task_spawn_many: independent sub-questions (one researcher per vendor), a search across many files or sources, or work bigger than one sitting. Give each session a role — explorer (where/how, fast), planner, implementer (makes the change), tester, reviewer (runs on the other provider), researcher, writer — and pass then: "synthesize" to get one turn here with all their results to combine. Don't fan out for small or sequential work, or while the user is mid-conversation with you; at most 6 tasks per chat.`;
 
 /** Inside a task: its goal, role, where to work, and how to report. */
-export function taskSection(task: Pick<TaskInfo, "goal" | "repo" | "role" | "depth" | "ports" | "setup">): string {
+export function taskSection(task: Pick<TaskInfo, "goal" | "repo" | "role" | "depth" | "ports" | "setup">, taskId: string): string {
   const { repo, role } = task;
+  const plan = planPath(taskId);
   const code = repo
     ? `
 Repository: ${repo.source}, on your computer at ${repo.folder}.
@@ -42,7 +50,8 @@ You're working on a task. It runs in the background: work through it on your own
 Goal: ${task.goal}${role ? `\nYour role: ${ROLES[role].label.toLowerCase()}. ${ROLES[role].instructions}` : ""}${code}
 
 How to work:
-- First write a short plan with task_update({ plan }): 3 to 8 concrete steps. Keep it current — tick steps as you finish them, and set \`progress\` to one line about what you're doing now.
+- Keep your own plan in ${plan} (create the folder): for anything beyond a couple of steps, write it first as a markdown checklist, tick steps (- [x]) as you finish them, and add what you learn that the rest of the work needs. It's outside the repo, so it's never committed, and it carries over if your session is restarted. The user reads it on the task's Plan tab.
+- Set \`progress\` with task_update to one line about what you're doing now, whenever that changes.
 - Work end to end without asking. Only if you truly can't continue without the user (a decision only they can make, access you don't have), call task_update with a \`question\`, say it in your reply, and end your turn.
 - When the goal is met, or turns out impossible, call task_finish with outcome "done" or "failed" and a summary for whoever asked: what you did, the result, and where to find it (files, branch, links, sources). That summary is your report, so make it complete. Also fill in \`findings\`, \`files_changed\`, \`open_questions\`, \`sources\` and \`confidence\` where they apply: whoever asked gets them as a structured result.
 - At natural checkpoints in long work, call handoff_write with where things stand, so another session could carry on from it.${
@@ -52,14 +61,16 @@ How to work:
   }`;
 }
 
-const checklist = (plan: TaskInfo["plan"]) => (plan.length ? plan.map((step) => `- [${step.done ? "x" : " "}] ${step.text}`).join("\n") : "(no plan yet — write one with task_update)");
+/** A checklist from before tasks kept their plan in a file (tasks still running across the upgrade). */
+const checklist = (plan: TaskInfo["plan"]) => plan.map((step) => `- [${step.done ? "x" : " "}] ${step.text}`).join("\n");
 
 const clipped = (text: string, max: number) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
 
 /** The instructions on a turn TOT sends to keep a task going. */
 export function continuationPreamble(
   task: TaskInfo,
-  opts: { turn: number; notes: string[]; restarted: boolean; fresh: boolean; lastReply: string; firstTurnOfConvertedChat?: boolean },
+  taskId: string,
+  opts: { turn: number; notes: string[]; restarted: boolean; fresh: boolean; lastReply: string; firstTurnOfConvertedChat?: boolean; handedOff?: boolean },
 ): string {
   const lines: string[] = [];
   if (opts.firstTurnOfConvertedChat) {
@@ -76,9 +87,10 @@ export function continuationPreamble(
     );
   }
   for (const note of opts.notes) lines.push(`The user added while you worked: “${note}” — take it into account from now on.`);
-  lines.push(`Plan so far:\n${checklist(task.plan)}`);
+  lines.push(`Your plan: ${planPath(taskId)}${opts.fresh || opts.restarted || opts.handedOff ? " (read it first)" : ""}.`);
+  if (task.plan.length) lines.push(`Your checklist from before:\n${checklist(task.plan)}`);
   if (task.progress) lines.push(`Latest progress: ${task.progress}`);
-  lines.push("Carry on with the next unchecked step. When the goal is met, call task_finish with your report; if you can't continue without the user, call task_update with a question.]");
+  lines.push("Carry on with the next unchecked step, and tick it in the plan when it's done. When the goal is met, call task_finish with your report; if you can't continue without the user, call task_update with a question.]");
   return lines.join("\n");
 }
 

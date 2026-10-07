@@ -73,7 +73,7 @@ export function ProjectBoard({ project }: { project: Project }) {
           variant="dashed"
           icon={<SquareKanban />}
           title="Nothing on the board"
-          description="Ask the Lead to plan the work, or turn on Task in the composer. Tasks show here while they work, and until they land."
+          description="Ask the Lead to plan the work. Tasks show here while they work, and until they land."
         />
       ) : (
         (["needs-you", "working", "ready"] as const).map(

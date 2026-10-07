@@ -1023,7 +1023,12 @@ check(
   res.status === 200 && Boolean(res.data.runId) && providerTurns.at(-1)!.input.conversationId === workChat.id && conversations.tasks().length === tasksBefore && !("dispatch" in res.data.userMessage),
   JSON.stringify(res.data).slice(0, 200),
 );
-check("…and the model is told when to start tasks and to plan in MD files", providerTurns.at(-1)!.input.systemPrompt.includes("task_start") && providerTurns.at(-1)!.input.systemPrompt.includes("PLAN.md"));
+check(
+  "…and the model is told it decides when to start tasks, and to plan in MD files",
+  providerTurns.at(-1)!.input.systemPrompt.includes("task_start") &&
+    providerTurns.at(-1)!.input.systemPrompt.includes("You decide when work needs a task") &&
+    providerTurns.at(-1)!.input.systemPrompt.includes("~/plans/<topic>.md"),
+);
 
 // No more than the budget of an attached chat goes into the prompt.
 input = await realTurn(weekly.id, { text: "Summarize that long one", contextChats: [long.id] });

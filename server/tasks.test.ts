@@ -235,12 +235,11 @@ const ana = agents.create({ name: "Ana", mascot });
 const chat = conversations.create({ agentId: ana.id, modelId: "auto", title: "Vendors" });
 const finishScript: Script = async (t) => {
   if (t.index === 0) {
-    tasks.update(t.taskId, { plan: [{ text: "Find sources", done: false }, { text: "Write it up", done: false }], progress: "Searching" });
+    tasks.update(t.taskId, { progress: "Searching" });
     await t.tool("web_search", 30);
     t.say("Found sources.");
     return;
   }
-  tasks.update(t.taskId, { plan: [{ text: "Find sources", done: true }, { text: "Write it up", done: true }] });
   await t.tool("web_fetch", 20);
   tasks.finish(t.taskId, "done", `Report for ${conversations.get(t.taskId)!.title}: all good.`);
   t.say("Done.");
@@ -265,8 +264,12 @@ parentTurn.end();
 const linearTurns = sentTo(linearId);
 check("first turn is the goal", linearTurns[0]?.text === "Research Linear for a 10-person team." && !linearTurns[0]!.auto, JSON.stringify(linearTurns[0]));
 check(
-  "continuation turn carries the plan",
-  linearTurns[1]?.auto === true && linearTurns[1]!.text === "Continue the task." && linearTurns[1]!.preamble.includes("[ ] Find sources") && linearTurns[1]!.preamble.includes("Latest progress: Searching"),
+  "continuation turn points at its plan file, and carries its progress",
+  linearTurns[1]?.auto === true &&
+    linearTurns[1]!.text === "Continue the task." &&
+    linearTurns[1]!.preamble.includes(`Your plan: ~/tot-tasks/${linearId}/PLAN.md.`) &&
+    linearTurns[1]!.preamble.includes("Latest progress: Searching") &&
+    !linearTurns[1]!.preamble.includes("checklist from before"),
   linearTurns[1]?.preamble,
 );
 check("turns counted", taskStore.get(linearId)!.task.turns === 2 && sent.length - before === 4, String(taskStore.get(linearId)!.task.turns));
@@ -396,7 +399,7 @@ check("limits validated", badLimit.status === 400);
 const pausable = tasks.create({ agentId: ana.id, goal: "Pausable" });
 scripts.set(pausable.id, async (t) => {
   if (t.index === 0) {
-    tasks.update(t.taskId, { plan: [{ text: "One", done: false }] });
+    tasks.update(t.taskId, { progress: "On step one" });
     await t.stopped;
     return;
   }
@@ -409,7 +412,13 @@ check("pause stops the turn", res.status === 200 && status(pausable.id) === "pau
 check("paused task can't be paused again", (await request("POST", `/tasks/${pausable.id}/pause`)).status === 409);
 res = await request("POST", `/tasks/${pausable.id}/resume`);
 await until(() => status(pausable.id) === "done");
-check("resume continues from the plan", status(pausable.id) === "done" && sentTo(pausable.id)[1]?.preamble.includes("[ ] One") === true);
+const planRes = await request("GET", `/tasks/${pausable.id}/plan`);
+check(
+  "GET /tasks/:id/plan: where its plan file is, and its text (none written here)",
+  planRes.status === 200 && planRes.data.path === `~/tot-tasks/${pausable.id}/PLAN.md` && planRes.data.content === null,
+  JSON.stringify(planRes.data),
+);
+check("resume continues from the plan", status(pausable.id) === "done" && sentTo(pausable.id)[1]?.preamble.includes(`Your plan: ~/tot-tasks/${pausable.id}/PLAN.md`) === true);
 check("finished tasks can't be paused", (await request("POST", `/tasks/${pausable.id}/pause`)).status === 409);
 
 const stoppable = tasks.create({ agentId: ana.id, goal: "Stoppable" });
@@ -488,7 +497,7 @@ settings.patch({ tasks: { perAgentLimit: 2 } });
 const survivor = tasks.create({ agentId: ana.id, goal: "Survive a restart" });
 scripts.set(survivor.id, async (t) => {
   if (t.index === 0) {
-    tasks.update(t.taskId, { plan: [{ text: "Step one", done: true }, { text: "Step two", done: false }] });
+    tasks.update(t.taskId, { progress: "On step two" });
     await t.stopped;
     return;
   }
@@ -506,7 +515,11 @@ tasks.start();
 await until(() => status(survivor.id) === "done");
 const resumedTurn = sentTo(survivor.id)[1];
 check("boot: interrupted, then resumed", events.some((e) => e.type === "task" && e.conversation.id === survivor.id && e.conversation.task?.status === "interrupted") && status(survivor.id) === "done");
-check("…told it restarted, plan carried", resumedTurn?.preamble.includes("TOT restarted") === true && resumedTurn.preamble.includes("[x] Step one"), resumedTurn?.preamble);
+check(
+  "…told it restarted, and to read its plan first",
+  resumedTurn?.preamble.includes("TOT restarted") === true && resumedTurn.preamble.includes(`Your plan: ~/tot-tasks/${survivor.id}/PLAN.md (read it first).`),
+  resumedTurn?.preamble,
+);
 
 settings.patch({ tasks: { resumeInterrupted: false } });
 const parked = tasks.create({ agentId: ana.id, goal: "Stay parked" });
@@ -602,8 +615,8 @@ check("back to a chat", res.status === 200 && conversations.get(convertMe.id)!.k
 check("unknown task 404", (await request("POST", "/tasks/nope/pause")).status === 404);
 check(
   "prompt sections",
-  continuationPreamble({ ...taskStore.get(fromChat.id)!.task, plan: [] }, { turn: 3, notes: ["n1"], restarted: false, fresh: true, lastReply: "I did X" }).includes("fresh session") &&
-    continuationPreamble(taskStore.get(fromChat.id)!.task, { turn: 3, notes: ["n1"], restarted: false, fresh: false, lastReply: "" }).includes("“n1”"),
+  continuationPreamble({ ...taskStore.get(fromChat.id)!.task, plan: [] }, fromChat.id, { turn: 3, notes: ["n1"], restarted: false, fresh: true, lastReply: "I did X" }).includes("fresh session") &&
+    continuationPreamble(taskStore.get(fromChat.id)!.task, fromChat.id, { turn: 3, notes: ["n1"], restarted: false, fresh: false, lastReply: "" }).includes("“n1”"),
 );
 
 // =============================================================================

@@ -4,16 +4,15 @@ Mission control is how you run many coding agents on one project at once, from o
 
 Each coding task works in its own **worktree**: a separate copy of one of the project's repos, with its own branch, so agents don't edit over each other or over your files. Its branch is named `tot/…`. On a project page, the **Board** tab shows the same board for that project alone, with the project's **Lead** able to propose landing for you; see [Projects](/docs/projects#the-lead).
 
-## Start tasks yourself
+## Starting work
 
-The agent starts tasks on its own when you ask for real work. You can also start them directly from the composer (the box you type in):
+Just describe the work in a chat. The agent decides on its own when it needs a task — or several, side by side — and starts them; from a project page, its Lead does the same across the project's repos. There's no toggle or extra step: the model is trusted to plan this itself.
 
-- **Task**: turn on the **Task** toggle, or press `⌘↩`, and your message starts a task in the background instead of a reply. The placeholder changes to "Describe a task for …". On a project page, the task starts in that project — in its primary repo, unless the project has more than one and you pick another with the repo picker next to **Task**.
-- **/task**: type `/task` and your goal. Same as the toggle.
-- **/parallel**: type `/parallel` and a bigger job. The agent splits it into independent tasks, one branch each, and sums up when they finish.
-- **/best-of**: type `/best-of` and a goal. The same job runs twice, once on Claude and once on ChatGPT (or twice on the one you have), so you can compare and keep the better one.
+One thing you still start by hand:
 
-Type `/` to see these in a small menu. Inside a running task, `⌘↩` sends a note to the task instead.
+- **/best-of**: type `/best-of` and a goal in the message box. The same job runs twice, once on Claude and once on ChatGPT (or twice on the one you have), so you can compare and keep the better one.
+
+Type `/` to see it in a small menu.
 
 ## The board
 

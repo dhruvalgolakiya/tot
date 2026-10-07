@@ -5,7 +5,7 @@ import type { TaskConversation } from "./tasks";
 
 /**
  * Mission control (roadmap module 09, lane B): how the board sorts tasks into sections and words
- * their stats, checks and landing, and the composer's slash commands (/task, /parallel, /best-of).
+ * their stats, checks and landing, and the composer's one slash command, /best-of.
  */
 
 export type MissionSection = "needs-you" | "working" | "ready" | "landed";
@@ -78,15 +78,13 @@ export function bestOfLabel(providers: ProviderId[]): string {
 // Slash commands
 // ---------------------------------------------------------------------------
 
-export type SlashCommandName = "task" | "parallel" | "best-of";
+export type SlashCommandName = "best-of";
 
 export const SLASH_COMMANDS: { name: SlashCommandName; description: string }[] = [
-  { name: "task", description: "A task that works in the background" },
-  { name: "parallel", description: "Split a job into tasks, side by side" },
   { name: "best-of", description: "On Claude and ChatGPT, then compare" },
 ];
 
-/** While the command itself is being typed ("/", "/par"): what's typed after the slash; null otherwise. */
+/** While the command itself is being typed ("/", "/be"): what's typed after the slash; null otherwise. */
 export function slashQuery(text: string): string | null {
   const match = /^\/([\w-]*)$/.exec(text);
   return match ? match[1]!.toLowerCase() : null;
@@ -94,13 +92,8 @@ export function slashQuery(text: string): string | null {
 
 /** "/best-of fix the cart total" → { command: "best-of", body: "fix the cart total" }; null for anything else. */
 export function parseSlash(text: string): { command: SlashCommandName; body: string } | null {
-  const match = /^\/(task|parallel|best-of)(?:\s+([\s\S]*))?$/.exec(text.trimStart());
+  const match = /^\/(best-of)(?:\s+([\s\S]*))?$/.exec(text.trimStart());
   return match ? { command: match[1] as SlashCommandName, body: (match[2] ?? "").trim() } : null;
-}
-
-/** /parallel: a normal message, with the instruction to split the job into tasks (one branch each) and combine their results. */
-export function parallelMessage(job: string): string {
-  return `${job}\n\nSplit this into independent tasks with task_spawn_many, one branch each, with then: "synthesize", and combine their results when they've all finished.`;
 }
 
 /** A request id for one click of Send, so a double click or a retried request starts the task only once. */

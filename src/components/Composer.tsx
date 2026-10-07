@@ -1,11 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Columns2, Lightbulb, ListTodo, LoaderCircle, MessageSquare, Plus, Split, Square } from "lucide-react";
+import { ArrowUp, Columns2, Lightbulb, LoaderCircle, MessageSquare, Plus, Square } from "lucide-react";
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
-import { bestOfLabel, bestOfProviders, newRequestId, parallelMessage, parseSlash, SLASH_COMMANDS, slashQuery, type SlashCommandName } from "../lib/mission";
-import { pickableRepos } from "../lib/project-repos";
-import { useProjects } from "../lib/projects";
+import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, slashQuery, type SlashCommandName } from "../lib/mission";
 import { isSteerable, isTask } from "../lib/tasks";
 import {
   clearComposerDraft,
@@ -14,15 +12,12 @@ import {
   selectCurrentConversation,
   sendMessage,
   startBestOf,
-  startTask,
   steerTask,
   stopRun,
   useStore,
 } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
-import { TaskRepoPicker } from "./projects/TaskRepoPicker";
-import { Kbd } from "./ui/Kbd";
 import { Tip } from "./ui/Tip";
 import { VoiceInputButton } from "./voice";
 
@@ -33,20 +28,19 @@ const touchOnly = () => window.matchMedia("(pointer: coarse)").matches;
 const pill =
   "flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-selected aria-pressed:text-fg";
 
-const SLASH_ICONS: Record<SlashCommandName, typeof ListTodo> = { task: ListTodo, parallel: Split, "best-of": Columns2 };
+const SLASH_ICONS: Record<SlashCommandName, typeof Columns2> = { "best-of": Columns2 };
 
 /**
- * `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page;
- * `taskPlaceholder` is its Task mode's (module 09: Task, ⌘↩, and the /task, /parallel, /best-of commands).
+ * `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page.
+ * The agent (or a project's Lead) decides on its own when work needs a task; this box is just chat, plus
+ * `/best-of` to run a couple of attempts and compare.
  */
 export function Composer({
   attachments,
   placeholder: newChatPlaceholder,
-  taskPlaceholder,
 }: {
   attachments: UseAttachments;
   placeholder?: string;
-  taskPlaceholder?: string;
 }) {
   const currentId = useStore((s) => s.currentId);
   const run = useStore((s) => (s.currentId ? s.activeRuns[s.currentId] : undefined));
@@ -63,19 +57,12 @@ export function Composer({
   // so it can't clobber anything the user has typed.
   const [interim, setInterim] = useState("");
   const [thinkHarder, setThinkHarder] = useState(false);
-  // Module 09: send as a task (a toggle, or ⌘↩ once), and the slash commands' menu.
-  const [taskMode, setTaskMode] = useState(false);
+  // The slash commands' menu (just /best-of now).
   const [slashHighlight, setSlashHighlight] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState<string | null>(null);
-  /** The last task start's text and request id: sending the same text again after a failure reuses the id, so it starts once. */
+  /** The last best-of start's text and request id: sending the same text again after a failure reuses the id, so it starts once. */
   const pendingRequest = useRef<{ text: string; id: string } | null>(null);
   const providers = useStore((s) => s.providers);
-  // Module 11: in a project with several repos, which one a task starts in (null: the primary).
-  const pageProjectId = useStore((s) => (s.page === "project" ? s.projectId : null));
-  const projectId = conversation ? conversation.projectId : pageProjectId;
-  const repos = pickableRepos(useProjects((s) => s.projects.find((p) => p.id === projectId)));
-  const [taskRepo, setTaskRepo] = useState<string | null>(null);
-  useEffect(() => setTaskRepo(null), [projectId]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // A message sent from a project's page that failed once its chat had opened: put its text back here.
@@ -94,15 +81,16 @@ export function Composer({
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [chatOver, setChatOver] = useState(false);
   useEffect(() => setContextChats([]), [currentId]);
-  // Slash commands and Task mode are for chats, project pages and home; a task's composer steers or replies.
+  // /best-of is for chats, project pages and home; a task's composer steers or replies.
   const command = task ? null : parseSlash(text);
   const query = task ? null : slashQuery(text);
   const slashMatches = query !== null && text !== slashDismissed ? SLASH_COMMANDS.filter((c) => c.name.startsWith(query)) : [];
   const slashing = slashMatches.length > 0;
   useEffect(() => setSlashHighlight(0), [query]);
   const bestOf = bestOfProviders(providers);
-  const sendsTask = !task && (command ? command.command !== "parallel" : taskMode);
-  const canAttachChats = !task && !sendsTask;
+  // This message, once sent, starts a best-of run instead of a reply.
+  const sendsBestOf = !task && command !== null;
+  const canAttachChats = !task && !sendsBestOf;
   const mention = canAttachChats && contextChats.length < MAX_ATTACHED_CHATS ? mentionAt(text, caret) : null;
   const matches =
     mention && mention.start !== dismissedAt
@@ -130,7 +118,7 @@ export function Composer({
     ? text.trim().length > 0 && attachments.items.length === 0
     : slashing
       ? false
-      : sendsTask
+      : sendsBestOf
         ? hasText && attachments.items.length === 0 && !run && !sending
         : (hasText || attachments.ready.length > 0) && !run && !sending && !attachments.uploading;
   const agentName = agent?.name ?? "TOT";
@@ -140,9 +128,7 @@ export function Composer({
       ? "Answer the task…"
       : task
         ? "Reply to pick this task up again…"
-        : taskMode
-          ? (taskPlaceholder ?? `Describe a task for ${agentName}…`)
-          : (newChatPlaceholder ?? `Ask ${agentName} anything`);
+        : (newChatPlaceholder ?? `Ask ${agentName} anything`);
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -155,7 +141,7 @@ export function Composer({
     if (!touchOnly()) inputRef.current?.focus();
   }, []);
 
-  async function submit(asTask = false) {
+  async function submit() {
     const value = text;
     if (steering && currentId) {
       if (!canSend) return;
@@ -166,24 +152,20 @@ export function Composer({
     }
     // Still picking a command in the slash menu.
     if (slashing) return;
-    // ⌘↩ sends this one as a task, whatever the toggle says.
-    const kind = task ? null : (command?.command ?? (asTask || taskMode ? "task" : null));
-    if (kind === "task" || kind === "best-of") {
-      const goal = command ? command.body : value.trim();
+    if (sendsBestOf && command) {
+      const goal = command.body;
       if (!goal || run || sending || attachments.items.length > 0) return;
       const requestId = pendingRequest.current?.text === value ? pendingRequest.current.id : newRequestId();
       pendingRequest.current = { text: value, id: requestId };
       setText("");
       setInterim("");
-      const repo = taskRepo && repos.some((each) => each.name === taskRepo) ? taskRepo : undefined;
-      const started = kind === "task" ? await startTask(goal, requestId, repo) : await startBestOf(goal, requestId);
+      const started = await startBestOf(goal, requestId);
       if (started) pendingRequest.current = null;
       else setText((current) => current || value);
       return;
     }
     if (!canSend) return;
-    // /parallel: a normal message, asking the agent to split the job into tasks.
-    const message = kind === "parallel" && command ? parallelMessage(command.body) : value;
+    const message = value;
     const harder = thinkHarder;
     const files = attachments.ready.map((it) => it.attachment);
     const previousItems = attachments.items;
@@ -253,12 +235,6 @@ export function Composer({
       }
     }
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return;
-    // ⌘↩ / Ctrl+Enter: send it as a task (a note, in a task that's working).
-    if (event.metaKey || event.ctrlKey) {
-      event.preventDefault();
-      void submit(!task);
-      return;
-    }
     if (touchOnly()) return;
     event.preventDefault();
     void submit();
@@ -266,8 +242,8 @@ export function Composer({
 
   function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(event.clipboardData.files);
-    // A task starts from text only.
-    if (files.length === 0 || sendsTask) return;
+    // A best-of run starts from text only.
+    if (files.length === 0 || sendsBestOf) return;
     event.preventDefault();
     attachments.addFiles(files);
   }
@@ -403,7 +379,7 @@ export function Composer({
         </p>
       )}
       <div className="flex items-center gap-1.5 px-3 pt-1 pb-3">
-        {!steering && !sendsTask && (
+        {!steering && !sendsBestOf && (
           <Tip content="Attach files">
             <button
               type="button"
@@ -416,32 +392,7 @@ export function Composer({
           </Tip>
         )}
         <VoiceInputButton onTranscript={onTranscript} />
-        {!task && (
-          <Tip
-            content={
-              <span className="flex items-center gap-2">
-                Run it as a task in the background <Kbd keys={["mod", "↩"]} />
-              </span>
-            }
-          >
-            <button
-              type="button"
-              aria-pressed={taskMode || command?.command === "task"}
-              onClick={() => {
-                setTaskMode((value) => !value);
-                inputRef.current?.focus();
-              }}
-              className={pill}
-            >
-              <ListTodo className="size-3.5" />
-              <span className="hidden sm:inline">Task</span>
-            </button>
-          </Tip>
-        )}
-        {sendsTask && command?.command !== "best-of" && repos.length > 0 && (
-          <TaskRepoPicker repos={repos} value={taskRepo} onChange={setTaskRepo} className={clsx(pill, "data-[state=open]:bg-selected data-[state=open]:text-fg")} />
-        )}
-        {!steering && !sendsTask && (
+        {!steering && !sendsBestOf && (
           <Tip content="Use the strongest model with extra effort, for your next message only">
             <button type="button" aria-pressed={thinkHarder} onClick={() => setThinkHarder((value) => !value)} className={pill}>
               <Lightbulb className="size-3.5" />
@@ -451,10 +402,10 @@ export function Composer({
         )}
 
         <div className="ml-auto flex min-w-0 items-center gap-2">
-          {/* What the command will do, e.g. "Best of 2 · Claude and ChatGPT". */}
-          {command && command.command !== "task" && (
+          {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}
+          {command && (
             <span className="hidden truncate text-xs text-fg-subtle sm:inline">
-              {command.command === "parallel" ? "Split into tasks" : `Best of ${bestOf.length || 2}${bestOf.length ? ` · ${bestOfLabel(bestOf)}` : ""}`}
+              {`Best of ${bestOf.length || 2}${bestOf.length ? ` · ${bestOfLabel(bestOf)}` : ""}`}
             </span>
           )}
           {run && currentId && !steering ? (
@@ -473,7 +424,7 @@ export function Composer({
             <button
               type="submit"
               disabled={!canSend}
-              aria-label={steering ? "Send note" : command?.command === "best-of" ? "Start best of" : sendsTask ? "Start task" : "Send"}
+              aria-label={steering ? "Send note" : sendsBestOf ? "Start best of" : "Send"}
               className={clsx(
                 "grid size-9 shrink-0 place-items-center rounded-full transition-colors",
                 canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-faint",

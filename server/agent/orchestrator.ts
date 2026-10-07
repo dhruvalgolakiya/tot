@@ -474,7 +474,7 @@ async function prepareTurn(ctx: TurnContext): Promise<{ text: string; images: Tu
       apps: apps.running,
       persona: personaAccess,
       // A task is told its goal and where to work; a chat, when to start tasks.
-      tasks: conversation.kind === "task" && conversation.task ? taskSection(conversation.task) : chatTasksSection(),
+      tasks: conversation.kind === "task" && conversation.task ? taskSection(conversation.task, conversation.id) : chatTasksSection(),
       project: section,
       lead: conversation.lead && project ? leadSection(project) : null,
       device: deviceSection(),

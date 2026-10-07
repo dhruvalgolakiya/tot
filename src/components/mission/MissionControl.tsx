@@ -125,7 +125,7 @@ function Board({ overview }: { overview: MissionOverview }) {
         className="mt-8"
         icon={<SquareKanban />}
         title="No tasks here yet"
-        description="Start one from the composer: turn on Task (⌘↩), or type /task, /parallel or /best-of. They show up here while they work, and until you land them."
+        description="Ask for real work in a chat — the agent starts a task when it needs one, or type /best-of to compare two attempts. They show up here while they work, and until you land them."
       />
     );
   }

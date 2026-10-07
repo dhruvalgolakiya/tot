@@ -9,6 +9,7 @@ import { appEvents } from "../app-events.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { messageText, messages } from "../data/messages.ts";
 import { redactGitHubTokens } from "../github.ts";
+import { planPath } from "../tasks/prompt.ts";
 import { runLoop } from "../tasks/run-loop.ts";
 import { FINISHED, taskStore, type TaskRecord } from "../tasks/store.ts";
 import { tasks } from "../tasks/tasks.ts";
@@ -78,7 +79,7 @@ export function packetFromState(task: TaskRecord): HandoffPacket {
     ...(repo?.headSha ? { repo: { branch: repo.branch, headSha: repo.headSha, worktree: repo.worktree } } : {}),
     tests: [],
     openQuestions: question ? [question] : [],
-    nextStep: plan.find((step) => !step.done)?.text || progress || "Check where things stand, then finish the goal.",
+    nextStep: plan.find((step) => !step.done)?.text || progress || `Read your plan (${planPath(task.id)}), check where things stand, then finish the goal.`,
     from: lastModel(task),
     createdAt: Date.now(),
   };

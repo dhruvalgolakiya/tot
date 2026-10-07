@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Circle, CircleCheck } from "lucide-react";
-import type { Message } from "@shared/types";
+import type { Message, TaskPlan } from "@shared/types";
 import { useNow } from "../../hooks/useNow";
+import { api } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { answeredByLabel, modelLabel } from "../../lib/models";
 import { formatTokens, isOpenTask, repoLabel, taskElapsed, type TaskConversation } from "../../lib/tasks";
@@ -13,8 +14,9 @@ import { roleLine } from "../../lib/orchestration";
 import { Callout } from "../ui/Callout";
 
 const NO_MESSAGES: Message[] = [];
+const NO_PLAN_DOC: TaskPlan = { path: "", content: null, reason: null };
 
-/** The goal, the agent's checklist and latest step, the result once it's in, and the task's details. */
+/** The goal, the agent's own plan (its PLAN.md), the result once it's in, and the task's details. */
 export function PlanTab({ task }: { task: TaskConversation }) {
   const models = useStore((s) => s.models);
   const messages = useStore((s) => s.messages[task.id]) ?? NO_MESSAGES;
@@ -22,6 +24,22 @@ export function PlanTab({ task }: { task: TaskConversation }) {
   const { goal, plan, progress, question, summary, status, repo, usage, turns, startedAt, result, handoff, role, tier } = task.task;
   const lastReply = useMemo(() => messages.findLast((m) => m.role === "assistant" && m.model), [messages]);
   const done = plan.filter((step) => step.done).length;
+
+  // The task's own plan: a markdown file the agent keeps on its computer, outside the repo. Writing to that
+  // file raises no event of its own, so besides reloading on a task update, poll it every 10s while running.
+  const [planDoc, setPlanDoc] = useState<TaskPlan>(NO_PLAN_DOC);
+  const loadPlan = useCallback(() => {
+    api
+      .taskPlan(task.id)
+      .then(setPlanDoc)
+      .catch(() => setPlanDoc({ path: "", content: null, reason: "Couldn't read the plan." }));
+  }, [task.id]);
+  useEffect(() => {
+    loadPlan();
+    if (status !== "running") return;
+    const timer = window.setInterval(loadPlan, 10_000);
+    return () => window.clearInterval(timer);
+  }, [loadPlan, status, progress]);
 
   const details: [string, string][] = [
     ...(role ? ([["Role", roleLine(role, tier)!]] as [string, string][]) : []),
@@ -59,9 +77,8 @@ export function PlanTab({ task }: { task: TaskConversation }) {
             </span>
           )}
         </div>
-        {plan.length === 0 ? (
-          <p className="text-sm text-fg-subtle">{isOpenTask(status) ? "The plan shows up here once the agent writes it." : "No plan was written."}</p>
-        ) : (
+        {/* Tasks from before this kept a structured checklist here; newer ones keep it in their own PLAN.md below. */}
+        {plan.length > 0 && (
           <ol className="space-y-1.5">
             {plan.map((step, index) => (
               <li key={index} className="flex items-start gap-2.5 text-sm">
@@ -75,6 +92,16 @@ export function PlanTab({ task }: { task: TaskConversation }) {
             ))}
           </ol>
         )}
+        {planDoc.content ? (
+          <div className="text-sm">
+            <LazyMarkdown text={planDoc.content} muted />
+          </div>
+        ) : (
+          <p className="text-sm text-fg-subtle">
+            The plan shows up here once the agent writes one.{planDoc.reason ? ` ${planDoc.reason}` : ""}
+          </p>
+        )}
+        {planDoc.path && <p className="font-mono text-xs text-fg-subtle">{planDoc.path}</p>}
         {progress && isOpenTask(status) && <p className="text-xs text-fg-subtle">Now: {progress}</p>}
       </section>
 

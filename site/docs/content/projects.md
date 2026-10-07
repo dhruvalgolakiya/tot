@@ -55,7 +55,7 @@ A project can hold several repos, any mix of GitHub repos and folders on your Ma
 
 - Press **Add repo** and pick a GitHub repo (`owner/name`) or a folder on your Mac. A folder asks your OK, the first time, same as [adding a folder project](#your-ok-for-a-folder) does.
 - A repo's **…** menu has **Learn this repo** (an agent studies it and writes up its docs, under the **Knowledge** tab's Repos), **Rename…**, **Make primary**, and **Remove…**. Removing a repo leaves its files exactly where they are; it just stops tasks from working in it.
-- **Each task works in one repo.** With more than one, the composer's Task mode and the New task flow get a repo picker, and mission control cards show which repo a task is in. The Lead splits work that spans repos into one task per repo.
+- **Each task works in one repo.** With more than one, mission control cards show which repo a task is in. The Lead splits work that spans repos into one task per repo.
 - A topic project can gain a repo too: add one from its Repos tab, and the project becomes a code project from then on.
 - A GitHub repo you add is cloned next to the project's other clones, on each agent's computer. A folder repo stays exactly where it is, with its own grant.
 

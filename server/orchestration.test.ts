@@ -316,7 +316,7 @@ const fixer = tasks.create({ agentId: dana.id, goal: "Fix the checkout bug" });
 let continued = false;
 scripts.set(fixer.id, async (t) => {
   if (t.index === 0) {
-    tasks.update(t.id, { plan: [{ text: "Reproduce", done: true }, { text: "Fix", done: false }] });
+    tasks.update(t.id, { progress: "Fixing the empty-cart 500" });
     t.tool("computer_exec");
     t.say("Reproduced it.");
     while (!continued && !t.run.controller.signal.aborted) await sleep(20);
@@ -351,7 +351,11 @@ writeBadPackets = true;
 const written = await handoffs.write(fixer.id);
 check("a model's bad packet → one from the task's state", written.goal === "Fix the checkout bug" && written.nextStep.length > 0 && writerCalls.length >= 3, JSON.stringify(written).slice(0, 150));
 writeBadPackets = false;
-check("packet from state", packetFromState(taskStore.get(fixer.id)!).plan.length === 2);
+check(
+  "packet from state: a finished task's next step points at its plan file",
+  packetFromState(taskStore.get(fixer.id)!).nextStep.includes(`~/tot-tasks/${fixer.id}/PLAN.md`),
+  packetFromState(taskStore.get(fixer.id)!).nextStep,
+);
 let saved: unknown = null;
 try {
   handoffs.save(fixer.id, { goal: "x" });
@@ -369,7 +373,7 @@ limits.clear("chatgpt");
 const failing = tasks.create({ agentId: dana.id, goal: "Long refactor that hits a limit" });
 scripts.set(failing.id, async (t) => {
   if (t.index === 0) {
-    tasks.update(t.id, { plan: [{ text: "Part one", done: true }, { text: "Part two", done: false }] });
+    tasks.update(t.id, { progress: "Part two" });
     t.tool("computer_exec");
     t.limit("claude");
     return;

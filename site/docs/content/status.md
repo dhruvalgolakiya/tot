@@ -45,7 +45,7 @@ More in [Projects](/docs/projects).
 
 More in [Mission control](/docs/mission-control).
 
-- [Available] **Start tasks yourself**: Task mode, `⌘↩`, `/task`, `/parallel` and `/best-of`.
+- [Available] **Starting work**: just ask in a chat — the agent (or a project's Lead) starts tasks itself — plus `/best-of` to run two attempts and compare.
 - [Available] **The board**, with overlaps and the order to land in.
 - [Available] **Landing code**: Review & land, Merge into main, draft PR, Update from main, Discard.
 - [Available] **Best of two**, with a side-by-side compare and Keep this one.
