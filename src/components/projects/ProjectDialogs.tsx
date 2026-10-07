@@ -173,28 +173,7 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: DialogPro
                 Tickets from these start their chats in {project.name}. Separate them with commas.
               </p>
             </div>
-            <Field label="Slack channels" htmlFor="project-channels">
-              <input
-                id="project-channels"
-                value={channels}
-                onChange={(event) => setChannels(event.target.value)}
-                placeholder="#web-bugs, #web"
-                autoComplete="off"
-                spellCheck={false}
-                className="input"
-              />
-            </Field>
-            <Field label="Linear teams" htmlFor="project-teams">
-              <input
-                id="project-teams"
-                value={teams}
-                onChange={(event) => setTeams(event.target.value)}
-                placeholder="ENG, WEB"
-                autoComplete="off"
-                spellCheck={false}
-                className="input"
-              />
-            </Field>
+            <IntakeFields channels={channels} teams={teams} onChannelsChange={setChannels} onTeamsChange={setTeams} />
           </div>
 
           {error && <Callout tone="danger">{error}</Callout>}
@@ -209,6 +188,51 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: DialogPro
         </ModalFooter>
       </form>
     </Modal>
+  );
+}
+
+/**
+ * Where a project's work comes from (its intake, module 06): Slack channels and Linear teams, typed as comma lists
+ * (parseList them to save). In Project settings, and in the Subscriptions dialog's tickets (module 12).
+ */
+export function IntakeFields({
+  channels,
+  teams,
+  onChannelsChange,
+  onTeamsChange,
+  idPrefix = "project",
+}: {
+  channels: string;
+  teams: string;
+  onChannelsChange: (value: string) => void;
+  onTeamsChange: (value: string) => void;
+  idPrefix?: string;
+}) {
+  return (
+    <>
+      <Field label="Slack channels" htmlFor={`${idPrefix}-channels`}>
+        <input
+          id={`${idPrefix}-channels`}
+          value={channels}
+          onChange={(event) => onChannelsChange(event.target.value)}
+          placeholder="#web-bugs, #web"
+          autoComplete="off"
+          spellCheck={false}
+          className="input"
+        />
+      </Field>
+      <Field label="Linear teams" htmlFor={`${idPrefix}-teams`}>
+        <input
+          id={`${idPrefix}-teams`}
+          value={teams}
+          onChange={(event) => onTeamsChange(event.target.value)}
+          placeholder="ENG, WEB"
+          autoComplete="off"
+          spellCheck={false}
+          className="input"
+        />
+      </Field>
+    </>
   );
 }
 

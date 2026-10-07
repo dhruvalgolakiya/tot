@@ -453,7 +453,8 @@ function registerRoutineTools(server: McpServer, agentId: string): void {
     ({ id }) =>
       guarded(async () => {
         const routine = routines.get(id);
-        if (!routine || routine.agentId !== agentId) return reply(`No routine with id ${id}.`, true);
+        // A project's schedule (module 12) is the project's, changed from its Subscriptions, not here.
+        if (!routine || routine.agentId !== agentId || routine.projectId) return reply(`No routine with id ${id}.`, true);
         routines.delete(id);
         appEvents.agentChanged(agentId);
         return reply(`Deleted "${routine.name}".`);

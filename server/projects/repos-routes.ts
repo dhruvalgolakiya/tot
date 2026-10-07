@@ -3,6 +3,7 @@ import type { AddProjectRepoRequest, UpdateProjectRepoRequest } from "../../shar
 import { HttpError } from "../agent/orchestrator.ts";
 import { repoHeads } from "../knowledge/auto/log.ts";
 import { knowledge } from "../knowledge/index.ts";
+import { firstRequests } from "./first-request.ts";
 import { projectRepos } from "./repos.ts";
 
 /**
@@ -41,5 +42,9 @@ projectRepoRoutes.patch("/projects/:id/repos/:name", async (c) => {
 
 projectRepoRoutes.delete("/projects/:id/repos/:name", (c) => c.json(projectRepos.remove(c.req.param("id"), c.req.param("name"))));
 
-/** The user's OK for a folder repo (the consent dialog). */
-projectRepoRoutes.post("/projects/:id/repos/:name/grant", (c) => c.json(projectRepos.grant(c.req.param("id"), c.req.param("name"))));
+/** The user's OK for a folder repo (the consent dialog). For the primary, a first request waiting for it goes to the Lead now (module 12). */
+projectRepoRoutes.post("/projects/:id/repos/:name/grant", (c) => {
+  const project = projectRepos.grant(c.req.param("id"), c.req.param("name"));
+  void firstRequests.ready(project.id);
+  return c.json(project);
+});

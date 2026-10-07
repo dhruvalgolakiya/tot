@@ -17,6 +17,8 @@ function toRoutine(row: Row): Routine {
     nextRunAt: row.next_run_at == null ? null : Number(row.next_run_at),
     lastConversationId: (row.last_conversation_id as string | null) ?? null,
     createdAt: Number(row.created_at),
+    // Module 12: a project's schedule (it runs in the project's Lead: projects/schedules.ts).
+    projectId: (row.project_id as string | null) ?? null,
   };
 }
 
@@ -68,13 +70,19 @@ export function validateRoutine(input: Partial<RoutineInput>, creating: boolean)
 }
 
 export const routines = {
+  /** An agent's own routines (a project's schedules, run by its Lead, aren't in it), or every routine. */
   list(agentId?: string): Routine[] {
     const rows = (
       agentId
-        ? db.prepare(`SELECT * FROM routines WHERE agent_id = ? ORDER BY created_at`).all(agentId)
+        ? db.prepare(`SELECT * FROM routines WHERE agent_id = ? AND project_id IS NULL ORDER BY created_at`).all(agentId)
         : db.prepare(`SELECT * FROM routines ORDER BY created_at`).all()
     ) as Row[];
     return rows.map(toRoutine);
+  },
+
+  /** Module 12: a project's schedules. */
+  forProject(projectId: string): Routine[] {
+    return (db.prepare(`SELECT * FROM routines WHERE project_id = ? ORDER BY created_at`).all(projectId) as Row[]).map(toRoutine);
   },
 
   get(id: string): Routine | null {
@@ -86,10 +94,11 @@ export const routines = {
     const id = randomUUID();
     const enabled = input.enabled ?? true;
     db.prepare(
-      `INSERT INTO routines (id, agent_id, name, prompt, schedule, enabled, next_run_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO routines (id, agent_id, project_id, name, prompt, schedule, enabled, next_run_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       agentId,
+      input.projectId ?? null,
       input.name.trim(),
       input.prompt.trim(),
       JSON.stringify(input.schedule),
@@ -124,6 +133,13 @@ export const routines = {
 
   due(now = Date.now()): Routine[] {
     return (db.prepare(`SELECT * FROM routines WHERE enabled = 1 AND next_run_at <= ?`).all(now) as Row[]).map(toRoutine);
+  },
+
+  /** Module 12: moves the routine to its next time without counting a run (a project schedule's skipped slot keeps its last run's time). */
+  skip(id: string, now = Date.now()): void {
+    const routine = routines.get(id);
+    if (!routine) return;
+    db.prepare(`UPDATE routines SET next_run_at = ? WHERE id = ?`).run(routine.enabled ? nextRun(routine.schedule, now) : null, id);
   },
 
   /** Records a run (or a skipped slot) and moves the routine to its next time. */

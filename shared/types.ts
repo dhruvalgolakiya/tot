@@ -292,10 +292,11 @@ export type MessagePart =
       /** An unanswered request is declined at this time. */
       expiresAt: number;
       /**
-       * A project Lead's request to land or discard a task (module 11): it waits for the user as long as it takes,
-       * after the turn too, and is answered with POST /api/lead/asks/:id, not the run's approval route.
+       * A project Lead's request to land or discard a task (module 11), or to push a draft PR's new commits (module 12):
+       * it waits for the user as long as it takes, after the turn too, and is answered with POST /api/lead/asks/:id, not
+       * the run's approval route.
        */
-      lead?: { action: "land" | "discard"; taskId: string };
+      lead?: { action: "land" | "discard" | "push"; taskId: string };
     }
   /** A task started from this chat. The UI shows it as a live card that reads the task's current state, so the part only holds its id. */
   | { type: "task"; id: string; taskId: string };
@@ -1200,6 +1201,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/projects[?archived=1]           -> Project[]  (name order; archived ones only with ?archived=1)
 // GET    /api/projects/folders/recent         -> RecentFolder[]  (git repos one level under ~/code, ~/projects, ~/playground, ~/dev, ~/src, ~/Documents/GitHub; newest first, at most 12)
 // POST   /api/projects                        CreateProjectRequest -> Project  (also makes or reuses its brain; 400 for a folder that can't be shared: ~, hidden top-level folders, ~/Library, TOT's data)
+//                                              (module 12: with firstMessage, its Lead is opened and sent it as the user's once the project is ready, a folder once it's allowed)
 // PATCH  /api/projects/:id                    UpdateProjectRequest -> Project
 // DELETE /api/projects/:id                    -> Project  (archives it; its chats stay, filed under it)
 // POST   /api/projects/:id/grant              -> Project  (folder projects: the user's OK for agents to read the folder and make tot/… branches in it)
@@ -1233,6 +1235,12 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/projects/:id/subscriptions      -> ProjectSubscriptions  (default { pullRequests: "tot" })
 // PATCH  /api/projects/:id/subscriptions      UpdateProjectSubscriptionsRequest -> ProjectSubscriptions  (also on Project.subscriptions; watching
 //                                              more starts a look at once)
+//
+// Coordinator (module 12 · lane B: a project's schedules, which run in its Lead as "schedule" signals, never a new chat)
+// GET    /api/projects/:id/schedules          -> Routine[]  (projectId set; agents' routine lists leave them out)
+// POST   /api/projects/:id/schedules          RoutineInput -> Routine  (201; runs with the Lead's agent, opening the Lead if there's none; 400 when archived)
+// PATCH  /api/projects/:id/schedules/:rid     Partial<RoutineInput> -> Routine  (enabled: false pauses it; 404 for another project's)
+// DELETE /api/projects/:id/schedules/:rid     -> { ok: true }
 //
 // Devices (module 07; this device, remote access, and the browsers and phones signed in to it)
 // GET    /.well-known/tot                     -> { id, name, protocol: 1 }  (open, no sign-in: lets another device check it reached TOT)
@@ -2081,6 +2089,8 @@ export interface CreateProjectRequest {
   grant?: boolean;
   /** Module 12: what you want built first; sent to the project's Lead once the project is ready (a folder: once it's allowed). */
   firstMessage?: string;
+  /** Module 12: the agent whose Lead it goes to when the project has none yet (default: as POST /api/projects/:id/lead picks). */
+  agentId?: string | null;
 }
 
 /** A git folder on this Mac, offered by the New project picker. */

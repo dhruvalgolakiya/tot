@@ -3,16 +3,21 @@ import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { conversations } from "../data/conversations.ts";
 import { routines } from "../data/routines.ts";
+import { projectSchedules } from "../projects/schedules.ts";
 import { sendMessage } from "./orchestrator.ts";
 import { runRegistry } from "./runs.ts";
 
-/** Runs routines when they're due: each run is a new chat with the routine's agent. */
+/**
+ * Runs routines when they're due: each run is a new chat with the routine's agent. A project's schedule
+ * (module 12) runs in the project's Lead instead (projects/schedules.ts).
+ */
 
 const TICK_MS = 30_000;
 
 const dayLabel = (time: number) => new Date(time).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
 export async function runRoutine(routine: Routine): Promise<{ conversationId: string; runId: string }> {
+  if (routine.projectId) return projectSchedules.run(routine);
   const agent = agents.get(routine.agentId);
   if (!agent) throw new Error("This routine's agent no longer exists.");
   const conversation = conversations.create({
@@ -39,6 +44,10 @@ export async function runRoutine(routine: Routine): Promise<{ conversationId: st
 
 function tick(): void {
   for (const routine of routines.due()) {
+    if (routine.projectId) {
+      projectSchedules.due(routine);
+      continue;
+    }
     // Don't stack runs: skip this slot while the previous run is still going.
     if (routine.lastConversationId && runRegistry.activeFor(routine.lastConversationId)) {
       routines.markRun(routine.id, null);
@@ -65,4 +74,7 @@ export const scheduler = {
     if (timer) clearInterval(timer);
     timer = null;
   },
+
+  /** Runs what's due now (tests; the timer does this every 30 seconds). */
+  tick,
 };

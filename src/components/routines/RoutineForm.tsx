@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import clsx from "clsx";
-import type { Routine } from "@shared/types";
+import type { Routine, RoutineInput } from "@shared/types";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { cardClass } from "../ui/Card";
@@ -20,9 +20,17 @@ import {
 import { errorMessage, routinesApi } from "./routinesApi";
 
 export interface RoutineFormProps {
-  agentId: string;
+  /** Whose routine a new one is (not needed with `onSubmit`). */
+  agentId?: string;
   /** Editing an existing routine PATCHes it; omit to create a new one. */
   routine?: Routine;
+  /** Saves it somewhere else than the agent's routines, e.g. a project's schedules (module 12). */
+  onSubmit?: (input: RoutineInput) => Promise<Routine>;
+  /** What it's called on the create button ("routine" by default). */
+  noun?: string;
+  /** The hint under the prompt, and the fields' placeholders. */
+  promptHint?: string;
+  placeholders?: { name: string; prompt: string };
   /** Prefills fields for a new routine, e.g. from an example chip. Ignored when `routine` is set. */
   initialValues?: Partial<RoutineFormValues>;
   onSaved: (routine: Routine) => void;
@@ -36,7 +44,7 @@ const SCHEDULE_KINDS: { value: ScheduleKind; label: string }[] = [
 ];
 
 /** Create/edit form for a routine: name, prompt, and a schedule builder with a live preview. */
-export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel }: RoutineFormProps) {
+export function RoutineForm({ agentId, routine, onSubmit, noun = "routine", promptHint, placeholders, initialValues, onSaved, onCancel }: RoutineFormProps) {
   const [values, setValues] = useState<RoutineFormValues>(() =>
     routine ? routineToFormValues(routine) : { ...EMPTY_ROUTINE_FORM, ...initialValues },
   );
@@ -62,7 +70,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
     }
     setSaving(true);
     try {
-      const saved = routine ? await routinesApi.update(routine.id, input) : await routinesApi.create(agentId, input);
+      const saved = onSubmit ? await onSubmit(input) : routine ? await routinesApi.update(routine.id, input) : await routinesApi.create(agentId ?? "", input);
       onSaved(saved);
     } catch (err) {
       setError(errorMessage(err));
@@ -79,18 +87,18 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
           autoFocus
           value={values.name}
           onChange={(event) => set({ name: event.target.value })}
-          placeholder="Morning AI news"
+          placeholder={placeholders?.name ?? "Morning AI news"}
           className="input h-10 rounded-xl"
         />
       </Field>
 
-      <Field label="Prompt" htmlFor="routine-prompt" hint="What should the agent do each time this runs?">
+      <Field label="Prompt" htmlFor="routine-prompt" hint={promptHint ?? "What should the agent do each time this runs?"}>
         <textarea
           id="routine-prompt"
           rows={3}
           value={values.prompt}
           onChange={(event) => set({ prompt: event.target.value })}
-          placeholder="Brief me on today's top AI news."
+          placeholder={placeholders?.prompt ?? "Brief me on today's top AI news."}
           className="input resize-y rounded-xl leading-relaxed"
         />
       </Field>
@@ -220,7 +228,7 @@ export function RoutineForm({ agentId, routine, initialValues, onSaved, onCancel
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={saving}>
-          {saving ? "Saving…" : routine ? "Save changes" : "Create routine"}
+          {saving ? "Saving…" : routine ? "Save changes" : `Create ${noun}`}
         </Button>
       </div>
     </form>

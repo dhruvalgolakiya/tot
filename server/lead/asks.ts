@@ -10,14 +10,15 @@ import { landing } from "../landing/land.ts";
 import { taskStore } from "../tasks/store.ts";
 
 /**
- * A project Lead's land and discard requests (roadmap module 11). The card sits in the Lead's reply and waits
- * for the user as long as it takes (days, not the minute an MCP tool call can wait on an approval): the tool
- * posts it and returns, and the user's answer comes here. On yes TOT lands (or discards) exactly the commit the
- * card showed, and says what happened in the Lead's chat; on no, nothing happens. A card is answered once.
+ * A project Lead's land and discard requests (roadmap module 11), and pushes of a draft PR's new commits (module
+ * 12). The card sits in the Lead's reply and waits for the user as long as it takes (days, not the minute an MCP
+ * tool call can wait on an approval): the tool posts it and returns, and the user's answer comes here. On yes TOT
+ * lands (discards, pushes) exactly the commit the card showed, and says what happened in the Lead's chat; on no,
+ * nothing happens. A card is answered once.
  */
 
 type ApprovalPart = Extract<MessagePart, { type: "approval" }>;
-export type LeadAction = "land" | "discard";
+export type LeadAction = "land" | "discard" | "push";
 
 /** How long a request stays open. */
 const OPEN_MS = 7 * 24 * 60 * 60_000;
@@ -42,7 +43,7 @@ function toAsk(row: Row): LeadAsk {
     conversationId: String(row.conversation_id),
     messageId: String(row.message_id),
     taskId: String(row.task_id),
-    action: row.action === "discard" ? "discard" : "land",
+    action: row.action === "discard" || row.action === "push" ? row.action : "land",
     method: row.method === "merge" || row.method === "pr" ? row.method : null,
     headSha: (row.head_sha as string | null) ?? null,
     createdAt: Number(row.created_at),
@@ -143,7 +144,22 @@ export const leadAsks = {
     let ok = true;
     let text: string;
     if (decision === "decline") {
-      text = ask.action === "land" ? `You said no: “${title}” wasn't landed.` : `You said no: “${title}” wasn't discarded.`;
+      text =
+        ask.action === "land"
+          ? `You said no: “${title}” wasn't landed.`
+          : ask.action === "push"
+            ? `You said no: nothing was pushed to “${title}”'s draft PR.`
+            : `You said no: “${title}” wasn't discarded.`;
+    } else if (ask.action === "push") {
+      // Module 12: review fixes on a draft PR, exactly the commit the card showed.
+      try {
+        const { task, pushed } = await landing.pushFix(ask.taskId, ask.headSha ?? "");
+        const pr = task.task.landing?.pr;
+        text = `Pushed ${pushed} new commit${pushed === 1 ? "" : "s"} to draft PR #${pr?.number ?? "?"} for “${title}”, as you approved.`;
+      } catch (err) {
+        ok = false;
+        text = `You approved, but nothing was pushed to “${title}”'s draft PR: ${errorText(err)}`;
+      }
     } else if (ask.action === "discard") {
       try {
         await landing.discard(ask.taskId);

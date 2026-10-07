@@ -15,8 +15,8 @@ import { tasks } from "../tasks/tasks.ts";
 import { cloneUrl, worktrees } from "../tasks/worktree.ts";
 import { previews } from "../worktrees/preview.ts";
 import { profileFor, taskChecks } from "./checks.ts";
-import { folderGit, gitWords, inWorktree, onComputer, statusPath, worktreeState, type WorktreeState } from "./git.ts";
-import { openDraftPr } from "./pr.ts";
+import { folderGit, gitWords, inWorktree, onComputer, sectionsOf, statusPath, worktreeState, type WorktreeState } from "./git.ts";
+import { openDraftPr, pushToDraftPr } from "./pr.ts";
 
 /**
  * Landing a finished coding task (module 09, lane A): how it can land right now, merging it into
@@ -297,6 +297,72 @@ function requireReviewed(assessment: Assessment, headSha: string | undefined, me
   if (!tree || tree.head !== headSha || tree.branchHead !== headSha || (method === "merge" && mergeSha !== headSha)) throw new HttpError(409, CHANGED);
 }
 
+/**
+ * Module 12: a task that landed as a draft PR and got more commits since (review fixes), and whether they can be
+ * pushed to its PR now. `pushedSha` is the commit the PR has (what TOT last pushed); `commits` the new ones' subjects,
+ * newest first (at most 10), and `count` how many there are.
+ */
+export interface DraftPrFix {
+  available: boolean;
+  reason: string | null;
+  pr: { number: number; url: string } | null;
+  pushedSha: string | null;
+  headSha: string | null;
+  commits: string[];
+  count: number;
+}
+
+const SHA = /^[0-9a-f]{7,64}$/;
+
+/** Everything a push to the task's draft PR needs, worked out now (again right before it pushes). */
+async function assessFix(task: TaskRecord): Promise<{ fix: DraftPrFix; tree: WorktreeState | null }> {
+  const repo = requireRepo(task);
+  const landed = task.task.landing;
+  const pr = landed?.kind === "pr" ? landed.pr : null;
+  const fix: DraftPrFix = { available: false, reason: null, pr, pushedSha: pr ? landed!.sha : null, headSha: repo.headSha, commits: [], count: 0 };
+  let tree: WorktreeState | null = null;
+  const refused = (reason: string) => ({ fix: { ...fix, reason }, tree });
+  if (!pr) return refused("It isn't a draft PR yet: land it first.");
+  const name = `draft PR #${pr.number}`;
+  if (!FINISHED.has(task.task.status)) return refused("Wait for the task to finish, or stop it.");
+  if (!destinations(task).github) return refused("Draft PRs are for GitHub projects.");
+  if (!TOT_BRANCH.test(repo.branch)) return refused("Only TOT's own tot/… branches are pushed.");
+  const writes = writesProblem(githubAccessFor(task.agentId));
+  if (writes) return refused(writes);
+  if (!fix.pushedSha || !SHA.test(fix.pushedSha)) return refused(`TOT doesn't know which commit ${name} has.`);
+  let grant: FolderGrant | null = null;
+  try {
+    grant = grantFor(task);
+  } catch (err) {
+    return refused(errorText(err));
+  }
+  if (!repo.headSha) return refused(await noWorktree(task, grant));
+  try {
+    tree = await worktreeState(task, grant);
+  } catch (err) {
+    return refused(`Couldn't read the task's worktree: ${errorText(err)}`);
+  }
+  const problem = treeProblem(tree, repo.branch);
+  if (problem) return refused(problem);
+  const lines = [
+    `pushed=${quote(fix.pushedSha)}`,
+    `git cat-file -e "$pushed^{commit}" 2>/dev/null || { echo '@@ missing'; exit 0; }`,
+    `git merge-base --is-ancestor "$pushed" HEAD || { echo '@@ rewritten'; exit 0; }`,
+    `echo '@@ count'; git rev-list --count "$pushed..HEAD"`,
+    `echo '@@ subjects'; git log --format=%s -n 10 "$pushed..HEAD"`,
+  ];
+  const { cwd, script } = inWorktree(repo, lines.join("\n"));
+  const result = await onComputer(task, script, cwd, grant);
+  if (result.exitCode !== 0) return refused(`Couldn't compare the branch with ${name}: ${gitWords(result.stderr || result.stdout) || `exit code ${result.exitCode}`}`);
+  const found = sectionsOf(result.stdout);
+  if ("missing" in found) return refused(`The commit on ${name} isn't in the task's worktree any more.`);
+  if ("rewritten" in found) return refused(`The branch was rewritten since ${name} was pushed, and TOT never force-pushes. Push it yourself, or start a new task.`);
+  const count = Number(found.count?.trim()) || 0;
+  if (!count) return refused(`Nothing new since ${name} was pushed.`);
+  const commits = (found.subjects ?? "").split("\n").filter(Boolean);
+  return { fix: { ...fix, available: true, headSha: tree!.head, commits, count }, tree };
+}
+
 /** A turn for the task (as task_message sends one): it picks up again, in its worktree, with this as its instruction. */
 async function askTask(taskId: string, text: string): Promise<TaskRecord> {
   await tasks.message(taskId, { text });
@@ -347,6 +413,29 @@ export const landing = {
       const landed = await openDraftPr(task, { repo: assessment.github!, base, access: assessment.access!, title: request.title, body: request.body, ...(headSha ? { headSha } : {}) });
       // The worktree stays: review fixes may follow on the same branch.
       return recordLanding(taskId, landed);
+    });
+  },
+
+  /** Module 12: whether a draft PR's task has new commits (review fixes) that can be pushed to its PR now. */
+  async fixOptions(taskId: string): Promise<DraftPrFix> {
+    return (await assessFix(taskStore.require(taskId))).fix;
+  },
+
+  /**
+   * Module 12: pushes a draft PR's new commits, as the user approved them on the Lead's card: exactly `headSha` (the
+   * worktree must still be there), never with force. The landing keeps its PR and time and records the new head.
+   */
+  pushFix(taskId: string, headSha: string): Promise<{ task: TaskRecord; pushed: number }> {
+    if (typeof headSha !== "string" || !SHA.test(headSha)) throw new HttpError(400, "headSha is the commit you reviewed.");
+    return exclusive(taskId, async () => {
+      const task = taskStore.require(taskId);
+      const { fix, tree } = await assessFix(task);
+      if (!fix.available) throw new HttpError(409, fix.reason ?? "Nothing can be pushed to this task's draft PR now.");
+      if (!tree || tree.head !== headSha || tree.branchHead !== headSha) throw new HttpError(409, CHANGED);
+      await pushToDraftPr(task, headSha);
+      const landed = taskStore.require(taskId).task.landing!;
+      // Its `at` stays: the task landed then, so nothing that follows a new landing (cleanup, knowledge) runs again.
+      return { task: taskStore.patch(taskId, { landing: { ...landed, sha: headSha } }, true)!, pushed: fix.count };
     });
   },
 

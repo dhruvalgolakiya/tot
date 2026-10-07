@@ -770,6 +770,21 @@ db.exec(`
   );
 `);
 
+// Coordinator (roadmap module 12, lane B): a project's schedules are routines with a project_id (they run in its Lead,
+// not as new chats), and a new project's first request waits in project_first_requests until the project is ready (a
+// folder: until the user allows it), then goes to its Lead as the user's message.
+if (!hasColumn("routines", "project_id")) db.exec(`ALTER TABLE routines ADD COLUMN project_id TEXT`);
+db.exec(`
+  CREATE INDEX IF NOT EXISTS routines_by_project ON routines(project_id);
+  CREATE TABLE IF NOT EXISTS project_first_requests (
+    project_id TEXT PRIMARY KEY,
+    text TEXT NOT NULL,
+    -- Whose Lead it goes to when the project has none yet (null: the agent POST /projects/:id/lead would pick).
+    agent_id TEXT,
+    created_at INTEGER NOT NULL
+  );
+`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

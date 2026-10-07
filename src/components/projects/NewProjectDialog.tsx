@@ -42,7 +42,8 @@ const GIT_URL = /^(?:https?:\/\/|git@|ssh:\/\/)/i;
 /**
  * "New project": one question — what are you working on? A GitHub repo, a folder on this Mac (asks
  * for consent before it's created), or something else. Then it opens the new project, and with
- * "Learn it now" the agent starts building its brain.
+ * "Learn it now" the agent starts building its brain. "What do you want built first?" (module 12)
+ * goes to the project's Lead, which the project page then shows at work.
  */
 export function NewProjectDialog() {
   const open = useProjects((s) => s.newProjectOpen);
@@ -69,6 +70,7 @@ export function NewProjectDialog() {
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [learn, setLearn] = useState(true);
+  const [firstMessage, setFirstMessage] = useState("");
   const [step, setStep] = useState<"form" | "consent">("form");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; existing: Project | null } | null>(null);
@@ -83,6 +85,7 @@ export function NewProjectDialog() {
     setName("");
     setNameTouched(false);
     setLearn(true);
+    setFirstMessage("");
     setStep("form");
     setSubmitting(false);
     setError(null);
@@ -118,6 +121,8 @@ export function NewProjectDialog() {
           name: shownName.trim(),
           ...(kind === "none" ? {} : { source }),
           ...(kind === "folder" ? { grant: true } : {}),
+          // Module 12: sent to the new project's Lead (this agent's), which the project page opens on.
+          ...(firstMessage.trim() ? { firstMessage: firstMessage.trim(), agentId: agent?.id ?? null } : {}),
         },
         device,
       );
@@ -262,6 +267,22 @@ export function NewProjectDialog() {
                 maxLength={60}
                 autoComplete="off"
                 className="input"
+              />
+            </Field>
+
+            <Field
+              label="What do you want built first?"
+              htmlFor="new-project-first"
+              hint="Optional. The project's Lead starts on it right away."
+            >
+              <textarea
+                id="new-project-first"
+                value={firstMessage}
+                onChange={(event) => setFirstMessage(event.target.value)}
+                rows={3}
+                maxLength={8000}
+                placeholder={kind === "none" ? "A launch plan: what to do, who does it, by when." : "A settings page where people can change their email."}
+                className="input min-h-20 resize-y rounded-xl leading-relaxed"
               />
             </Field>
 
