@@ -36,7 +36,7 @@ Click a project's name to open its page: your **Lead** chat in the middle, with 
 
 On a phone the tabs sit above the chat, with the Lead as one of them. The **…** menu holds **Instructions**, **Brain** (a shortcut into the project's knowledge), **Settings** and **Archive** — plus, for a project with code, **Learn this project** and **Worktree setup**.
 
-An agent's home screen — what you see with no chat open — shows cards under the composer: what's **Working now**, what's **Waiting on you** (questions first, then work ready to land), your **Projects**, the agent's **Next routines** and what's **Done today**. A project's row shows what needs you, what's working and what's ready to land; click it to open the project's Lead.
+An agent's home screen — what you see with no chat open — lists everything in flight under the composer: what **Needs you**, what's **Working**, what's **Ready to land**, what's **Coming up** (the agent's next routines), your **Projects** and what's **Done today**. A project's row shows what needs you, what's working and what's ready to land; click it to open the project's Lead.
 
 ## The Lead
 

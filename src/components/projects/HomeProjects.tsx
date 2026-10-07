@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import { FolderKanban } from "lucide-react";
 import type { HomeProject } from "@shared/types";
 import { useAppEvents } from "../../hooks/useAppEvents";
 import { homeCounts, loadHome } from "../../lib/lead";
 import { PROJECT_ICONS, shortTime } from "../../lib/projects";
 import { projectPath } from "../../lib/router";
 import { navigateToProject, selectActiveAgentId, useStore } from "../../store";
-import { HomeCard, HomeItem, HomeMore } from "../home/HomeCard";
+import { LedgerMore, LedgerRow, LedgerSection } from "../home/Ledger";
 import { StatusDot } from "../ui/StatusDot";
 
 /**
- * Home (roadmap module 11, lane D): every project as one row in a card on an agent's home: what needs you,
+ * Home (roadmap module 11, lane D): every project as one row in the ledger on an agent's home: what needs you,
  * what's working and what's ready to land, and when it last moved. A row opens the project's page, which is
  * its Lead. Kept live, a moment after tasks, chats or projects change.
  */
@@ -29,7 +28,7 @@ export function useHomeProjects(): HomeProject[] | null {
       const home = await loadHome();
       if (id === request.current) setRows(home);
     } catch {
-      // Quiet: Home just shows no projects card; the sidebar still lists the projects.
+      // Quiet: Home just shows no projects section; the sidebar still lists the projects.
       if (id === request.current) setRows((current) => current ?? []);
     }
   }, []);
@@ -49,16 +48,16 @@ export function useHomeProjects(): HomeProject[] | null {
   return rows;
 }
 
-export function ProjectsCard({ rows, now }: { rows: HomeProject[]; now: number }) {
+export function ProjectsSection({ rows, now }: { rows: HomeProject[]; now: number }) {
   const [all, setAll] = useState(false);
   const shown = all ? rows : rows.slice(0, SHOWN);
   return (
-    <HomeCard icon={FolderKanban} title="Projects" count={rows.length}>
+    <LedgerSection label="Projects" count={rows.length}>
       {shown.map((row) => (
         <ProjectRow key={`${row.project.deviceId ?? ""}:${row.project.id}`} row={row} now={now} />
       ))}
-      {rows.length > SHOWN && <HomeMore label={all ? "Show fewer" : `Show all · ${rows.length}`} onClick={() => setAll((value) => !value)} />}
-    </HomeCard>
+      {rows.length > SHOWN && <LedgerMore label={all ? "Show fewer" : `Show all · ${rows.length}`} onClick={() => setAll((value) => !value)} />}
+    </LedgerSection>
   );
 }
 
@@ -75,7 +74,7 @@ function ProjectRow({ row, now }: { row: HomeProject; now: number }) {
   };
 
   return (
-    <HomeItem
+    <LedgerRow
       href={agentId ? projectPath(agentId, project.id) : undefined}
       onClick={open}
       leading={<Icon aria-hidden="true" className="size-4 text-fg-muted" />}

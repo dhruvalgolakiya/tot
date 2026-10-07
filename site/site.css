@@ -132,6 +132,15 @@
       0 0 8px color-mix(in oklab, var(--color-canvas) 70%, transparent);
   }
 
+  /* A soft pool of canvas behind the hero's text, so it stays readable where it crosses bright clouds. */
+  .hero-scrim::before {
+    content: "";
+    position: absolute;
+    inset: -22% -18%;
+    z-index: -1;
+    background: radial-gradient(closest-side, color-mix(in oklab, var(--color-canvas) 72%, transparent), transparent);
+  }
+
   .sticky-note {
     background: linear-gradient(170deg, #fef3a0, #fde047);
     box-shadow:
