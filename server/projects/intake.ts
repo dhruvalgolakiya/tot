@@ -4,6 +4,7 @@ import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { messages } from "../data/messages.ts";
+import { leadInbox } from "../lead/inbox.ts";
 import { projects } from "./projects.ts";
 import { detectTicket, ticketOrigin, type Ticket } from "./tickets.ts";
 
@@ -12,6 +13,7 @@ import { detectTicket, ticketOrigin, type Ticket } from "./tickets.ts";
  * Linear team it lists, or an issue or pull request of its own GitHub repo starts a chat in it, but
  * only when exactly one project matches. A project's name in the text doesn't count: "web" is too
  * common a word. TOT never files a chat silently: a notice in the chat says so, and Move undoes it.
+ * Module 12: work for a project with a Lead goes to the Lead as a `ticket` signal instead (toLead).
  */
 
 /** Incoming work: where it was posted, and the ticket it's about. */
@@ -33,6 +35,19 @@ function takes(project: Project, work: Work): boolean {
   }
   return false;
 }
+
+/** Work from outside for a project's Lead (module 12): who sent it, where (e.g. "in #web-bugs", "by email"), and a link. */
+export interface OutsideWork {
+  slackChannel?: string | null;
+  text: string;
+  who: string;
+  where: string;
+  url?: string | null;
+  /** Names this request, so seeing it twice (a retry, a restart) gives the Lead one ticket. */
+  key: string;
+}
+
+const MAX_TICKET = 3000;
 
 /** The one project the work belongs to, or null when none or several match. */
 function only(work: Work): Project | null {
@@ -60,6 +75,32 @@ export const intake = {
     messages.insert({ id: randomUUID(), conversationId: chatId, role: "assistant", parts: [part], status: "complete", createdAt: Date.now() });
     const record = conversations.update(chatId, {}, true);
     if (record) appEvents.publish({ type: "conversation", conversation: toPublicConversation(record) });
+  },
+
+  /**
+   * Module 12: work from outside (a Slack thread, an email) that's one project's intake, when that project has a Lead,
+   * goes to the Lead as a `ticket` signal (who, where, the text, the link) instead of a chat of its own. Returns the
+   * project it went to; null when no single project takes it or it has no Lead yet (the caller starts a chat, as before).
+   */
+  toLead(request: OutsideWork): Project | null {
+    const ticket = detectTicket(request.text);
+    const project = only({ slackChannel: request.slackChannel, ticket });
+    if (!project?.leadChatId) return null;
+    const text = request.text.trim();
+    leadInbox.post(
+      project.id,
+      {
+        kind: "ticket",
+        title: `${ticket ? ticket.key : "A request"} from ${request.who} ${request.where}`,
+        detail: text.length > MAX_TICKET ? `${text.slice(0, MAX_TICKET - 1).trimEnd()}…` : text,
+        url: ticket?.url ?? request.url ?? null,
+        repoName: null,
+        taskId: null,
+        prNumber: null,
+      },
+      { key: `ticket:${request.key}` },
+    );
+    return project;
   },
 
   /** A chat that just came in from Slack or email: filed when its channel, or the ticket in its text, is one project's intake. */

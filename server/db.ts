@@ -729,6 +729,47 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS wiki_revisions_legacy_by_page ON wiki_revisions_legacy(page_id, created_at);
 `);
 
+// Coordinator (roadmap module 12, lane A, server/signals/): what a project's Lead hears about on its own. A project's
+// subscriptions (JSON, ProjectSubscriptions; null = the default). `lead_signals` keeps each signal until the Lead's
+// turn has read it (read_at), and after for the Board; dedupe_key (when set) makes posting the same fact twice a no-op.
+// `lead_signal_wakes` counts signal wakes for the hourly bound; `lead_pr_seen` is the pull-request watcher's memory
+// of each PR (its head, checks, reviews and comments seen), so a restart never repeats a signal.
+if (!hasColumn("projects", "subscriptions")) db.exec(`ALTER TABLE projects ADD COLUMN subscriptions TEXT`);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lead_signals (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT,
+    url TEXT,
+    repo_name TEXT,
+    task_id TEXT,
+    pr_number INTEGER,
+    dedupe_key TEXT,
+    at INTEGER NOT NULL,
+    read_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS lead_signals_by_project ON lead_signals(project_id, at);
+  CREATE INDEX IF NOT EXISTS lead_signals_unread ON lead_signals(project_id, read_at);
+  CREATE UNIQUE INDEX IF NOT EXISTS lead_signals_by_key ON lead_signals(project_id, dedupe_key) WHERE dedupe_key IS NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS lead_signal_wakes (
+    project_id TEXT NOT NULL,
+    at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS lead_signal_wakes_by_project ON lead_signal_wakes(project_id, at);
+
+  CREATE TABLE IF NOT EXISTS lead_pr_seen (
+    project_id TEXT NOT NULL,
+    repo TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, repo, number)
+  );
+`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

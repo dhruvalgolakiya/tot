@@ -11,11 +11,13 @@ import { useMissionOverview } from "../mission/useMissionOverview";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
 import { Skeleton } from "../ui/Skeleton";
+import { ProjectSignals } from "./ProjectSignals";
 
 /**
  * A project's board, compact (roadmap module 11, lane D): mission control (module 09) for one project in
  * one column, beside its Lead. Needs you, Working and Ready to land (in the order to land), then what
- * landed today, folded. Live like the board page: the cards read each task from the store.
+ * landed today, folded. Live like the board page: the cards read each task from the store. Below them, what
+ * the Lead heard about on its own (module 12: ProjectSignals).
  */
 export function ProjectBoard({ project }: { project: Project }) {
   const { state, reload } = useMissionOverview(project.id);
@@ -105,6 +107,7 @@ export function ProjectBoard({ project }: { project: Project }) {
           {showLanded && cards(sections.landed)}
         </section>
       )}
+      <ProjectSignals project={project} />
       <button type="button" onClick={() => navigateToMission(project.id)} className="link-muted text-xs">
         Open mission control
       </button>

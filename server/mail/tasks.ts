@@ -108,6 +108,18 @@ async function handle(personaId: string, mailId: string): Promise<void> {
   let thread = getThread(personaId, email.threadId);
   let context = "";
   if (!thread) {
+    // Module 12: work for a project with a Lead goes to the Lead as a ticket, not a chat of its own.
+    const earlier = mail.thread(personaId, email.threadId).filter((e) => e.id !== email.id && e.date <= email.date);
+    const led = intake.toLead({
+      text: `${email.subject}\n${request}${earlier.length ? `\n\nThe email thread so far:\n${transcript(earlier)}` : ""}`,
+      who: sender,
+      where: `by email to ${persona.email}`,
+      key: `email:${personaId}:${email.id}`,
+    });
+    if (led) {
+      await mailboxes.reply(personaId, email, `Thanks, I've passed this on to ${led.name}'s Lead in TOT.`);
+      return;
+    }
     const picked = chooseAgent(persona, subject);
     const origin = { kind: "email" as const, label: `Email from ${email.from.name || email.from.address}`, url: null };
     const conversation = conversations.create({
@@ -128,7 +140,6 @@ async function handle(personaId: string, mailId: string): Promise<void> {
     );
     thread = getThread(personaId, email.threadId)!;
     // The thread had earlier mail before it reached TOT: the agent gets it as context.
-    const earlier = mail.thread(personaId, email.threadId).filter((e) => e.id !== email.id && e.date <= email.date);
     if (earlier.length) context = `The email thread so far:\n<email_thread>\n${transcript(earlier)}\n</email_thread>\n`;
     // Its project, when a ticket in the email is one project's intake (module 06).
     intake.fileNew(conversation.id, { text: `${email.subject}\n${request}\n${context}` });

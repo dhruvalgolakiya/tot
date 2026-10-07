@@ -463,6 +463,23 @@ async function answer(
     const info = await api!.conversations.info({ channel }).catch(() => ({ channel: undefined }));
     const label = info.channel?.is_im ? `DM with ${await personName(userId)}` : info.channel?.name ? `#${info.channel.name}` : "Slack";
     const permalink = await api!.chat.getPermalink({ channel, message_ts: threadTs }).then((r) => r.permalink ?? null, () => null);
+    // Mentioned inside an existing thread: the agent gets the conversation so far.
+    if (message.thread_ts) context = await threadTranscript(channel, threadTs, "0", ts);
+    const slackChannel = info.channel?.is_im ? null : info.channel?.name;
+    // Module 12: work for a project with a Lead goes to the Lead as a ticket, not a chat of its own.
+    const led = intake.toLead({
+      slackChannel,
+      text: context ? `${request}\n\nThe Slack thread so far:\n${context}` : request,
+      who: await personName(userId),
+      where: info.channel?.is_im ? "in a Slack DM" : `in ${label}`,
+      url: permalink,
+      key: `slack:${channel}:${ts}`,
+    });
+    if (led) {
+      await status.clear();
+      await post(channel, threadTs, `Passed this on to ${led.name}'s Lead in TOT.`, footer(led.leadChatId!));
+      return;
+    }
     const conversation = conversations.create({
       agentId: picked.agent.id,
       modelId: picked.agent.modelId,
@@ -479,10 +496,8 @@ async function answer(
       Date.now(),
     );
     thread = getThread(channel, threadTs)!;
-    // Mentioned inside an existing thread: the agent gets the conversation so far.
-    if (message.thread_ts) context = await threadTranscript(channel, threadTs, "0", ts);
     // Its project, when the channel or a ticket in the thread is one project's intake (module 06).
-    intake.fileNew(conversation.id, { slackChannel: info.channel?.is_im ? null : info.channel?.name, text: `${request}\n${context}` });
+    intake.fileNew(conversation.id, { slackChannel, text: `${request}\n${context}` });
     context = context ? `The Slack thread so far:\n<slack_thread>\n${context}\n</slack_thread>\n` : "";
   } else {
     const fresh = await threadTranscript(channel, threadTs, thread.seenTs, ts);

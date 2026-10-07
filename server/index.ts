@@ -29,6 +29,7 @@ import { chatWakes } from "./tasks/wake.ts";
 import { leadWakes } from "./lead/wake.ts";
 import { worktreeLifecycle } from "./worktrees/lifecycle.ts";
 import { knowledgeAuto } from "./knowledge/auto/jobs.ts";
+import { prWatch } from "./signals/watch.ts";
 
 // The Mac app (module 08) runs TOT with Electron's Node, which ELECTRON_RUN_AS_NODE=1 switches on. Children
 // mustn't inherit it: an agent running another Electron app's CLI would get a bare Node instead.
@@ -89,6 +90,8 @@ tasks.start();
 worktreeLifecycle.start();
 // Module 11: a project's knowledge updates itself after tasks land and when its repos' base branches move.
 knowledgeAuto.start();
+// Module 12: a project's Lead hears about its pull requests (checks, reviews, comments, merges) every 2 minutes.
+prWatch.start();
 taskNotifications.start();
 fanIn.start();
 missionWatch.start();
@@ -103,6 +106,7 @@ async function shutdown(signal: string) {
   scheduler.stop();
   wikiKeeper.stop();
   knowledgeAuto.stop();
+  prWatch.stop();
   stopMemory();
   relay.stopAll();
   void listeners.stop();

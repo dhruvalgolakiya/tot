@@ -6,6 +6,7 @@ import { appEvents } from "../app-events.ts";
 import { brains, BrainError, githubFullName } from "../data/brains.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { db, parseJson, type Row } from "../db.ts";
+import { subscriptionsOf } from "../signals/subscriptions.ts";
 import { cleanCopyFiles, cleanSetupCommand } from "../worktrees/fields.ts";
 import { FolderRefused, resolveFolder } from "./folders.ts";
 import { projectRepos } from "./repos.ts";
@@ -55,6 +56,8 @@ function toProject(row: Row): Project {
     copyFiles: parseJson<string[]>(row.copy_files, []),
     // Module 11: its repos, the primary first (kind, source, defaultBranch and folderGranted above mirror it).
     repos: projectRepos.list(id).map(projectRepos.toPublic),
+    // Module 12: what its Lead hears about on its own (server/signals/).
+    subscriptions: subscriptionsOf(row.subscriptions),
   };
 }
 

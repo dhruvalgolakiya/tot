@@ -37,6 +37,7 @@ import type {
   KnowledgeRefreshResult,
   KnowledgeUpdate,
   LandTaskRequest,
+  LeadSignal,
   LearnRepoRequest,
   MailMessage,
   MailSummary,
@@ -59,6 +60,7 @@ import type {
   Plugin,
   PluginInput,
   Project,
+  ProjectSubscriptions,
   ProviderId,
   ProviderStatus,
   SendMessageRequest,
@@ -79,6 +81,7 @@ import type {
   UpdateDeviceRequest,
   UpdateRemoteAccessRequest,
   UpdateProjectRequest,
+  UpdateProjectSubscriptionsRequest,
   UpdateProjectRepoRequest,
   WikiPage,
   WikiPageInput,
@@ -291,6 +294,14 @@ export const api = {
     request<KnowledgeUpdate>("POST", `/projects/${seg(projectId)}/knowledge/updates/${seg(updateId)}/undo`, {}),
 
   // Module 12 · lane A (signals, subscriptions).
+  /** What the project's Lead heard about on its own (pull requests, tickets, schedules), newest first; unread ones have `readAt` null. */
+  getProjectSignals: (projectId: string) => request<LeadSignal[]>("GET", `/projects/${seg(projectId)}/signals`),
+  /** Looks at the project's pull requests now; its signals after. 409 with the reason (no GitHub connection, no Lead, watching off, rate limit). */
+  checkProjectSignals: (projectId: string) => request<LeadSignal[]>("POST", `/projects/${seg(projectId)}/signals/check`, {}),
+  /** Which pull requests the project's Lead hears about (default: the draft PRs TOT opened for its tasks). */
+  getProjectSubscriptions: (projectId: string) => request<ProjectSubscriptions>("GET", `/projects/${seg(projectId)}/subscriptions`),
+  updateProjectSubscriptions: (projectId: string, patch: UpdateProjectSubscriptionsRequest) =>
+    request<ProjectSubscriptions>("PATCH", `/projects/${seg(projectId)}/subscriptions`, patch),
 
   // Module 12 · lane B (schedules).
 

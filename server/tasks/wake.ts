@@ -1,11 +1,13 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import type { TaskStatus } from "../../shared/types.ts";
+import type { LeadSignal, TaskStatus } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
 import { messageText } from "../data/messages.ts";
 import { settings } from "../data/settings.ts";
 import { overBudget } from "../orchestration/budget.ts";
+import { signalsNote, signalsText } from "../signals/note.ts";
+import { leadSignals, signalWakes } from "../signals/store.ts";
 import { taskNotifications } from "./notify.ts";
 import { LEAD_NEWS, markResultsRead, resultsNote } from "./prompt.ts";
 import { runEnd, runLoop } from "./run-loop.ts";
@@ -20,6 +22,11 @@ import { taskStore, type TaskRecord } from "./store.ts";
  * A wake never interrupts or restarts a turn. Results that come in together share one wake (they
  * wait a few seconds for each other), a chat has at most one wake at a time, and results that come
  * in during one get one follow-up. Groups spawned with then: "synthesize" are fan-in's job.
+ *
+ * Module 12: a project's Lead is woken the same way by its unread signals (pull requests, tickets, schedules,
+ * server/lead/inbox.ts), in the same wake as any task results, and they're marked read when it hears them. At most
+ * SIGNAL_WAKES_PER_HOUR of those per project in an hour: past that, they wait for the next one that fits (or the
+ * Lead's next turn, which reads them too).
  */
 
 /** How long a wake waits for more results, so tasks finishing together give one. */
@@ -36,6 +43,8 @@ const busy = new Set<string>();
 const followUps = new Set<string>();
 /** Tasks a tool call is waiting on (wait.ts): their results go back in that call, not in a wake. */
 const heldBack = new Map<string, number>();
+/** Leads whose signals wait for the hourly bound (module 12): the wake that comes when the next one fits. */
+const later = new Map<string, NodeJS.Timeout>();
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -53,11 +62,41 @@ function unread(chat: ConversationRecord): string[] {
   });
 }
 
+/** A Lead's unread signals (module 12). */
+function signalsOf(chat: ConversationRecord): LeadSignal[] {
+  return chat.lead && chat.projectId ? leadSignals.unread(chat.projectId) : [];
+}
+
+/** The signals this wake covers: all of the Lead's unread ones, unless the project's hourly bound is used up. */
+function dueSignals(chat: ConversationRecord): LeadSignal[] {
+  const signals = signalsOf(chat);
+  return signals.length && signalWakes.allowed(chat.projectId!) ? signals : [];
+}
+
+/** The note a wake gives the chat: its tasks' results, then (a Lead's) signals. */
+function wakeNote(chat: ConversationRecord, ids: string[], signals: LeadSignal[]): string {
+  return [resultsNote(ids, chat.lead ? LEAD_NEWS : undefined), signalsNote(signals)].filter(Boolean).join("\n\n");
+}
+
+/** The signals were heard: read, and one more wake for the project's hourly bound. */
+function heard(chat: ConversationRecord, signals: LeadSignal[]): void {
+  if (!signals.length) return;
+  leadSignals.markRead(signals.map((signal) => signal.id));
+  signalWakes.record(chat.projectId!);
+}
+
 /** How one task's news reads, other than "finished". (A project's Lead also hears when a task needs input, module 11.) */
 const ENDINGS: Partial<Record<TaskStatus, string>> = { stopped: "was stopped", interrupted: "was cut off by a restart", "needs-input": "needs input" };
 
-/** The wake's own message, shown as a quiet divider: `2 tasks finished: “Fix checkout”, “Update docs”.` */
-export function wakeText(ids: string[]): string {
+/**
+ * The wake's own message, shown as a quiet divider: `2 tasks finished: “Fix checkout”, “Update docs”.` A Lead's
+ * signals (module 12) follow: `Checks failed on draft PR #12 “Fix cart”.`
+ */
+export function wakeText(ids: string[], signals: Pick<LeadSignal, "title">[] = []): string {
+  return [ids.length ? tasksText(ids) : "", signalsText(signals)].filter(Boolean).join(" ");
+}
+
+function tasksText(ids: string[]): string {
   const ended = ids.map((id) => taskStore.get(id)).filter((task): task is TaskRecord => task !== null);
   const titles = ended.map((task) => `“${task.title}”`);
   if (ended.length === 1) {
@@ -70,10 +109,25 @@ export function wakeText(ids: string[]): string {
   return `${titles.length} tasks ${allFinished ? "finished" : asking ? "have news" : "ended"}: ${titles.join(", ")}.`;
 }
 
-/** The wake is over: no longer pending, unless results it didn't cover came in meanwhile. */
-function settle(chatId: string, handled: string[] = []): void {
+/** The wake is over: no longer pending, unless results (or a Lead's signals) it didn't cover came in meanwhile. */
+function settle(chatId: string, handled: string[] = [], handledSignals: string[] = []): void {
   const chat = conversations.get(chatId);
-  conversations.update(chatId, { wakePending: chat ? unread(chat).some((id) => !handled.includes(id)) : false });
+  const pending = chat ? unread(chat).some((id) => !handled.includes(id)) || signalsOf(chat).some((signal) => !handledSignals.includes(signal.id)) : false;
+  conversations.update(chatId, { wakePending: pending });
+  if (chat && pending) waitForBound(chat);
+}
+
+/** A Lead whose signals wait for the hourly bound gets its wake when the next one fits (module 12). */
+function waitForBound(chat: ConversationRecord): void {
+  if (!started || !chat.lead || !chat.projectId || later.has(chat.id) || !signalsOf(chat).length || signalWakes.allowed(chat.projectId)) return;
+  const delay = Math.max(signalWakes.nextAt(chat.projectId) - Date.now(), 1000);
+  later.set(
+    chat.id,
+    setTimeout(() => {
+      later.delete(chat.id);
+      schedule(chat.id);
+    }, delay),
+  );
 }
 
 /** Puts results back as unread (the wake turn couldn't start, or didn't get through). */
@@ -105,15 +159,18 @@ async function wake(chatId: string): Promise<void> {
   for (let attempt = 0; attempt < BUSY_RETRIES && started; attempt++) {
     const chat = conversations.get(chatId);
     const ids = chat ? unread(chat) : [];
-    if (!chat || !ids.length) return settle(chatId);
+    const signals = chat ? dueSignals(chat) : [];
+    const signalIds = signals.map((signal) => signal.id);
+    if (!chat || (!ids.length && !signals.length)) return settle(chatId);
 
     const run = runRegistry.activeFor(chatId);
     if (run) {
       // A turn is running: hand it the results mid-turn when the provider can take them. Not in a chat from
       // Slack or email: its thread needs a reply about them, so they wait for the turn to end instead.
-      if (!chat.origin && run.steer && (await run.steer(resultsNote(ids, chat.lead ? LEAD_NEWS : undefined)).catch(() => false))) {
+      if (!chat.origin && run.steer && (await run.steer(wakeNote(chat, ids, signals)).catch(() => false))) {
         markResultsRead(chatId, ids);
-        return settle(chatId, ids);
+        heard(chat, signals);
+        return settle(chatId, ids, signalIds);
       }
       // …else wait for it to end (it may read them itself, or the user may reply first).
       await runEnd(run.id);
@@ -121,26 +178,29 @@ async function wake(chatId: string): Promise<void> {
     }
 
     if (overBudget(chat)) {
-      // No turn past the budget: the results wait for the user's next message.
-      settle(chatId, ids);
+      // No turn past the budget: the results (and signals) wait for the user's next message.
+      settle(chatId, ids, signalIds);
       return deliver(chat, ids, "");
     }
 
     // Read before the turn starts, so it doesn't get them a second time with the chat's unread results.
-    const note = resultsNote(ids, chat.lead ? LEAD_NEWS : undefined);
+    const note = wakeNote(chat, ids, signals);
     markResultsRead(chatId, ids);
+    leadSignals.markRead(signalIds);
     let runId: string;
     try {
-      ({ runId } = await runLoop.send(chatId, { text: wakeText(ids) }, { auto: true, keepTitle: true, preamble: note }));
+      ({ runId } = await runLoop.send(chatId, { text: wakeText(ids, signals) }, { auto: true, keepTitle: true, preamble: note }));
+      if (signals.length) signalWakes.record(chat.projectId!);
     } catch (err) {
       restore(chatId, ids);
+      leadSignals.markUnread(signalIds);
       // Someone started a turn there just now: wait for it.
       if (err instanceof HttpError && err.status === 409) {
         await sleep(500);
         continue;
       }
       // The turn can't start (e.g. the chat's model isn't connected): the results wait for the user's next message.
-      settle(chatId, ids);
+      settle(chatId, ids, signalIds);
       await deliver(chat, ids, "");
       throw err;
     }
@@ -150,12 +210,13 @@ async function wake(chatId: string): Promise<void> {
     if (end?.status !== "complete") {
       // The turn didn't get through (an error, a stop, TOT stopping): its results stay unread for the chat's next turn.
       restore(chatId, ids);
+      leadSignals.markUnread(signalIds);
       // Cut off by a shutdown: the wake is still pending, so it happens again after the restart.
       if (!started) return;
-      settle(chatId, ids);
+      settle(chatId, ids, signalIds);
       return deliver(chat, ids, "");
     }
-    settle(chatId, ids);
+    settle(chatId, ids, signalIds);
     return deliver(chat, ids, messageText(end.message));
   }
   // Gave up waiting for the chat to be free: what's unread waits for its next turn. (TOT stopping: after the restart.)
@@ -163,7 +224,7 @@ async function wake(chatId: string): Promise<void> {
   const chat = conversations.get(chatId);
   if (!chat) return;
   const ids = unread(chat);
-  settle(chatId, ids);
+  settle(chatId, ids, signalsOf(chat).map((signal) => signal.id));
   await deliver(chat, ids, "");
 }
 
@@ -207,6 +268,15 @@ export const chatWakes = {
     schedule(chatId);
   },
 
+  /**
+   * Module 12: a project's Lead has a new signal (server/lead/inbox.ts): wake it, batched like results. Signals
+   * wake it whatever "Tell the chat when its tasks finish" says: a project's subscriptions decide what it hears.
+   */
+  flagSignals(leadId: string): void {
+    conversations.update(leadId, { wakePending: true });
+    schedule(leadId);
+  },
+
   /** Starts waking chats, first those whose wake was pending when TOT stopped. */
   start(): void {
     if (started) return;
@@ -217,8 +287,9 @@ export const chatWakes = {
   /** TOT is stopping: no new wake turns; pending ones happen after the restart. */
   stop(): void {
     started = false;
-    for (const timer of timers.values()) clearTimeout(timer);
+    for (const timer of [...timers.values(), ...later.values()]) clearTimeout(timer);
     timers.clear();
+    later.clear();
     followUps.clear();
   },
 

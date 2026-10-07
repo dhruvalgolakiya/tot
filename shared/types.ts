@@ -1226,6 +1226,14 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/home                            -> HomeProject[]  (every project that isn't archived, the most recently active first:
 //                                              what needs you, is working and is ready to land on its board, and its Lead chat)
 //
+// Coordinator (module 12 · lane A: what a project's Lead hears about on its own)
+// GET    /api/projects/:id/signals[?limit=]   -> LeadSignal[]  (newest first, default 50, at most 100; readAt null = the Lead hasn't heard it yet)
+// POST   /api/projects/:id/signals/check      -> LeadSignal[]  (looks at the project's pull requests now, then its signals as above; 409 with
+//                                              the reason without a GitHub connection or a Lead, with watching off, or while GitHub's rate limit lasts)
+// GET    /api/projects/:id/subscriptions      -> ProjectSubscriptions  (default { pullRequests: "tot" })
+// PATCH  /api/projects/:id/subscriptions      UpdateProjectSubscriptionsRequest -> ProjectSubscriptions  (also on Project.subscriptions; watching
+//                                              more starts a look at once)
+//
 // Devices (module 07; this device, remote access, and the browsers and phones signed in to it)
 // GET    /.well-known/tot                     -> { id, name, protocol: 1 }  (open, no sign-in: lets another device check it reached TOT)
 // GET    /api/devices                         -> DevicesStatus

@@ -1,6 +1,8 @@
 import type { HandoffPacket, TaskInfo } from "../../shared/types.ts";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
 import { ROLES } from "../orchestration/roles.ts";
+import { signalsNote } from "../signals/note.ts";
+import { leadSignals } from "../signals/store.ts";
 import { worktreeNotes } from "../worktrees/prompt.ts";
 
 /** Tasks can start tasks this many levels below the user's chat. */
@@ -151,11 +153,17 @@ export function markResultsRead(conversationId: string, ids: string[]): void {
 /** A project's Lead (module 11) hears about every task in its project, not only those it started, and also when one needs input. */
 export const LEAD_NEWS = "Tasks in this project have news: finished, or waiting for input.";
 
-/** Results of a chat's tasks that finished since its model last heard, as a note for its next turn; "" when none. */
-export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults" | "lead">): string {
-  if (!conversation.childResults.length) return "";
+/**
+ * Results of a chat's tasks that finished since its model last heard, as a note for its next turn; "" when none.
+ * A project's Lead also gets its unread signals (module 12), which are then read.
+ */
+export function childResultsNote(conversation: Pick<ConversationRecord, "id" | "childResults" | "lead" | "projectId">): string {
+  const signals = conversation.lead && conversation.projectId ? leadSignals.unread(conversation.projectId) : [];
+  leadSignals.markRead(signals.map((signal) => signal.id));
+  if (!conversation.childResults.length) return signalsNote(signals);
   markResultsRead(conversation.id, conversation.childResults);
-  return resultsNote(conversation.childResults, conversation.lead ? "Tasks in this project have news since your last reply: finished, or waiting for input." : "Tasks you started have finished since your last reply.");
+  const results = resultsNote(conversation.childResults, conversation.lead ? "Tasks in this project have news since your last reply: finished, or waiting for input." : "Tasks you started have finished since your last reply.");
+  return [results, signalsNote(signals)].filter(Boolean).join("\n\n");
 }
 
 /** The opening of a fresh session that carries on from a handoff packet instead of the transcript, with the last exchange verbatim. */
