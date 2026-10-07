@@ -32,7 +32,8 @@ function toAgent(row: Row): Agent {
     counts: {
       chats: count(`SELECT COUNT(*) AS n FROM conversations WHERE agent_id = ?`, id),
       pages: wiki.count(brains.forAgent(id).map((brain) => brain.id)),
-      routines: count(`SELECT COUNT(*) AS n FROM routines WHERE agent_id = ?`, id),
+      // A project's schedules (module 12) are its Lead's, not on the agent's list.
+      routines: count(`SELECT COUNT(*) AS n FROM routines WHERE agent_id = ? AND project_id IS NULL`, id),
     },
     queueHold: queueHolds.get(id),
     createdAt: Number(row.created_at),

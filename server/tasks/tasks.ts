@@ -326,10 +326,11 @@ export const tasks = {
     return taskStore.get(taskId)!;
   },
 
-  stop(taskId: string): TaskRecord {
+  /** `why` is its summary when someone other than the user stops it (a project's Lead, module 12). */
+  stop(taskId: string, why?: string): TaskRecord {
     const task = taskStore.require(taskId);
     if (FINISHED.has(task.task.status)) return task;
-    taskStore.transition(taskId, "stopped", { summary: task.task.summary ?? "Stopped by you." });
+    taskStore.transition(taskId, "stopped", { summary: why ?? task.task.summary ?? "Stopped by you." });
     runRegistry.activeFor(taskId)?.stop();
     return taskStore.get(taskId)!;
   },

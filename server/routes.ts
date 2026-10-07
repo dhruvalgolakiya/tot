@@ -234,7 +234,8 @@ api.post("/agents/:id/routines", async (c) => {
   const input = await body<RoutineInput>(c);
   const problem = validateRoutine(input, true);
   if (problem) throw new HttpError(400, problem);
-  const routine = routines.create(id, input);
+  // A project's schedule is made from the project (module 12: POST /api/projects/:id/schedules), not here.
+  const routine = routines.create(id, { ...input, projectId: null });
   appEvents.agentChanged(id);
   return c.json(routine, 201);
 });

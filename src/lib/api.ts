@@ -59,8 +59,11 @@ import type {
   Plugin,
   PluginInput,
   Project,
+  ProjectSubscriptions,
   ProviderId,
   ProviderStatus,
+  Routine,
+  RoutineInput,
   SendMessageRequest,
   SendMessageResponse,
   Settings,
@@ -80,6 +83,7 @@ import type {
   UpdateRemoteAccessRequest,
   UpdateProjectRequest,
   UpdateProjectRepoRequest,
+  UpdateProjectSubscriptionsRequest,
   WikiPage,
   WikiPageInput,
   WikiPagePatch,
@@ -293,6 +297,17 @@ export const api = {
   // Module 12 · lane A (signals, subscriptions).
 
   // Module 12 · lane B (schedules).
+  /** A project's schedules: they run in its Lead (a "schedule" signal), not as new chats. */
+  listProjectSchedules: (projectId: string) => request<Routine[]>("GET", `/projects/${seg(projectId)}/schedules`),
+  createProjectSchedule: (projectId: string, input: RoutineInput) => request<Routine>("POST", `/projects/${seg(projectId)}/schedules`, input),
+  /** `{ enabled: false }` pauses it. */
+  updateProjectSchedule: (projectId: string, routineId: string, patch: Partial<RoutineInput>) =>
+    request<Routine>("PATCH", `/projects/${seg(projectId)}/schedules/${seg(routineId)}`, patch),
+  deleteProjectSchedule: (projectId: string, routineId: string) => request<Ok>("DELETE", `/projects/${seg(projectId)}/schedules/${seg(routineId)}`),
+  // Lane A's subscriptions routes (the contract's), for the Subscriptions dialog; keep one copy when the lanes merge.
+  getProjectSubscriptions: (projectId: string) => request<ProjectSubscriptions>("GET", `/projects/${seg(projectId)}/subscriptions`),
+  updateProjectSubscriptions: (projectId: string, patch: UpdateProjectSubscriptionsRequest) =>
+    request<ProjectSubscriptions>("PATCH", `/projects/${seg(projectId)}/subscriptions`, patch),
 
   // Module 11 · lane D (the Lead, Home).
   /** The project's Lead chat: made the first time (with `agentId`, else the agent most active in the project), the same one after. */

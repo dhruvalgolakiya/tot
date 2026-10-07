@@ -113,3 +113,18 @@ export async function openDraftPr(
   const pr = await createDraft(repo, access.token, { title: title?.trim() || task.title, body: body?.trim() || prBody(task, files), head: branch, base });
   return { kind: "pr", target: base, sha: head, pr: { number: pr.number, url: pr.html_url } };
 }
+
+/**
+ * Module 12: pushes a draft PR's branch forward to `headSha`, the commit the user approved on the Lead's card (review
+ * fixes made after the PR was opened). Exactly that commit goes up as the branch, never with force: a branch GitHub
+ * has moved on from, or one rewritten here, is refused by git and nothing changes.
+ */
+export async function pushToDraftPr(task: TaskRecord, headSha: string): Promise<void> {
+  const { branch } = task.task.repo!;
+  const { cwd, script } = inWorktree(task.task.repo!, `git push --porcelain origin ${quote(`${headSha}:refs/heads/${branch}`)} 2>&1 || exit 4`);
+  const pushed = await onComputer(task, script, cwd, null, PUSH_TIMEOUT_MS);
+  if (pushed.exitCode !== 0) {
+    const words = gitWords(pushed.stdout || pushed.stderr);
+    throw new HttpError(409, `Couldn't push ${branch}: ${words || `exit code ${pushed.exitCode}`}`);
+  }
+}

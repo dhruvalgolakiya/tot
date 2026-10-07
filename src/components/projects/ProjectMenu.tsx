@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Archive, Brain, Ellipsis, GraduationCap, ScrollText, SlidersHorizontal, Wrench } from "lucide-react";
+import { Archive, Bell, Brain, Ellipsis, GraduationCap, ScrollText, SlidersHorizontal, Wrench } from "lucide-react";
 import type { Agent, Project } from "@shared/types";
 import { api } from "../../lib/api";
 import { archiveProject, isCodeProject } from "../../lib/projects";
@@ -8,10 +8,11 @@ import { navigateToAgentHome, navigateToConversation, navigateToWiki, notifyErro
 import { ConfirmDialog } from "../ConfirmDialog";
 import { IconButton } from "../ui/IconButton";
 import { InstructionsDialog, ProjectSettingsDialog, WorktreeSetupDialog } from "./ProjectDialogs";
+import { ProjectSubscriptionsDialog } from "./ProjectSubscriptionsDialog";
 
-type Dialog = "instructions" | "settings" | "worktree" | "archive";
+type Dialog = "instructions" | "subscriptions" | "settings" | "worktree" | "archive";
 
-/** The project page's one menu: Instructions, Brain, Learn this project, Worktree setup, Settings, Archive. */
+/** The project page's one menu: Instructions, Subscriptions (module 12), Brain, Learn this project, Worktree setup, Settings, Archive. */
 export function ProjectMenu({ project, agent }: { project: Project; agent: Agent | undefined }) {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [learning, setLearning] = useState(false);
@@ -65,6 +66,9 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
             <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "instructions")}>
               <ScrollText className="size-4 text-fg-muted" /> Instructions
             </DropdownMenu.Item>
+            <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "subscriptions")}>
+              <Bell className="size-4 text-fg-muted" /> Subscriptions
+            </DropdownMenu.Item>
             <DropdownMenu.Item
               className="menu-item"
               disabled={!agent}
@@ -95,6 +99,7 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
       </DropdownMenu.Root>
 
       <InstructionsDialog project={project} open={dialog === "instructions"} onOpenChange={close} />
+      <ProjectSubscriptionsDialog project={project} open={dialog === "subscriptions"} onOpenChange={close} />
       <ProjectSettingsDialog project={project} open={dialog === "settings"} onOpenChange={close} />
       {isCodeProject(project) && <WorktreeSetupDialog project={project} open={dialog === "worktree"} onOpenChange={close} />}
       <ConfirmDialog

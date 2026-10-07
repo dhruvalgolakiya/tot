@@ -7,6 +7,7 @@ import { agents } from "../data/agents.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { appEvents } from "../app-events.ts";
 import { checkout } from "./checkout.ts";
+import { firstRequests } from "./first-request.ts";
 import { pickFolderOnThisMac, recentGitFolders } from "./folders.ts";
 import { projects } from "./projects.ts";
 import { projectRepos } from "./repos.ts";
@@ -42,14 +43,26 @@ projectRoutes.post("/projects/folders/pick", async (c) => {
   }
 });
 
-projectRoutes.post("/projects", async (c) => c.json(projects.create(await body<CreateProjectRequest>(c)), 201));
+projectRoutes.post("/projects", async (c) => {
+  const request = await body<CreateProjectRequest>(c);
+  // Module 12: what the user wants built first goes to the new project's Lead (checked before anything is made).
+  const first = firstRequests.clean(request?.firstMessage);
+  const project = projects.create(request);
+  if (!first) return c.json(project, 201);
+  await firstRequests.take(project.id, first, typeof request.agentId === "string" && request.agentId ? request.agentId : null);
+  return c.json(projects.get(project.id) ?? project, 201);
+});
 
 projectRoutes.patch("/projects/:id", async (c) => c.json(projects.update(c.req.param("id"), await body<UpdateProjectRequest>(c))));
 
 projectRoutes.delete("/projects/:id", (c) => c.json(projects.archive(c.req.param("id"))));
 
-/** The user's OK for a folder project (the consent dialog). */
-projectRoutes.post("/projects/:id/grant", (c) => c.json(projects.grant(c.req.param("id"))));
+/** The user's OK for a folder project (the consent dialog). A first request waiting for it goes to the Lead now (module 12). */
+projectRoutes.post("/projects/:id/grant", (c) => {
+  const project = projects.grant(c.req.param("id"));
+  void firstRequests.ready(project.id);
+  return c.json(project);
+});
 
 /**
  * Learn a repo, into the project's own brain; the study chat is filed under the project. With several repos
