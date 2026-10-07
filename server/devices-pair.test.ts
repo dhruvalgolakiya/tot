@@ -75,7 +75,11 @@ const miniLog = join(miniData, "server.log");
 let mini: ChildProcess | null = null;
 function startMini() {
   const env: NodeJS.ProcessEnv = { ...process.env, TOT_DATA_DIR: miniData, TOT_PORT: String(MINI_PORT), TOT_EXECUTOR_PORT: String(MINI_PORT + 3000), TOT_ACCESS_TOKEN: MINI_TOKEN, TOT_PUBLIC_URL: MINI };
-  for (const name of ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CONFIG_DIR", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "TOT_LAN", "TOT_HOST"]) delete env[name];
+  for (const name of ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CONFIG_DIR", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT"]) delete env[name];
+  // Set empty, not removed: the server also reads a .env next to package.json (a developer's own checkout may have
+  // one), and only variables already set are kept from it. A legacy TOT_LAN there would put the Mac mini on the network.
+  env.TOT_LAN = "";
+  env.TOT_HOST = "";
   const log = openSync(miniLog, "a");
   mini = spawn(process.execPath, ["--import", "tsx", "server/index.ts"], { env, stdio: ["ignore", log, log] });
 }
