@@ -1,4 +1,3 @@
-import { agentIsland } from "@shared/islands";
 import { useNow } from "../hooks/useNow";
 import { selectDevice, useDevices } from "../lib/remote";
 import { selectActiveAgent, useStore } from "../store";
@@ -15,7 +14,7 @@ function greeting(hour: number): string {
 }
 
 /**
- * An agent's new-chat hero: the scene, zoomed in on the agent's own island, behind its mascot, who says hello in
+ * An agent's new-chat hero: the whole scene, at full strength, behind its mascot, who says hello in
  * a speech bubble above the composer. The scene runs up under the (transparent, on Home) header and fades out where the bubble sits.
  */
 export function AgentHome() {
@@ -26,7 +25,7 @@ export function AgentHome() {
 
   return (
     <div className="relative flex min-h-64 flex-1 flex-col items-center justify-end px-4 pb-6">
-      <HeroArt island={agent ? agentIsland(agent) : undefined} />
+      <HeroArt className="hero-art-home" />
       <div className="relative flex flex-col items-center">
         <div className="flex items-end gap-3">
           <MascotStage spec={agent?.mascot ?? defaultMascot} size={64} title={name} className="shrink-0" />
