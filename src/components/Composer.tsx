@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Columns2, Lightbulb, LoaderCircle, MessageSquare, Plus, Square } from "lucide-react";
+import { ArrowUp, Columns2, LoaderCircle, MessageSquare, Plus, Square } from "lucide-react";
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
 import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, slashQuery, type SlashCommandName } from "../lib/mission";
@@ -21,12 +21,9 @@ import { ChatChip } from "./ChatChip";
 import { Tip } from "./ui/Tip";
 import { VoiceInputButton } from "./voice";
 
-const MAX_HEIGHT_PX = 200;
+const MAX_HEIGHT_PX = 240;
 // Phones and tablets: Enter inserts a newline, the button sends.
 const touchOnly = () => window.matchMedia("(pointer: coarse)").matches;
-
-const pill =
-  "flex h-9 items-center gap-1.5 rounded-full px-3 text-ui font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg aria-pressed:bg-selected aria-pressed:text-fg";
 
 const SLASH_ICONS: Record<SlashCommandName, typeof Columns2> = { "best-of": Columns2 };
 
@@ -56,7 +53,6 @@ export function Composer({
   // preview under the textarea — never merged into `text` until it finalizes,
   // so it can't clobber anything the user has typed.
   const [interim, setInterim] = useState("");
-  const [thinkHarder, setThinkHarder] = useState(false);
   // The slash commands' menu (just /best-of now).
   const [slashHighlight, setSlashHighlight] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState<string | null>(null);
@@ -166,20 +162,17 @@ export function Composer({
     }
     if (!canSend) return;
     const message = value;
-    const harder = thinkHarder;
     const files = attachments.ready.map((it) => it.attachment);
     const previousItems = attachments.items;
     const chats = contextChats;
     setText("");
     setInterim("");
-    setThinkHarder(false); // "Think harder" applies to one message only.
     setContextChats([]);
     attachments.clear();
-    const sent = await sendMessage(message, { thinkHarder: harder, attachments: files, contextChats: chats });
+    const sent = await sendMessage(message, { attachments: files, contextChats: chats });
     if (!sent) {
       setContextChats(chats);
       setText((current) => current || value);
-      setThinkHarder(harder);
       attachments.restore(previousItems);
     }
   }
@@ -371,7 +364,7 @@ export function Composer({
         onKeyDown={onKeyDown}
         onPaste={onPaste}
         placeholder={placeholder}
-        className="block max-h-[200px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
+        className="block min-h-[76px] max-h-[240px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
       />
       {interim.trim() && (
         <p aria-live="polite" className="truncate px-4 pb-1 text-ui text-fg-subtle italic">
@@ -392,14 +385,6 @@ export function Composer({
           </Tip>
         )}
         <VoiceInputButton onTranscript={onTranscript} />
-        {!steering && !sendsBestOf && (
-          <Tip content="Use the strongest model with extra effort, for your next message only">
-            <button type="button" aria-pressed={thinkHarder} onClick={() => setThinkHarder((value) => !value)} className={pill}>
-              <Lightbulb className="size-3.5" />
-              <span className="hidden sm:inline">Think harder</span>
-            </button>
-          </Tip>
-        )}
 
         <div className="ml-auto flex min-w-0 items-center gap-2">
           {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}

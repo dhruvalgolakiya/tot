@@ -43,7 +43,6 @@ Pick a model from the menu at the top of the chat.
 - **TOT Auto** (the default) picks for you, message by message. Quick asks go to Claude Sonnet 5.5, which is fast. Coding, debugging, research, analysis and long messages go to Claude Opus 5.5. When Claude isn't connected, or your plan is at its limit, it uses ChatGPT. Hover the model name under a reply to see why it was picked, like "Auto · coding task → Opus 5.5".
 - **Claude**: Claude Opus 5.5 for the deepest reasoning, Claude Sonnet 5.5 for everyday work, and Claude Fable 5.1 when your account offers it.
 - **ChatGPT**: the models your ChatGPT account offers, listed live, with its default first.
-- **Think harder**: the pill in the message box. Your next message goes to the strongest model with extra effort. It switches itself off after one message.
 
 ### When a plan runs out
 

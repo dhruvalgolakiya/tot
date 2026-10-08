@@ -9,7 +9,7 @@ Everything TOT does, area by area, with an honest status:
 More in [Agents and chats](/docs/agents).
 
 - [Available] **Agents with mascots.** As many as you like, each with a mascot, instructions, a default model and a computer.
-- [Available] **Claude and ChatGPT on your own plans.** TOT Auto, Think harder, and a switch to the other provider when a plan hits its limit.
+- [Available] **Claude and ChatGPT on your own plans.** TOT Auto, and a switch to the other provider when a plan hits its limit.
 - [Partly] **Mascot moods.** Mascots show working, idle and asleep. They don't act out thinking or talking yet.
 - [Available] **Attachments.** Images, text and code files, and anything else copied to the agent's computer.
 - [Partly] **Voice input.** Works in the browser over HTTPS. Not in the Mac app, and not in Firefox.

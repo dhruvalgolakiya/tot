@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import type { Conversation, Project } from "@shared/types";
 import { useAttachments } from "../../hooks/useAttachments";
 import { api, errorMessage } from "../../lib/api";
 import { setNewProjectChat, useLeadUi } from "../../lib/lead";
-import { isCodeProject, useProjects } from "../../lib/projects";
+import { isCodeProject, PROJECT_ICONS, useProjects } from "../../lib/projects";
 import { navigateToAgentHome, selectActiveAgent, sendMessage, showLead, useStore } from "../../store";
 import { Composer } from "../Composer";
 import { defaultMascot, MascotStage } from "../mascot";
@@ -157,7 +158,7 @@ function LeadArea({ project, state, retry, newChat }: { project: Project; state:
             <Composer
               key={newChat ? "new-chat" : open?.id}
               attachments={attachments}
-              placeholder={newChat ? `New chat in ${project.name}…` : `Ask the Lead of ${project.name}…`}
+              placeholder={newChat ? "Ask anything" : `Ask the Lead of ${project.name}…`}
             />
           )}
         </div>
@@ -187,12 +188,22 @@ function LeadHero({ project }: { project: Project }) {
 }
 
 function NewChatHero({ project }: { project: Project }) {
+  const Icon = PROJECT_ICONS[project.kind];
   return (
-    <div className="flex flex-1 flex-col items-center justify-end px-4 pb-6">
-      <h1 className="text-center text-title text-fg-strong">New chat in {project.name}</h1>
-      <button type="button" onClick={() => setNewProjectChat(false)} className="mt-2 link-muted text-sm">
-        Back to the Lead
+    <div className="flex flex-1 flex-col items-center justify-end px-4 pb-8">
+      <button
+        type="button"
+        onClick={() => setNewProjectChat(false)}
+        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-hairline px-3 text-ui text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+      >
+        <ArrowLeft className="size-3.5" />
+        Lead
       </button>
+      <h1 className="mt-5 text-center font-display text-3xl font-semibold text-balance text-fg-strong">What should we work on?</h1>
+      <p className="mt-2 flex items-center gap-1.5 text-sm text-fg-muted">
+        <Icon aria-hidden="true" className="size-4" />
+        A new chat in {project.name}
+      </p>
     </div>
   );
 }

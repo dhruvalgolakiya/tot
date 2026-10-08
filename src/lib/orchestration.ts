@@ -18,7 +18,7 @@ export const ROLES = Object.keys(ROLE_LABELS) as Role[];
 export const TIER_DESCRIPTIONS: Record<Tier, string> = {
   fast: "Searching, classifying, quick answers",
   standard: "Most work: research, tests, writing",
-  deep: "The hard change; “Think harder”",
+  deep: "The hard change",
 };
 
 /** "Researcher · standard" for a task's role and tier, when it has a role. */
