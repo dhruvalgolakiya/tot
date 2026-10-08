@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { Tabs } from "radix-ui";
 import type { Conversation, Project } from "@shared/types";
 import { useAttachments } from "../../hooks/useAttachments";
 import { api, errorMessage } from "../../lib/api";
-import { PROJECT_TABS, setNewProjectChat, setPhoneTab, useLeadUi, type PhoneTab } from "../../lib/lead";
+import { setNewProjectChat, useLeadUi } from "../../lib/lead";
 import { isCodeProject, useProjects } from "../../lib/projects";
 import { navigateToAgentHome, selectActiveAgent, sendMessage, showLead, useStore } from "../../store";
 import { Composer } from "../Composer";
@@ -14,15 +13,13 @@ import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
 import { Skeleton } from "../ui/Skeleton";
 import { FolderConsentDialog } from "./FolderConsent";
-import { ProjectTabContent, ProjectTabList, useDockedSide } from "./ProjectTabs";
 
 /**
- * A project's page, one screen (roadmap module 11, lane D): its Lead chat in the middle, the chat the user
- * runs the project from, and beside it Board, Chats, Knowledge and Repos (ProjectPanel, docked from App.tsx
- * on wide screens; tabs above the chat on narrower ones, the Lead first). Opening the page makes the Lead
- * the first time (POST /api/projects/:id/lead) and opens it as the current chat, so the composer, the
- * messages and the live reply work as in any chat. "New chat" in the Chats tab swaps the middle for a new
- * chat in the project. Mounted in the main column while `page === "project"` (see App.tsx).
+ * A project's page (roadmap module 11): just its Lead chat, the chat the user runs the project from. Its other
+ * chats are in the sidebar under the project, its tasks in Mission control; Repos, Knowledge and "New chat" are
+ * in the header's project menu. Opening the page makes the Lead the first time (POST /api/projects/:id/lead) and
+ * opens it as the current chat, so the composer, the messages and the live reply work as in any chat. "New chat"
+ * swaps the Lead for a new chat in the project. Mounted in the main column while `page === "project"` (see App.tsx).
  */
 export function ProjectPage() {
   const projectId = useStore((s) => s.projectId);
@@ -78,37 +75,21 @@ function useLeadChat(project: Project): { state: LeadState; retry: () => void } 
 }
 
 function ProjectScreen({ project }: { project: Project }) {
-  const docked = useDockedSide();
-  const phoneTab = useLeadUi((s) => s.phoneTab);
   const newChat = useLeadUi((s) => s.newChat);
   const { state, retry } = useLeadChat(project);
 
-  // A page opens on its Lead, on phones too.
-  useEffect(() => useLeadUi.setState({ newChat: false, phoneTab: "lead" }), []);
+  // A page opens on its Lead.
+  useEffect(() => useLeadUi.setState({ newChat: false }), []);
   // The Lead is the open chat while the page shows it.
   useEffect(() => {
     if (state.status === "ready" && !newChat) showLead(state.lead);
   }, [state, newChat]);
 
-  const middle = <LeadArea project={project} state={state} retry={retry} newChat={newChat} phone={!docked} />;
-  if (docked) return middle;
-  return (
-    <Tabs.Root value={phoneTab} onValueChange={(value) => setPhoneTab(value as PhoneTab)} className="flex min-h-0 flex-1 flex-col pt-14">
-      <ProjectTabList withLead />
-      <Tabs.Content value="lead" className="flex min-h-0 flex-1 flex-col outline-none">
-        {middle}
-      </Tabs.Content>
-      {PROJECT_TABS.map((tab) => (
-        <Tabs.Content key={tab.id} value={tab.id} className="min-h-0 flex-1 overflow-y-auto p-4 outline-none">
-          <ProjectTabContent project={project} tab={tab.id} />
-        </Tabs.Content>
-      ))}
-    </Tabs.Root>
-  );
+  return <LeadArea project={project} state={state} retry={retry} newChat={newChat} />;
 }
 
 /** The middle: the Lead (or a new chat in the project), with the project's notices over the composer. */
-function LeadArea({ project, state, retry, newChat, phone }: { project: Project; state: LeadState; retry: () => void; newChat: boolean; phone: boolean }) {
+function LeadArea({ project, state, retry, newChat }: { project: Project; state: LeadState; retry: () => void; newChat: boolean }) {
   const attachments = useAttachments(project.deviceId ?? null);
   const currentId = useStore((s) => s.currentId);
   const lead = state.status === "ready" ? state.lead : null;
@@ -165,7 +146,7 @@ function LeadArea({ project, state, retry, newChat, phone }: { project: Project;
       {newChat ? (
         <NewChatHero project={project} />
       ) : open && !empty ? (
-        <MessageList conversationId={open.id} topPadding={phone ? "pt-4" : "pt-20"} />
+        <MessageList conversationId={open.id} topPadding="pt-20" />
       ) : (
         <LeadHero project={project} />
       )}
@@ -217,7 +198,7 @@ function NewChatHero({ project }: { project: Project }) {
 }
 
 const STARTERS = [
-  { label: "Where do things stand?", text: "Where do things stand in this project? Look at the board and tell me what needs me." },
+  { label: "Where do things stand?", text: "Where do things stand in this project? Tell me what needs me." },
   { label: "Plan the next step", text: "Read the project's knowledge, then propose the next few tasks. Don't start them yet." },
   { label: "Land what's ready", text: "Check the tasks that are ready to land and propose landing them, one at a time, in order.", code: true },
 ];

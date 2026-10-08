@@ -2,7 +2,7 @@ Mission control is how you run many coding agents on one project at once, from o
 
 **Why you'd use it:** a big change rarely fits in one go. Split it into tasks, let them run side by side, and stay in charge of what lands.
 
-Each coding task works in its own **worktree**: a separate copy of one of the project's repos, with its own branch, so agents don't edit over each other or over your files. Its branch is named `tot/…`. On a project page, the **Board** tab shows the same board for that project alone, with the project's **Lead** able to propose landing for you; see [Projects](/docs/projects#the-lead).
+Each coding task works in its own **worktree**: a separate copy of one of the project's repos, with its own branch, so agents don't edit over each other or over your files. Its branch is named `tot/…`. Mission control's project filter shows one project's tasks, and the project's **Lead** can propose landing them for you; see [Projects](/docs/projects#the-lead).
 
 ## Starting work
 

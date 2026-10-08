@@ -27,14 +27,14 @@ That's enforced by the sandbox, not just by asking nicely. TOT refuses your home
 
 ## The project page
 
-Click a project's name to open its page: your **Lead** chat in the middle, with tabs beside it.
+Click a project's name to open its page: your **Lead** chat, and nothing else. The project's other chats and tasks are in the sidebar under its name, and every task is in [Mission control](/docs/mission-control).
 
-- **Board**: the project's tasks — needs you, working, ready to land — the same as [Mission control](/docs/mission-control), in one column. **Open mission control** goes to the full board.
-- **Chats**: every other chat and task in the project, from every agent, newest first. **New chat** starts one.
-- **Knowledge**: the project's wiki and memory, and how TOT keeps them current. See [Project knowledge](/docs/memory#project-knowledge).
+The **…** menu at the top holds the rest:
+
+- **New chat**: a chat in the project, apart from the Lead.
 - **Repos**: the project's repos — see below.
-
-On a phone the tabs sit above the chat, with the Lead as one of them. The **…** menu holds **Instructions**, **Brain** (a shortcut into the project's knowledge), **Settings** and **Archive** — plus, for a project with code, **Learn this project** and **Worktree setup**.
+- **Knowledge**: the project's wiki and memory, and how TOT keeps them current. See [Project knowledge](/docs/memory#project-knowledge).
+- **Instructions**, **Subscriptions**, **Settings** and **Archive** — plus, for a project with code, **Learn this project** and **Worktree setup**.
 
 An agent's home screen — what you see with no chat open — lists everything in flight under the composer: what **Needs you**, what's **Working**, what's **Ready to land**, what's **Coming up** (the agent's next routines), your **Projects** and what's **Done today**. A project's row shows what needs you, what's working and what's ready to land; click it to open the project's Lead.
 
@@ -45,7 +45,7 @@ Each project has one pinned chat, titled **Lead**, that you run the project from
 - It plans the work, and can start a task in each of the project's repos.
 - It watches every task in the project, not only the ones it started, and wakes up when one finishes or needs you. It can also stop, pause or resume a task.
 - It keeps the project's knowledge current as work lands.
-- **It hears about things on its own.** A pull request's checks failing or passing, a review asking for changes, a comment, a merge or a conflict; a ticket from the project's Slack channels, Linear teams or GitHub issues; a schedule you set. It acts by starting or steering tasks, and tells you. These show under **Signals** on the Board.
+- **It hears about things on its own.** A pull request's checks failing or passing, a review asking for changes, a comment, a merge or a conflict; a ticket from the project's Slack channels, Linear teams or GitHub issues; a schedule you set. It acts by starting or steering tasks, and tells you in the Lead chat.
 - **It never lands or posts anything on its own.** Before a merge, a draft PR, or pushing review fixes to an open draft PR, it shows you a card: what, where, and why. The card waits for you, however long you take, even after the Lead has stopped typing. Only your **Approve** lands exactly the commit the card showed; **Deny** does nothing. It never comments on GitHub or posts to Slack or Linear.
 
 Ask it things like "where do things stand?" or "land what's ready", or just tell it what you want built next. When you create a project, **What do you want built first?** goes straight to its Lead.
@@ -67,7 +67,7 @@ A project can hold several repos, any mix of GitHub repos and folders on your Ma
 - Press **Add repo** and pick a GitHub repo (`owner/name`) or a folder on your Mac. A folder asks your OK, the first time, same as [adding a folder project](#your-ok-for-a-folder) does.
 - A repo's **…** menu has **Learn this repo** (an agent studies it and writes up its docs, under the **Knowledge** tab's Repos), **Rename…**, **Make primary**, and **Remove…**. Removing a repo leaves its files exactly where they are; it just stops tasks from working in it.
 - **Each task works in one repo.** With more than one, mission control cards show which repo a task is in. The Lead splits work that spans repos into one task per repo.
-- A topic project can gain a repo too: add one from its Repos tab, and the project becomes a code project from then on.
+- A topic project can gain a repo too: add one from **…** → **Repos**, and the project becomes a code project from then on.
 - A GitHub repo you add is cloned next to the project's other clones, on each agent's computer. A folder repo stays exactly where it is, with its own grant.
 
 ## Chats in a project

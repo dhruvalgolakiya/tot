@@ -13,7 +13,6 @@ import { MissionControl } from "./components/mission/MissionControl";
 import { NewAgentDialog } from "./components/NewAgentDialog";
 import { NewProjectDialog } from "./components/projects/NewProjectDialog";
 import { ProjectPage } from "./components/projects/ProjectPage";
-import { ProjectPanel } from "./components/projects/ProjectTabs";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { TrustLab } from "./components/trust/TrustLab";
 import { Sidebar } from "./components/Sidebar";
@@ -160,8 +159,6 @@ export default function App() {
             </>
           )}
         </main>
-        {/* Module 11: a project's Board, Chats, Knowledge and Repos beside its Lead (wide screens). */}
-        <ProjectPanel />
         <ComputerPanel />
         <TaskPanel />
         <AgentSettingsPanel />

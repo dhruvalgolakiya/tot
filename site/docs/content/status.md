@@ -38,7 +38,7 @@ More in [Projects](/docs/projects).
 - [Available] **Several repos in one project**, any mix of GitHub repos and folders, one task per repo.
 - [Available] **A Lead chat per project.** Plans the work, starts, steers, stops and watches tasks across the project's repos, and lands only with your OK, by a card that waits for you.
 - [Available] **Subscriptions.** The Lead hears about pull requests (checks, reviews, comments, merges), tickets and schedules on its own, and pushes review fixes to a draft PR only with your OK.
-- [Available] **One screen.** The project page: the Lead in the middle, with Board, Chats, Knowledge and Repos tabs, and a row for every project on each agent's home screen.
+- [Available] **One screen.** The project page is just the Lead chat, with New chat, Repos and Knowledge in its menu, and a row for every project on each agent's home screen.
 - [Available] **Tickets and intake.** Linear and GitHub links, Slack channels and Linear teams.
 - [Not yet] **Folder projects on cloud computers.** Folders on your Mac need a local computer.
 

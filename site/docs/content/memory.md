@@ -41,7 +41,7 @@ A project's memory and its wiki are one git repo: `MEMORY.md` for facts, `pages/
 
 - **Facts**: the project's memory, same as **Entries** above.
 - **Pages**: its wiki, the longer notes and documents an agent writes up. Open one to read, edit or ask about it; every page has **History** too.
-- **Repos**: each repo's own docs, written by **Learn this repo** in the project's [Repos tab](/docs/projects#more-than-one-repo).
+- **Repos**: each repo's own docs, written by **Learn this repo** in the project's [Repos](/docs/projects#more-than-one-repo) (its **…** menu).
 - **History**: one timeline for both facts and pages, newest first, with **Undo**.
 - **Updates**: see below.
 

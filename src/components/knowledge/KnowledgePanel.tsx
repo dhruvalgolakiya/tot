@@ -21,7 +21,7 @@ const TABS: { id: KnowledgeTab; label: string }[] = [
   { id: "history", label: "History" },
 ];
 
-/** Pill tabs (neutral, DESIGN.md), so they read as a level below the project page's own underline tabs. */
+/** Pill tabs (neutral, DESIGN.md). */
 const tabTrigger =
   "flex h-8 shrink-0 items-center rounded-full px-3 text-ui font-medium text-fg-muted transition-colors " +
   "hover:bg-hover hover:text-fg data-[state=active]:bg-selected data-[state=active]:text-fg";

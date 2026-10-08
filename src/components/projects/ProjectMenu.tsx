@@ -1,18 +1,27 @@
 import { useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Archive, Bell, Brain, Ellipsis, GraduationCap, ScrollText, SlidersHorizontal, Wrench } from "lucide-react";
+import { Archive, Bell, Brain, Ellipsis, FolderGit2, GraduationCap, ScrollText, SlidersHorizontal, SquarePen, Wrench } from "lucide-react";
 import type { Agent, Project } from "@shared/types";
 import { api } from "../../lib/api";
+import { setNewProjectChat } from "../../lib/lead";
 import { archiveProject, isCodeProject } from "../../lib/projects";
-import { navigateToAgentHome, navigateToConversation, navigateToWiki, notifyError } from "../../store";
+import { navigateToAgentHome, navigateToConversation, notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { KnowledgePanel } from "../knowledge/KnowledgePanel";
+import { KnowledgeUpdates } from "../knowledge/KnowledgeUpdates";
+import { ProjectMemoryRow } from "../memory/ProjectMemoryRow";
 import { IconButton } from "../ui/IconButton";
+import { Modal, ModalBody } from "../ui/Modal";
 import { InstructionsDialog, ProjectSettingsDialog, WorktreeSetupDialog } from "./ProjectDialogs";
+import { ProjectRepos } from "./ProjectRepos";
 import { ProjectSubscriptionsDialog } from "./ProjectSubscriptionsDialog";
 
-type Dialog = "instructions" | "subscriptions" | "settings" | "worktree" | "archive";
+type Dialog = "repos" | "knowledge" | "instructions" | "subscriptions" | "settings" | "worktree" | "archive";
 
-/** The project page's one menu: Instructions, Subscriptions (module 12), Brain, Learn this project, Worktree setup, Settings, Archive. */
+/**
+ * The project page's one menu: New chat, Repos, Knowledge, then Instructions, Subscriptions (module 12), Learn this
+ * project, Worktree setup, Settings, Archive. The page itself is only the Lead chat.
+ */
 export function ProjectMenu({ project, agent }: { project: Project; agent: Agent | undefined }) {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [learning, setLearning] = useState(false);
@@ -63,18 +72,23 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
               setDialog(next);
             }}
           >
+            {!project.archived && (
+              <DropdownMenu.Item className="menu-item" onSelect={() => setNewProjectChat(true)}>
+                <SquarePen className="size-4 text-fg-muted" /> New chat
+              </DropdownMenu.Item>
+            )}
+            <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "repos")}>
+              <FolderGit2 className="size-4 text-fg-muted" /> Repos
+            </DropdownMenu.Item>
+            <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "knowledge")}>
+              <Brain className="size-4 text-fg-muted" /> Knowledge
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator className="menu-separator" />
             <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "instructions")}>
               <ScrollText className="size-4 text-fg-muted" /> Instructions
             </DropdownMenu.Item>
             <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "subscriptions")}>
               <Bell className="size-4 text-fg-muted" /> Subscriptions
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              className="menu-item"
-              disabled={!agent}
-              onSelect={() => agent && navigateToWiki(agent.id, null, project.brainId)}
-            >
-              <Brain className="size-4 text-fg-muted" /> Brain
             </DropdownMenu.Item>
             {isCodeProject(project) && (
               <DropdownMenu.Item className="menu-item" disabled={!agent || learning} onSelect={() => void learn()}>
@@ -98,6 +112,18 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
 
+      <Modal open={dialog === "repos"} onOpenChange={close} title="Repos" description={`The code ${project.name}'s tasks work in.`} className="max-w-2xl">
+        <ModalBody>
+          <ProjectRepos project={project} />
+        </ModalBody>
+      </Modal>
+      <Modal open={dialog === "knowledge"} onOpenChange={close} title="Knowledge" description={`What every agent knows about ${project.name}.`} className="max-w-2xl">
+        <ModalBody className="space-y-6">
+          <KnowledgePanel project={project} />
+          <KnowledgeUpdates project={project} />
+          <ProjectMemoryRow project={project} />
+        </ModalBody>
+      </Modal>
       <InstructionsDialog project={project} open={dialog === "instructions"} onOpenChange={close} />
       <ProjectSubscriptionsDialog project={project} open={dialog === "subscriptions"} onOpenChange={close} />
       <ProjectSettingsDialog project={project} open={dialog === "settings"} onOpenChange={close} />

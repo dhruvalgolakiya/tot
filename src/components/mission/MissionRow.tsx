@@ -27,7 +27,7 @@ import { ledgerRowClass } from "../ui/Ledger";
 import { StatusDot } from "../ui/StatusDot";
 
 /**
- * Module 09: one task on mission control's board (and a project's Board tab), as a ledger row. The row opens the task;
+ * Module 09: one task on mission control's board, as a ledger row. The row opens the task;
  * its preview, pull request and best-of comparison open from small links that show on hover. Left: what state it's in;
  * then its title with a status line and branch under it; right: diff stats, checks, the agent and how long it's run.
  */
@@ -73,7 +73,7 @@ export function MissionRow({
   agent: Agent | undefined;
   overlaps: MissionOverlap[];
   now: number;
-  /** A narrow column (a project's Board tab): diff stats and the elapsed time move under the title. */
+  /** A narrow column: diff stats and the elapsed time move under the title. */
   compact?: boolean;
 }) {
   const conversations = useStore((s) => s.conversations);

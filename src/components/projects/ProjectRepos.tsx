@@ -21,7 +21,7 @@ import { FolderConsentText, folderConsentTitle } from "./FolderConsent";
  * Module 11 (docs/roadmap/11-workspaces.md), lane A: the project's repos, the primary first, each a flat row
  * (its name, what it is, its base branch). Add one (a GitHub repo, or a folder on this Mac with consent);
  * a row's "…" menu learns it (its docs go under its own page in the project's knowledge), renames it or sets
- * its base branch, makes it the primary, or removes it (refused while a task has work in it). A folder not allowed yet shows "Allow…". Placed by lane D (the project's Repos tab).
+ * its base branch, makes it the primary, or removes it (refused while a task has work in it). A folder not allowed yet shows "Allow…". Shown from the project menu's Repos.
  */
 export function ProjectRepos({ project }: { project: Project }) {
   const repos = project.repos ?? [];
