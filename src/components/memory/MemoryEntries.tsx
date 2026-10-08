@@ -112,7 +112,7 @@ export function MemoryEntries({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             disabled={adding}
-            placeholder="Add a fact and press Enter, e.g. “Tests need TZ=UTC.”"
+            placeholder={kind === "you" ? "Add something about you and press Enter, e.g. “I prefer short answers.”" : "Add a fact and press Enter, e.g. “Tests need TZ=UTC.”"}
             aria-label="New fact"
             className="input"
           />
