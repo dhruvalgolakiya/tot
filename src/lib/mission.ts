@@ -29,7 +29,8 @@ export function missionSection(task: TaskConversation): MissionSection {
   if (landing && !prWithNews) return "landed";
   if (status === "needs-input" || status === "failed" || status === "interrupted") return "needs-you";
   if (status === "running" || status === "queued" || status === "paused") return "working";
-  return repo?.headSha ? "ready" : "landed";
+  // Ready to land only with something to land: a task that read the code and changed nothing is finished.
+  return repo?.headSha && (!task.task.stats || task.task.stats.files > 0) ? "ready" : "landed";
 }
 
 /** The board's sections in order, each sorted: working ones running first, ready ones in land order, landed ones newest first. */

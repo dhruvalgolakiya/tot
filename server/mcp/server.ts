@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -175,6 +176,10 @@ function registerDesktopTools(server: McpServer, agentId: string): void {
 /** A file path for the computer tools: in a coding task, relative paths start in its worktree (`base`). */
 function resolvePath(path: string, base: string | null): string {
   if (path.startsWith("~/")) return homeRelative(path);
+  // A task's own notes (~/tot-tasks/<id>/PLAN.md) live in the computer's home, never in the repo it works on: a
+  // model that drops the "~/" (or writes this Mac's home folder in full) still lands there, not in its worktree.
+  const notes = /(?:^|\/)(tot-tasks\/.*)$/.exec(path);
+  if (notes && (!path.startsWith("/") || path.startsWith(`${homedir()}/tot-tasks/`))) return notes[1]!;
   if (!base || path.startsWith("/") || path === base || path.startsWith(`${base}/`)) return path;
   return `${base}/${path}`;
 }
@@ -241,7 +246,7 @@ function buildServer(conversation: ConversationRecord): McpServer {
       "computer_read_file",
       {
         title: "Read a file",
-        description: "Read a text file from your computer. Relative paths are resolved from the home folder.",
+        description: "Read a text file from your computer. Relative paths start in your working folder (in a task, its worktree); ~/ is the home folder.",
         inputSchema: { path: z.string().min(1).describe("File path, e.g. `app/src/index.ts`") },
       },
       ({ path }) =>
@@ -259,7 +264,7 @@ function buildServer(conversation: ConversationRecord): McpServer {
       {
         title: "Write a file",
         description:
-          "Create or overwrite a text file on your computer with the given content. Parent folders are created as needed. Relative paths are resolved from the home folder.",
+          "Create or overwrite a text file on your computer with the given content. Parent folders are created as needed. Relative paths start in your working folder (in a task, its worktree); ~/ is the home folder.",
         inputSchema: {
           path: z.string().min(1).describe("File path, e.g. `app/index.html`"),
           content: z.string().describe("The complete file content"),

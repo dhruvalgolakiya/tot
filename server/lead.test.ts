@@ -568,6 +568,14 @@ try {
 check("…while a plain chat still counts every task it started", refused.includes("at most 2 tasks"), refused || "(not refused)");
 check("(the Lead record is still the Lead)", leadRecord.lead === true);
 
+// A finished task with nothing to land (it read the code, changed nothing) is done, not ready to land.
+const { boardSection } = await import("./lead/board.ts");
+const finished = (stats: { files: number } | null) =>
+  ({ task: { status: "done", landing: null, repo: { headSha: "abc" }, stats: stats && { ...stats, added: 0, removed: 0, paths: [], headSha: "abc", at: 1 } } }) as unknown as Parameters<typeof boardSection>[0];
+check("a finished task with no changes is done, not ready to land", boardSection(finished({ files: 0 })) === "done");
+check("…one with changes is ready to land", boardSection(finished({ files: 2 })) === "ready");
+check("…and one whose changes aren't known yet stays ready", boardSection(finished(null)) === "ready");
+
 await leadTools.client.close();
 await totTools.client.close();
 chatWakes.stop();

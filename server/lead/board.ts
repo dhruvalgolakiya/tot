@@ -26,8 +26,12 @@ export function boardSection(task: TaskRecord): BoardSection {
   if (landing && !prWithNews) return "landed";
   if (status === "needs-input" || status === "failed" || status === "interrupted") return "needs-you";
   if (status === "running" || status === "queued" || status === "paused") return "working";
-  return repo?.headSha ? "ready" : "done";
+  // Ready to land only with something to land: a task that read the code and changed nothing is just done.
+  return repo?.headSha && hasChanges(task.task.stats) ? "ready" : "done";
 }
+
+/** Whether a task's branch differs from its base (unknown stats count as changes, so nothing hides by mistake). */
+export const hasChanges = (stats: { files: number } | null | undefined): boolean => !stats || stats.files > 0;
 
 /** The project's repos, one line each: "web (primary): GitHub acme/web · base main" ("(primary)" only when there are several). */
 export function repoLines(project: Project): string[] {
