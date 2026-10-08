@@ -27,8 +27,13 @@ export function MermaidDiagram({ code, fallback }: { code: string; fallback: Rea
     import("mermaid")
       .then(async ({ default: mermaid }) => {
         if (cancelled || gen !== generation.current) return;
-        mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: theme === "dark" ? "dark" : "default" });
-        const { svg: rendered } = await mermaid.render(`mermaid-${rawId}-${gen}`, code);
+        // suppressErrorRendering: on a bad diagram mermaid would otherwise draw its own "Syntax error" bomb
+        // straight onto the page, outside this component. Parse first, so a bad one just stays a code block.
+        mermaid.initialize({ startOnLoad: false, securityLevel: "strict", suppressErrorRendering: true, theme: theme === "dark" ? "dark" : "default" });
+        if (!(await mermaid.parse(code, { suppressErrors: true }))) throw new Error("Not a valid diagram");
+        if (cancelled || gen !== generation.current) return;
+        const id = `mermaid-${rawId}-${gen}`;
+        const { svg: rendered } = await mermaid.render(id, code).finally(() => document.getElementById(`d${id}`)?.remove());
         if (cancelled || gen !== generation.current) return;
         setSvg(rendered);
         setStatus("ok");
