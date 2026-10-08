@@ -39,6 +39,8 @@ import {
   comparePath,
   conversationIdFromPath,
   conversationPath,
+  CREW_PATH,
+  isCrewPath,
   isSettingsPath,
   MASCOTS_PATH,
   missionFromLocation,
@@ -64,8 +66,11 @@ export type AgentSettingsTab = "profile" | "routines";
 export type TaskPanelTab = "plan" | "changes" | "activity";
 type LoadState = "loading" | "ready" | "error";
 
-/** Which top-level screen is showing; drives what `App` mounts. "mission" and "compare" are module 09's board and best-of view. */
-export type Page = "home" | "chat" | "project" | "mascots" | "wiki" | "settings" | "trust-lab" | "mission" | "compare";
+/**
+ * Which top-level screen is showing; drives what `App` mounts. "mission" and "compare" are module 09's board and
+ * best-of view; "crew" is every agent at a glance.
+ */
+export type Page = "home" | "chat" | "project" | "mascots" | "wiki" | "settings" | "trust-lab" | "mission" | "compare" | "crew";
 
 /** How long a just-finished reply keeps its mascot "happy" before it idles. */
 export const MASCOT_HAPPY_MS = 2200;
@@ -625,6 +630,8 @@ export async function createAgent(input: AgentInput, deviceId: string | null = n
     const agent = withDevice(await onDevice(deviceId, () => api.createAgent(input)));
     set((s) => ({ agents: s.agents.some((a) => a.id === agent.id) ? s.agents : [...s.agents, agent] }));
     setNewAgentDialogOpen(false);
+    // Land on the crew, where the new agent joins the others.
+    navigateToCrew();
     return agent;
   } catch (error) {
     notifyError(error);
@@ -725,6 +732,10 @@ export function syncWithLocation() {
     set({ page: "trust-lab" });
     return;
   }
+  if (isCrewPath(pathname)) {
+    set({ page: "crew", currentId: null, computerPanelOpen: false, taskPanelOpen: false });
+    return;
+  }
   const mission = missionFromLocation(pathname, window.location.search);
   if (mission) {
     set({ page: "mission", missionProjectId: mission.projectId, currentId: null, computerPanelOpen: false, taskPanelOpen: false });
@@ -814,6 +825,14 @@ export function navigateToMission(projectId: string | null = null) {
     return;
   }
   set((s) => ({ viewKey: s.viewKey + 1, page: "mission", missionProjectId: projectId, currentId: null, computerPanelOpen: false, taskPanelOpen: false }));
+}
+
+/** Your crew: every agent, with its island, computer, brains and model (the rail's logo, and after adding an agent). */
+export function navigateToCrew() {
+  if (!isDesktop()) set({ sidebarOpen: false });
+  if (get().page === "crew") return;
+  pushPath(CREW_PATH);
+  set((s) => ({ viewKey: s.viewKey + 1, page: "crew", currentId: null, computerPanelOpen: false, taskPanelOpen: false }));
 }
 
 /** A best-of run's tasks side by side (module 09). */

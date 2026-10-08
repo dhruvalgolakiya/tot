@@ -38,8 +38,8 @@ export function Header() {
   const conversation = useStore(selectCurrentConversation);
   const slackUrl = conversation?.origin?.kind === "slack" ? conversation.origin.url : null;
   const task = isTask(conversation) ? conversation : null;
-  // Mission control and the compare view (module 09) span every agent's tasks: no model to pick there.
-  const board = useStore((s) => s.page === "mission" || s.page === "compare");
+  // Mission control and the compare view (module 09) span every agent's tasks, and the crew page every agent: no model to pick there.
+  const board = useStore((s) => s.page === "mission" || s.page === "compare" || s.page === "crew");
   // A project's page (module 11): its Lead (or a new chat in it) under the project's name and menu.
   const projectId = useStore((s) => (s.page === "project" ? s.projectId : null));
   const project = useProjects((s) => (projectId ? s.projects.find((p) => p.id === projectId) : undefined));

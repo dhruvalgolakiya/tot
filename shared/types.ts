@@ -98,10 +98,17 @@ export interface MascotSpec {
  */
 export type MascotState = "idle" | "thinking" | "working" | "speaking" | "happy" | "error" | "sleeping";
 
+/** The islands of the hero scene (public/hero/islands/<id>.webp, plus <id>-dawn.webp for light mode); each agent works from one. */
+export type AgentIsland = "workshop" | "observatory" | "tower" | "greenhouse";
+
 export interface Agent {
   id: string;
   name: string;
   mascot: MascotSpec;
+  /** The island it works from: the one picked, or assigned round-robin by creation order. */
+  island: AgentIsland;
+  /** A few words under its name ("the workshop"); empty shows the island's name instead. */
+  tagline: string;
   /** Personality and standing instructions, added to the system prompt. */
   instructions: string;
   /** ModelOption id new chats with this agent start with ("auto" by default). */
@@ -123,6 +130,9 @@ export interface Agent {
 export interface AgentInput {
   name: string;
   mascot: MascotSpec;
+  /** null = back to the round-robin default. */
+  island?: AgentIsland | null;
+  tagline?: string;
   instructions?: string;
   modelId?: string;
   /** null = works as the user. */
