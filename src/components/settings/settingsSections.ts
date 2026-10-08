@@ -40,7 +40,7 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   {
     id: "memory",
     label: "Memory",
-    description: "What your agents remember, about you and about each project, kept as git repos with history and undo.",
+    description: "What every agent knows about you. A project's facts are on its Knowledge page.",
     icon: Brain,
     hasDraft: false,
   },

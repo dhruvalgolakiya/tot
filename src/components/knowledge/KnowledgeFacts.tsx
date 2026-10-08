@@ -1,7 +1,6 @@
 import { LoaderCircle } from "lucide-react";
 import type { KnowledgeStatus, Project } from "@shared/types";
-import { pickMemoryRepo, projectMemoryRepo } from "../../lib/memory";
-import { goToSettings } from "../../store";
+import { projectMemoryRepo } from "../../lib/memory";
 import { MemoryEntries } from "../memory/MemoryEntries";
 import { Callout } from "../ui/Callout";
 import { Skeleton } from "../ui/Skeleton";
@@ -31,7 +30,7 @@ export function KnowledgeFacts({
       <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8">
         <h1 className="text-2xl font-semibold tracking-[-0.01em] text-fg-strong sm:text-display">Facts</h1>
         <div className="mt-1.5 mb-6">
-          <StatusLine status={status} error={statusError} onRetry={onRetry} repo={repo} />
+          <StatusLine status={status} error={statusError} onRetry={onRetry} />
         </div>
         <MemoryEntries key={repo} repo={repo} kind="project" compact onChanged={onChanged} />
       </div>
@@ -40,7 +39,7 @@ export function KnowledgeFacts({
 }
 
 /** One quiet line: the count, that they load in every chat, and the folder; while the wiki moves into git, or after that failed, a note instead. */
-function StatusLine({ status, error, onRetry, repo }: { status: KnowledgeStatus | null; error: string | null; onRetry: () => void; repo: string }) {
+function StatusLine({ status, error, onRetry }: { status: KnowledgeStatus | null; error: string | null; onRetry: () => void }) {
   if (!status) {
     if (error) {
       return (
@@ -85,17 +84,6 @@ function StatusLine({ status, error, onRetry, repo }: { status: KnowledgeStatus 
       <span className="hidden min-w-0 truncate font-mono text-xs text-fg-subtle sm:inline" title="This project's pages and facts, in one git repo on this Mac">
         {status.path}
       </span>
-      <span className="text-fg-subtle">·</span>
-      <button
-        type="button"
-        className="link-muted text-xs"
-        onClick={() => {
-          pickMemoryRepo(repo);
-          goToSettings("memory");
-        }}
-      >
-        Settings
-      </button>
     </p>
   );
 }

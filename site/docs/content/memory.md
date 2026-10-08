@@ -28,7 +28,7 @@ npx skills add AgentMemoryRepo/agentmemoryrepo --skill agent-memory-repo
 
 Open **Settings → Memory**.
 
-1. **Entries**: every fact, grouped by file, under the text of `MEMORY.md`. Search them, press **Add memory** to add one, or hover an entry to edit or delete it.
+1. **Entries**: every fact, grouped by file, under the text of `MEMORY.md`. Type one and press Enter to add it, or hover an entry to edit or delete it.
 2. **History**: every change, newest first. **Undo** puts back what one change did, as a new change.
 3. **Dreaming**: see below.
 4. **Sync**: your paired devices and an optional backup.
