@@ -6,7 +6,7 @@ import { PROJECT_ICONS, shortTime } from "../../lib/projects";
 import { projectPath } from "../../lib/router";
 import { navigateToProject, selectActiveAgentId, useStore } from "../../store";
 import { LedgerMore, LedgerRow, LedgerSection } from "../home/Ledger";
-import { StatusDot } from "../ui/StatusDot";
+import { NeedsYou, Working } from "../ui/Working";
 
 /**
  * Home (roadmap module 11, lane D): every project as one row in the ledger on an agent's home: what needs you,
@@ -82,7 +82,7 @@ function ProjectRow({ row, now }: { row: HomeProject; now: number }) {
       detail={homeCounts(row) ?? "Nothing in flight"}
       trailing={
         <>
-          {row.needsYou > 0 ? <StatusDot tone="amber" /> : row.working > 0 ? <StatusDot tone="green" pulse /> : null}
+          {row.needsYou > 0 ? <NeedsYou label="Needs you" /> : row.working > 0 ? <Working label="Working" /> : null}
           {row.lastActivityAt !== null && <span>{shortTime(row.lastActivityAt, now)}</span>}
         </>
       }

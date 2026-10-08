@@ -12,7 +12,7 @@ import { IconButton } from "./ui/IconButton";
 import { listRowClass } from "./ui/ListRow";
 import { GitHubMark } from "./ui/GitHubMark";
 import { SlackMark } from "./ui/SlackMark";
-import { StatusDot } from "./ui/StatusDot";
+import { NeedsYou, Working } from "./ui/Working";
 import { CHAT_DRAG_TYPE } from "../lib/attached-chats";
 import { Tip } from "./ui/Tip";
 
@@ -80,7 +80,7 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
         }}
         className={listRowClass({ selected: active, className: "pr-8" })}
       >
-        {streaming && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />}
+        {streaming && <Working label="Replying" />}
         {conversation.routineId && (
           <Clock className="size-3.5 shrink-0 text-fg-muted" aria-label="Scheduled routine" />
         )}
@@ -108,11 +108,7 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
             {workingTasks}
           </span>
         )}
-        {pendingApproval && (
-          <span title="Needs your approval">
-            <StatusDot tone="amber" />
-          </span>
-        )}
+        {pendingApproval && <NeedsYou label="Needs your approval" />}
       </a>
 
       <DropdownMenu.Root modal={false} open={menuOpen} onOpenChange={setMenuOpen}>

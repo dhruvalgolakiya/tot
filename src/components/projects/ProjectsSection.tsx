@@ -12,7 +12,7 @@ import { ConversationItem } from "../ConversationItem";
 import { MissionButton } from "../mission/MissionButton";
 import { TaskRow } from "../tasks/TaskRow";
 import { listRowClass } from "../ui/ListRow";
-import { StatusDot } from "../ui/StatusDot";
+import { Working } from "../ui/Working";
 
 /** How many of a project's chats its sidebar row lists; the rest are on its page. */
 const SHOWN = 8;
@@ -164,13 +164,10 @@ function ProjectRow({ project, lead, agentId, list, nested, open, selected, canT
           />
           <span className="min-w-0 flex-1 truncate">{project.name}</span>
           {project.running > 0 && (
-            <span
-              className="flex shrink-0 items-center gap-1.5 text-xs text-fg-subtle tabular-nums group-hover/project:opacity-0 group-has-[:focus-visible]/project:opacity-0 pointer-coarse:opacity-0"
-              title={`${project.running} task${project.running === 1 ? "" : "s"} running`}
-            >
-              <StatusDot tone="green" pulse />
-              {project.running}
-            </span>
+            <Working
+              label={`${project.running} task${project.running === 1 ? "" : "s"} running`}
+              className="group-hover/project:opacity-0 group-has-[:focus-visible]/project:opacity-0 pointer-coarse:opacity-0"
+            />
           )}
         </a>
         <button

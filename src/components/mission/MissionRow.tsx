@@ -3,6 +3,7 @@ import clsx from "clsx";
 import {
   ArrowUpRight,
   CheckCheck,
+  CircleAlert,
   CircleCheck,
   CircleDashed,
   CircleX,
@@ -24,7 +25,6 @@ import { navigateToCompare, navigateToConversation, useStore } from "../../store
 import { Mascot } from "../mascot";
 import { Chip, type ChipTone } from "../ui/Chip";
 import { ledgerRowClass } from "../ui/Ledger";
-import { StatusDot } from "../ui/StatusDot";
 
 /**
  * Module 09: one task on mission control's board, as a ledger row. The row opens the task;
@@ -205,16 +205,16 @@ export function MissionRow({
   );
 }
 
-/** The state at a glance: an amber dot when it waits on you, a spinner while it works, then its branch or how it landed. */
+/** The state at a glance: an amber alert when it waits on you, a spinner while it works, then its branch or how it landed. */
 function Leading({ task, waiting }: { task: TaskConversation; waiting: boolean }): ReactNode {
   const { status, landing, repo } = task.task;
   if (landing) {
     const Icon = LANDED[landing.kind].icon;
     return <Icon aria-hidden="true" className={clsx("size-3.5", landing.kind === "merged" ? "text-success" : "text-fg-subtle")} />;
   }
-  if (waiting || status === "interrupted") return <StatusDot tone="amber" />;
+  if (waiting || status === "interrupted") return <CircleAlert aria-hidden="true" className="size-3.5 text-warning" />;
   if (status === "failed") return <CircleX aria-hidden="true" className="size-3.5 text-danger" />;
-  if (status === "running") return <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin text-accent" />;
+  if (status === "running") return <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin text-fg-subtle" />;
   if (status === "queued") return <Clock aria-hidden="true" className="size-3.5 text-fg-subtle" />;
   if (status === "paused") return <Pause aria-hidden="true" className="size-3.5 text-fg-subtle" />;
   if (repo?.headSha) return <GitBranch aria-hidden="true" className="size-3.5 text-fg-subtle" />;

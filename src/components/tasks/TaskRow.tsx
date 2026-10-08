@@ -9,7 +9,7 @@ import { navigateToConversation, patchTask, pauseTask, resumeTask, stopTask, use
 import { IconButton } from "../ui/IconButton";
 import { listRowClass } from "../ui/ListRow";
 import { DeleteTaskDialog } from "./DeleteTaskDialog";
-import { TaskDot } from "./TaskStatus";
+import { TaskStatusIcon } from "./TaskStatus";
 
 /** A task in the sidebar: status dot, title, `repo · branch` for coding tasks, elapsed time; actions on hover. */
 export function TaskRow({ task, active }: { task: TaskConversation; active: boolean }) {
@@ -61,7 +61,7 @@ export function TaskRow({ task, active }: { task: TaskConversation; active: bool
         title={task.title}
         className={listRowClass({ selected: active, className: clsx("pr-8", repo && "h-auto py-1.5") })}
       >
-        <TaskDot status={status} />
+        <TaskStatusIcon status={status} className="-mx-0.5" />
         <span className="min-w-0 flex-1">
           <span className={clsx("block truncate", !isOpenTask(status) && "text-fg-muted")}>{task.title}</span>
           {repo && (

@@ -13,7 +13,7 @@ import { ProjectsSection, useHomeProjects } from "../projects/HomeProjects";
 import { formatRelative, formatSchedule } from "../routines/format";
 import { routinesApi } from "../routines/routinesApi";
 import { Suggestions } from "../Suggestions";
-import { StatusDot } from "../ui/StatusDot";
+import { NeedsYou as NeedsYouIcon } from "../ui/Working";
 import { Ledger, LedgerMore, LedgerRow, LedgerSection } from "./Ledger";
 
 /**
@@ -128,7 +128,7 @@ function NeedsYou({ tasks, agentOf }: { tasks: TaskConversation[]; agentOf: Agen
     <LedgerSection label="Needs you" count={tasks.length} tone="warning">
       <TaskList
         tasks={tasks}
-        render={(task) => <TaskRow key={task.id} task={task} leading={<StatusDot tone="amber" />} detail={taskStatusLine(task)} trailing={<Avatar agent={agentOf(task)} />} />}
+        render={(task) => <TaskRow key={task.id} task={task} leading={<NeedsYouIcon label="Needs you" />} detail={taskStatusLine(task)} trailing={<Avatar agent={agentOf(task)} />} />}
       />
     </LedgerSection>
   );
