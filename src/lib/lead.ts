@@ -1,27 +1,11 @@
-import { create } from "zustand";
 import type { HomeProject } from "@shared/types";
 import { api } from "./api";
 import { onDevice } from "./devices";
 import { useDevices } from "./remote";
-import { showProjectDraft } from "../store";
 
 /**
- * Workspaces (roadmap module 11, lane D): whether the project page shows its Lead or a new chat, and Home's
- * project rows from this device and the paired ones that are online.
+ * Workspaces (roadmap module 11, lane D): Home's project rows from this device and the paired ones that are online.
  */
-
-interface LeadUi {
-  /** The project page starts a new chat in the project, instead of showing its Lead. */
-  newChat: boolean;
-}
-
-export const useLeadUi = create<LeadUi>()(() => ({ newChat: false }));
-
-/** A new chat in the project (Chats → New chat), or back to its Lead. */
-export function setNewProjectChat(newChat: boolean) {
-  useLeadUi.setState({ newChat });
-  if (newChat) showProjectDraft();
-}
 
 /** Home's rows: this device's projects and the online paired devices' (tagged with their device), the most recently active first. */
 export async function loadHome(): Promise<HomeProject[]> {

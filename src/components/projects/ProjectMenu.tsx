@@ -3,9 +3,8 @@ import { DropdownMenu } from "radix-ui";
 import { Archive, Bell, Brain, Ellipsis, FolderGit2, GraduationCap, ScrollText, SlidersHorizontal, SquarePen, Wrench } from "lucide-react";
 import type { Agent, Project } from "@shared/types";
 import { api } from "../../lib/api";
-import { setNewProjectChat } from "../../lib/lead";
 import { archiveProject, isCodeProject } from "../../lib/projects";
-import { navigateToAgentHome, navigateToConversation, notifyError } from "../../store";
+import { navigateToAgentHome, navigateToConversation, newChatInProject, notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { KnowledgePanel } from "../knowledge/KnowledgePanel";
 import { KnowledgeUpdates } from "../knowledge/KnowledgeUpdates";
@@ -73,7 +72,7 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
             }}
           >
             {!project.archived && (
-              <DropdownMenu.Item className="menu-item" onSelect={() => setNewProjectChat(true)}>
+              <DropdownMenu.Item className="menu-item" onSelect={() => newChatInProject(project.id)}>
                 <SquarePen className="size-4 text-fg-muted" /> New chat
               </DropdownMenu.Item>
             )}

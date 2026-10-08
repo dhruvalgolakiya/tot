@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
 import type { Conversation, Project } from "@shared/types";
 import { useAttachments } from "../../hooks/useAttachments";
 import { api, errorMessage } from "../../lib/api";
-import { setNewProjectChat, useLeadUi } from "../../lib/lead";
-import { isCodeProject, PROJECT_ICONS, useProjects } from "../../lib/projects";
+import { isCodeProject, useProjects } from "../../lib/projects";
 import { navigateToAgentHome, selectActiveAgent, sendMessage, showLead, useStore } from "../../store";
 import { Composer } from "../Composer";
 import { defaultMascot, MascotStage } from "../mascot";
@@ -18,9 +16,9 @@ import { FolderConsentDialog } from "./FolderConsent";
 /**
  * A project's page (roadmap module 11): just its Lead chat, the chat the user runs the project from. Its other
  * chats are in the sidebar under the project, its tasks in Mission control; Repos, Knowledge and "New chat" are
- * in the header's project menu. Opening the page makes the Lead the first time (POST /api/projects/:id/lead) and
- * opens it as the current chat, so the composer, the messages and the live reply work as in any chat. "New chat"
- * swaps the Lead for a new chat in the project. Mounted in the main column while `page === "project"` (see App.tsx).
+ * in the header's project menu (New chat opens the agent's home with the project picked). Opening the page makes the
+ * Lead the first time (POST /api/projects/:id/lead) and opens it as the current chat, so the composer, the messages
+ * and the live reply work as in any chat. Mounted in the main column while `page === "project"` (see App.tsx).
  */
 export function ProjectPage() {
   const projectId = useStore((s) => s.projectId);
@@ -76,21 +74,18 @@ function useLeadChat(project: Project): { state: LeadState; retry: () => void } 
 }
 
 function ProjectScreen({ project }: { project: Project }) {
-  const newChat = useLeadUi((s) => s.newChat);
   const { state, retry } = useLeadChat(project);
 
-  // A page opens on its Lead.
-  useEffect(() => useLeadUi.setState({ newChat: false }), []);
   // The Lead is the open chat while the page shows it.
   useEffect(() => {
-    if (state.status === "ready" && !newChat) showLead(state.lead);
-  }, [state, newChat]);
+    if (state.status === "ready") showLead(state.lead);
+  }, [state]);
 
-  return <LeadArea project={project} state={state} retry={retry} newChat={newChat} />;
+  return <LeadArea project={project} state={state} retry={retry} />;
 }
 
-/** The middle: the Lead (or a new chat in the project), with the project's notices over the composer. */
-function LeadArea({ project, state, retry, newChat }: { project: Project; state: LeadState; retry: () => void; newChat: boolean }) {
+/** The Lead, with the project's notices over the composer. */
+function LeadArea({ project, state, retry }: { project: Project; state: LeadState; retry: () => void }) {
   const attachments = useAttachments(project.deviceId ?? null);
   const currentId = useStore((s) => s.currentId);
   const lead = state.status === "ready" ? state.lead : null;
@@ -100,7 +95,7 @@ function LeadArea({ project, state, retry, newChat }: { project: Project; state:
   const [consentOpen, setConsentOpen] = useState(false);
   const empty = Boolean(open && loaded && !messages?.length);
 
-  if (!newChat && state.status !== "ready") {
+  if (state.status !== "ready") {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4">
         {state.status === "loading" ? (
@@ -144,9 +139,7 @@ function LeadArea({ project, state, retry, newChat }: { project: Project; state:
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {newChat ? (
-        <NewChatHero project={project} />
-      ) : open && !empty ? (
+      {open && !empty ? (
         <MessageList conversationId={open.id} topPadding="pt-20" />
       ) : (
         <LeadHero project={project} />
@@ -154,18 +147,11 @@ function LeadArea({ project, state, retry, newChat }: { project: Project; state:
       <div className="relative z-10 shrink-0 px-3 pb-2 sm:px-4">
         <div className="mx-auto w-full max-w-3xl">
           {notice}
-          {!project.archived && (newChat || open) && (
-            <Composer
-              key={newChat ? "new-chat" : open?.id}
-              attachments={attachments}
-              placeholder={newChat ? "Ask anything" : `Ask the Lead of ${project.name}…`}
-            />
-          )}
+          {!project.archived && open && <Composer key={open.id} attachments={attachments} placeholder={`Ask the Lead of ${project.name}…`} />}
         </div>
       </div>
       {/* Room under the composer for the hero to sit above it, as on an agent's home. */}
-      {(newChat || empty) && <div className="flex flex-1 flex-col pt-4">{empty && !project.archived && <LeadStarters project={project} />}</div>}
-      {!newChat && !empty && <div className="h-2 shrink-0" />}
+      {empty ? <div className="flex flex-1 flex-col pt-4">{!project.archived && <LeadStarters project={project} />}</div> : <div className="h-2 shrink-0" />}
       <FolderConsentDialog project={project} open={consentOpen} onOpenChange={setConsentOpen} />
     </div>
   );
@@ -182,27 +168,6 @@ function LeadHero({ project }: { project: Project }) {
         {isCodeProject(project)
           ? "The Lead plans the work, runs tasks across the project's repos, and asks you before anything lands."
           : "The Lead plans the work, runs tasks, and keeps track of where things stand."}
-      </p>
-    </div>
-  );
-}
-
-function NewChatHero({ project }: { project: Project }) {
-  const Icon = PROJECT_ICONS[project.kind];
-  return (
-    <div className="flex flex-1 flex-col items-center justify-end px-4 pb-8">
-      <button
-        type="button"
-        onClick={() => setNewProjectChat(false)}
-        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-hairline px-3 text-ui text-fg-muted transition-colors hover:bg-hover hover:text-fg"
-      >
-        <ArrowLeft className="size-3.5" />
-        Lead
-      </button>
-      <h1 className="mt-5 text-center font-display text-3xl font-semibold text-balance text-fg-strong">What should we work on?</h1>
-      <p className="mt-2 flex items-center gap-1.5 text-sm text-fg-muted">
-        <Icon aria-hidden="true" className="size-4" />
-        A new chat in {project.name}
       </p>
     </div>
   );

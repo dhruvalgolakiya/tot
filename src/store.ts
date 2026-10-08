@@ -152,6 +152,8 @@ export interface TotState {
   connectingProvider: ProviderId | null;
   /** Model picked before a conversation exists. */
   draftModelId: string | null;
+  /** The project a new chat (one not sent yet) starts in: picked in its composer, or set by a project's "New chat". */
+  draftProjectId: string | null;
 
   sidebarOpen: boolean;
   computerPanelOpen: boolean;
@@ -235,6 +237,7 @@ export const useStore = create<TotState>()(() => ({
   mailEvent: null,
   connectingProvider: null,
   draftModelId: null,
+  draftProjectId: null,
 
   sidebarOpen: isDesktop() && readPref(SIDEBAR_KEY) !== "closed",
   computerPanelOpen: false,
@@ -689,8 +692,8 @@ export async function stopAgentComputer(agentId: string) {
 // Routing
 // ---------------------------------------------------------------------------
 
-function showAgentHome(agentId: string | null) {
-  set({ currentId: null, homeAgentId: agentId, computerPanelOpen: false, taskPanelOpen: false });
+function showAgentHome(agentId: string | null, draftProjectId: string | null = null) {
+  set({ currentId: null, homeAgentId: agentId, draftProjectId, computerPanelOpen: false, taskPanelOpen: false });
 }
 
 function showWiki(agentId: string, pageId: string | null, brainId: string | null = null) {
@@ -774,13 +777,27 @@ export function syncWithLocation() {
 }
 
 /** Go to an agent's home (new-chat) screen. */
-export function navigateToAgentHome(agentId: string) {
+export function navigateToAgentHome(agentId: string, draftProjectId: string | null = null) {
   if (!isDesktop()) set({ sidebarOpen: false });
   const s = get();
-  if (s.currentId === null && s.page === "home" && s.homeAgentId === agentId) return;
+  if (s.currentId === null && s.page === "home" && s.homeAgentId === agentId) {
+    set({ draftProjectId });
+    return;
+  }
   pushPath(agentPath(agentId));
   set((s2) => ({ viewKey: s2.viewKey + 1, page: "home" }));
-  showAgentHome(agentId);
+  showAgentHome(agentId, draftProjectId);
+}
+
+/** A new chat in a project (the sidebar's + on its row, its menu's New chat): the agent's home, with the project picked. */
+export function newChatInProject(projectId: string) {
+  const agentId = selectActiveAgentId(get()) ?? get().agents[0]?.id;
+  if (agentId) navigateToAgentHome(agentId, projectId);
+}
+
+/** The project the new chat will start in (the composer's picker); null for none. */
+export function setDraftProject(projectId: string | null) {
+  set({ draftProjectId: projectId });
 }
 
 /** Open a project's page, seen from an agent (the active one by default): new chats there start with it. */
@@ -807,11 +824,6 @@ export function showLead(conversation: Conversation) {
   const s = get();
   if (s.page !== "project" || s.projectId !== conversation.projectId) return;
   void openConversation(conversation.id);
-}
-
-/** Module 11: the project page's middle starts a new chat in the project instead of showing its Lead (its composer sends the first message). */
-export function showProjectDraft() {
-  if (get().page === "project") set({ currentId: null });
 }
 
 /** Mission control (module 09): the board of every task, or one project's (⌘⇧M, the sidebar's Tasks header, a project's page). */
@@ -1138,12 +1150,12 @@ export async function sendMessage(
   const tempId = localId();
   try {
     if (!conversationId) {
-      const { homeAgentId, agents, draftModelId, settings, page, projectId } = get();
+      const { homeAgentId, agents, draftModelId, draftProjectId, settings, page, projectId } = get();
       const conversation = await api.createConversation({
         agentId: homeAgentId ?? agents[0]?.id,
         modelId: draftModelId ?? settings?.defaultModelId ?? AUTO_MODEL_ID,
-        // From a project's page, the chat starts in that project.
-        ...(page === "project" && projectId ? { projectId } : {}),
+        // From a project's page, the chat starts in that project; from home, in the one picked (if any).
+        ...(page === "project" && projectId ? { projectId } : draftProjectId ? { projectId: draftProjectId } : {}),
       });
       conversationId = conversation.id;
       set((s) => ({
@@ -1153,6 +1165,7 @@ export async function sendMessage(
         currentId: conversation.id,
         page: "chat",
         draftModelId: null,
+        draftProjectId: null,
       }));
       pushPath(conversationPath(conversation.id));
     }

@@ -31,7 +31,7 @@ Click a project's name to open its page: your **Lead** chat, and nothing else. T
 
 The **…** menu at the top holds the rest:
 
-- **New chat**: a chat in the project, apart from the Lead.
+- **New chat**: a chat in the project, apart from the Lead. The **+** on the project's row in the sidebar does the same, and on any new chat the picker in the message box chooses its project.
 - **Repos**: the project's repos — see below.
 - **Knowledge**: the project's wiki and memory, and how TOT keeps them current. See [Project knowledge](/docs/memory#project-knowledge).
 - **Instructions**, **Subscriptions**, **Settings** and **Archive** — plus, for a project with code, **Learn this project** and **Worktree setup**.

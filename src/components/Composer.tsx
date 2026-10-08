@@ -18,6 +18,7 @@ import {
 } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
+import { ProjectPicker } from "./projects/ProjectPicker";
 import { Tip } from "./ui/Tip";
 import { VoiceInputButton } from "./voice";
 
@@ -40,6 +41,7 @@ export function Composer({
   placeholder?: string;
 }) {
   const currentId = useStore((s) => s.currentId);
+  const onProjectPage = useStore((s) => s.page === "project");
   const run = useStore((s) => (s.currentId ? s.activeRuns[s.currentId] : undefined));
   const sending = useStore((s) => s.sending);
   const agent = useStore(selectActiveAgent);
@@ -385,6 +387,8 @@ export function Composer({
           </Tip>
         )}
         <VoiceInputButton onTranscript={onTranscript} />
+        {/* A chat not sent yet, from an agent's home: the project it starts in. */}
+        {!currentId && !onProjectPage && <ProjectPicker />}
 
         <div className="ml-auto flex min-w-0 items-center gap-2">
           {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}

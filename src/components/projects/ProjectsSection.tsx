@@ -1,13 +1,13 @@
 import { useMemo, type MouseEvent } from "react";
 import clsx from "clsx";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus, SquarePen } from "lucide-react";
 import type { Conversation, Project } from "@shared/types";
 import { conversationTitle } from "../../lib/conversations";
 import { PROJECT_ICONS, setNewProjectOpen, toggleProjectExpanded, useProjects } from "../../lib/projects";
 import { projectPath } from "../../lib/router";
 import { isOpenTask, isTask } from "../../lib/tasks";
 import { toMs } from "../../lib/format";
-import { navigateToProject, selectActiveAgent, selectActiveAgentId, selectCurrentConversation, useStore } from "../../store";
+import { navigateToProject, newChatInProject, selectActiveAgent, selectActiveAgentId, selectCurrentConversation, useStore } from "../../store";
 import { ConversationItem } from "../ConversationItem";
 import { MissionButton } from "../mission/MissionButton";
 import { TaskRow } from "../tasks/TaskRow";
@@ -161,14 +161,23 @@ function ProjectRow({ project, agentId, list, nested, open, selected, canToggle 
           <span className="min-w-0 flex-1 truncate">{project.name}</span>
           {project.running > 0 && (
             <span
+              className="flex shrink-0 items-center gap-1.5 text-xs text-fg-subtle tabular-nums group-hover/project:opacity-0 group-has-[:focus-visible]/project:opacity-0 pointer-coarse:opacity-0"
               title={`${project.running} task${project.running === 1 ? "" : "s"} running`}
-              className="flex shrink-0 items-center gap-1.5 text-xs text-fg-subtle tabular-nums"
             >
               <StatusDot tone="green" pulse />
               {project.running}
             </span>
           )}
         </a>
+        <button
+          type="button"
+          aria-label={`New chat in ${project.name}`}
+          title={`New chat in ${project.name}`}
+          onClick={() => newChatInProject(project.id)}
+          className="absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md text-fg-muted opacity-0 transition-opacity group-hover/project:opacity-100 group-has-[:focus-visible]/project:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100 pointer-coarse:opacity-100"
+        >
+          <SquarePen className="size-3.5" />
+        </button>
         {canToggle && (
           <button
             type="button"
