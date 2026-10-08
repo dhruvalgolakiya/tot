@@ -27,7 +27,6 @@ const { messages } = await import("./data/messages.ts");
 const { settings } = await import("./data/settings.ts");
 const { CUT_OFF_BY_RESTART } = await import("./db.ts");
 const { createApp } = await import("./app.ts");
-const { missionUsage } = await import("./orchestration/budget.ts");
 const { fanIn } = await import("./orchestration/fanin.ts");
 const { handoffs } = await import("./orchestration/handoff.ts");
 const { spawnMany } = await import("./orchestration/spawn.ts");
@@ -60,7 +59,7 @@ function gate(): { wait: Promise<void>; open: () => void } {
   return { wait, open };
 }
 
-settings.patch({ computer: { mode: "local" }, tasks: { perAgentLimit: 6, globalLimit: 12, maxChildren: 6, missionTokenBudget: 0 } });
+settings.patch({ computer: { mode: "local" }, tasks: { perAgentLimit: 6, globalLimit: 12, maxChildren: 6 } });
 
 // --- Fake providers behind the real turn pipeline (agent/orchestrator.ts), recording each turn's input ---
 const providerTurns: { provider: "claude" | "chatgpt"; input: TurnInput }[] = [];
@@ -271,7 +270,6 @@ check("…batched: it waited for the second", batchWake[0]!.at - taskStore.get(d
 check("…results read, nothing pending", conversations.get(batched.id)!.childResults.length === 0 && !conversations.get(batched.id)!.wakePending);
 const divider = messages.listByConversation(batched.id).find((m) => m.role === "user" && m.auto);
 check("…shown as the quiet auto divider", divider?.parts.some((p) => p.type === "text" && p.text === batchWake[0]!.text) === true);
-check("wake turns count toward the mission's budget", conversations.get(batched.id)!.wakeTokens === 1200 && missionUsage(conversations.get(batched.id)!) === 1200 + 2 * 1200, String(missionUsage(conversations.get(batched.id)!)));
 check("one task's text", wakeText([fix.id]) === "“Fix checkout” finished.");
 
 // Shorter batching from here on.
@@ -409,16 +407,6 @@ await until(() => !runRegistry.activeFor(grouped.id));
 await sleep(500);
 check("synthesize groups: the writer turn only", sentTo(grouped.id).length === 1 && sentTo(grouped.id)[0]!.options.preamble!.includes("You're the writer now"), JSON.stringify(sentTo(grouped.id).map((s) => s.text)));
 
-// Over the mission's token budget: no wake turn; the results wait for the user's next message.
-settings.patch({ tasks: { missionTokenBudget: 1000 } });
-const spent = chatWith("Over budget");
-byGoal.push([/^Spend tokens/, finishAfter(10)]);
-const spender = start(spent.id, "Spend tokens");
-await until(() => status(spender.id) === "done");
-await sleep(500);
-check("over budget: no wake turn, results stay unread", sentTo(spent.id).length === 0 && conversations.get(spent.id)!.childResults.includes(spender.id) && !conversations.get(spent.id)!.wakePending);
-settings.patch({ tasks: { missionTokenBudget: 0 } });
-
 // Settings → Tasks: wake-ups off.
 settings.patch({ tasks: { wakeChats: false } });
 const quiet = chatWith("Quiet");
@@ -502,23 +490,6 @@ await until(() => notices.some((n) => n.id === slackBusy.id));
 await sleep(300);
 const busyPosts = notices.filter((n) => n.id === slackBusy.id);
 check("…the wake turn's reply goes to the thread", busyPosts.length === 1 && busyPosts[0]!.text === "The deploy check passed.", JSON.stringify(busyPosts));
-
-// Over budget in a Slack chat: each task is posted to the thread once, not again with every later one.
-settings.patch({ tasks: { missionTokenBudget: 1000 } });
-const spentSlack = chatWith("Over budget, Slack", { kind: "slack", label: "#eng", url: null });
-slackThreads.add(spentSlack.id);
-byGoal.push([/^First of two/, finishAfter(10)], [/^Second of two/, finishAfter(800)]);
-start(spentSlack.id, "First", "First of two");
-const secondOfTwo = start(spentSlack.id, "Second", "Second of two");
-await until(() => status(secondOfTwo.id) === "done");
-await sleep(600);
-const budgetPosts = notices.filter((n) => n.id === spentSlack.id);
-check(
-  "over budget, Slack: each task posted once",
-  budgetPosts.length === 2 && budgetPosts[0]!.text.includes("“First”") && budgetPosts[1]!.text.includes("“Second”") && sentTo(spentSlack.id).length === 0,
-  JSON.stringify(budgetPosts.map((post) => post.text.slice(0, 40))),
-);
-settings.patch({ tasks: { missionTokenBudget: 0 } });
 
 // =============================================================================
 // M2: context selection on a provider switch, and chat_read paging

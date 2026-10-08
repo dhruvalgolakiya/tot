@@ -42,7 +42,7 @@ const mascot = { shape: "blob" as const, color: "#60a5fa", accessory: "none" as 
 
 settings.patch({
   computer: { mode: "local" },
-  tasks: { perAgentLimit: 8, globalLimit: 12, maxChildren: 6, missionTokenBudget: 0, wakeChats: true, switchProviders: true },
+  tasks: { perAgentLimit: 8, globalLimit: 12, maxChildren: 6, wakeChats: true, switchProviders: true },
 });
 
 // --- Fixture providers: both signed in -----------------------------------------

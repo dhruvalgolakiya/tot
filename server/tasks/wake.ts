@@ -5,7 +5,6 @@ import { runRegistry } from "../agent/runs.ts";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
 import { messageText } from "../data/messages.ts";
 import { settings } from "../data/settings.ts";
-import { overBudget } from "../orchestration/budget.ts";
 import { signalsNote, signalsText } from "../signals/note.ts";
 import { leadSignals, signalWakes } from "../signals/store.ts";
 import { taskNotifications } from "./notify.ts";
@@ -175,12 +174,6 @@ async function wake(chatId: string): Promise<void> {
       // …else wait for it to end (it may read them itself, or the user may reply first).
       await runEnd(run.id);
       continue;
-    }
-
-    if (overBudget(chat)) {
-      // No turn past the budget: the results (and signals) wait for the user's next message.
-      settle(chatId, ids, signalIds);
-      return deliver(chat, ids, "");
     }
 
     // Read before the turn starts, so it doesn't get them a second time with the chat's unread results.

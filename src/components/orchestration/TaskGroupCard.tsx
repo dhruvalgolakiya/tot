@@ -1,13 +1,13 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
-import { ChevronRight, CircleStop, Ellipsis, Gauge, Pause, Play } from "lucide-react";
+import { ChevronRight, CircleStop, Ellipsis, Pause, Play } from "lucide-react";
 import type { TaskStatus } from "@shared/types";
 import { useNow } from "../../hooks/useNow";
 import { roleLine } from "../../lib/orchestration";
-import { isOpenTask, isTask, pausedForBudget, taskElapsed, taskLine, type TaskConversation } from "../../lib/tasks";
+import { isOpenTask, isTask, taskElapsed, taskLine, type TaskConversation } from "../../lib/tasks";
 import { comparePath } from "../../lib/router";
-import { goToSettings, navigateToCompare, navigateToConversation, pauseTask, resumeTask, stopTask, useStore } from "../../store";
+import { navigateToCompare, navigateToConversation, pauseTask, resumeTask, stopTask, useStore } from "../../store";
 import { IconButton } from "../ui/IconButton";
 import { ledgerRowClass } from "../ui/Ledger";
 import { TaskStatusIcon } from "../tasks/TaskStatus";
@@ -81,7 +81,6 @@ export function TaskGroupCard({ taskIds }: { taskIds: string[] }) {
 /** One task: status icon, title, one muted line, time; on hover, its few actions in a menu where the time was. */
 function TaskGroupRow({ task, now }: { task: TaskConversation; now: number }) {
   const { status } = task.task;
-  const budget = pausedForBudget(task.task);
   const elapsed = taskElapsed(task.task, now);
   const line = [roleLine(task.task.role, task.task.tier), taskLine(task.task)].filter(Boolean).join(" · ");
   const canPause = status === "running" || status === "queued" || status === "needs-input";
@@ -91,7 +90,7 @@ function TaskGroupRow({ task, now }: { task: TaskConversation; now: number }) {
   return (
     <li className="group/row relative">
       <button type="button" onClick={() => navigateToConversation(task.id)} className={ledgerRowClass({ interactive: true })}>
-        <TaskStatusIcon status={status} label={budget ? "Paused: the token budget is used up" : undefined} />
+        <TaskStatusIcon status={status} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-ui text-fg">{task.title}</span>
           {line && <span className="truncate text-xs text-fg-subtle">{line}</span>}
@@ -122,11 +121,6 @@ function TaskGroupRow({ task, now }: { task: TaskConversation; now: number }) {
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content align="end" sideOffset={4} className="menu w-52">
-                {budget && (
-                  <DropdownMenu.Item className="menu-item" onSelect={() => goToSettings("tasks")}>
-                    <Gauge className="size-4 text-fg-muted" /> Raise the budget
-                  </DropdownMenu.Item>
-                )}
                 {canResume && (
                   <DropdownMenu.Item className="menu-item" onSelect={() => void resumeTask(task.id)}>
                     <Play className="size-4 text-fg-muted" /> Resume

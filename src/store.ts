@@ -57,7 +57,7 @@ import {
   wikiFromPath,
   wikiPath,
 } from "./lib/router";
-import { buildSettingsPatch, EMPTY_SECRETS, isValidBudget, isValidCleanupDays, isValidIdleMinutes, isValidTaskLimit, TASK_LIMITS, type SecretDrafts } from "./lib/settings";
+import { buildSettingsPatch, EMPTY_SECRETS, isValidCleanupDays, isValidIdleMinutes, isValidTaskLimit, TASK_LIMITS, type SecretDrafts } from "./lib/settings";
 import { newRequestId } from "./lib/mission";
 import { subscribeToRun } from "./lib/stream";
 import { isTask } from "./lib/tasks";
@@ -1887,7 +1887,6 @@ export function selectSettingsValid(s: TotState): boolean {
     isValidTaskLimit(tasks.perAgentLimit, TASK_LIMITS.perAgent) &&
     isValidTaskLimit(tasks.globalLimit, TASK_LIMITS.global) &&
     isValidTaskLimit(tasks.maxChildren, TASK_LIMITS.children) &&
-    isValidBudget(tasks.missionTokenBudget) &&
     isValidCleanupDays(tasks.worktreeCleanupDays)
   );
 }

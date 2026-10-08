@@ -2,11 +2,11 @@ import { useEffect, useMemo } from "react";
 import { ArrowDown } from "lucide-react";
 import type { Message } from "@shared/types";
 import { useStickToBottom } from "../hooks/useStickToBottom";
-import { isTask, pausedForBudget } from "../lib/tasks";
+import { isTask } from "../lib/tasks";
 import { retryConversation, selectActiveAgent, setChatScrolled, useStore } from "../store";
 import { AssistantMessage } from "./AssistantMessage";
 import { ForkedFrom } from "./ForkedFrom";
-import { TaskEmptyState, TaskStateLine } from "./tasks/TaskEmptyState";
+import { TaskEmptyState } from "./tasks/TaskEmptyState";
 import { isTaskEndingMessage, TaskNotices } from "./tasks/TaskNotices";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { UserMessage } from "./UserMessage";
@@ -123,7 +123,6 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
 
           {awaitingReply && <ThinkingIndicator agentName={agentName} />}
 
-          {messages.length > 0 && task && pausedForBudget(task.task) && <TaskStateLine task={task} />}
         </div>
       </div>
 

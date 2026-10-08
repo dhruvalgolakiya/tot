@@ -1,31 +1,29 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { budgetReason, pausedForBudget, queueLine, TASK_STATUS_LABELS, type TaskConversation } from "../../lib/tasks";
-import { goToSettings, resumeTask, useStore } from "../../store";
+import { queueLine, TASK_STATUS_LABELS, type TaskConversation } from "../../lib/tasks";
+import { resumeTask, useStore } from "../../store";
 import { TaskStatusIcon } from "./TaskStatus";
 
-/** Where a task is, in plain words, and the one or two things that move it on (as quiet links). */
-function taskState(task: TaskConversation, queueHeld: boolean): { text: string; budget: boolean; resumable: boolean } {
+/** Where a task is, in plain words, and whether Resume moves it on. */
+function taskState(task: TaskConversation, queueHeld: boolean): { text: string; resumable: boolean } {
   const { status, progress, question, summary } = task.task;
-  const budget = pausedForBudget(task.task);
-  if (budget) return { text: budgetReason(task.task), budget, resumable: true };
   switch (status) {
     case "queued":
-      return { text: queueHeld ? "Waiting to start: the queue is paused" : queueLine(task.task), budget, resumable: false };
+      return { text: queueHeld ? "Waiting to start: the queue is paused" : queueLine(task.task), resumable: false };
     case "running":
-      return { text: progress ?? "Starting…", budget, resumable: false };
+      return { text: progress ?? "Starting…", resumable: false };
     case "needs-input":
-      return { text: question ?? progress ?? "Waiting for you.", budget, resumable: false };
+      return { text: question ?? progress ?? "Waiting for you.", resumable: false };
     case "paused":
-      return { text: progress ?? "Paused before it started.", budget, resumable: true };
+      return { text: progress ?? "Paused before it started.", resumable: true };
     case "interrupted":
-      return { text: "Cut off when TOT restarted, before it replied.", budget, resumable: true };
+      return { text: "Cut off when TOT restarted, before it replied.", resumable: true };
     default:
-      return { text: summary ?? TASK_STATUS_LABELS[status], budget, resumable: false };
+      return { text: summary ?? TASK_STATUS_LABELS[status], resumable: false };
   }
 }
 
-/** The status line alone: under a task's last message when it paused for the budget. */
-export function TaskStateLine({ task }: { task: TaskConversation }) {
+/** The status line: where the task is, and Resume when that moves it on. */
+function TaskStateLine({ task }: { task: TaskConversation }) {
   const queueHeld = useStore((s) => Boolean(s.agents.find((agent) => agent.id === task.agentId)?.queueHold));
   const state = taskState(task, queueHeld);
   return (
@@ -33,27 +31,13 @@ export function TaskStateLine({ task }: { task: TaskConversation }) {
       <TaskStatusIcon status={task.task.status} className="-my-0.5" />
       <p className="min-w-0 flex-1 text-pretty">
         {state.text}
-        <StateActions task={task} budget={state.budget} resumable={state.resumable} />
+        {state.resumable && (
+          <button type="button" onClick={() => void resumeTask(task.id)} className="ml-2 link-muted whitespace-nowrap">
+            Resume
+          </button>
+        )}
       </p>
     </div>
-  );
-}
-
-function StateActions({ task, budget, resumable }: { task: TaskConversation; budget: boolean; resumable: boolean }) {
-  if (!budget && !resumable) return null;
-  return (
-    <span className="ml-2 inline-flex gap-3 whitespace-nowrap">
-      {budget && (
-        <button type="button" onClick={() => goToSettings("tasks")} className="link-muted">
-          Raise the budget
-        </button>
-      )}
-      {resumable && (
-        <button type="button" onClick={() => void resumeTask(task.id)} className="link-muted">
-          Resume
-        </button>
-      )}
-    </span>
   );
 }
 

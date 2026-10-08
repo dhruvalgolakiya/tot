@@ -100,9 +100,6 @@ export const taskStore = {
       ...(to !== "needs-input" && !("question" in extra) ? { question: null } : {}),
       // Leaving a pause by any route cancels its timed resume (module 02).
       ...(to !== "paused" && !("resumeAt" in extra) ? { resumeAt: null } : {}),
-      // Why it paused (the token budget) holds only for the pause that set it.
-      ...(!("pausedFor" in extra) ? { pausedFor: null } : {}),
-      ...(current.task.pausedFor && to !== "paused" && !("progress" in extra) ? { progress: null } : {}),
     };
     const updated = taskStore.patch(id, next, true);
     if (updated && from !== to) for (const listener of listeners) listener(updated, from);

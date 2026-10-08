@@ -128,7 +128,7 @@ This works for non-coding work too. Research fans out to parallel searchers, the
 - [x] **M4 · Automatic failover.** Shipped: `server/orchestration/failover.ts` — switch with a handoff, or pause until the cooldown ends and resume by itself (re-armed after a restart).
   - A limit hit mid-task leads to a handoff and the other provider, or to pause and auto-resume at reset.
   - *Accept:* with a fake provider that throws a usage-limit error mid-run, the task carries on (switching on) or pauses and resumes at the given reset time (switching off).
-- [x] **M5 · Fan-out / fan-in patterns.** Shipped: `task_spawn_many`, depth/children/budget limits (`budget.ts`), group cards, nested sidebar rows, and fan-in (`fanin.ts`): one writer turn in the chat with the results as structured data, sent back to Slack/email when the chat came from there.
+- [x] **M5 · Fan-out / fan-in patterns.** (2026-10-08: the per-mission token budget was removed at the user's request; depth and children limits stay.) Shipped: `task_spawn_many`, depth/children/budget limits (`budget.ts`), group cards, nested sidebar rows, and fan-in (`fanin.ts`): one writer turn in the chat with the results as structured data, sent back to Slack/email when the chat came from there.
   - `task_spawn_many` and the writer synthesis; non-coding research works end to end.
   - *Accept:* "Compare Linear, Jira and Height for a 10-person team" spawns 3 researchers and 1 writer; the parent gets one combined answer with sources.
 

@@ -25,7 +25,6 @@ function defaults(): StoredSettings {
       notifySlackUserId: null,
       wakeChats: true,
       switchProviders: true,
-      missionTokenBudget: 5_000_000,
       maxChildren: 6,
       worktreeCleanupDays: 14,
     },

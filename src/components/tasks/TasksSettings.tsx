@@ -2,7 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { Settings } from "@shared/types";
 import { api } from "../../lib/api";
-import { CLEANUP_DAYS, TASK_LIMITS, isValidBudget, isValidCleanupDays, isValidTaskLimit, type SettingsSectionProps } from "../../lib/settings";
+import { CLEANUP_DAYS, TASK_LIMITS, isValidCleanupDays, isValidTaskLimit, type SettingsSectionProps } from "../../lib/settings";
 import { notifyError, useStore } from "../../store";
 import { Button } from "../ui/Button";
 import { LedgerField, LedgerGroup } from "../ui/Ledger";
@@ -95,27 +95,6 @@ export function TasksSettings({ draft, onChange }: SettingsSectionProps) {
           title="Tasks one chat or task can start"
           description="Caps how far TOT fans out a single request."
           control={<LimitInput id="tasks-children" value={tasks.maxChildren} max={TASK_LIMITS.children} onChange={(maxChildren) => update({ maxChildren })} />}
-        />
-        <LedgerField
-          htmlFor="tasks-budget"
-          title="Token budget per request"
-          description="All the tokens a chat's tasks (and theirs) may use. Past it, no new tasks start and running ones pause. 0 means no limit."
-          control={
-            <div className="flex items-center gap-1.5">
-              <input
-                id="tasks-budget"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                step={100}
-                value={Number.isNaN(tasks.missionTokenBudget) ? "" : Math.round(tasks.missionTokenBudget / 1000)}
-                onChange={(event) => update({ missionTokenBudget: event.target.valueAsNumber * 1000 })}
-                aria-invalid={!isValidBudget(tasks.missionTokenBudget)}
-                className="input input-sm w-24 text-right tabular-nums"
-              />
-              <span className="text-xs text-fg-subtle">k</span>
-            </div>
-          }
         />
       </LedgerGroup>
 

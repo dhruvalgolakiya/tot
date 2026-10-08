@@ -63,7 +63,7 @@ A few limits keep this sane, all in **Settings → Tasks → Splitting work**:
 
 - A chat or task can start up to 6 tasks.
 - Tasks can start tasks, two levels deep.
-- A token budget per request (5 million tokens by default; 0 means no limit). Over budget, no new tasks start and running ones pause, saying why ("Didn't start: the tasks from this chat used 17.8M of their 15M-token budget."). The task's page offers **Raise the budget** (Settings → Tasks) and **Resume**; resuming while still over budget is refused with the same reason.
+- There's no token budget: a chat's tasks run until they're done.
 
 ### When a plan runs out mid-task
 

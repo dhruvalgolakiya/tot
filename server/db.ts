@@ -442,10 +442,15 @@ db.exec(`
 `);
 
 // Module 05 (coordination, server/tasks/wake.ts): a chat whose tasks finished and that hasn't been
-// woken about them yet (so a restart still wakes it), and the tokens its wake-up turns used, which
-// count toward its mission's token budget.
+// woken about them yet (so a restart still wakes it), and the tokens its wake-up turns used.
 if (!hasColumn("conversations", "wake_pending")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_pending INTEGER NOT NULL DEFAULT 0`);
 if (!hasColumn("conversations", "wake_tokens")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_tokens INTEGER NOT NULL DEFAULT 0`);
+// Tasks once had a token budget per chat; paused for it, they lose that reason (Resume starts them; nothing pauses them for it now).
+db.exec(
+  `UPDATE conversations SET task = json_remove(json_set(task, '$.progress', 'Paused. Resume to start it.'), '$.pausedFor')
+   WHERE kind = 'task' AND json_extract(task, '$.status') = 'paused'
+     AND (json_extract(task, '$.pausedFor') = 'budget' OR json_extract(task, '$.progress') LIKE '%token budget%')`,
+);
 // Forks (server/chats/fork.ts): where a chat was forked from, notes brought back from its forks for its
 // next turn, and each reply's place in its provider session (so a fork can start there natively).
 if (!hasColumn("conversations", "forked_from")) db.exec(`ALTER TABLE conversations ADD COLUMN forked_from TEXT`);

@@ -8,7 +8,6 @@ import { appEvents } from "../app-events.ts";
 import { conversations } from "../data/conversations.ts";
 import { messageText, messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
-import { budgetPauseText, overBudget } from "../orchestration/budget.ts";
 import { renderBrief } from "../orchestration/roles.ts";
 import { grantFor, prepareTask } from "../projects/checkout.ts";
 import { continuationPreamble, handoffPreamble } from "./prompt.ts";
@@ -235,11 +234,6 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
     if (!task || task.task.status !== "running") return;
     if (!request && task.task.turns >= MAX_TURNS) {
       fail(taskId, `Stopped after ${MAX_TURNS} turns without finishing. Reply to keep it going.`);
-      return;
-    }
-    const spent = overBudget(task);
-    if (spent) {
-      taskStore.transition(taskId, "paused", { progress: budgetPauseText(task, spent), pausedFor: "budget" });
       return;
     }
     const before = snapshot(task);

@@ -1,7 +1,6 @@
 import { Hono, type Context } from "hono";
 import type { ConvertToTaskRequest, StartTaskRequest, SteerRequest, TaskPatch, TaskStatus } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
-import { checkResume } from "../orchestration/budget.ts";
 import { agents } from "../data/agents.ts";
 import { conversations } from "../data/conversations.ts";
 import { cleanRequestId, taskRequests } from "./requests.ts";
@@ -72,19 +71,11 @@ taskRoutes.post("/conversations/:id/steer", async (c) => {
 taskRoutes.post("/agents/:id/queue/resume", (c) => c.json(tasks.resumeQueue(c.req.param("id"))));
 taskRoutes.post("/tasks/:id/pause", (c) => c.json(toPublic(tasks.pause(c.req.param("id")))));
 
-/** Resuming (or running now) a task whose mission is over its token budget would only pause it again: refused, with why. */
-function checkUserResume(taskId: string): void {
-  const task = taskStore.require(taskId);
-  if (task.task.status !== "queued" && task.task.status !== "running" && task.task.status !== "needs-input") checkResume(task);
-}
-
 taskRoutes.post("/tasks/:id/resume", (c) => {
-  checkUserResume(c.req.param("id"));
   return c.json(toPublic(tasks.resume(c.req.param("id"))));
 });
 taskRoutes.post("/tasks/:id/stop", (c) => c.json(toPublic(tasks.stop(c.req.param("id")))));
 taskRoutes.post("/tasks/:id/run-now", (c) => {
-  checkUserResume(c.req.param("id"));
   return c.json(toPublic(tasks.runNow(c.req.param("id"))));
 });
 

@@ -56,7 +56,6 @@ export function buildSettingsPatch(saved: Settings, draft: Settings, secrets: Se
     "notifySlackUserId",
     "wakeChats",
     "switchProviders",
-    "missionTokenBudget",
     "maxChildren",
     "worktreeCleanupDays",
   ]);
@@ -94,7 +93,3 @@ export function isValidCleanupDays(value: number): boolean {
   return Number.isInteger(value) && value >= CLEANUP_DAYS.min && value <= CLEANUP_DAYS.max;
 }
 
-/** A mission's token budget: whole tokens, 0 for no limit. */
-export function isValidBudget(value: number): boolean {
-  return Number.isInteger(value) && value >= 0;
-}

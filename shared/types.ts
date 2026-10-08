@@ -1417,8 +1417,6 @@ export interface TaskInfo {
   handoff: HandoffPacket | null;
   /** Paused for a usage limit: when it resumes by itself. */
   resumeAt: number | null;
-  /** Paused because its mission used its token budget (Settings → Tasks); null for any other pause. */
-  pausedFor?: "budget" | null;
   // Mission control (module 09). Optional: tasks from before 09 don't have them.
   /** Lines changed on its branch, refreshed after every turn. */
   stats?: TaskDiffStats | null;
@@ -1783,8 +1781,6 @@ export interface TaskSettings {
   perAgentLimit: number;
   /** When a running task's provider hits its usage limit: write a handoff and carry on with the other one (else pause until the reset). */
   switchProviders: boolean;
-  /** Tokens one mission (a chat's tasks and their tasks) may use in all; 0 = no limit. */
-  missionTokenBudget: number;
   /** Tasks one chat or task may start. */
   maxChildren: number;
   /** Tasks running at once across all agents. */
