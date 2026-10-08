@@ -1,5 +1,5 @@
 // No router library: "/a/:agentId" is an agent's new-chat home, "/c/:id" is
-// an open conversation, "/mascots" is the mascot gallery (dev route), and
+// an open conversation, "/agents" is your crew, "/mascots" is the mascot gallery (dev route), and
 // "/" redirects to the first agent's home once agents are loaded.
 
 export function agentPath(id: string): string {
@@ -92,6 +92,13 @@ export function compareGroupFromPath(pathname: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** "/agents": your crew, every agent with its island, computer, brains and model. */
+export const CREW_PATH = "/agents";
+
+export function isCrewPath(pathname: string): boolean {
+  return pathname === CREW_PATH || pathname === `${CREW_PATH}/`;
 }
 
 export const MASCOTS_PATH = "/mascots";

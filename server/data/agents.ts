@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { Agent, AgentInput, MascotSpec } from "../../shared/types.ts";
+import { defaultIsland, isAgentIsland } from "../../shared/islands.ts";
+import type { Agent, AgentInput, AgentIsland, MascotSpec } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 import { brains } from "./brains.ts";
@@ -19,12 +20,26 @@ const FALLBACK_MASCOT: MascotSpec = DEFAULT_AGENT.mascot;
 
 const count = (sql: string, id: string) => Number((db.prepare(sql).get(id) as Row).n);
 
-function toAgent(row: Row): Agent {
+/** How many agents were made before this row: its place in creation order. */
+const positionOf = (row: Row) =>
+  Number(
+    (
+      db
+        .prepare(`SELECT COUNT(*) AS n FROM agents WHERE created_at < ? OR (created_at = ? AND rowid < (SELECT rowid FROM agents WHERE id = ?))`)
+        .get(Number(row.created_at), Number(row.created_at), String(row.id)) as Row
+    ).n,
+  );
+
+/** `position`: its place in creation order, for the round-robin island when none was picked (looked up when omitted). */
+function toAgent(row: Row, position?: number): Agent {
   const id = String(row.id);
+  const island = isAgentIsland(row.island) ? row.island : defaultIsland(position ?? positionOf(row));
   return {
     id,
     name: String(row.name),
     mascot: parseJson<MascotSpec>(row.mascot, FALLBACK_MASCOT),
+    island,
+    tagline: String(row.tagline ?? ""),
     instructions: String(row.instructions ?? ""),
     modelId: String(row.model_id),
     computer: getComputerSummary(id),
@@ -43,7 +58,7 @@ function toAgent(row: Row): Agent {
 
 export const agents = {
   list(): Agent[] {
-    return (db.prepare(`SELECT * FROM agents ORDER BY created_at, rowid`).all() as Row[]).map(toAgent);
+    return (db.prepare(`SELECT * FROM agents ORDER BY created_at, rowid`).all() as Row[]).map((row, index) => toAgent(row, index));
   },
 
   get(id: string): Agent | null {
@@ -60,8 +75,10 @@ export const agents = {
   create(input: AgentInput): Agent {
     const id = randomUUID();
     const now = Date.now();
+    // The next island round-robin unless one was picked, kept so deleting an older agent doesn't move it.
+    const island: AgentIsland = input.island ?? defaultIsland(Number((db.prepare(`SELECT COUNT(*) AS n FROM agents`).get() as Row).n));
     db.prepare(
-      `INSERT INTO agents (id, name, mascot, instructions, model_id, persona_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO agents (id, name, mascot, instructions, model_id, persona_id, island, tagline, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.name.trim(),
@@ -69,6 +86,8 @@ export const agents = {
       input.instructions?.trim() ?? "",
       input.modelId ?? "auto",
       input.personaId ?? null,
+      island,
+      input.tagline?.trim() || null,
       now,
       now,
     );
@@ -84,6 +103,10 @@ export const agents = {
       model_id: patch.modelId,
       // null: back to working as the user.
       persona_id: patch.personaId,
+      // null: back to the round-robin island.
+      island: patch.island,
+      // Empty: show the island's name again.
+      tagline: patch.tagline === undefined ? undefined : patch.tagline.trim() || null,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);
     if (entries.length) {
@@ -119,6 +142,11 @@ export function validateAgent(input: Partial<AgentInput>, creating: boolean): st
     const { shape, color, accessory, eyes } = input.mascot;
     if (!SHAPES.has(shape) || !ACCESSORIES.has(accessory) || !EYES.has(eyes)) return "That mascot isn't valid.";
     if (!/^#[0-9a-f]{6}$/i.test(color)) return "Mascot color must look like #a78bfa.";
+  }
+  if (input.island !== undefined && input.island !== null && !isAgentIsland(input.island)) return "That island doesn't exist.";
+  if (input.tagline !== undefined) {
+    if (typeof input.tagline !== "string") return "The tagline must be text.";
+    if (input.tagline.trim().length > 40) return "Taglines can be at most 40 characters.";
   }
   if (input.instructions !== undefined && input.instructions.length > 4000) return "Instructions can be at most 4000 characters.";
   if (input.personaId !== undefined && input.personaId !== null) {

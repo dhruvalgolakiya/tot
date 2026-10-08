@@ -5,6 +5,7 @@ import { Tooltip } from "radix-ui";
 import { AgentSettingsPanel } from "./components/AgentSettingsPanel";
 import { ChatView } from "./components/ChatView";
 import { ComputerPanel } from "./components/ComputerPanel";
+import { CrewPage } from "./components/crew/CrewPage";
 import { Header } from "./components/Header";
 import { MascotGallery } from "./components/mascot";
 import { CompareView } from "./components/mission/CompareView";
@@ -113,7 +114,9 @@ export default function App() {
           ? "Mission control · TOT"
           : page === "compare"
             ? "Compare · TOT"
-            : "TOT";
+            : page === "crew"
+              ? "Your crew · TOT"
+              : "TOT";
   }, [title, page]);
 
   useGlobalShortcuts();
@@ -149,6 +152,8 @@ export default function App() {
                 <MissionControl key={viewKey} />
               ) : page === "compare" ? (
                 <CompareView key={viewKey} />
+              ) : page === "crew" ? (
+                <CrewPage key={viewKey} />
               ) : (
                 <ChatView key={viewKey} />
               )}

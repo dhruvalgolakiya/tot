@@ -785,6 +785,11 @@ db.exec(`
   );
 `);
 
+// Agent identity (the crew page): the island it works from (null: assigned round-robin by creation order) and a
+// short tagline ("the workshop"; null or empty shows the island's name).
+if (!hasColumn("agents", "island")) db.exec(`ALTER TABLE agents ADD COLUMN island TEXT`);
+if (!hasColumn("agents", "tagline")) db.exec(`ALTER TABLE agents ADD COLUMN tagline TEXT`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

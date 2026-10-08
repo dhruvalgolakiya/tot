@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import type { Agent, AgentInput, MascotSpec } from "@shared/types";
+import { agentIsland, defaultIsland, islandName } from "@shared/islands";
+import type { Agent, AgentInput, AgentIsland, MascotSpec } from "@shared/types";
 import { AUTO_MODEL_ID, modelSelectOptions } from "../lib/models";
 import { useDevices } from "../lib/remote";
 import { createAgent, deleteAgent, goToSettings, setNewAgentDialogOpen, updateAgent, useStore } from "../store";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { IslandPicker } from "./IslandPicker";
 import { MascotPicker, randomMascot, suggestName } from "./mascot";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
@@ -15,6 +17,11 @@ import { Select } from "./ui/Select";
 export function AgentForm({ target, canDelete }: { target: Agent | null; canDelete: boolean }) {
   const [mascot, setMascot] = useState<MascotSpec>(() => target?.mascot ?? randomMascot());
   const [name, setName] = useState(() => target?.name ?? suggestName(mascot));
+  // A new agent gets the next island round-robin, like the server would give it.
+  const [island, setIsland] = useState<AgentIsland>(() =>
+    target ? agentIsland(target) : defaultIsland(useStore.getState().agents.filter((a) => !a.deviceId).length),
+  );
+  const [tagline, setTagline] = useState(target?.tagline ?? "");
   const [instructions, setInstructions] = useState(target?.instructions ?? "");
   const [modelId, setModelId] = useState(target?.modelId ?? AUTO_MODEL_ID);
   const [personaId, setPersonaId] = useState<string | null>(target?.personaId ?? null);
@@ -36,7 +43,15 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
     if (!trimmedName || saving) return;
     setSaving(true);
     // Personas are a device's own (its mailboxes and logins), so another device's agent keeps the one it has.
-    const input: AgentInput = { name: trimmedName, mascot, instructions: instructions.trim(), modelId, ...(livesOn ? {} : { personaId }) };
+    const input: AgentInput = {
+      name: trimmedName,
+      mascot,
+      island,
+      tagline: tagline.trim(),
+      instructions: instructions.trim(),
+      modelId,
+      ...(livesOn ? {} : { personaId }),
+    };
     if (target) {
       if (await updateAgent(target.id, input)) toast.success("Saved");
     } else {
@@ -66,6 +81,22 @@ export function AgentForm({ target, canDelete }: { target: Agent | null; canDele
             autoComplete="off"
             className="input h-10 rounded-xl"
           />
+        </Field>
+
+        <Field label="Tagline" htmlFor="agent-tagline" hint="A few words beside its name. Empty shows its island's name.">
+          <input
+            id="agent-tagline"
+            value={tagline}
+            onChange={(event) => setTagline(event.target.value)}
+            placeholder={islandName(island)}
+            maxLength={40}
+            autoComplete="off"
+            className="input h-10 rounded-xl"
+          />
+        </Field>
+
+        <Field label="Island" hint="Where it works from, on your crew page and its Home.">
+          <IslandPicker value={island} onChange={setIsland} />
         </Field>
 
         <Field label="Mascot">

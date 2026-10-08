@@ -1,6 +1,7 @@
 import { Fragment, useMemo } from "react";
 import clsx from "clsx";
-import { Laptop, Moon, Plus, Settings, Sun } from "lucide-react";
+import { Laptop, Moon, Plus, Settings, Sun, UsersRound } from "lucide-react";
+import { agentTagline } from "@shared/islands";
 import type { Agent, Device, MascotState } from "@shared/types";
 import { totDesktop } from "../lib/desktop";
 import { relativeTime } from "../lib/format";
@@ -8,6 +9,7 @@ import { useDevices } from "../lib/remote";
 import { setThemePreference, useResolvedTheme } from "../lib/theme";
 import {
   goToSettings,
+  navigateToCrew,
   selectActiveAgentId,
   selectAgent,
   selectAgentWorking,
@@ -20,17 +22,20 @@ import { Logo } from "./ui/Logo";
 import { Tip } from "./ui/Tip";
 
 /**
- * Discord/Slack-style workspace rail: TOT mark, one mascot per agent (the
- * workspace switcher), "add agent", then app-wide settings and theme at
- * the bottom. Always visible on desktop — collapsing the sidebar only hides
+ * Discord/Slack-style workspace rail: TOT mark (your crew), one mascot per agent
+ * (the workspace switcher), "add agent", then app-wide settings and theme at
+ * the bottom. In the Mac app, where the traffic lights take the mark's place,
+ * the crew is a button above Settings. Always visible on desktop — collapsing the sidebar only hides
  * the chats panel next to it. A hairline (plus a slightly darker `bg-rail` in
  * light mode) separates it from that panel. Paired devices' agents (module 07) follow below
  * a hairline, one group per device, each with a small laptop badge.
  */
 export function AgentRail({ className }: { className?: string }) {
   const agents = useStore((s) => s.agents);
-  const activeAgentId = useStore(selectActiveAgentId);
+  // On the crew page no agent is the current one.
+  const activeAgentId = useStore((s) => (s.page === "crew" ? null : selectActiveAgentId(s)));
   const settingsActive = useStore((s) => s.page === "settings");
+  const crewActive = useStore((s) => s.page === "crew");
   const devices = useDevices((s) => s.status?.devices);
   const groups = useMemo(
     () =>
@@ -51,7 +56,24 @@ export function AgentRail({ className }: { className?: string }) {
         className,
       )}
     >
-      {totDesktop ? <div aria-hidden="true" className="h-14 w-full shrink-0" /> : <Logo className="mb-3 size-7 shrink-0" />}
+      {totDesktop ? (
+        <div aria-hidden="true" className="h-14 w-full shrink-0" />
+      ) : (
+        <Tip content="Your crew" side="right">
+          <button
+            type="button"
+            aria-label="Your crew"
+            aria-current={crewActive ? "page" : undefined}
+            onClick={() => navigateToCrew()}
+            className={clsx(
+              "mb-2 grid size-10 shrink-0 place-items-center rounded-xl transition-colors hover:bg-hover",
+              crewActive && "bg-selected",
+            )}
+          >
+            <Logo className="size-7" />
+          </button>
+        </Tip>
+      )}
 
       <ul className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto">
         {agents
@@ -76,6 +98,18 @@ export function AgentRail({ className }: { className?: string }) {
       </Tip>
 
       <div className="mt-2 flex w-full shrink-0 flex-col items-center gap-1 border-t border-hairline pt-2.5">
+        {totDesktop && (
+          <Tip content="Your crew" side="right">
+            <IconButton
+              label="Your crew"
+              aria-current={crewActive ? "page" : undefined}
+              onClick={() => navigateToCrew()}
+              className={crewActive ? "bg-selected text-fg" : undefined}
+            >
+              <UsersRound />
+            </IconButton>
+          </Tip>
+        )}
         <Tip content="Settings" side="right">
           <IconButton
             label="Settings"
@@ -99,6 +133,12 @@ interface RailAgentButtonProps {
   active: boolean;
 }
 
+/** "Kiwi · the workshop", plus where it lives when that's a paired device. */
+function railTip(agent: Agent, device: Device | undefined): string {
+  const place = agentPlace(agent, device);
+  return `${agent.name} · ${agentTagline(agent)}${place === agent.name ? "" : place.slice(agent.name.length)}`;
+}
+
 /** "Kiwi · on MacBook", plus when that device was last seen if it's offline. */
 export function agentPlace(agent: Agent, device: Device | undefined): string {
   if (!device) return agent.name;
@@ -115,7 +155,7 @@ function RailAgentButton({ agent, device, active }: RailAgentButtonProps) {
 
   return (
     <li className="relative flex w-full shrink-0 items-center justify-center">
-      <Tip content={label} side="right">
+      <Tip content={railTip(agent, device)} side="right">
         <button
           type="button"
           aria-label={label}
