@@ -19,6 +19,7 @@ import {
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
 import { ProjectPicker } from "./projects/ProjectPicker";
+import { WorkspacePicker } from "./projects/WorkspacePicker";
 import { Tip } from "./ui/Tip";
 import { VoiceInputButton } from "./voice";
 
@@ -42,6 +43,8 @@ export function Composer({
 }) {
   const currentId = useStore((s) => s.currentId);
   const onProjectPage = useStore((s) => s.page === "project");
+  // The project a chat not sent yet starts in: the project page's, or the one picked.
+  const draftProject = useStore((s) => (s.page === "project" ? s.projectId : s.draftProjectId));
   const run = useStore((s) => (s.currentId ? s.activeRuns[s.currentId] : undefined));
   const sending = useStore((s) => s.sending);
   const agent = useStore(selectActiveAgent);
@@ -389,6 +392,8 @@ export function Composer({
         <VoiceInputButton onTranscript={onTranscript} />
         {/* A chat not sent yet, from an agent's home: the project it starts in. */}
         {!currentId && !onProjectPage && <ProjectPicker />}
+        {/* …and in a project with code, whether it works in the main checkout or a new worktree. */}
+        {!currentId && <WorkspacePicker projectId={draftProject} />}
 
         <div className="ml-auto flex min-w-0 items-center gap-2">
           {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}

@@ -1,4 +1,4 @@
-import type { Project } from "../../shared/types.ts";
+import type { ChatWorkspace, Project } from "../../shared/types.ts";
 import { brains } from "../data/brains.ts";
 import { wiki } from "../data/wiki.ts";
 import { gitState } from "./folders.ts";
@@ -50,6 +50,20 @@ function reposRule(repos: RepoRecord[], inTask: boolean): string {
   return `Look in the repos' folders, but don't change them: start a task for any change, in the repo it's about; split work across repos into one task per repo.\nEach task gets its own branch (tot/…) and folder.${folders}`;
 }
 
+/**
+ * For a chat that picked where it works (chats/workspace.ts): the main checkout of `folder` to change, or its own
+ * worktree; other repos' folders stay read-only. Null for any other chat.
+ */
+function workspaceRule(workspace: ChatWorkspace | null | undefined, folder: string, others: boolean): string | null {
+  if (!workspace) return null;
+  const rest = others ? "\nThe project's other repos' folders are read-only for you: start a task to change them." : "";
+  if (workspace.mode === "checkout") {
+    return `You work directly in ${folder} (the user's main checkout): change files there when asked; small, careful changes; for big or parallel work start a task.\nYour commands start there.${rest}`;
+  }
+  if (!workspace.branch || !workspace.worktree) return `You'll work in your own worktree on a new tot/… branch, but it isn't made yet: don't change files in ${folder}.${rest}`;
+  return `You work in your own worktree ${workspace.worktree} on branch ${workspace.branch}; change files only there; the main checkout (${folder}) is read-only.\nYour commands start there. Commit on your branch as you go; never push unless the user asks.${rest}`;
+}
+
 function rule(project: Project, inTask: boolean): string {
   if (project.kind === "none") return "";
   const folder = projects.folder(project) ?? "";
@@ -62,13 +76,18 @@ function rule(project: Project, inTask: boolean): string {
   return `${look}: start a task for any change.\nEach task gets its own branch (tot/…), which shows up in the user's own repo, and its own folder.`;
 }
 
-export function projectSection(project: Project, { inTask = false }: { inTask?: boolean } = {}): string {
+export function projectSection(
+  project: Project,
+  { inTask = false, workspace = null }: { inTask?: boolean; workspace?: ChatWorkspace | null } = {},
+): string {
   const brain = brains.get(project.brainId);
   const overview = brain ? wiki.overview(brain.id).content.trim() : "";
   const instructions = project.instructions.trim().replace(/\n{2,}/g, "\n");
   // Module 11: a project with several repos lists them (one repo reads as it did before).
   const repos = projectRepos.list(project.id);
   const several = repos.length > 1;
+  // A chat's checkout or worktree is in the primary repo; a folder the user hasn't allowed yet reads as before.
+  const primary = repos[0] && (repos[0].kind !== "folder" || repos[0].folderGranted) ? repos[0] : null;
   const lines = [
     several ? reposWhere(repos) : where(project),
     instructions && `Instructions: ${instructions}`,
@@ -76,7 +95,8 @@ export function projectSection(project: Project, { inTask = false }: { inTask?: 
       (overview
         ? `Brain: "${brain.name}" (its Overview is below; search it with wiki_search).`
         : `Brain: "${brain.name}", empty so far: when you learn something durable about this project, write it there (wiki_write).`),
-    several ? reposRule(repos, inTask) : rule(project, inTask),
+    (!inTask && primary && workspaceRule(workspace, projectRepos.folder(primary), several)) ||
+      (several ? reposRule(repos, inTask) : rule(project, inTask)),
     overview &&
       `Overview:\n${overview.length > OVERVIEW_MAX ? `${overview.slice(0, OVERVIEW_MAX).trimEnd()}\n… (truncated: wiki_read for the rest)` : overview}`,
   ].filter(Boolean);

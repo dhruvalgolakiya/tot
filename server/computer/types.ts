@@ -12,14 +12,18 @@ export type ComputerSize = "small" | "default" | "large";
 
 /**
  * A folder on this Mac that a local computer may use for one command (module 06). It can read all
- * of it; a task can also write its own branch, its own worktree in <folder>/.tot-worktrees and new
- * git objects, and nothing else: never the checked-out files, .git/config, hooks or other refs.
+ * of it; a task (or a chat in its own worktree) can also write its own branch, its own worktree in
+ * <folder>/.tot-worktrees and new git objects, and nothing else: never the checked-out files,
+ * .git/config, hooks or other refs. A chat working in the main checkout (`write`) can change the
+ * folder itself, but still not git's config or hooks, nor the worktrees in it.
  */
 export interface FolderGrant {
   /** The folder's real path. */
   folder: string;
   /** For a task: its branch ("tot/…") and its worktree's folder name in <folder>/.tot-worktrees. */
   task?: { branch: string; worktree: string };
+  /** For a chat that works in the user's main checkout: the folder itself is writable (see local.ts grantRules). */
+  write?: boolean;
   /** Module 11: the project's other allowed folders (its other folder repos), readable only; real paths too. */
   reads?: string[];
 }

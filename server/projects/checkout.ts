@@ -268,11 +268,12 @@ export const checkout = {
  * The folder grant a chat's or task's commands get: only for a chat in a project with a folder on this
  * Mac the user allowed, never for any other chat. A coding task in a folder repo gets that folder, with
  * its own branch and worktree in it; one in a GitHub repo gets none (its clone is on its computer). A
- * chat, or a task without code, gets the project's folders to read. Module 11: a project's other allowed
+ * chat, or a task without code, gets the project's folders to read; a chat that picked where it works gets the
+ * main checkout to change, or its own worktree as a task does (chats/workspace.ts). Module 11: a project's other allowed
  * folders come along as `reads`. Throws, in words for the agent, when the task's folder (or a folder
  * project's own) can't be used.
  */
-export function grantFor(chat: Pick<ConversationRecord, "agentId" | "projectId" | "kind" | "task">): FolderGrant | null {
+export function grantFor(chat: Pick<ConversationRecord, "agentId" | "projectId" | "kind" | "task"> & Pick<Partial<ConversationRecord>, "workspace">): FolderGrant | null {
   const project = projects.get(chat.projectId);
   if (!project) return null;
   const repos = projectRepos.list(project.id);
@@ -297,7 +298,15 @@ export function grantFor(chat: Pick<ConversationRecord, "agentId" | "projectId" 
   const main = folder ?? others.shift();
   if (!main) return null;
   const reads = others.length ? { reads: others } : {};
-  return taskRepo && taskRepo.folder === main ? { folder: main, task: { branch: taskRepo.branch, worktree: basename(taskRepo.worktree) }, ...reads } : { folder: main, ...reads };
+  if (taskRepo && taskRepo.folder === main) return { folder: main, task: { branch: taskRepo.branch, worktree: basename(taskRepo.worktree) }, ...reads };
+  // A chat that picked where it works: the primary folder's main checkout to change, or its own worktree there,
+  // granted as a task's is (only once its branch is named; a GitHub primary's clone needs no grant).
+  const workspace = chat.kind === "task" ? null : chat.workspace;
+  if (workspace && folder === main) {
+    if (workspace.mode === "checkout") return { folder: main, write: true, ...reads };
+    if (workspace.branch && workspace.worktree) return { folder: main, task: { branch: workspace.branch, worktree: basename(workspace.worktree) }, ...reads };
+  }
+  return { folder: main, ...reads };
 }
 
 /**
@@ -306,7 +315,7 @@ export function grantFor(chat: Pick<ConversationRecord, "agentId" | "projectId" 
  * becomes a note for the agent, and the tool still runs.
  */
 export async function forTools(
-  chat: Pick<ConversationRecord, "agentId" | "projectId" | "kind" | "task">,
+  chat: Pick<ConversationRecord, "agentId" | "projectId" | "kind" | "task"> & Pick<Partial<ConversationRecord>, "workspace">,
   active: ActiveComputer,
 ): Promise<{ grant: FolderGrant | null; note: string }> {
   const project = projects.get(chat.projectId);

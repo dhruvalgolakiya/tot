@@ -9,6 +9,7 @@ import { brains } from "../data/brains.ts";
 import { CUT_OFF_BY_RESTART } from "../db.ts";
 import { attachedNote, cleanContextChats } from "../chats/attach.ts";
 import { forks } from "../chats/fork.ts";
+import { chatWorkspaces } from "../chats/workspace.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { messages } from "../data/messages.ts";
@@ -288,6 +289,12 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   // A Lead's signals this turn's note carries (module 12): unread again if the model never answered.
   const heardSignals: string[] = [];
   try {
+    // A chat working in its own worktree has it made on its first turn (chats/workspace.ts), before its prompt
+    // says where it is; a problem shows here and the turn goes on.
+    const workspace = await chatWorkspaces.prepare(conversation, ctx.text);
+    if (workspace.chat.workspace !== conversation.workspace) conversation.workspace = workspace.chat.workspace;
+    if (workspace.notice) builder.notice("warning", workspace.notice);
+    if (workspace.note) ctx.preamble = [workspace.note, ctx.preamble].filter(Boolean).join("\n\n");
     const { text, images, systemPrompt } = await prepareTurn(ctx, heardSignals);
 
     // As much of the conversation as fits a new model's budget, with a pointer to the rest.
@@ -439,7 +446,11 @@ async function prepareTurn(ctx: TurnContext, heardSignals: string[] = []): Promi
   // The chat's project (module 06), or for a chat in none the list of projects so its agent can file it:
   // a chat moved in or out since its prompt was frozen hears about it once.
   const project = projects.get(conversation.projectId);
-  const section = project ? projectSection(project, { inTask: conversation.kind === "task" }) : conversation.kind === "chat" ? projectList() : null;
+  const section = project
+    ? projectSection(project, { inTask: conversation.kind === "task", workspace: conversation.kind === "task" ? null : conversation.workspace })
+    : conversation.kind === "chat"
+      ? projectList()
+      : null;
   const moved = projectNote(conversation.systemPrompt, section);
   if (moved.prompt !== null) conversations.update(conversation.id, { systemPrompt: moved.prompt });
   // A project's Lead (module 11): its section follows the project's repos; a change is said once.

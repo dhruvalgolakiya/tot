@@ -13,7 +13,8 @@ import { previews } from "./preview.ts";
  * always stay, so nothing is lost: the task's repo.headSha goes back to null, and picking it up again
  * makes its worktree (and runs its setup) again. Its preview stops and its ports are given back. A
  * worktree with work that isn't committed (new files too) is left as it is, and one whose task is being
- * picked up again is never touched (both run alone for the task: worktrees.forTask).
+ * picked up again is never touched (both run alone for the task: worktrees.forTask). Only tasks are swept: a
+ * chat's own worktree (chats/workspace.ts) lives as long as its chat, and goes when the chat is deleted.
  */
 
 const DAY_MS = 24 * 60 * 60_000;

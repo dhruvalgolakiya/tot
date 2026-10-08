@@ -45,16 +45,37 @@ const TOT_PORTS = [...new Set([PORT, EXECUTOR_PORT, WEB_PORT])];
  * own checkout in .tot-worktrees, its worktree's git metadata, its one branch and that branch's
  * reflog, and new loose git objects. Everything else stays read-only, so the sandbox, not the prompt,
  * keeps the user's checked-out files, other branches, .git/config, hooks and info untouched: git
- * would run those for the user later, outside any sandbox. A chat in the project only reads.
+ * would run those for the user later, outside any sandbox. A chat working in the main checkout (`write`)
+ * changes the folder itself, but not git's config or hooks; any other chat in the project only reads.
  */
 function grantRules(grant: FolderGrant | null | undefined): { read: string; write: string } {
   if (!grant) return { read: "", write: "" };
   // The project's other folders (module 11) are only ever read.
   const read = [grant.folder, ...(grant.reads ?? [])].map((folder) => `\n  (subpath ${sbplString(folder)})`).join("");
-  if (!grant.task) return { read, write: "" };
   const git = join(grant.folder, ".git");
-  const { branch, worktree } = grant.task;
   const path = (...parts: string[]) => sbplString(join(...parts));
+  if (grant.write) {
+    // The main checkout: anything in it, except what git (or TOT) would later run or trust outside any
+    // sandbox: its config and hooks (a submodule's too), alternates, and the worktrees of tasks and other chats.
+    return {
+      read,
+      write: `
+; Folder grant for a chat in the user's main checkout: the folder, minus git's config, hooks and TOT's worktrees.
+(allow file-write* (subpath ${path(grant.folder)}))
+(deny file-write*
+  (literal ${path(git, "config")})
+  (literal ${path(git, "config.lock")})
+  (literal ${path(git, "config.worktree")})
+  (subpath ${path(git, "hooks")})
+  (subpath ${path(git, "modules")})
+  (subpath ${path(git, "worktrees")})
+  (subpath ${path(git, "objects/info")})
+  (subpath ${path(grant.folder, ".tot-worktrees")}))
+`,
+    };
+  }
+  if (!grant.task) return { read, write: "" };
+  const { branch, worktree } = grant.task;
   return {
     read,
     write: `
@@ -212,10 +233,16 @@ function sandboxedFile(workspace: string, grant: FolderGrant, script: string, pa
   });
 }
 
-/** In a project folder, only a task's own worktree is writable: say so when a write is refused. */
+/** In a project folder, what this chat or task may write: say so when a write is refused. */
 const writeRefused = (path: string, grant: FolderGrant) =>
   new Error(
-    `Can't write ${path}: ${grant.task ? "in the project's folder, only your own task folder (worktree) is writable" : "the project's folder is read-only in a chat; start a task to change it"}.`,
+    `Can't write ${path}: ${
+      grant.task
+        ? "in the project's folder, only your own task folder (worktree) is writable"
+        : grant.write
+          ? "in the project's folder, git's config and hooks and TOT's worktrees stay read-only (as do the project's other folders)"
+          : "the project's folder is read-only in a chat; start a task to change it"
+    }.`,
   );
 
 /**

@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
 import clsx from "clsx";
-import { ArrowUpRight, ChevronRight } from "lucide-react";
+import { ArrowUpRight, ChevronRight, GitBranch, Laptop } from "lucide-react";
 import type { Conversation } from "@shared/types";
 import { conversationTitle } from "../../lib/conversations";
 import { useProjects } from "../../lib/projects";
@@ -42,7 +42,27 @@ export function ChatProjectCrumb({ chat, withTitle = true }: { chat: Conversatio
           {conversationTitle(chat)}
         </span>
       )}
+      {withTitle && <WorkspaceChip chat={chat} folder={project.kind === "folder" ? project.source : null} />}
     </nav>
+  );
+}
+
+/**
+ * Where a chat that picked it works, quietly after its title: "main checkout", or its worktree's branch (the full
+ * path on hover). Nothing for chats from before, which only read the project's folder.
+ */
+function WorkspaceChip({ chat, folder }: { chat: Conversation; folder: string | null }) {
+  const workspace = chat.workspace;
+  if (!workspace) return null;
+  const worktree = workspace.mode === "worktree";
+  const label = worktree ? (workspace.branch ?? "new worktree") : "main checkout";
+  const path = worktree ? (workspace.worktree ?? "made on the first message") : (folder ?? "the project's checkout");
+  const Icon = worktree ? GitBranch : Laptop;
+  return (
+    <span title={path} className="inline-flex max-w-52 shrink-0 items-center gap-1 px-1 text-xs text-fg-subtle">
+      <Icon aria-hidden="true" className="size-3.5 shrink-0" />
+      <span className={clsx("truncate", worktree && workspace.branch && "font-mono")}>{label}</span>
+    </span>
   );
 }
 

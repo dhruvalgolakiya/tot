@@ -53,6 +53,7 @@ import { screenshotFile } from "./computer/screens.ts";
 import { VERSION } from "./config.ts";
 import { agents, validateAgent } from "./data/agents.ts";
 import { BrainError, brains } from "./data/brains.ts";
+import { chatWorkspaces } from "./chats/workspace.ts";
 import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { mail, toMailMessage, toSummary } from "./data/mail.ts";
 import { messages } from "./data/messages.ts";
@@ -274,10 +275,13 @@ api.post("/conversations", async (c) => {
   const agent = request.agentId ? found(agents.get(request.agentId), "Agent not found.") : agents.first();
   const project = request.projectId ? found(projects.get(request.projectId), "Project not found.") : null;
   if (project?.archived) throw new HttpError(400, "That project is archived.");
+  // In a code project, where it works: its main checkout, or a worktree made on its first message.
+  const workspace = chatWorkspaces.forNew(agent.id, project, request.workspace);
   const conversation = conversations.create({
     agentId: agent.id,
     modelId: request.modelId || agent.modelId || settings.get().defaultModelId,
     projectId: project?.id ?? null,
+    workspace,
   });
   // New wiki pages from this chat go to the project's brain.
   if (project) brains.setFocus(conversation.id, project.brainId);
@@ -319,7 +323,7 @@ api.patch("/conversations/:id", async (c) => {
   return c.json(conversation);
 });
 
-// The computer belongs to the agent, so deleting a chat leaves it alone (a task's worktree goes with it).
+// The computer belongs to the agent, so deleting a chat leaves it alone (a task's or a chat's own worktree goes with it).
 api.delete("/conversations/:id", async (c) => {
   const id = c.req.param("id");
   if (isTask(conversations.get(id))) {
@@ -327,7 +331,14 @@ api.delete("/conversations/:id", async (c) => {
     return c.json({ ok: true });
   }
   runRegistry.activeFor(id)?.stop();
-  const agentId = conversations.get(id)?.agentId;
+  const record = conversations.get(id);
+  // A chat's own worktree goes with it; its branch stays when it has commits of its own or was pushed.
+  if (record) {
+    await chatWorkspaces.remove(record).catch((err) => {
+      console.warn(`[tot] couldn't remove the worktree of chat ${id}:`, err instanceof Error ? err.message : err);
+    });
+  }
+  const agentId = record?.agentId;
   conversations.delete(id);
   appEvents.publish({ type: "conversation-deleted", conversationId: id });
   appEvents.agentChanged(agentId);

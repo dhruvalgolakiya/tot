@@ -248,6 +248,8 @@ export const projects = {
     if (!chat) throw new HttpError(404, "Chat not found.");
     // Module 11: a project's Lead runs that project; it isn't filed elsewhere.
     if (chat.lead) throw new HttpError(400, "The Lead stays in its project.");
+    // A chat working in its project's checkout or its own worktree there can't take that elsewhere.
+    if (chat.workspace && projectId !== chat.projectId) throw new HttpError(400, "This chat works in its project's files, so it stays in the project.");
     const project = projectId ? projects.get(projectId) : null;
     if (projectId && (!project || project.archived)) throw new HttpError(404, "Project not found.");
     const family = [chat, ...conversations.tasks({ parentId: chat.id })];

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "../../shared/types.ts";
+import type { ChatWorkspace, Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 
@@ -70,6 +70,8 @@ function toRecord(row: Row): ConversationRecord {
     projectId: (row.project_id as string | null) ?? null,
     // Module 11: only a project's Lead carries the flag.
     ...(row.lead ? { lead: true } : {}),
+    // Only chats that picked where they work carry it.
+    ...(row.workspace ? { workspace: parseJson<ChatWorkspace | null>(row.workspace, null) } : {}),
   };
 }
 
@@ -94,6 +96,7 @@ type ConversationPatch = Partial<{
   mergeNotes: MergeNote[];
   projectId: string | null;
   origin: ConversationOrigin | null;
+  workspace: ChatWorkspace | null;
 }>;
 
 export const conversations = {
@@ -161,6 +164,8 @@ export const conversations = {
     projectId?: string | null;
     /** Module 11: the project's Lead chat. */
     lead?: boolean;
+    /** Where a chat in a code project works (see Conversation.workspace). */
+    workspace?: ChatWorkspace | null;
   }): ConversationRecord {
     const id = randomUUID();
     const now = Date.now();
@@ -182,6 +187,7 @@ export const conversations = {
       now,
     );
     if (input.lead) db.prepare(`UPDATE conversations SET lead = 1 WHERE id = ?`).run(id);
+    if (input.workspace) db.prepare(`UPDATE conversations SET workspace = ? WHERE id = ?`).run(JSON.stringify(input.workspace), id);
     return conversations.get(id)!;
   },
 
@@ -202,6 +208,7 @@ export const conversations = {
       merge_notes: patch.mergeNotes && JSON.stringify(patch.mergeNotes),
       project_id: patch.projectId,
       origin: patch.origin === undefined ? undefined : patch.origin && JSON.stringify(patch.origin),
+      workspace: patch.workspace === undefined ? undefined : patch.workspace && JSON.stringify(patch.workspace),
       updated_at: touch ? Date.now() : undefined,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);

@@ -74,8 +74,17 @@ A project can hold several repos, any mix of GitHub repos and folders on your Ma
 
 - A chat belongs to one project, or to none. To file one, use **Move to project** in its **…** menu.
 - Every chat in a project gets a short **Project** section in its instructions: its repos, where the files are, your instructions, and its knowledge.
-- The rule for agents is simple: **look in the project folder, but change code in a task.** Each task gets its own branch and its own copy of the code, in one of the project's repos. See [Tasks](/docs/tasks).
+- The rule for agents is simple: **look in the project folder, but change code in a task** (unless the chat works in the main checkout or its own worktree, below). Each task gets its own branch and its own copy of the code, in one of the project's repos. See [Tasks](/docs/tasks).
 - An agent may file a chat that has no project, when it's clear which one it belongs to. A note says "Filed under …", and you can move it back. TOT never moves a chat out of a project.
+
+### Where a chat works
+
+A new chat in a project with code picks where it works, in the message box before you send the first message:
+
+- **Main checkout** (the default): the chat works directly in the project's own files: your folder on this Mac, or the clone on the agent's computer for a GitHub project. Its commands start there and it can change files there, but not git's config or hooks. Keep it to small, careful changes; bigger or parallel work goes in a task.
+- **New worktree**: on its first message the chat gets its own worktree on a new `tot/…` branch, set up like a task's (your copied files and setup command). It changes files only there; the main checkout stays read-only. Deleting the chat removes the worktree, and its branch too unless it has commits of its own or was pushed.
+
+The chat's header shows which: **main checkout**, or the branch name. A chat that works in the project's files stays in that project. Chats from before this only read the project's folder and start a task to change it, and tasks work as they always have.
 
 ## Tickets
 
@@ -88,7 +97,7 @@ A project can also list where its work comes from: Slack channels and Linear tea
 - **The primary repo** lives where it always has: `~/projects/<name>` for a GitHub or topic project, on each agent's computer, or the folder itself for a folder project.
 - **Other GitHub repos you add** are cloned next to it, at `~/projects/<name>.<repo>`, never nested inside another clone.
 - **Other folder repos** stay exactly where they are on your Mac. The branches your agents make show up in your own repo (`git branch`), and you check one out when you want it.
-- Your checked-out files are never changed in place. Code changes happen on `tot/…` branches, in separate copies of a repo called worktrees.
+- Your checked-out files are changed in place only by a chat you started in the **Main checkout**. Tasks change code on `tot/…` branches, in separate copies of a repo called worktrees.
 
 ## Limits
 

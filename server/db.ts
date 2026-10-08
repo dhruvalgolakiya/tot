@@ -790,6 +790,10 @@ db.exec(`
 if (!hasColumn("agents", "island")) db.exec(`ALTER TABLE agents ADD COLUMN island TEXT`);
 if (!hasColumn("agents", "tagline")) db.exec(`ALTER TABLE agents ADD COLUMN tagline TEXT`);
 
+// Where a chat in a code project works (its main checkout, or a worktree of its own), as JSON; null for chats from
+// before, which only read the project's folder.
+if (!hasColumn("conversations", "workspace")) db.exec(`ALTER TABLE conversations ADD COLUMN workspace TEXT`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

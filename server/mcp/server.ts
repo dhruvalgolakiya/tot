@@ -16,6 +16,8 @@ import { describeSchedule, routines, validateRoutine } from "../data/routines.ts
 import { settings } from "../data/settings.ts";
 import { redactGitHubTokens } from "../github.ts";
 import { isThisMachine } from "../net.ts";
+import { chatWorkspaces } from "../chats/workspace.ts";
+import type { FolderGrant } from "../computer/types.ts";
 import { forTools } from "../projects/checkout.ts";
 import { registerProjectTools } from "../projects/tools.ts";
 import { registerLeadTools } from "../lead/tools.ts";
@@ -184,8 +186,10 @@ function buildServer(conversation: ConversationRecord): McpServer {
     { instructions: "TOT's tools: your own computer for this chat (computer_*) and long-term memory, about the user and per project (memory_*)." },
   );
   const { computer, memory } = settings.get();
-  // A coding task works in its own worktree: commands and relative paths start there.
-  const worktree = conversation.kind === "task" && conversation.task?.repo?.headSha ? homeRelative(conversation.task.repo.worktree) : null;
+  // A coding task works in its own worktree: commands and relative paths start there. So does a chat that picked
+  // where it works (its main checkout or its own worktree), once its project's folder can be used (its grant).
+  const taskDir = conversation.kind === "task" && conversation.task?.repo?.headSha ? homeRelative(conversation.task.repo.worktree) : null;
+  const baseFor = (grant: FolderGrant | null) => taskDir ?? chatWorkspaces.workDir(conversation, grant);
 
   if (computer.mode !== "off") {
     server.registerTool(
@@ -212,7 +216,7 @@ function buildServer(conversation: ConversationRecord): McpServer {
           // The chat's project folder: set up on the computer, or for a folder on this Mac, granted to this command only.
           const project = await forTools(conversation, active);
           const result = await active.backend.exec(active.externalId, command, {
-            cwd: cwd ? homeRelative(cwd) : (worktree ?? undefined),
+            cwd: cwd ? homeRelative(cwd) : (baseFor(project.grant) ?? undefined),
             timeoutMs: (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
             grant: project.grant,
             // A coding task's commands get its ports: PORT and TOT_PORTS (module 09).
@@ -244,7 +248,7 @@ function buildServer(conversation: ConversationRecord): McpServer {
         guarded(async () => {
           const active = await computerManager.ensure(agentId);
           const project = await forTools(conversation, active);
-          const content = await active.backend.readFile(active.externalId, resolvePath(path, worktree), { grant: project.grant });
+          const content = await active.backend.readFile(active.externalId, resolvePath(path, baseFor(project.grant)), { grant: project.grant });
           computerManager.touch(agentId);
           return reply(`${startNote(active)}${project.note}${clip(redactGitHubTokens(content), FILE_OUTPUT_LIMIT)}`);
         }),
@@ -265,7 +269,7 @@ function buildServer(conversation: ConversationRecord): McpServer {
         guarded(async () => {
           const active = await computerManager.ensure(agentId);
           const project = await forTools(conversation, active);
-          await active.backend.writeFile(active.externalId, resolvePath(path, worktree), content, { grant: project.grant });
+          await active.backend.writeFile(active.externalId, resolvePath(path, baseFor(project.grant)), content, { grant: project.grant });
           computerManager.touch(agentId);
           return reply(`${startNote(active)}${project.note}Wrote ${Buffer.byteLength(content)} bytes to ${path}.`);
         }),

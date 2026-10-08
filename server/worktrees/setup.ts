@@ -18,7 +18,7 @@ import {
 import { dirname, join } from "node:path";
 import type { Project, SetupDetection, TaskRepo, TaskSetup } from "../../shared/types.ts";
 import { computerManager } from "../computer/manager.ts";
-import type { FolderGrant } from "../computer/types.ts";
+import type { ExecResult, FolderGrant } from "../computer/types.ts";
 import { paths } from "../config.ts";
 import { hostGitEnv } from "../git-env.ts";
 import { projects } from "../projects/projects.ts";
@@ -180,6 +180,38 @@ function lastLines(...outputs: string[]): string {
   return lines.slice(-ERROR_LINES).join("\n").slice(-ERROR_CHARS).replace(/^\s*\n/, "");
 }
 
+/**
+ * The setup command a new worktree of the project's runs: the project's setupCommand ("" for none), or with
+ * none set the install its lockfile implies (looked for in the worktree itself). Null when there's nothing to run.
+ */
+async function setupCommand(configured: string | null | undefined, exec: (command: string, timeoutMs: number) => Promise<ExecResult>): Promise<string | null> {
+  if (typeof configured === "string") return configured || null;
+  const names = LOCKFILES.map(([lockfile]) => lockfile).join(" ");
+  const found = await exec(`for f in ${names}; do if [ -e "$f" ]; then echo "$f"; break; fi; done`, 30_000);
+  const lockfile = found.stdout.trim();
+  return LOCKFILES.find(([name]) => name === lockfile)?.[1] ?? null;
+}
+
+/** Runs a setup command (for up to 10 minutes) and says how it went: the error is its last lines, without secrets. */
+async function runCommand(command: string, exec: (command: string, timeoutMs: number) => Promise<ExecResult>, note: string): Promise<TaskSetup> {
+  const result = await exec(command, SETUP_TIMEOUT_MS).catch((err) => ({ exitCode: -1, stdout: "", stderr: errorText(err), timedOut: false }));
+  const failed = result.exitCode !== 0;
+  const output = failed ? lastLines(result.stdout, result.stderr) : "";
+  const error = failed ? `${output || `exit code ${result.exitCode}`}${result.timedOut ? "\n(stopped after 10 minutes)" : ""}` : null;
+  return { state: failed ? "failed" : "done", command, at: Date.now(), error: [note, error].filter(Boolean).join("\n") || null };
+}
+
+/** A folder project's listed files copied into a new worktree; a note on any that weren't. */
+function copyInto(project: Project | null, repo: TaskRepo): string {
+  if (project?.kind !== "folder" || !project.copyFiles?.length || repo.folder !== project.source) return "";
+  try {
+    const { skipped } = copyProjectFiles(project, repo.worktree);
+    return skipped.length ? `Not copied from the project's folder (missing, not a file, or outside it): ${skipped.join(", ")}.` : "";
+  } catch (err) {
+    return `Couldn't copy the project's files: ${errorText(err)}`;
+  }
+}
+
 /** Runs the worktree's setup command on the agent's computer and records how it went in TaskInfo.setup. */
 async function runSetup(task: TaskRecord, repo: TaskRepo, grant: FolderGrant | null, note: string): Promise<TaskSetup> {
   // Module 11: the project's setup command is its primary repo's; another repo's comes from its own lockfile.
@@ -189,13 +221,7 @@ async function runSetup(task: TaskRecord, repo: TaskRepo, grant: FolderGrant | n
   const exec = (command: string, timeoutMs: number) =>
     active.backend.exec(active.externalId, command, { cwd: homeRelative(repo.worktree), timeoutMs, grant, env: taskPorts.env(ports) });
 
-  let command = typeof configured === "string" ? configured : null;
-  if (configured === null || configured === undefined) {
-    const names = LOCKFILES.map(([lockfile]) => lockfile).join(" ");
-    const found = await exec(`for f in ${names}; do if [ -e "$f" ]; then echo "$f"; break; fi; done`, 30_000);
-    const lockfile = found.stdout.trim();
-    command = LOCKFILES.find(([name]) => name === lockfile)?.[1] ?? null;
-  }
+  const command = await setupCommand(configured, exec);
   if (!command) {
     const skipped: TaskSetup = { state: "skipped", command: null, at: Date.now(), error: note || null };
     taskStore.patch(task.id, { setup: skipped });
@@ -205,13 +231,9 @@ async function runSetup(task: TaskRecord, repo: TaskRepo, grant: FolderGrant | n
   const before = taskStore.get(task.id)?.task.progress ?? null;
   const progress = `Setting up: ${command.length > 60 ? `${command.slice(0, 59)}…` : command}`;
   taskStore.patch(task.id, { setup: { state: "running", command, at: Date.now(), error: null }, progress });
-  const result = await exec(command, SETUP_TIMEOUT_MS).catch((err) => ({ exitCode: -1, stdout: "", stderr: errorText(err), timedOut: false }));
+  const setup = await runCommand(command, exec, note);
   computerManager.touch(task.agentId);
   if (taskStore.get(task.id)?.task.progress === progress) taskStore.patch(task.id, { progress: before });
-  const failed = result.exitCode !== 0;
-  const output = failed ? lastLines(result.stdout, result.stderr) : "";
-  const error = failed ? `${output || `exit code ${result.exitCode}`}${result.timedOut ? "\n(stopped after 10 minutes)" : ""}` : null;
-  const setup: TaskSetup = { state: failed ? "failed" : "done", command, at: Date.now(), error: [note, error].filter(Boolean).join("\n") || null };
   taskStore.patch(task.id, { setup });
   return setup;
 }
@@ -228,20 +250,31 @@ export const worktreeSetup = {
       console.warn(`[tot] no ports for task ${task.id}:`, errorText(err));
     }
     if (!fresh) return;
-    let note = "";
-    const project = projects.get(task.projectId);
-    if (project?.kind === "folder" && project.copyFiles?.length && repo.folder === project.source) {
-      try {
-        const { skipped } = copyProjectFiles(project, repo.worktree);
-        if (skipped.length) note = `Not copied from the project's folder (missing, not a file, or outside it): ${skipped.join(", ")}.`;
-      } catch (err) {
-        note = `Couldn't copy the project's files: ${errorText(err)}`;
-      }
-    }
+    const note = copyInto(projects.get(task.projectId), repo);
     try {
       await runSetup(task, repo, grant, note);
     } catch (err) {
       taskStore.patch(task.id, { setup: { state: "failed", command: null, at: Date.now(), error: [note, errorText(err)].filter(Boolean).join("\n") } });
+    }
+  },
+
+  /**
+   * A worktree chat's new worktree (chats/workspace.ts), set up as a task's is: the project's files copied in,
+   * then its setup command (its primary repo's, which is the one a chat works in). It gets no port block:
+   * those belong to tasks. Never throws; says how it went.
+   */
+  async forChat(agentId: string, project: Project | null, repo: TaskRepo, grant: FolderGrant | null): Promise<TaskSetup> {
+    const note = copyInto(project, repo);
+    try {
+      const active = await computerManager.ensure(agentId);
+      const exec = (command: string, timeoutMs: number) => active.backend.exec(active.externalId, command, { cwd: homeRelative(repo.worktree), timeoutMs, grant });
+      const command = await setupCommand(project?.setupCommand, exec);
+      if (!command) return { state: "skipped", command: null, at: Date.now(), error: note || null };
+      const setup = await runCommand(command, exec, note);
+      computerManager.touch(agentId);
+      return setup;
+    } catch (err) {
+      return { state: "failed", command: null, at: Date.now(), error: [note, errorText(err)].filter(Boolean).join("\n") };
     }
   },
 };

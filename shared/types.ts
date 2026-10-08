@@ -211,7 +211,32 @@ export interface Conversation {
   projectId: string | null;
   /** Module 11: the project's Lead chat (its orchestrator). */
   lead?: boolean;
+  /**
+   * Where a chat in a code project works, picked before its first message: the project's main checkout, or a
+   * worktree of its own on a new tot/… branch. Absent for chats from before (they only read the project's
+   * folder) and for tasks, which have their own worktree (TaskInfo.repo).
+   */
+  workspace?: ChatWorkspace | null;
 }
+
+/** The two places a new chat in a code project can work. */
+export type ChatWorkspaceMode = "checkout" | "worktree";
+
+export type ChatWorkspace =
+  | { mode: "checkout" }
+  | {
+      mode: "worktree";
+      /** The project repo it works in (its name; the primary's). */
+      repo: string;
+      /** "tot/<slug>-<4 hex>", named on its first message; null until then. */
+      branch: string | null;
+      /** <repo folder>/.tot-worktrees/<branch slug>, on the agent's computer (a full path for a folder on this Mac). */
+      worktree: string | null;
+      /** The branch it started from, once the worktree is made. */
+      baseBranch: string | null;
+      /** Whether the worktree has been made (on the chat's first turn). */
+      created: boolean;
+    };
 
 export type ConversationKind = "chat" | "task";
 
@@ -1282,6 +1307,8 @@ export interface CreateConversationRequest {
   modelId?: string;
   /** Start the chat in this project (module 06). */
   projectId?: string | null;
+  /** Where it works in a code project: its main checkout, or a new worktree of its own. Needs a code projectId. */
+  workspace?: ChatWorkspaceMode;
 }
 
 export interface UpdateConversationRequest {

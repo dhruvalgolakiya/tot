@@ -7,6 +7,7 @@ import type {
   AppEvent,
   AppsStatus,
   Attachment,
+  ChatWorkspaceMode,
   ComputerSummary,
   Conversation,
   Brain,
@@ -28,7 +29,7 @@ import { api, ApiError, errorMessage } from "./lib/api";
 import { toMs, truncate } from "./lib/format";
 import { AUTO_MODEL_ID, PROVIDER_LABELS } from "./lib/models";
 import { deviceOf, onDevice } from "./lib/devices";
-import { loadProjects, upsertProject, useProjects } from "./lib/projects";
+import { isCodeProject, loadProjects, upsertProject, useProjects } from "./lib/projects";
 import { memoryChanged } from "./lib/memory";
 import { handleDeviceDeleted, handleDeviceEvent, loadDevices, whenDevicesLoaded } from "./lib/remote";
 import { applyRunEvent, createAssistantMessage, upsertMessage } from "./lib/reducer";
@@ -154,6 +155,8 @@ export interface TotState {
   draftModelId: string | null;
   /** The project a new chat (one not sent yet) starts in: picked in its composer, or set by a project's "New chat". */
   draftProjectId: string | null;
+  /** Where that new chat works when its project has code: the main checkout, or a new worktree of its own. */
+  draftWorkspace: ChatWorkspaceMode;
 
   sidebarOpen: boolean;
   computerPanelOpen: boolean;
@@ -238,6 +241,7 @@ export const useStore = create<TotState>()(() => ({
   connectingProvider: null,
   draftModelId: null,
   draftProjectId: null,
+  draftWorkspace: "checkout",
 
   sidebarOpen: isDesktop() && readPref(SIDEBAR_KEY) !== "closed",
   computerPanelOpen: false,
@@ -693,7 +697,7 @@ export async function stopAgentComputer(agentId: string) {
 // ---------------------------------------------------------------------------
 
 function showAgentHome(agentId: string | null, draftProjectId: string | null = null) {
-  set({ currentId: null, homeAgentId: agentId, draftProjectId, computerPanelOpen: false, taskPanelOpen: false });
+  set({ currentId: null, homeAgentId: agentId, draftProjectId, draftWorkspace: "checkout", computerPanelOpen: false, taskPanelOpen: false });
 }
 
 function showWiki(agentId: string, pageId: string | null, brainId: string | null = null) {
@@ -781,7 +785,7 @@ export function navigateToAgentHome(agentId: string, draftProjectId: string | nu
   if (!isDesktop()) set({ sidebarOpen: false });
   const s = get();
   if (s.currentId === null && s.page === "home" && s.homeAgentId === agentId) {
-    set({ draftProjectId });
+    set({ draftProjectId, draftWorkspace: "checkout" });
     return;
   }
   pushPath(agentPath(agentId));
@@ -797,7 +801,12 @@ export function newChatInProject(projectId: string) {
 
 /** The project the new chat will start in (the composer's picker); null for none. */
 export function setDraftProject(projectId: string | null) {
-  set({ draftProjectId: projectId });
+  set({ draftProjectId: projectId, draftWorkspace: "checkout" });
+}
+
+/** Where the new chat works in its code project (the composer's second picker). */
+export function setDraftWorkspace(workspace: ChatWorkspaceMode) {
+  set({ draftWorkspace: workspace });
 }
 
 /** Open a project's page, seen from an agent (the active one by default): new chats there start with it. */
@@ -1150,12 +1159,16 @@ export async function sendMessage(
   const tempId = localId();
   try {
     if (!conversationId) {
-      const { homeAgentId, agents, draftModelId, draftProjectId, settings, page, projectId } = get();
+      const { homeAgentId, agents, draftModelId, draftProjectId, draftWorkspace, settings, page, projectId } = get();
+      // From a project's page, the chat starts in that project; from home, in the one picked (if any).
+      const target = page === "project" && projectId ? projectId : draftProjectId;
+      const project = target ? useProjects.getState().projects.find((p) => p.id === target) : undefined;
       const conversation = await api.createConversation({
         agentId: homeAgentId ?? agents[0]?.id,
         modelId: draftModelId ?? settings?.defaultModelId ?? AUTO_MODEL_ID,
-        // From a project's page, the chat starts in that project; from home, in the one picked (if any).
-        ...(page === "project" && projectId ? { projectId } : draftProjectId ? { projectId: draftProjectId } : {}),
+        ...(target ? { projectId: target } : {}),
+        // In a project with code, where it works: the main checkout, or a new worktree of its own.
+        ...(project && isCodeProject(project) ? { workspace: draftWorkspace } : {}),
       });
       conversationId = conversation.id;
       set((s) => ({
@@ -1166,6 +1179,7 @@ export async function sendMessage(
         page: "chat",
         draftModelId: null,
         draftProjectId: null,
+        draftWorkspace: "checkout",
       }));
       pushPath(conversationPath(conversation.id));
     }
