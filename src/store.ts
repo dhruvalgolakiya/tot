@@ -793,10 +793,10 @@ export function navigateToAgentHome(agentId: string, draftProjectId: string | nu
   showAgentHome(agentId, draftProjectId);
 }
 
-/** A new chat in a project (the sidebar's + on its row, its menu's New chat): the agent's home, with the project picked. */
+/** A new chat in a project (the sidebar's + on its row, its menu's New chat): the project's page. */
 export function newChatInProject(projectId: string) {
-  const agentId = selectActiveAgentId(get()) ?? get().agents[0]?.id;
-  if (agentId) navigateToAgentHome(agentId, projectId);
+  // The project's page is its new chat (a composer for it, above its chats).
+  navigateToProject(projectId);
 }
 
 /** The project the new chat will start in (the composer's picker); null for none. */
@@ -822,17 +822,6 @@ export function navigateToProject(projectId: string, preferredAgentId = selectAc
   pushPath(projectPath(agentId, projectId));
   set((s2) => ({ viewKey: s2.viewKey + 1, page: "project" }));
   showProject(agentId, projectId);
-}
-
-/**
- * Module 11: the project page's Lead chat opens in its middle, and the page stays the project's: the composer,
- * the message list and its live reply work on it as on any open chat (`currentId`).
- */
-export function showLead(conversation: Conversation) {
-  set((s) => ({ conversations: upsertConversation(s.conversations, conversation) }));
-  const s = get();
-  if (s.page !== "project" || s.projectId !== conversation.projectId) return;
-  void openConversation(conversation.id);
 }
 
 /** Mission control (module 09): the board of every task, or one project's (⌘⇧M, the sidebar's Tasks header, a project's page). */

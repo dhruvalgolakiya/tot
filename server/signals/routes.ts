@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { UpdateProjectSubscriptionsRequest } from "../../shared/types.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
+import { leads } from "../lead/lead.ts";
 import { projects } from "../projects/projects.ts";
 import { leadSignals } from "./store.ts";
 import { projectSubscriptions } from "./subscriptions.ts";
@@ -44,6 +45,8 @@ signalRoutes.patch("/projects/:id/subscriptions", async (c) => {
   const before = project.subscriptions?.pullRequests;
   const next = projectSubscriptions.update(project.id, patch);
   appEvents.publish({ type: "project", project: projects.get(project.id)! });
+  // Pull request news goes to the project's Lead: choosing to watch starts one if there's none yet.
+  if (next.pullRequests !== "off" && next.pullRequests !== before) leads.open(project.id);
   // Watching more now: a first look right away (quietly when it can't; the timer tries again).
   if (next.pullRequests !== "off" && next.pullRequests !== before) void prWatch.check(project.id).catch(() => {});
   return c.json(next);

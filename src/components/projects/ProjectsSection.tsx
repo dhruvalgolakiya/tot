@@ -45,7 +45,7 @@ export function ProjectsSection({ query }: { query: string }) {
   const { byProject, childrenOf, leads, leadOf } = useMemo(() => {
     const byProject = new Map<string, Conversation[]>();
     const childrenOf = new Map<string, Conversation[]>();
-    // A project's Lead (module 11) is pinned first under it (it opens the project's page); its tasks show as the project's own.
+    // A project's Lead (module 11, optional: started from the project menu) is pinned first under it; its tasks show as the project's own.
     const leads = new Set(conversations.filter((c) => c.lead).map((c) => c.id));
     const leadOf = new Map(conversations.filter((c) => c.lead && c.projectId).map((c) => [c.projectId!, c]));
     for (const c of conversations) {
@@ -115,7 +115,7 @@ export function ProjectsSection({ query }: { query: string }) {
 
 type ProjectRowProps = {
   project: Project;
-  /** The project's Lead chat, pinned first under it; null while searching or before it's made. */
+  /** The project's Lead chat, pinned first under it; null while searching or when there's none. */
   lead: Conversation | null;
   agentId: string | null;
   /** The rows to list: chats and the tasks started on their own (or, while searching, every match). */
@@ -198,10 +198,8 @@ function ProjectRow({ project, lead, agentId, list, nested, open, selected, canT
             <li>
               <ConversationItem
                 conversation={lead}
-                active={selected}
+                active={lead.id === currentId}
                 streaming={Boolean(activeRuns[lead.id])}
-                href={agentId ? projectPath(agentId, project.id) : undefined}
-                onOpen={() => navigateToProject(project.id)}
               />
             </li>
           )}

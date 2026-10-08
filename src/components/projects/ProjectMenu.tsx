@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Archive, Bell, Brain, Ellipsis, FolderGit2, GraduationCap, ScrollText, SlidersHorizontal, SquarePen, Wrench } from "lucide-react";
+import { Archive, Bell, Brain, Compass, Ellipsis, FolderGit2, GraduationCap, ScrollText, SlidersHorizontal, SquarePen, Wrench } from "lucide-react";
 import type { Agent, Project } from "@shared/types";
 import { api } from "../../lib/api";
 import { archiveProject, isCodeProject } from "../../lib/projects";
@@ -26,6 +26,7 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
   // Dialogs open once the menu has closed: a closing Radix menu would take focus back from them.
   const pending = useRef<Dialog | null>(null);
   const close = (open: boolean) => !open && setDialog(null);
+  const hasLead = useStore((s) => s.conversations.some((c) => c.lead && c.projectId === project.id));
 
   async function learn() {
     if (!agent || learning) return;
@@ -37,6 +38,16 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
       notifyError(error);
     } finally {
       setLearning(false);
+    }
+  }
+
+  /** The project's Lead: a chat that plans the work and keeps watch over every task in the project. Made only when asked. */
+  async function openLead() {
+    try {
+      const lead = await api.openLead(project.id, agent?.id);
+      navigateToConversation(lead.id);
+    } catch (error) {
+      notifyError(error);
     }
   }
 
@@ -73,6 +84,12 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
             {!project.archived && (
               <DropdownMenu.Item className="menu-item" onSelect={() => newChatInProject(project.id)}>
                 <SquarePen className="size-4 text-fg-muted" /> New chat
+              </DropdownMenu.Item>
+            )}
+            {!project.archived && (
+              <DropdownMenu.Item className="menu-item" disabled={!agent} onSelect={() => void openLead()}>
+                <Compass className="size-4 text-fg-muted" />
+                <span className="min-w-0 flex-1 truncate">{hasLead ? "Open the Lead" : "Start a Lead"}</span>
               </DropdownMenu.Item>
             )}
             <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "repos")}>

@@ -3,6 +3,7 @@ import type { LeadSignal, LeadSignalKind } from "../../shared/types.ts";
 import { appEvents } from "../app-events.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { messages } from "../data/messages.ts";
+import { leads } from "./lead.ts";
 import { projects } from "../projects/projects.ts";
 import { leadSignals } from "../signals/store.ts";
 import { chatWakes } from "../tasks/wake.ts";
@@ -10,7 +11,9 @@ import { chatWakes } from "../tasks/wake.ts";
 /**
  * Module 12 (docs/roadmap/12-coordinator.md): a project Lead's inbox. Lane A implements it; lane B's schedules
  * post to it. `post` stores a signal, shows it in the Lead's chat as a notice, and wakes the Lead (batched,
- * bounded). It returns the stored signal, or null when it's a duplicate or the project has no Lead yet.
+ * bounded). It returns the stored signal, or null when it's a duplicate or the project has no Lead. The Lead is
+ * optional: a ticket or a schedule (both set up by the user for this) starts one; pull request news without one is
+ * dropped.
  */
 export type NewSignal = Omit<LeadSignal, "id" | "projectId" | "at" | "readAt">;
 
@@ -25,7 +28,10 @@ export const leadInbox = {
    */
   post(projectId: string, signal: NewSignal, opts: { key?: string | null } = {}): LeadSignal | null {
     const project = projects.get(projectId);
-    const leadId = project && !project.archived ? conversations.leadOf(project.id) : null;
+    const leadId =
+      project && !project.archived
+        ? (conversations.leadOf(project.id) ?? (signal.kind === "ticket" || signal.kind === "schedule" ? leads.open(project.id).lead.id : null))
+        : null;
     if (!project || !leadId) return null;
     const stored = leadSignals.add(project.id, signal, opts.key ?? null);
     if (!stored) return null;

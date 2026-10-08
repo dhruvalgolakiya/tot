@@ -1,6 +1,6 @@
 A project is something you're working on: a GitHub repo, a folder on your Mac, or just a topic, like a client or a launch. Projects aren't owned by an agent. Pick any agent, pick a project, and talk.
 
-**Why you'd use it:** with one repo, a flat list of chats is fine. With three, it falls apart. A project keeps its chats, tasks, instructions and knowledge in one place, shared by every agent — and a **Lead** chat to run it from.
+**Why you'd use it:** with one repo, a flat list of chats is fine. With three, it falls apart. A project keeps its chats, tasks, instructions and knowledge in one place, shared by every agent — and, if you want one, a **Lead** chat to run it from.
 
 ## Three kinds of project
 
@@ -27,20 +27,21 @@ That's enforced by the sandbox, not just by asking nicely. TOT refuses your home
 
 ## The project page
 
-Click a project's name to open its page: your **Lead** chat, and nothing else. The project's other chats and tasks are in the sidebar under its name, and every task is in [Mission control](/docs/mission-control).
+Click a project's name to open its page: a message box to start a new chat in it (choosing where it works: the main checkout or a new worktree), and its chats from every agent below. They're also in the sidebar under its name, and every task is in [Mission control](/docs/mission-control).
 
 The **…** menu at the top holds the rest:
 
-- **New chat**: a chat in the project, apart from the Lead. The **+** on the project's row in the sidebar does the same, and on any new chat the picker in the message box chooses its project.
+- **New chat**: opens the project's page. The **+** on the project's row in the sidebar does the same, and on any new chat the picker in the message box chooses its project.
+- **Start a Lead** (or **Open the Lead**): see below.
 - **Repos**: the project's repos — see below.
 - **Knowledge**: opens the Knowledge page on the project: its facts, pages, repo docs and history. See [Project knowledge](/docs/memory#project-knowledge).
 - **Instructions**, **Subscriptions**, **Settings** and **Archive** — plus, for a project with code, **Learn this project** and **Worktree setup**.
 
-An agent's home screen — what you see with no chat open — lists everything in flight under the composer: what **Needs you**, what's **Working**, what's **Ready to land**, what's **Coming up** (the agent's next routines), your **Projects** and what's **Done today**. A project's row shows what needs you, what's working and what's ready to land; click it to open the project's Lead.
+An agent's home screen — what you see with no chat open — lists everything in flight under the composer: what **Needs you**, what's **Working**, what's **Ready to land**, what's **Coming up** (the agent's next routines), your **Projects** and what's **Done today**. A project's row shows what needs you, what's working and what's ready to land; click it to open the project.
 
 ## The Lead
 
-Each project has one pinned chat, titled **Lead**, that you run the project from. It's listed first under the project in the sidebar. TOT makes it the first time you open the project, and opens it every time after.
+A project can have one pinned chat, titled **Lead**, that you run the project from. It's optional: start it from the project's **…** menu → **Start a Lead**, and it's listed first under the project in the sidebar. You can rename or delete it like any chat. TOT also starts one when something you set up reports to it: a ticket channel, a schedule, or watching pull requests in **Subscriptions**.
 
 - It plans the work, and can start a task in each of the project's repos.
 - It watches every task in the project, not only the ones it started, and wakes up when one finishes or needs you. It can also stop, pause or resume a task.
