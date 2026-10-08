@@ -1,6 +1,6 @@
 import { useMemo, type MouseEvent } from "react";
 import clsx from "clsx";
-import { ChevronRight, Pin, Plus, SquarePen } from "lucide-react";
+import { ChevronRight, Plus, SquarePen } from "lucide-react";
 import type { Conversation, Project } from "@shared/types";
 import { conversationTitle } from "../../lib/conversations";
 import { PROJECT_ICONS, setNewProjectOpen, toggleProjectExpanded, useProjects } from "../../lib/projects";
@@ -199,17 +199,13 @@ function ProjectRow({ project, lead, agentId, list, nested, open, selected, canT
         <ul className="space-y-px pt-px pl-6">
           {lead && (
             <li>
-              <a
+              <ConversationItem
+                conversation={lead}
+                active={selected}
+                streaming={Boolean(activeRuns[lead.id])}
                 href={agentId ? projectPath(agentId, project.id) : undefined}
-                onClick={openPage}
-                aria-current={selected ? "page" : undefined}
-                title={`${project.name}'s Lead: the chat you run the project from`}
-                className={listRowClass({ selected })}
-              >
-                <span className="min-w-0 flex-1 truncate">Lead</span>
-                {activeRuns[lead.id] && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />}
-                <Pin aria-hidden="true" className="size-3.5 shrink-0 text-fg-subtle" />
-              </a>
+                onOpen={() => navigateToProject(project.id)}
+              />
             </li>
           )}
           {rows.map(({ conversation, depth }) => (

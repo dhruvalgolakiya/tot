@@ -23,8 +23,11 @@ type ConversationItemProps = {
   streaming: boolean;
   /** Tasks started from this chat that are still working. */
   workingTasks?: number;
+  /** Where the row goes instead of the chat itself (a project's Lead opens the project's page). */
+  href?: string;
+  onOpen?: () => void;
 };
-export function ConversationItem({ conversation, active, streaming, workingTasks = 0 }: ConversationItemProps) {
+export function ConversationItem({ conversation, active, streaming, workingTasks = 0, href, onOpen }: ConversationItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -37,7 +40,8 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
   const open = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return; // New tab/window.
     event.preventDefault();
-    navigateToConversation(conversation.id);
+    if (onOpen) onOpen();
+    else navigateToConversation(conversation.id);
   };
 
   if (renaming) {
@@ -65,7 +69,7 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
   return (
     <div className="group relative">
       <a
-        href={conversationPath(conversation.id)}
+        href={href ?? conversationPath(conversation.id)}
         onClick={open}
         aria-current={active ? "page" : undefined}
         title={title}
@@ -145,18 +149,21 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
               }}>
               <Pencil className="size-4 text-fg-muted" /> Rename
             </DropdownMenu.Item>
-            <DropdownMenu.Item className="menu-item" onSelect={() => togglePinned(conversation.id)}>
-              {conversation.pinned ? (
-                <>
-                  <PinOff className="size-4 text-fg-muted" /> Unpin
-                </>
-              ) : (
-                <>
-                  <Pin className="size-4 text-fg-muted" /> Pin
-                </>
-              )}
-            </DropdownMenu.Item>
-            <MoveToProjectSub chat={conversation} />
+            {/* A project's Lead is pinned under its project already, and stays in it. */}
+            {!conversation.lead && (
+              <DropdownMenu.Item className="menu-item" onSelect={() => togglePinned(conversation.id)}>
+                {conversation.pinned ? (
+                  <>
+                    <PinOff className="size-4 text-fg-muted" /> Unpin
+                  </>
+                ) : (
+                  <>
+                    <Pin className="size-4 text-fg-muted" /> Pin
+                  </>
+                )}
+              </DropdownMenu.Item>
+            )}
+            {!conversation.lead && <MoveToProjectSub chat={conversation} />}
             <DropdownMenu.Separator className="menu-separator" />
             <DropdownMenu.Item
               className="menu-item menu-item-danger"
@@ -177,6 +184,7 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
         description={
           <>
             This deletes <span className="font-medium text-fg">{title}</span>. This can't be undone.
+            {conversation.lead && " The project gets a fresh Lead the next time you open it."}
           </>
         }
         confirmLabel="Delete"
