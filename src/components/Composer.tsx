@@ -427,7 +427,7 @@ export function Composer({
               aria-label={steering ? "Send note" : sendsBestOf ? "Start best of" : "Send"}
               className={clsx(
                 "grid size-9 shrink-0 place-items-center rounded-full transition-colors",
-                canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-faint",
+                canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-muted",
               )}
             >
               {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
