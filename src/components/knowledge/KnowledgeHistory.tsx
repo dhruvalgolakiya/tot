@@ -68,7 +68,7 @@ function iconFor(commit: KnowledgeCommit): Icon {
 }
 
 /**
- * The Knowledge panel's History tab (roadmap module 11): one timeline of the project's facts and pages, newest
+ * The Knowledge page's History view (roadmap module 11), under the updates: one timeline of the project's facts and pages, newest
  * first. The pages a change touched are listed under it (open them from there); Undo puts back what one change did.
  */
 export function KnowledgeHistory({
@@ -117,7 +117,8 @@ export function KnowledgeHistory({
   }
 
   return (
-    <div className="space-y-3">
+    <section className="space-y-2">
+      <h2 className="group-label px-1">Every change</h2>
       {error && !commits && (
         <Callout
           tone="danger"
@@ -138,7 +139,7 @@ export function KnowledgeHistory({
         </div>
       )}
       {commits && commits.length === 0 && (
-        <EmptyState size="sm" title="No changes yet" description="Facts and pages the agents write show up here, each one undoable." />
+        <EmptyState variant="quiet" title="No changes yet." />
       )}
       {commits && commits.length > 0 && (
         <>
@@ -162,7 +163,7 @@ export function KnowledgeHistory({
         confirmLabel="Undo"
         onConfirm={() => undoing && void undo(undoing)}
       />
-    </div>
+    </section>
   );
 }
 
@@ -277,7 +278,7 @@ function PageTitle({
       </span>
     );
   }
-  if (pageIds && !pageIds.has(page.id)) return <span title="No longer in the wiki">{page.title}</span>;
+  if (pageIds && !pageIds.has(page.id)) return <span title="No longer in Knowledge">{page.title}</span>;
   return (
     <button
       type="button"

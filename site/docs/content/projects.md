@@ -33,7 +33,7 @@ The **…** menu at the top holds the rest:
 
 - **New chat**: a chat in the project, apart from the Lead. The **+** on the project's row in the sidebar does the same, and on any new chat the picker in the message box chooses its project.
 - **Repos**: the project's repos — see below.
-- **Knowledge**: the project's wiki and memory, and how TOT keeps them current. See [Project knowledge](/docs/memory#project-knowledge).
+- **Knowledge**: opens the Knowledge page on the project: its facts, pages, repo docs and history. See [Project knowledge](/docs/memory#project-knowledge).
 - **Instructions**, **Subscriptions**, **Settings** and **Archive** — plus, for a project with code, **Learn this project** and **Worktree setup**.
 
 An agent's home screen — what you see with no chat open — lists everything in flight under the composer: what **Needs you**, what's **Working**, what's **Ready to land**, what's **Coming up** (the agent's next routines), your **Projects** and what's **Done today**. A project's row shows what needs you, what's working and what's ready to land; click it to open the project's Lead.
@@ -65,7 +65,7 @@ The Lead wakes at most 12 times an hour for these. When its conversation gets lo
 A project can hold several repos, any mix of GitHub repos and folders on your Mac — say `web`, `api` and `mobile` for one product. One is the **primary**; add the rest from the **Repos** tab.
 
 - Press **Add repo** and pick a GitHub repo (`owner/name`) or a folder on your Mac. A folder asks your OK, the first time, same as [adding a folder project](#your-ok-for-a-folder) does.
-- A repo's **…** menu has **Learn this repo** (an agent studies it and writes up its docs, under the **Knowledge** tab's Repos), **Rename…**, **Make primary**, and **Remove…**. Removing a repo leaves its files exactly where they are; it just stops tasks from working in it.
+- A repo's **…** menu has **Learn this repo** (an agent studies it and writes up its docs, under **Repos** on the project's Knowledge page), **Rename…**, **Make primary**, and **Remove…**. Removing a repo leaves its files exactly where they are; it just stops tasks from working in it.
 - **Each task works in one repo.** With more than one, mission control cards show which repo a task is in. The Lead splits work that spans repos into one task per repo.
 - A topic project can gain a repo too: add one from **…** → **Repos**, and the project becomes a code project from then on.
 - A GitHub repo you add is cloned next to the project's other clones, on each agent's computer. A folder repo stays exactly where it is, with its own grant.

@@ -14,7 +14,7 @@ More in [Agents and chats](/docs/agents).
 - [Available] **Attachments.** Images, text and code files, and anything else copied to the agent's computer.
 - [Partly] **Voice input.** Works in the browser over HTTPS. Not in the Mac app, and not in Firefox.
 - [Available] **Forks and attached chats.** Fork a chat, bring it back, and attach other chats with `@`.
-- [Available] **Brains.** A notebook per agent, shared brains, Learn a repo, and the wiki keeper.
+- [Available] **Knowledge.** A notebook per agent, shared knowledge, Learn a repo, and the wiki keeper.
 - [Available] **Routines.** Scheduled work, each run in a new chat.
 
 ## Tasks

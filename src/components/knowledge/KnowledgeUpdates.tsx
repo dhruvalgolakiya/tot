@@ -1,25 +1,24 @@
 import { Fragment, useCallback, useEffect, useState, type ComponentType } from "react";
 import clsx from "clsx";
-import { GitBranch, GitMerge, LoaderCircle, MessageSquare, MoonStar, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { GitBranch, GitMerge, LoaderCircle, MessageSquare, MoonStar } from "lucide-react";
 import type { KnowledgeTrigger, KnowledgeUpdate, Project } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { projectMemoryRepo, useMemoryUi } from "../../lib/memory";
-import { navigateToWiki, notifyError, selectActiveAgentId, useStore } from "../../store";
+import { notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { cardClass } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
 import { Skeleton } from "../ui/Skeleton";
 
 /**
  * Module 11 (docs/roadmap/11-workspaces.md), lane C: a project's knowledge auto-updates, newest first: "Updated
- * after “Fix cart” · 2 pages, 1 fact", with Undo (confirmed) on hover, runs in progress on top, and Check now
- * for a project with repos. Reloads on `memory` events for the project's knowledge repo, which every change
- * to the log sends. Knowledge stays on its device: nothing for another device's project.
+ * after “Fix cart” · 2 pages, 1 fact", with Undo (confirmed) on hover and runs in progress on top. The Knowledge
+ * page's History view shows it above every change (Check now lives in that view's header). Reloads on `memory`
+ * events for the project's knowledge repo, which every change to the log sends. Knowledge stays on its device:
+ * nothing for another device's project.
  */
 
 const ICONS: Record<KnowledgeTrigger, ComponentType<{ className?: string }>> = {
@@ -41,15 +40,13 @@ function changeText(update: KnowledgeUpdate): string {
 
 const undoable = (update: KnowledgeUpdate) => !update.running && !update.undoneAt && !update.error && (update.sha !== null || update.pages.length > 0);
 
-export function KnowledgeUpdates({ project }: { project: Project }) {
+export function KnowledgeUpdates({ project, onOpenPage }: { project: Project; onOpenPage: (pageId: string) => void }) {
   const repo = projectMemoryRepo(project.slug);
   const version = useMemoryUi((s) => s.versions[repo] ?? 0);
-  const agentId = useStore(selectActiveAgentId);
   const remote = Boolean(project.deviceId);
   const [updates, setUpdates] = useState<KnowledgeUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
-  const [checking, setChecking] = useState(false);
   const [undoing, setUndoing] = useState<KnowledgeUpdate | null>(null);
 
   const load = useCallback(async () => {
@@ -66,20 +63,6 @@ export function KnowledgeUpdates({ project }: { project: Project }) {
   }, [load, version, remote]);
 
   if (remote) return null;
-  const hasRepos = (project.repos?.length ?? (project.kind !== "none" && project.source ? 1 : 0)) > 0;
-
-  async function checkNow() {
-    setChecking(true);
-    try {
-      const result = await api.refreshKnowledge(project.id);
-      setUpdates(result.updates);
-      if (!result.moved) toast.success("Up to date");
-    } catch (err) {
-      notifyError(err);
-    } finally {
-      setChecking(false);
-    }
-  }
 
   async function undo(update: KnowledgeUpdate) {
     try {
@@ -93,19 +76,8 @@ export function KnowledgeUpdates({ project }: { project: Project }) {
   const shown = updates?.slice(0, limit) ?? [];
 
   return (
-    <section className="space-y-3">
-      <SectionHeader
-        as="h3"
-        title="Updates"
-        description="TOT updates the docs and facts after a task lands and when a repo's main branch moves. Each update can be undone."
-        action={
-          hasRepos && (
-            <Button size="sm" variant="ghost" disabled={checking} onClick={() => void checkNow()}>
-              <RefreshCw className={clsx(checking && "animate-spin")} /> {checking ? "Checking…" : "Check now"}
-            </Button>
-          )
-        }
-      />
+    <section className="space-y-2">
+      <h2 className="group-label px-1">Updates after chats and landed tasks</h2>
       {error && !updates && (
         <Callout
           tone="danger"
@@ -124,11 +96,7 @@ export function KnowledgeUpdates({ project }: { project: Project }) {
         </div>
       )}
       {updates && !updates.length && (
-        <EmptyState
-          variant="quiet"
-          title="No updates yet"
-          description="When a task lands or a repo's main branch moves, TOT updates this project's docs and facts, and the change shows here."
-        />
+        <EmptyState variant="quiet" title="None yet. After a chat or a landed task, TOT updates the pages and facts here." />
       )}
       {shown.length > 0 && (
         <>
@@ -138,7 +106,7 @@ export function KnowledgeUpdates({ project }: { project: Project }) {
                 key={update.id}
                 update={update}
                 first={index === 0}
-                onOpenPage={agentId ? (pageId) => navigateToWiki(agentId, pageId) : null}
+                onOpenPage={onOpenPage}
                 onUndo={() => setUndoing(update)}
               />
             ))}

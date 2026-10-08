@@ -52,7 +52,7 @@ export function CrewPage() {
           <div className={`hidden h-9 items-center gap-x-6 border-b border-hairline px-4 text-2xs font-medium text-fg-subtle md:grid ${COLUMNS}`}>
             <span>Agent</span>
             <span>Computer</span>
-            <span>Brains</span>
+            <span>Knowledge</span>
             <span>Model</span>
           </div>
           {agentsState === "loading" && !agents.length ? (

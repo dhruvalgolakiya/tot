@@ -109,13 +109,15 @@ export default function App() {
       ? `${title} · TOT`
       : page === "settings"
         ? "Settings · TOT"
-        : page === "mission"
-          ? "Mission control · TOT"
-          : page === "compare"
-            ? "Compare · TOT"
-            : page === "crew"
-              ? "Your crew · TOT"
-              : "TOT";
+        : page === "wiki"
+          ? "Knowledge · TOT"
+          : page === "mission"
+            ? "Mission control · TOT"
+            : page === "compare"
+              ? "Compare · TOT"
+              : page === "crew"
+                ? "Your crew · TOT"
+                : "TOT";
   }, [title, page]);
 
   useGlobalShortcuts();

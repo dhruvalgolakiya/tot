@@ -34,7 +34,7 @@ export function WikiPill({ part, live }: { part: ToolPart; live: boolean }) {
           <p className="text-sm leading-relaxed whitespace-pre-wrap text-fg-muted [overflow-wrap:anywhere]">{preview}</p>
           {agentId && (
             <button type="button" onClick={() => navigateToWiki(agentId)} className="link-muted mt-2 inline-block text-xs">
-              Open wiki →
+              Open knowledge →
             </button>
           )}
         </div>

@@ -10,7 +10,7 @@ export function NewAgentDialog() {
       open={open}
       onOpenChange={setNewAgentDialogOpen}
       title="New agent"
-      description="Each agent is its own workspace, with its own computer, chats, private notebook and routines; attach shared brains to it from the wiki. What it learns about you is shared with every agent."
+      description="Each agent is its own workspace, with its own computer, chats, private notebook and routines; attach shared knowledge to it from its Knowledge page. What it learns about you is shared with every agent."
       className="flex max-w-lg"
     >
       <AgentForm target={null} canDelete={false} />

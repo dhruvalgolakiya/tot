@@ -4,26 +4,25 @@ import { Archive, Bell, Brain, Ellipsis, FolderGit2, GraduationCap, ScrollText, 
 import type { Agent, Project } from "@shared/types";
 import { api } from "../../lib/api";
 import { archiveProject, isCodeProject } from "../../lib/projects";
-import { navigateToAgentHome, navigateToConversation, newChatInProject, notifyError } from "../../store";
+import { navigateToAgentHome, navigateToConversation, navigateToWiki, newChatInProject, notifyError, selectActiveAgentId, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { KnowledgePanel } from "../knowledge/KnowledgePanel";
-import { KnowledgeUpdates } from "../knowledge/KnowledgeUpdates";
-import { ProjectMemoryRow } from "../memory/ProjectMemoryRow";
 import { IconButton } from "../ui/IconButton";
 import { Modal, ModalBody } from "../ui/Modal";
 import { InstructionsDialog, ProjectSettingsDialog, WorktreeSetupDialog } from "./ProjectDialogs";
 import { ProjectRepos } from "./ProjectRepos";
 import { ProjectSubscriptionsDialog } from "./ProjectSubscriptionsDialog";
 
-type Dialog = "repos" | "knowledge" | "instructions" | "subscriptions" | "settings" | "worktree" | "archive";
+type Dialog = "repos" | "instructions" | "subscriptions" | "settings" | "worktree" | "archive";
 
 /**
- * The project page's one menu: New chat, Repos, Knowledge, then Instructions, Subscriptions (module 12), Learn this
- * project, Worktree setup, Settings, Archive. The page itself is only the Lead chat.
+ * The project page's one menu: New chat, Repos, Knowledge (the Knowledge page, on this project), then Instructions,
+ * Subscriptions (module 12), Learn this project, Worktree setup, Settings, Archive. The page itself is only the Lead chat.
  */
 export function ProjectMenu({ project, agent }: { project: Project; agent: Agent | undefined }) {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [learning, setLearning] = useState(false);
+  const activeAgentId = useStore(selectActiveAgentId);
+  const knowledgeAgentId = agent?.id ?? activeAgentId;
   // Dialogs open once the menu has closed: a closing Radix menu would take focus back from them.
   const pending = useRef<Dialog | null>(null);
   const close = (open: boolean) => !open && setDialog(null);
@@ -79,7 +78,11 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
             <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "repos")}>
               <FolderGit2 className="size-4 text-fg-muted" /> Repos
             </DropdownMenu.Item>
-            <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "knowledge")}>
+            <DropdownMenu.Item
+              className="menu-item"
+              disabled={!knowledgeAgentId}
+              onSelect={() => knowledgeAgentId && navigateToWiki(knowledgeAgentId, null, project.brainId)}
+            >
               <Brain className="size-4 text-fg-muted" /> Knowledge
             </DropdownMenu.Item>
             <DropdownMenu.Separator className="menu-separator" />
@@ -116,13 +119,6 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
           <ProjectRepos project={project} />
         </ModalBody>
       </Modal>
-      <Modal open={dialog === "knowledge"} onOpenChange={close} title="Knowledge" description={`What every agent knows about ${project.name}.`} className="max-w-2xl">
-        <ModalBody className="space-y-6">
-          <KnowledgePanel project={project} />
-          <KnowledgeUpdates project={project} />
-          <ProjectMemoryRow project={project} />
-        </ModalBody>
-      </Modal>
       <InstructionsDialog project={project} open={dialog === "instructions"} onOpenChange={close} />
       <ProjectSubscriptionsDialog project={project} open={dialog === "subscriptions"} onOpenChange={close} />
       <ProjectSettingsDialog project={project} open={dialog === "settings"} onOpenChange={close} />
@@ -131,7 +127,7 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
         open={dialog === "archive"}
         onOpenChange={close}
         title={`Archive ${project.name}?`}
-        description="It leaves the sidebar for every agent. Its chats and its brain stay."
+        description="It leaves the sidebar for every agent. Its chats and its knowledge stay."
         confirmLabel="Archive"
         onConfirm={() => void archive()}
       />

@@ -18,9 +18,20 @@ import { Skeleton } from "../ui/Skeleton";
 
 /**
  * A memory repo's entries (roadmap module 10): add one, search them, and MEMORY.md (loaded in every chat) on
- * top, its prose rendered, then every other file's entries. Edit and delete on hover.
+ * top, its prose rendered, then every other file's entries. Edit and delete on hover. `compact` (a project's
+ * Facts in the Knowledge page) adds with a one-line field (Enter adds) and drops the headings and MEMORY.md's prose.
  */
-export function MemoryEntries({ repo, kind, onChanged }: { repo: string; kind: "you" | "project"; onChanged: () => void }) {
+export function MemoryEntries({
+  repo,
+  kind,
+  onChanged,
+  compact = false,
+}: {
+  repo: string;
+  kind: "you" | "project";
+  onChanged: () => void;
+  compact?: boolean;
+}) {
   const version = useMemoryUi((s) => s.versions[repo] ?? 0);
   const [files, setFiles] = useState<MemoryFile[] | null>(null);
   const [entryFile, setEntryFile] = useState("");
@@ -90,38 +101,58 @@ export function MemoryEntries({ repo, kind, onChanged }: { repo: string; kind: "
 
   return (
     <section className="space-y-3">
-      <SectionHeader title="Entries" description={kind === "you" ? "One short fact per line, about you." : "One short fact per line, about this project's code and work."} />
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void add();
-        }}
-      >
-        <textarea
-          rows={2}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      {compact ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void add();
+          }}
+        >
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            disabled={adding}
+            placeholder="Add a fact and press Enter, e.g. “Tests need TZ=UTC.”"
+            aria-label="New fact"
+            className="input"
+          />
+        </form>
+      ) : (
+        <>
+          <SectionHeader title="Entries" description={kind === "you" ? "One short fact per line, about you." : "One short fact per line, about this project's code and work."} />
+          <form
+            onSubmit={(event) => {
               event.preventDefault();
               void add();
-            }
-          }}
-          placeholder={kind === "you" ? "Add something for TOT to remember, e.g. “I live in Berlin and work in UTC+1.”" : "Add something agents should know here, e.g. “Tests need TZ=UTC.”"}
-          aria-label="New memory"
-          className="input resize-none rounded-xl leading-relaxed"
-        />
-        <div className="mt-2 flex items-center justify-end gap-3">
-          <span className="hidden text-xs text-fg-faint sm:inline">
-            <Kbd keys={["mod", "↵"]} /> to add
-          </span>
-          <Button type="submit" size="sm" variant="primary" disabled={adding || !draft.trim()}>
-            <Plus /> {adding ? "Adding…" : "Add memory"}
-          </Button>
-        </div>
-      </form>
+            }}
+          >
+            <textarea
+              rows={2}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  void add();
+                }
+              }}
+              placeholder={kind === "you" ? "Add something for TOT to remember, e.g. “I live in Berlin and work in UTC+1.”" : "Add something agents should know here, e.g. “Tests need TZ=UTC.”"}
+              aria-label="New memory"
+              className="input resize-none rounded-xl leading-relaxed"
+            />
+            <div className="mt-2 flex items-center justify-end gap-3">
+              <span className="hidden text-xs text-fg-faint sm:inline">
+                <Kbd keys={["mod", "↵"]} /> to add
+              </span>
+              <Button type="submit" size="sm" variant="primary" disabled={adding || !draft.trim()}>
+                <Plus /> {adding ? "Adding…" : "Add memory"}
+              </Button>
+            </div>
+          </form>
+        </>
+      )}
 
-      {total > 0 && <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search memories" aria-label="Search memories" />}
+      {total > (compact ? 8 : 0) && <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder={compact ? "Search facts" : "Search memories"} aria-label={compact ? "Search facts" : "Search memories"} />}
 
       {loadError && !files && <Callout tone="danger">{loadError}</Callout>}
       {!loadError && !files && (
@@ -147,8 +178,11 @@ export function MemoryEntries({ repo, kind, onChanged }: { repo: string; kind: "
 
       {files && !results && (
         <div className="space-y-3">
-          <LedgerPanel body="fields" header={<LedgerHeader title={<span className="font-mono">MEMORY.md</span>} meta={`${main?.entries.length ?? 0} · Loaded in every chat`} />}>
-            {prose && (
+          <LedgerPanel
+            body="fields"
+            header={<LedgerHeader title={<span className="font-mono">MEMORY.md</span>} meta={compact ? main?.entries.length ?? 0 : `${main?.entries.length ?? 0} · Loaded in every chat`} />}
+          >
+            {prose && !compact && (
               <div className="px-4 py-3">
                 <LazyMarkdown text={prose} muted />
               </div>
@@ -160,7 +194,9 @@ export function MemoryEntries({ repo, kind, onChanged }: { repo: string; kind: "
                 ))}
               </ul>
             ) : (
-              <p className="px-4 py-3 text-sm text-fg-muted">Nothing yet. Tell an agent to remember something, or add it above.</p>
+              <p className="px-4 py-3 text-sm text-fg-muted">
+                {compact ? "No facts yet. Add one above, or tell an agent to remember something." : "Nothing yet. Tell an agent to remember something, or add it above."}
+              </p>
             )}
           </LedgerPanel>
           {topics.map((file) => (

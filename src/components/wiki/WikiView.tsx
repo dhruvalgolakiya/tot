@@ -1,16 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { PanelLeft } from "lucide-react";
-import type { WikiPage, WikiPageSummary, WikiSearchHit } from "@shared/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Laptop, PanelLeft } from "lucide-react";
+import type { KnowledgeStatus, WikiPage, WikiPageSummary, WikiSearchHit } from "@shared/types";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { DESKTOP_QUERY, useMediaQuery, XL_QUERY } from "../../hooks/useMediaQuery";
 import { api, errorMessage } from "../../lib/api";
 import { extractHeadings } from "../../lib/wiki";
 import { brainName } from "../../lib/brains";
+import { projectMemoryRepo, useMemoryUi } from "../../lib/memory";
+import { useProjects } from "../../lib/projects";
 import { navigateToWiki, openBrain, openWikiPage, selectActiveAgent, useStore } from "../../store";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
+import { EmptyState } from "../ui/EmptyState";
 import { Modal } from "../ui/Modal";
 import { Skeleton } from "../ui/Skeleton";
+import { KnowledgeFacts } from "../knowledge/KnowledgeFacts";
+import { KnowledgeHistoryView } from "../knowledge/KnowledgeHistoryView";
 import { RepoProfileDialog } from "../trust/RepoProfileDialog";
 import { BrainSettingsDialog } from "./BrainSettingsDialog";
 import { BrainSwitcher } from "./BrainSwitcher";
@@ -21,12 +26,15 @@ import { WikiOutline } from "./WikiOutline";
 import { WikiPageView } from "./WikiPageView";
 import { WikiTree } from "./WikiTree";
 
+/** Facts and History are views of a project's knowledge; null shows a page. */
+type Section = "facts" | "history" | null;
+
 /**
- * Wiki view: a brain switcher and the open brain's page tree on the left, the
- * open page in the middle, an optional "On this page" outline on very wide
- * screens. Mounted in the main card in place of ChatView while `page === "wiki"`
- * (see App.tsx and store.ts). The brain shown is the one picked, else the open
- * page's, else the agent's notebook.
+ * The Knowledge page, the one place for what agents know: a switcher (this agent's notebook, a project, a shared
+ * brain) and the open one's Facts, page tree, repo docs and History on the left, the open page or view in the
+ * middle, an optional "On this page" outline on very wide screens. Mounted in the main card in place of ChatView
+ * while `page === "wiki"` (see App.tsx and store.ts). The brain shown is the one picked, else the open page's, else
+ * the agent's notebook; a project's opens on its Facts.
  */
 export function WikiView() {
   const agent = useStore(selectActiveAgent);
@@ -52,6 +60,10 @@ export function WikiView() {
   const [newBrainOpen, setNewBrainOpen] = useState(false);
   const [brainSettingsOpen, setBrainSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  // The view picked in the column while no page is open; a page opening clears it.
+  const [picked, setPicked] = useState<{ brainId: string | null; section: Section }>({ brainId: null, section: null });
+  const [status, setStatus] = useState<KnowledgeStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
   const search = useDebouncedValue(query.trim(), 250);
@@ -64,7 +76,22 @@ export function WikiView() {
   // A page opened by id (from a chat notice, say) shows its own brain; until it loads, nothing is listed.
   const brainId = wikiBrainId ?? (wikiPageId ? (page?.id === wikiPageId ? page.brainId : null) : notebookId);
   const brain = brains?.find((b) => b.id === brainId) ?? null;
-  const activePageId = wikiPageId ?? pages?.[0]?.id ?? null;
+  const allProjects = useProjects((st) => st.projects);
+  const projectBrainIds = useMemo(() => new Set(allProjects.map((p) => p.brainId)), [allProjects]);
+  const project = brainId ? (allProjects.find((p) => p.brainId === brainId) ?? null) : null;
+  // A paired device's project keeps its knowledge there; its facts and history can't be read from here.
+  const localProject = project && !project.deviceId ? project : null;
+  const remoteProject = Boolean(project?.deviceId && brains && !brain);
+  const memoryVersion = useMemoryUi((st) => (localProject ? (st.versions[projectMemoryRepo(localProject.slug)] ?? 0) : 0));
+  const section: Section = wikiPageId
+    ? null
+    : picked.brainId === brainId && picked.section
+      ? picked.section
+      : localProject
+        ? "facts"
+        : null;
+  const activePageId = wikiPageId ?? (section ? null : (pages?.[0]?.id ?? null));
+  const pageIds = useMemo(() => (pages ? new Set(pages.map((p) => p.id)) : null), [pages]);
 
   function loadPages(id: string) {
     api.listWikiPages(id).then(
@@ -75,6 +102,27 @@ export function WikiView() {
       (error: unknown) => setPagesError(errorMessage(error)),
     );
   }
+
+  const loadStatus = useCallback(() => {
+    if (!localProject) return;
+    api.knowledgeStatus(localProject.id).then(
+      (loaded) => {
+        setStatus(loaded);
+        setStatusError(null);
+      },
+      (error: unknown) => setStatusError(errorMessage(error)),
+    );
+  }, [localProject]);
+
+  // A project's counts and folder: its facts and pages both commit to its repo, so either change can move them.
+  useEffect(() => {
+    setStatus(null);
+    setStatusError(null);
+  }, [localProject?.id]);
+  useEffect(() => {
+    loadStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on the project, a memory change or a wiki event
+  }, [localProject?.id, memoryVersion, wikiEvent]);
 
   function refetchActivePage(id: string) {
     api.getWikiPage(id).then(setPage, (error: unknown) => setPageError(errorMessage(error)));
@@ -157,7 +205,7 @@ export function WikiView() {
 
   if (!agent) {
     return (
-      <div className="flex min-h-0 flex-1 overflow-hidden pt-14" aria-busy="true" aria-label="Loading wiki">
+      <div className="flex min-h-0 flex-1 overflow-hidden pt-14" aria-busy="true" aria-label="Loading knowledge">
         {desktop && (
           <div className="flex h-full w-60 shrink-0 flex-col gap-2 border-r border-hairline p-3">
             <Skeleton className="h-8 w-full" />
@@ -177,6 +225,14 @@ export function WikiView() {
 
   function handleSelect(pageId: string) {
     openWikiPage(pageId, brainId);
+    setPicked({ brainId, section: null });
+    setMobileTreeOpen(false);
+  }
+
+  function openSection(next: Section) {
+    openWikiPage(null, brainId);
+    setPicked({ brainId, section: next });
+    setEditing(false);
     setMobileTreeOpen(false);
   }
 
@@ -244,6 +300,8 @@ export function WikiView() {
         setProfileOpen(true);
         setMobileTreeOpen(false);
       }}
+      projectBrainIds={projectBrainIds}
+      placeholder={remoteProject ? project?.name : undefined}
     />
   );
   const treeProps = {
@@ -259,13 +317,18 @@ export function WikiView() {
       setLearnOpen(true);
       setMobileTreeOpen(false);
     },
+    facts: localProject
+      ? { count: status?.facts ?? null, active: section === "facts", onOpen: () => openSection("facts") }
+      : undefined,
+    history: localProject ? { active: section === "history", onOpen: () => openSection("history") } : undefined,
   };
+  const mobileLabel = section === "facts" ? "Facts" : section === "history" ? "History" : (page?.title ?? "Pages");
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 overflow-hidden pt-14">
         {desktop && (
-          <aside aria-label="Brains and pages" className="flex h-full w-64 shrink-0 flex-col border-r border-hairline">
+          <aside aria-label="Knowledge" className="flex h-full w-64 shrink-0 flex-col border-r border-hairline">
             {switcher}
             <WikiTree {...treeProps} onSelect={handleSelect} />
           </aside>
@@ -275,12 +338,38 @@ export function WikiView() {
           {!desktop && (
             <div className="flex shrink-0 items-center border-b border-hairline px-2 py-1.5">
               <Button size="sm" variant="ghost" onClick={() => setMobileTreeOpen(true)}>
-                <PanelLeft /> Pages
+                <PanelLeft /> <span className="max-w-60 truncate">{mobileLabel}</span>
               </Button>
             </div>
           )}
 
-          {pagesError ? (
+          {remoteProject ? (
+            <div className="flex flex-1 items-center justify-center p-6">
+              <EmptyState
+                icon={<Laptop />}
+                title="Knowledge stays on its device"
+                description="This project's pages and facts are kept on the Mac it's on. Open TOT there to see them."
+              />
+            </div>
+          ) : section === "facts" && localProject ? (
+            <KnowledgeFacts
+              project={localProject}
+              status={status}
+              statusError={statusError}
+              onRetry={loadStatus}
+              onChanged={loadStatus}
+            />
+          ) : section === "history" && localProject ? (
+            <KnowledgeHistoryView
+              project={localProject}
+              pageIds={pageIds}
+              onOpenPage={handleSelect}
+              onChanged={() => {
+                loadStatus();
+                if (brainId) loadPages(brainId);
+              }}
+            />
+          ) : pagesError ? (
             <div className="flex flex-1 items-center justify-center p-6">
               <Callout
                 tone="danger"
@@ -335,7 +424,7 @@ export function WikiView() {
           )}
         </div>
 
-        {xlWide && page && !editing && !isEmptyWorkspace && headings.length > 0 && (
+        {xlWide && !section && page && !editing && !isEmptyWorkspace && headings.length > 0 && (
           <WikiOutline headings={headings} onSelect={scrollToHeading} />
         )}
       </div>
@@ -344,7 +433,7 @@ export function WikiView() {
         <Modal
           open={mobileTreeOpen}
           onOpenChange={setMobileTreeOpen}
-          title="Pages"
+          title="Knowledge"
           className="flex h-[min(80dvh,560px)] max-w-sm flex-col"
         >
           {switcher}

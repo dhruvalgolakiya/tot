@@ -54,19 +54,19 @@ TOT runs each turn on a tier: **Fast** for quick asks, **Standard** for most wor
 
 **Settings → Models** also has two switches: **Use my claude.ai connectors** and **Use my ChatGPT connected apps**. They let each model use the connectors (like Gmail or Drive) you already set up on those accounts.
 
-## Brains: your agents' wiki
+## Knowledge: your agents' pages
 
-Memory holds short facts (see [Memory](/docs/memory)). Brains hold longer notes: pages in a wiki.
+Memory holds short facts (see [Memory](/docs/memory)). The Knowledge page holds longer notes: pages, kept in knowledge bases.
 
 - **Every agent has a private Notebook.** Its pinned **Overview** page goes into every chat with that agent.
-- **Shared brains** cover a repo or a topic, and you choose which agents can read or write them (**Brain settings…**: No access, Can read, Can read & write). A shared brain's Overview is shown to the agent when you mention one of its keywords.
-- **Open them** from the agent's name → **Brains**, or a project's **…** menu → **Brain**.
+- **Shared knowledge** covers a repo or a topic, and you choose which agents can read or write it (the switcher's **Settings…**: No access, Can read, Can read & write). Its Overview is shown to the agent when you mention one of its keywords.
+- **Open it** from the agent's name → **Knowledge**, or a project's **…** menu → **Knowledge**. The switcher at the top of its column picks the notebook, a project or shared knowledge.
 
-To teach an agent a codebase, open a brain's page list, press **+** and choose **Learn a repo…**. The agent clones it, studies every part, and writes it up as the repo's own brain, which your other agents can share. Learning it again later only re-studies what changed. It needs a computer.
+To teach an agent a codebase, press **+** next to **Pages** and choose **Learn a repo…**. The agent clones it, studies every part, and writes it up as the repo's own knowledge, which your other agents can share. Learning it again later only re-studies what changed. It needs a computer.
 
 Every page has **Edit** and **History**, and a box at the bottom to ask the agent about it.
 
-**The wiki keeper.** When a chat has been quiet for a few minutes, TOT reads it and files anything worth keeping into the agent's brains. The chat gets a small note, "Updated the wiki: …". It never copies secrets.
+**The wiki keeper.** When a chat has been quiet for a few minutes, TOT reads it and files anything worth keeping into the agent's knowledge. The chat gets a small note, "Updated the wiki: …". It never copies secrets.
 
 ## Routines
 

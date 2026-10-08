@@ -33,17 +33,16 @@ Open **Settings → Memory**.
 3. **Dreaming**: see below.
 4. **Sync**: your paired devices and an optional backup.
 
-A project's own memory lives in its **Knowledge** tab instead; see below. To stop agents saving or recalling anything, turn off **Memory** in **Settings → General**.
+A project's own memory is its **Facts** on the Knowledge page instead; see below. To stop agents saving or recalling anything, turn off **Memory** in **Settings → General**.
 
 ## Project knowledge
 
-A project's memory and its wiki are one git repo: `MEMORY.md` for facts, `pages/` for wiki pages, and `repos/<name>/` for each of the project's repos' own docs. Open a project and its **Knowledge** tab:
+A project's memory and its pages are one git repo: `MEMORY.md` for facts, `pages/` for pages, and `repos/<name>/` for each of the project's repos' own docs. Open the project's **…** menu → **Knowledge** (or pick the project in the switcher on any Knowledge page). The column on the left has:
 
-- **Facts**: the project's memory, same as **Entries** above.
-- **Pages**: its wiki, the longer notes and documents an agent writes up. Open one to read, edit or ask about it; every page has **History** too.
-- **Repos**: each repo's own docs, written by **Learn this repo** in the project's [Repos](/docs/projects#more-than-one-repo) (its **…** menu).
-- **History**: one timeline for both facts and pages, newest first, with **Undo**.
-- **Updates**: see below.
+- **Facts**: the project's memory, loaded in every chat. Type one in the field and press Enter; hover one to edit or delete it.
+- **Pages**: the longer notes and documents an agent writes up. Open one to read, edit or ask about it; its **…** menu has **History** too.
+- **Repos**: each repo's own docs, written by **Learn this repo** in the project's [Repos](/docs/projects#more-than-one-repo).
+- **History**: the updates TOT made (below), then every change to facts and pages, each with **Undo**.
 
 This replaced the separate wiki and project memory. The move happens once, the first time TOT starts after the update, and keeps everything: old wiki pages keep their links and ids, and the old copy is kept as a backup. If it ever fails for one, that one keeps working from the database and TOT tries again next start.
 
@@ -52,7 +51,7 @@ This replaced the separate wiki and project memory. The move happens once, the f
 TOT updates a project's docs and facts by itself, using a light background model, never your chat model:
 
 - **After a task lands** (merged, or a draft PR opened).
-- **When a repo's main branch moves** — checked every 6 hours, or press **Check now**.
+- **When a repo's main branch moves** — checked every 6 hours, or press **Check now** in **History**.
 - **From chats**, the same way the wiki keeper always has.
 - **In nightly Dreaming** (see below), which may move a long fact into the right page.
 

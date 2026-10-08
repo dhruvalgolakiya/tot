@@ -100,8 +100,8 @@ export function BrainSettingsDialog({ brain, agents, viewerAgentId, open, onOpen
         title={`${brainName(brain, agents, viewerAgentId)} settings`}
         description={
           notebook
-            ? `${owner?.name ?? "This agent"}'s private notebook: what it knows about this workspace and anything no shared brain covers.`
-            : "A shared brain: one repo, client or topic that any agent you attach can use."
+            ? `${owner?.name ?? "This agent"}'s private notebook: what it knows about this workspace and anything no shared knowledge covers.`
+            : "Shared knowledge: one repo, client or topic that any agent you attach can use."
         }
       >
         <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
@@ -114,7 +114,7 @@ export function BrainSettingsDialog({ brain, agents, viewerAgentId, open, onOpen
             <Field
               label="What it knows"
               htmlFor="brain-description"
-              hint="One line on the brain's card, so agents know when to use it."
+              hint="One line on its card, so agents know when to use it."
             >
               <input
                 id="brain-description"
@@ -131,7 +131,7 @@ export function BrainSettingsDialog({ brain, agents, viewerAgentId, open, onOpen
               hint={
                 notebook
                   ? "Comma-separated. Shown on its card."
-                  : "Comma-separated. When a message mentions one, agents are shown this brain's Overview. Repo brains also match their repo's name, URL and folder."
+                  : "Comma-separated. When a message mentions one, agents are shown its Overview. Repo knowledge also matches their repo's name, URL and folder."
               }
             >
               <input
@@ -187,7 +187,7 @@ export function BrainSettingsDialog({ brain, agents, viewerAgentId, open, onOpen
           <ModalFooter>
             {!notebook && (
               <Button type="button" variant="ghost-danger" className="mr-auto" onClick={() => setConfirmDelete(true)}>
-                Delete brain
+                Delete
               </Button>
             )}
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
@@ -205,7 +205,7 @@ export function BrainSettingsDialog({ brain, agents, viewerAgentId, open, onOpen
         onOpenChange={setConfirmDelete}
         title={`Delete ${brain.name}?`}
         description={`Its ${brain.pageCount} pages disappear for every agent that uses it.`}
-        confirmLabel="Delete brain"
+        confirmLabel="Delete"
         onConfirm={() => void remove()}
       />
     </>

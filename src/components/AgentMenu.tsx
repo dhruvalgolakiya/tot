@@ -48,7 +48,7 @@ export function AgentMenu({ agent }: { agent: Agent }) {
             Computer
           </MenuItem>
           <MenuItem icon={<Brain />} detail={pages} onSelect={() => navigateToWiki(agent.id)}>
-            Brains
+            Knowledge
           </MenuItem>
           <MenuItem icon={<Clock />} detail={routines} onSelect={() => openAgentSettings(agent.id, "routines")}>
             Routines

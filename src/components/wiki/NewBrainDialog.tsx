@@ -57,7 +57,7 @@ export function NewBrainDialog({ agent, open, onOpenChange, onCreated, onLearnRe
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="New brain"
+      title="New knowledge base"
       description={`A shared knowledge base for one client, product or topic. ${agent.name} can read and write it; attach more agents in its settings.`}
     >
       <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
@@ -73,7 +73,7 @@ export function NewBrainDialog({ agent, open, onOpenChange, onCreated, onLearnRe
               className="input h-10 rounded-xl"
             />
           </Field>
-          <Field label="What it knows" htmlFor="new-brain-description" hint="One line on the brain's card, so agents know when to use it.">
+          <Field label="What it knows" htmlFor="new-brain-description" hint="One line on its card, so agents know when to use it.">
             <input
               id="new-brain-description"
               value={description}
@@ -86,7 +86,7 @@ export function NewBrainDialog({ agent, open, onOpenChange, onCreated, onLearnRe
           <Field
             label="Keywords"
             htmlFor="new-brain-keywords"
-            hint="Comma-separated. When a message mentions one, agents are shown this brain's Overview."
+            hint="Comma-separated. When a message mentions one, agents are shown its Overview."
           >
             <input
               id="new-brain-keywords"
@@ -108,7 +108,7 @@ export function NewBrainDialog({ agent, open, onOpenChange, onCreated, onLearnRe
             >
               learn a repo
             </button>{" "}
-            instead — {agent.name} studies it and writes the brain for you.
+            instead — {agent.name} studies it and writes it up for you.
           </p>
           {error && <Callout tone="danger">{error}</Callout>}
         </ModalBody>
@@ -117,7 +117,7 @@ export function NewBrainDialog({ agent, open, onOpenChange, onCreated, onLearnRe
             Cancel
           </Button>
           <Button type="submit" variant="primary" disabled={!name.trim() || saving}>
-            {saving ? "Creating…" : "Create brain"}
+            {saving ? "Creating…" : "Create"}
           </Button>
         </ModalFooter>
       </form>

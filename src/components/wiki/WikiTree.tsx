@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
-import { ChevronRight, FilePlus, GitBranch, Plus } from "lucide-react";
+import { ChevronRight, FilePlus, FolderGit2, GitBranch, History, ListChecks, Plus } from "lucide-react";
 import type { WikiPageSummary, WikiSearchHit } from "@shared/types";
 import { buildWikiTree, splitSnippet, type WikiTreeNode } from "../../lib/wiki";
 import { EmptyState } from "../ui/EmptyState";
 import { IconButton } from "../ui/IconButton";
-import { listRowClass } from "../ui/ListRow";
+import { ListRow, listRowClass } from "../ui/ListRow";
 import { SearchInput } from "../ui/SearchInput";
 import { Skeleton } from "../ui/Skeleton";
 
@@ -22,9 +22,26 @@ type WikiTreeProps = {
   searchLabel: string;
   onNewPage: () => void;
   onLearnRepo: () => void;
+  /** A project's facts: pinned first, opening the Facts view. */
+  facts?: { count: number | null; active: boolean; onOpen: () => void };
+  /** A project's history: at the bottom of the column, opening the History view. */
+  history?: { active: boolean; onOpen: () => void };
 };
 
-/** Left column: search, a page tree (collapsible, Overview first), and one "+" menu for new pages. */
+/** Pulls the pages that head a repo's docs (and their subtrees) out of the tree, wherever they sit. */
+function splitRepos(nodes: WikiTreeNode[], repos: WikiTreeNode[] = []): { pages: WikiTreeNode[]; repos: WikiTreeNode[] } {
+  const pages: WikiTreeNode[] = [];
+  for (const node of nodes) {
+    if (node.repo) repos.push(node);
+    else pages.push({ ...node, children: splitRepos(node.children, repos).pages });
+  }
+  return { pages, repos };
+}
+
+/**
+ * Left column of the Knowledge page: search, then Facts (projects), the page tree (collapsible, Overview first)
+ * with one "+" menu for new pages, each repo's docs, and History (projects) at the bottom.
+ */
 export function WikiTree({
   pages,
   activePageId,
@@ -36,9 +53,11 @@ export function WikiTree({
   searchLabel,
   onNewPage,
   onLearnRepo,
+  facts,
+  history,
 }: WikiTreeProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const tree = buildWikiTree(pages);
+  const tree = splitRepos(buildWikiTree(pages));
   const isSearching = query.trim().length > 0;
 
   function toggle(id: string) {
@@ -62,48 +81,95 @@ export function WikiTree({
         />
       </div>
 
-      {!isSearching && (
-        <div className="flex shrink-0 items-center px-2.5 pb-1">
-          <span className="group-label">Pages</span>
-          <DropdownMenu.Root modal={false}>
-            <DropdownMenu.Trigger asChild>
-              <IconButton label="Add a page" size="sm" className="ml-auto">
-                <Plus />
-              </IconButton>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content align="end" sideOffset={4} className="menu w-48">
-                <DropdownMenu.Item className="menu-item" onSelect={onNewPage}>
-                  <FilePlus className="size-4 text-fg-muted" /> New page
-                </DropdownMenu.Item>
-                <DropdownMenu.Item className="menu-item" onSelect={onLearnRepo}>
-                  <GitBranch className="size-4 text-fg-muted" /> Learn a repo…
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-        </div>
-      )}
-
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {isSearching ? (
           <SearchResults hits={searchHits} searching={searching} onSelect={onSelect} />
         ) : (
-          <ul>
-            {tree.map((node) => (
-              <TreeNode
-                key={node.id}
-                node={node}
-                depth={0}
-                activePageId={activePageId}
-                collapsed={collapsed}
-                onToggle={toggle}
-                onSelect={onSelect}
-              />
-            ))}
-          </ul>
+          <>
+            {facts && (
+              <ListRow
+                size="sm"
+                icon={<ListChecks />}
+                selected={facts.active}
+                aria-current={facts.active ? "page" : undefined}
+                onClick={facts.onOpen}
+                trailing={facts.count !== null && <span className="tabular-nums">{facts.count}</span>}
+                className="mb-2"
+              >
+                Facts
+              </ListRow>
+            )}
+            <div className="flex items-center px-1 pb-1">
+              <span className="group-label">Pages</span>
+              <DropdownMenu.Root modal={false}>
+                <DropdownMenu.Trigger asChild>
+                  <IconButton label="Add a page" size="sm" className="ml-auto">
+                    <Plus />
+                  </IconButton>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content align="end" sideOffset={4} className="menu w-48">
+                    <DropdownMenu.Item className="menu-item" onSelect={onNewPage}>
+                      <FilePlus className="size-4 text-fg-muted" /> New page
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item className="menu-item" onSelect={onLearnRepo}>
+                      <GitBranch className="size-4 text-fg-muted" /> Learn a repo…
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            </div>
+            <ul aria-label="Pages">
+              {tree.pages.map((node) => (
+                <TreeNode
+                  key={node.id}
+                  node={node}
+                  depth={0}
+                  activePageId={activePageId}
+                  collapsed={collapsed}
+                  onToggle={toggle}
+                  onSelect={onSelect}
+                />
+              ))}
+            </ul>
+            {tree.repos.length > 0 && (
+              <>
+                <div className="flex h-7 items-center px-1 pt-3 pb-1">
+                  <span className="group-label">Repos</span>
+                </div>
+                <ul aria-label="Repos">
+                  {tree.repos.map((node) => (
+                    <TreeNode
+                      key={node.id}
+                      node={{ ...node, title: node.repo ?? node.title }}
+                      depth={0}
+                      activePageId={activePageId}
+                      collapsed={collapsed}
+                      onToggle={toggle}
+                      onSelect={onSelect}
+                      icon={<FolderGit2 className="size-3.5" aria-hidden="true" />}
+                    />
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
         )}
       </div>
+
+      {history && !isSearching && (
+        <div className="shrink-0 border-t border-hairline px-1.5 py-1.5">
+          <ListRow
+            size="sm"
+            icon={<History />}
+            selected={history.active}
+            aria-current={history.active ? "page" : undefined}
+            onClick={history.onOpen}
+          >
+            History
+          </ListRow>
+        </div>
+      )}
     </div>
   );
 }
@@ -164,6 +230,7 @@ function TreeNode({
   collapsed,
   onToggle,
   onSelect,
+  icon,
 }: {
   node: WikiTreeNode;
   depth: number;
@@ -171,6 +238,8 @@ function TreeNode({
   collapsed: Set<string>;
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
+  /** A repo's docs: a small folder mark before the name. */
+  icon?: ReactNode;
 }) {
   const hasChildren = node.children.length > 0;
   const isCollapsed = collapsed.has(node.id);
@@ -191,8 +260,15 @@ function TreeNode({
         ) : (
           <span className="size-5 shrink-0" aria-hidden="true" />
         )}
-        <button type="button" onClick={() => onSelect(node.id)} className="min-w-0 flex-1 truncate text-left">
-          {node.title || "Untitled"}
+        <button
+          type="button"
+          onClick={() => onSelect(node.id)}
+          aria-current={active ? "page" : undefined}
+          title={node.summary || undefined}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        >
+          {icon && <span className="shrink-0 text-fg-subtle">{icon}</span>}
+          <span className="truncate">{node.title || "Untitled"}</span>
         </button>
       </div>
       {hasChildren && !isCollapsed && (
