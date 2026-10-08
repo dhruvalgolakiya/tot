@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
-import clsx from "clsx";
 import { CloudUpload, Download, Flag, Minus, MoonStar, Pencil, Plus, RefreshCw, SquarePen, Undo2 } from "lucide-react";
 import type { MemoryCommit } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
@@ -9,8 +8,7 @@ import { notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
-import { cardClass } from "../ui/Card";
-import { SectionHeader } from "../ui/SectionHeader";
+import { LedgerGroup, LedgerMore, ledgerRowClass } from "../ui/Ledger";
 import { Skeleton } from "../ui/Skeleton";
 
 const ICONS: Record<MemoryCommit["kind"], ComponentType<{ className?: string }>> = {
@@ -64,22 +62,22 @@ export function MemoryHistory({ repo, onChanged }: { repo: string; onChanged: ()
 
   return (
     <section className="space-y-3">
-      <SectionHeader title="History" description="Every change is a commit. Undo puts back what one changed, as a new change; a sync can't be undone." />
       {error && !commits && <Callout tone="danger">{error}</Callout>}
       {!error && !commits && <Skeleton className="h-40 rounded-xl" />}
       {commits && (
-        <>
-          <ul className={cardClass({ padding: "none" })}>
-            {commits.map((commit, index) => (
-              <CommitRow key={commit.sha} commit={commit} first={index === 0} onUndo={() => setUndoing(commit)} />
+        <LedgerGroup body="rows"
+          title="History"
+          count={commits.length}
+         
+          description="Every change is a commit. Undo puts back what one changed, as a new change; a sync can't be undone."
+        >
+          <ul>
+            {commits.map((commit) => (
+              <CommitRow key={commit.sha} commit={commit} onUndo={() => setUndoing(commit)} />
             ))}
           </ul>
-          {more && (
-            <button type="button" className="link-muted text-xs" onClick={() => setLimit((n) => n + 20)}>
-              Show older changes
-            </button>
-          )}
-        </>
+          {more && <LedgerMore label="Show older changes" onClick={() => setLimit((n) => n + 20)} />}
+        </LedgerGroup>
       )}
       <ConfirmDialog
         open={Boolean(undoing)}
@@ -93,15 +91,15 @@ export function MemoryHistory({ repo, onChanged }: { repo: string; onChanged: ()
   );
 }
 
-function CommitRow({ commit, first, onUndo }: { commit: MemoryCommit; first: boolean; onUndo: () => void }) {
+function CommitRow({ commit, onUndo }: { commit: MemoryCommit; onUndo: () => void }) {
   const Icon = ICONS[commit.kind];
   const details = commit.kind === "dream" || commit.kind === "sync" || commit.kind === "import" ? commit.body.split("\n").filter(Boolean).slice(0, 3) : [];
 
   return (
-    <li className={clsx("group flex items-start gap-3 px-4 py-2.5", !first && "border-t border-hairline")}>
+    <li className={ledgerRowClass({ className: "group items-start" })}>
       <Icon className="mt-0.5 size-4 shrink-0 text-fg-subtle" />
       <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 text-sm text-fg [overflow-wrap:anywhere]" title={commit.subject}>
+        <p className="line-clamp-2 text-ui text-fg [overflow-wrap:anywhere]" title={commit.subject}>
           {describeCommit(commit)}
         </p>
         <p className="mt-0.5 text-xs text-fg-subtle tabular-nums">

@@ -13,11 +13,11 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { ChangePasswordDialog, RemoteAccessPanel, RemoteAccessSetup, type SetupStep } from "./RemoteAccess";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
-import { cardClass } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
 import { Field } from "../ui/Field";
 import { IconButton } from "../ui/IconButton";
+import { LedgerField, LedgerGroup, ledgerRowClass } from "../ui/Ledger";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
-import { SectionHeader } from "../ui/SectionHeader";
 import { Skeleton } from "../ui/Skeleton";
 import { StatusDot } from "../ui/StatusDot";
 import { Tip } from "../ui/Tip";
@@ -61,8 +61,8 @@ export function DevicesSettings() {
   if (!status) {
     return (
       <div className="space-y-8" aria-busy="true" aria-label="Loading devices">
-        <Skeleton className="h-24 w-full rounded-xl" />
-        <Skeleton className="h-28 w-full rounded-xl" />
+        <Skeleton className="h-24 w-full rounded-2xl" />
+        <Skeleton className="h-28 w-full rounded-2xl" />
       </div>
     );
   }
@@ -119,25 +119,24 @@ function ThisDevice({
   const [changingPassword, setChangingPassword] = useState(false);
 
   return (
-    <section className="space-y-3">
-      <SectionHeader title="This device" />
-      <div className={cardClass()}>
-        <div className="flex items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-fill text-fg-muted">
-            <Laptop className="size-4" />
+    <LedgerGroup title="This device">
+      <LedgerField
+        title={
+          <span className="flex items-center gap-2">
+            <Laptop className="size-4 text-fg-muted" />
+            {self.name}
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-fg">{self.name}</p>
-            <p className="truncate text-xs text-fg-subtle">
-              {!self.address
-                ? "Only this computer can open TOT"
-                : self.network === "tailscale"
-                  ? "Reachable over Tailscale, from anywhere"
-                  : self.network === "lan"
-                    ? "Reachable on this Wi‑Fi"
-                    : "Reachable at its address"}
-            </p>
-          </div>
+        }
+        description={
+          !self.address
+            ? "Only this computer can open TOT"
+            : self.network === "tailscale"
+              ? "Reachable over Tailscale, from anywhere"
+              : self.network === "lan"
+                ? "Reachable on this Wi‑Fi"
+                : "Reachable at its address"
+        }
+        control={
           <DropdownMenu.Root modal={false}>
             <DropdownMenu.Trigger asChild>
               <IconButton label="More options for this device" size="sm">
@@ -162,15 +161,12 @@ function ThisDevice({
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
-        </div>
-
-        <div className="mt-4 border-t border-hairline pt-4">
-          <RemoteAccessPanel status={status} onSetUp={onSetUp} />
-        </div>
-      </div>
+        }
+      />
+      <RemoteAccessPanel status={status} onSetUp={onSetUp} />
       <RenameDialog name={self.name} open={renaming} onOpenChange={setRenaming} onRenamed={onChange} />
       <ChangePasswordDialog status={status} open={changingPassword} onOpenChange={setChangingPassword} />
-    </section>
+    </LedgerGroup>
   );
 }
 
@@ -189,34 +185,36 @@ function PairedDevices({
   const warnings = status.devices.flatMap((device) => device.warnings);
 
   return (
-    <section className="space-y-3">
-      <SectionHeader
+    <div className="space-y-3">
+      <LedgerGroup
+        body="rows"
         title="Paired devices"
+        count={status.devices.length}
         description="Use their agents from here, and this device's agents from there."
         action={
           <Button size="sm" onClick={onPair}>
             <Link2 /> Pair a device
           </Button>
         }
-      />
-      {status.devices.length === 0 ? (
-        <p className="text-sm text-fg-muted">
-          None yet. Install TOT on your other computer, then pair them here: one link, pasted once, works both ways.
-        </p>
-      ) : (
-        <ul className={cardClass({ padding: "none" })}>
-          {status.devices.map((device, index) => (
-            <PairedRow key={device.id} device={device} first={index === 0} />
-          ))}
-        </ul>
-      )}
+      >
+        {status.devices.length === 0 ? (
+          <EmptyState
+            variant="quiet"
+            icon={<Link2 />}
+            title="No paired devices yet"
+            description="Install TOT on your other computer, then pair them here: one link, pasted once, works both ways."
+          />
+        ) : (
+          status.devices.map((device) => <PairedRow key={device.id} device={device} />)
+        )}
+      </LedgerGroup>
       {warnings.map((warning) => (
         <Callout key={warning} tone="warning">
           {warning}
         </Callout>
       ))}
       <PairDialog status={status} open={pairing} onOpenChange={onPairingChange} />
-    </section>
+    </div>
   );
 }
 
@@ -226,7 +224,7 @@ function deviceLine(device: Device): string {
   return `Offline${device.lastSeenAt ? ` · seen ${relativeTime(device.lastSeenAt)}` : ""}`;
 }
 
-function PairedRow({ device, first }: { device: Device; first: boolean }) {
+function PairedRow({ device }: { device: Device }) {
   const [moving, setMoving] = useState(false);
   const [unpairing, setUnpairing] = useState(false);
 
@@ -239,16 +237,16 @@ function PairedRow({ device, first }: { device: Device; first: boolean }) {
   }
 
   return (
-    <li className={clsx("flex min-h-14 items-center gap-3 px-4 py-2.5", !first && "border-t border-hairline")}>
-      <span className="relative shrink-0">
+    <div className={ledgerRowClass()}>
+      <span className="relative grid size-5 shrink-0 place-items-center">
         <Laptop className="size-4 text-fg-subtle" />
         <span className="absolute -right-1 -bottom-0.5">
           <StatusDot tone={device.online ? "green" : "gray"} />
         </span>
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-fg">{device.name}</p>
-        <p className={clsx("text-xs", device.problem ? "text-danger" : "text-fg-subtle")}>{deviceLine(device)}</p>
+        <p className="truncate text-ui text-fg">{device.name}</p>
+        <p className={clsx("truncate text-xs", device.problem ? "text-danger" : "text-fg-subtle")}>{deviceLine(device)}</p>
       </div>
       <DropdownMenu.Root modal={false}>
         <DropdownMenu.Trigger asChild>
@@ -281,7 +279,7 @@ function PairedRow({ device, first }: { device: Device; first: boolean }) {
         confirmLabel="Unpair"
         onConfirm={() => void act(() => api.unpairDevice(device.id))}
       />
-    </li>
+    </div>
   );
 }
 
@@ -474,39 +472,39 @@ function SignedIn({ status, onChange, onAddPhone }: { status: DevicesStatus; onC
   }
 
   return (
-    <section className="space-y-3">
-      <SectionHeader
-        title="Signed in"
-        description="Phones and browsers on other devices. This computer never needs to sign in."
-        action={
-          others > 1 && (
-            <button type="button" onClick={() => void signOutOthers()} className="link-muted text-xs">
-              Sign out all others
-            </button>
-          )
-        }
-      />
+    <LedgerGroup
+      body="rows"
+      title="Signed in"
+      count={status.sessions.length}
+      description="Phones and browsers on other devices. This computer never needs to sign in."
+      action={
+        others > 1 && (
+          <button type="button" onClick={() => void signOutOthers()} className="link-muted text-xs">
+            Sign out all others
+          </button>
+        )
+      }
+    >
       {status.sessions.length === 0 ? (
-        <p className="text-sm text-fg-muted">
-          None yet.{" "}
-          {status.access.mode !== "off" && (
-            <button type="button" className="link-muted" onClick={onAddPhone}>
-              Add a phone
-            </button>
-          )}
-        </p>
+        <EmptyState
+          variant="quiet"
+          title="No other devices signed in yet"
+          action={
+            status.access.mode !== "off" && (
+              <button type="button" className="link-muted" onClick={onAddPhone}>
+                Add a phone
+              </button>
+            )
+          }
+        />
       ) : (
-        <ul className={cardClass({ padding: "none" })}>
-          {status.sessions.map((session, index) => (
-            <SessionRow key={session.id} session={session} first={index === 0} onChange={onChange} />
-          ))}
-        </ul>
+        status.sessions.map((session) => <SessionRow key={session.id} session={session} onChange={onChange} />)
       )}
-    </section>
+    </LedgerGroup>
   );
 }
 
-function SessionRow({ session, first, onChange }: { session: SignInSession; first: boolean; onChange: (status: DevicesStatus) => void }) {
+function SessionRow({ session, onChange }: { session: SignInSession; onChange: (status: DevicesStatus) => void }) {
   const [busy, setBusy] = useState(false);
   const phone = /iPhone|iPad|Android/.test(session.label);
 
@@ -521,10 +519,12 @@ function SessionRow({ session, first, onChange }: { session: SignInSession; firs
   }
 
   return (
-    <li className={`group flex min-h-14 items-center gap-3 px-4 py-2.5 ${first ? "" : "border-t border-hairline"}`}>
-      {phone ? <Smartphone className="size-4 shrink-0 text-fg-subtle" /> : <Laptop className="size-4 shrink-0 text-fg-subtle" />}
+    <div className={clsx("group", ledgerRowClass())}>
+      <span className="grid size-5 shrink-0 place-items-center text-fg-subtle">
+        {phone ? <Smartphone className="size-4" /> : <Laptop className="size-4" />}
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-fg">{session.label}</p>
+        <p className="truncate text-ui text-fg">{session.label}</p>
         <p className="truncate text-xs text-fg-subtle">{session.current ? "This browser" : `Active ${relativeTime(session.lastSeenAt)}`}</p>
       </div>
       {session.current ? (
@@ -545,7 +545,7 @@ function SessionRow({ session, first, onChange }: { session: SignInSession; firs
           <LogOut /> {busy ? "Signing out…" : "Sign out"}
         </Button>
       )}
-    </li>
+    </div>
   );
 }
 

@@ -9,9 +9,9 @@ import { LazyMarkdown } from "../LazyMarkdown";
 import { MemoryItem } from "../MemoryItem";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
-import { cardClass } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { Kbd } from "../ui/Kbd";
+import { LedgerHeader, LedgerPanel } from "../ui/Ledger";
 import { SearchInput } from "../ui/SearchInput";
 import { SectionHeader } from "../ui/SectionHeader";
 import { Skeleton } from "../ui/Skeleton";
@@ -133,46 +133,44 @@ export function MemoryEntries({ repo, kind, onChanged }: { repo: string; kind: "
 
       {files && results && (
         results.length ? (
-          <ul className={cardClass({ padding: "none" })}>
-            {results.map((memory, index) => (
-              <MemoryItem key={`${memory.path}:${memory.id}`} memory={memory} first={index === 0} showPath onUpdated={changed} onDeleted={changed} />
-            ))}
-          </ul>
+          <LedgerPanel body="fields">
+            <ul>
+              {results.map((memory, index) => (
+                <MemoryItem key={`${memory.path}:${memory.id}`} memory={memory} first={index === 0} showPath onUpdated={changed} onDeleted={changed} />
+              ))}
+            </ul>
+          </LedgerPanel>
         ) : (
-          <EmptyState size="sm" variant="dashed" description={`No memories match “${search}”.`} />
+          <EmptyState variant="quiet" title={`No memories match “${search}”.`} />
         )
       )}
 
       {files && !results && (
         <div className="space-y-3">
-          <div className={cardClass({ padding: "none" })}>
-            <FileHeader path="MEMORY.md" count={main?.entries.length ?? 0} note="Loaded in every chat" />
+          <LedgerPanel body="fields" header={<LedgerHeader title={<span className="font-mono">MEMORY.md</span>} meta={`${main?.entries.length ?? 0} · Loaded in every chat`} />}>
             {prose && (
-              <div className="border-t border-hairline px-4 py-3">
+              <div className="px-4 py-3">
                 <LazyMarkdown text={prose} muted />
               </div>
             )}
             {main?.entries.length ? (
-              <ul className="border-t border-hairline">
+              <ul>
                 {main.entries.map((memory, index) => (
                   <MemoryItem key={memory.id} memory={memory} first={index === 0} onUpdated={changed} onDeleted={changed} />
                 ))}
               </ul>
             ) : (
-              <p className="border-t border-hairline px-4 py-3 text-sm text-fg-muted">
-                Nothing yet. Tell an agent to remember something, or add it above.
-              </p>
+              <p className="px-4 py-3 text-sm text-fg-muted">Nothing yet. Tell an agent to remember something, or add it above.</p>
             )}
-          </div>
+          </LedgerPanel>
           {topics.map((file) => (
-            <div key={file.path} className={cardClass({ padding: "none" })}>
-              <FileHeader path={file.path} count={file.entries.length} />
-              <ul className="border-t border-hairline">
+            <LedgerPanel key={file.path} body="fields" header={<LedgerHeader title={<span className="font-mono">{file.path}</span>} meta={file.entries.length} />}>
+              <ul>
                 {file.entries.map((memory, index) => (
                   <MemoryItem key={memory.id} memory={memory} first={index === 0} onUpdated={changed} onDeleted={changed} />
                 ))}
               </ul>
-            </div>
+            </LedgerPanel>
           ))}
           {others.length > 0 && (
             <p className="text-xs text-fg-subtle">
@@ -182,15 +180,5 @@ export function MemoryEntries({ repo, kind, onChanged }: { repo: string; kind: "
         </div>
       )}
     </section>
-  );
-}
-
-function FileHeader({ path, count, note }: { path: string; count: number; note?: string }) {
-  return (
-    <div className="flex h-10 items-center gap-2 px-4">
-      <span className="truncate font-mono text-ui text-fg">{path}</span>
-      <span className="text-xs text-fg-subtle tabular-nums">{count}</span>
-      {note && <span className="ml-auto shrink-0 text-xs text-fg-subtle">{note}</span>}
-    </div>
   );
 }

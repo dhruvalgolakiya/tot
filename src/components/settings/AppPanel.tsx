@@ -6,6 +6,7 @@ import { notifyError, setAppsStatus, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
+import { LedgerMore, LedgerPanel } from "../ui/Ledger";
 import { Modal } from "../ui/Modal";
 import { SearchInput } from "../ui/SearchInput";
 import { Skeleton } from "../ui/Skeleton";
@@ -103,9 +104,9 @@ export function AppPanel({ appId, onClose }: AppPanelProps) {
               <p className="group-label">Approval rules</p>
 
               {appRule && (
-                <ul className="rounded-xl border border-hairline">
+                <LedgerPanel body="rows" aria-label="All actions">
                   <AppRuleRow rule={appRule} appId={appId} onChanged={setRules} />
-                </ul>
+                </LedgerPanel>
               )}
 
               {actionRules.length > 0 && (
@@ -121,22 +122,15 @@ export function AppPanel({ appId, onClose }: AppPanelProps) {
               )}
 
               {actionRules.length > 0 && (
-                <ul className="divide-y divide-hairline rounded-xl border border-hairline">
+                <LedgerPanel body="rows" aria-label="Actions">
                   {shown.map((rule) => (
                     <AppRuleRow key={rule.tool} rule={rule} appId={appId} onChanged={setRules} />
                   ))}
-                  {shown.length === 0 && (
-                    <li>
-                      <EmptyState size="sm" title={`No actions match “${query}”.`} />
-                    </li>
+                  {shown.length === 0 && <EmptyState variant="quiet" title={`No actions match “${query}”.`} />}
+                  {filtered.length > shown.length && (
+                    <LedgerMore label={`Show more (${filtered.length - shown.length} more)`} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
                   )}
-                </ul>
-              )}
-
-              {filtered.length > shown.length && (
-                <button type="button" onClick={() => setVisible((v) => v + PAGE_SIZE)} className="link-muted text-xs">
-                  Show more ({filtered.length - shown.length} more)
-                </button>
+                </LedgerPanel>
               )}
             </div>
           )}

@@ -1,4 +1,5 @@
 import type { AppConnection } from "@shared/types";
+import { ledgerRowClass } from "../ui/Ledger";
 import { StatusDot } from "../ui/StatusDot";
 import { AppIcon } from "./AppIcon";
 
@@ -8,16 +9,18 @@ type AppRowProps = {
   onReconnect: () => void;
 };
 
-/** One connected account in "Your apps". Clicking the row opens its panel; the badge reconnects directly. */
+/** One connected account in "Your apps". Clicking the row opens its panel; the pill reconnects directly. */
 export function AppRow({ connection, onOpen, onReconnect }: AppRowProps) {
   return (
-    <li className="flex items-center gap-1 rounded-lg bg-fill-subtle transition-colors hover:bg-hover">
-      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-left">
-        <AppIcon name={connection.name} iconUrl={connection.iconUrl} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-fg">{connection.name}</p>
-          {connection.account && <p className="truncate text-xs text-fg-subtle">{connection.account}</p>}
-        </div>
+    <li className="flex items-center gap-1">
+      <button type="button" onClick={onOpen} className={ledgerRowClass({ interactive: true, className: "flex-1" })}>
+        <span className="grid size-5 shrink-0 place-items-center">
+          <AppIcon name={connection.name} iconUrl={connection.iconUrl} size="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-ui text-fg">{connection.name}</span>
+          {connection.account && <span className="block truncate text-xs text-fg-subtle">{connection.account}</span>}
+        </span>
       </button>
       {!connection.healthy && (
         <button

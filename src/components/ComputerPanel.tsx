@@ -23,9 +23,8 @@ export function ComputerPanel() {
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
         {needsBoatKey ? (
           <EmptyState
-            variant="dashed"
             size="sm"
-            media={<Mascot spec={agent.mascot} size={56} state="sleeping" title={agent.name} />}
+            media={<Mascot spec={agent.mascot} size={40} state="sleeping" title={agent.name} />}
             title={`Add a Boat API key to give ${agent.name} a cloud computer to work in.`}
             action={
               <Button size="sm" variant="primary" onClick={() => goToSettings("computer")}>
@@ -42,9 +41,8 @@ export function ComputerPanel() {
           />
         ) : (
           <EmptyState
-            variant="dashed"
             size="sm"
-            media={<Mascot spec={agent.mascot} size={56} state="sleeping" title={agent.name} />}
+            media={<Mascot spec={agent.mascot} size={40} state="sleeping" title={agent.name} />}
             title="No computer yet"
             description={`${agent.name} starts one the first time it needs to run something.`}
           />

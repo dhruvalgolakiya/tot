@@ -159,7 +159,6 @@ export function RepoProfileDialog({ brain, agent, open, onOpenChange }: RepoProf
             </div>
           ) : !form ? (
             <EmptyState
-              variant="dashed"
               icon={<ShieldCheck />}
               title="No profile yet"
               description={`TOT drafts one from the repo's manifests on ${agent.name}'s computer and what agents learned about it. You review it before it's used.`}

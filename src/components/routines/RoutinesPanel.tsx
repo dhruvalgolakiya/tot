@@ -114,7 +114,6 @@ export function RoutinesPanel({ agentId, agentName, onOpenConversation }: Routin
 
       {routines && routines.length === 0 && (
         <EmptyState
-          variant="dashed"
           size="sm"
           description={`Routines let ${agentName} do things on a schedule without you asking — like a morning news brief or a weekly recap. Each run starts a new chat you can check anytime.`}
           action={

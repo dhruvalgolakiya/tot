@@ -5,6 +5,7 @@ import { api, errorMessage } from "../../lib/api";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
+import { LedgerGroup, LedgerHeader } from "../ui/Ledger";
 import { Skeleton } from "../ui/Skeleton";
 import { PluginForm } from "./PluginForm";
 import { PluginRow } from "./PluginRow";
@@ -26,7 +27,7 @@ export function PluginsSettings() {
   const remove = (id: string) => setPlugins((list) => list?.filter((p) => p.id !== id) ?? null);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <p className="text-sm leading-relaxed text-fg-muted">
         TOT's computer, memory and GitHub tools are built in. Add other MCP servers here for more tools, like Linear or your own APIs.
       </p>
@@ -44,25 +45,34 @@ export function PluginsSettings() {
         </Callout>
       )}
 
-      {!plugins && !loadError && (
-        <div aria-busy="true" aria-label="Loading plugins">
-          <Skeleton className="h-20 w-full rounded-xl" />
-        </div>
-      )}
+      <LedgerGroup
+        body="rows"
+        header={
+          <LedgerHeader
+            title="Plugins"
+            meta={plugins ? `${plugins.length}` : undefined}
+            action={
+              <Button size="sm" variant="secondary" onClick={() => setAdding(true)} disabled={!plugins || adding}>
+                <Plus /> Add plugin
+              </Button>
+            }
+          />
+        }
+      >
+        {!plugins && !loadError && (
+          <div className="p-1" aria-busy="true" aria-label="Loading plugins">
+            <Skeleton className="h-14 w-full rounded-lg" />
+          </div>
+        )}
 
-      {plugins && plugins.length === 0 && !adding && (
-        <EmptyState variant="dashed" title="No plugins yet" description="Add an MCP server to give TOT new tools." />
-      )}
+        {plugins && plugins.length === 0 && !adding && (
+          <EmptyState variant="quiet" title="No plugins yet" description="Add an MCP server to give TOT new tools." />
+        )}
 
-      {plugins && plugins.length > 0 && (
-        <ul className="space-y-2">
-          {plugins.map((plugin) => (
-            <PluginRow key={plugin.id} plugin={plugin} onChanged={replace} onDeleted={remove} />
-          ))}
-        </ul>
-      )}
+        {plugins?.map((plugin) => <PluginRow key={plugin.id} plugin={plugin} onChanged={replace} onDeleted={remove} />)}
+      </LedgerGroup>
 
-      {adding ? (
+      {adding && (
         <PluginForm
           existingNames={plugins?.map((p) => p.name) ?? []}
           onCreated={(plugin) => {
@@ -71,10 +81,6 @@ export function PluginsSettings() {
           }}
           onCancel={() => setAdding(false)}
         />
-      ) : (
-        <Button onClick={() => setAdding(true)} disabled={!plugins}>
-          <Plus /> Add plugin
-        </Button>
       )}
     </div>
   );

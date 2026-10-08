@@ -6,6 +6,7 @@ import { api, errorMessage } from "../../lib/api";
 import { useStore } from "../../store";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
+import { LedgerHeader, LedgerPanel } from "../ui/Ledger";
 import { SearchInput } from "../ui/SearchInput";
 import { Skeleton } from "../ui/Skeleton";
 import { PersonaMailModal } from "./PersonaMailModal";
@@ -65,30 +66,27 @@ export function PersonaInbox({ persona }: { persona: Persona }) {
         </Callout>
       )}
 
-      {!mail && !loadError && (
-        <div className="space-y-1.5" aria-busy="true" aria-label="Loading mail">
-          {[0, 1, 2].map((key) => (
-            <Skeleton key={key} className="h-16 w-full rounded-xl" />
-          ))}
-        </div>
-      )}
+      {!loadError && (
+        <LedgerPanel body="rows" header={<LedgerHeader title="Mail" meta={mail ? `${mail.length}` : undefined} />}>
+          {!mail && (
+            <div className="space-y-1 p-1" aria-busy="true" aria-label="Loading mail">
+              {[0, 1, 2].map((key) => (
+                <Skeleton key={key} className="h-14 w-full rounded-lg" />
+              ))}
+            </div>
+          )}
 
-      {mail && mail.length === 0 && (
-        <EmptyState
-          variant="dashed"
-          size="sm"
-          icon={<Inbox />}
-          title={debouncedQuery ? `No mail matches “${debouncedQuery}”.` : "No mail yet"}
-          description={debouncedQuery ? undefined : `New mail to ${persona.email} shows up here.`}
-        />
-      )}
+          {mail && mail.length === 0 && (
+            <EmptyState
+              variant="quiet"
+              icon={<Inbox />}
+              title={debouncedQuery ? `No mail matches “${debouncedQuery}”.` : "No mail yet"}
+              description={debouncedQuery ? undefined : `New mail to ${persona.email} shows up here.`}
+            />
+          )}
 
-      {mail && mail.length > 0 && (
-        <ul className="space-y-0.5">
-          {mail.map((message) => (
-            <PersonaMailRow key={message.id} mail={message} onOpen={() => setSelectedMailId(message.id)} />
-          ))}
-        </ul>
+          {mail && mail.length > 0 && mail.map((message) => <PersonaMailRow key={message.id} mail={message} onOpen={() => setSelectedMailId(message.id)} />)}
+        </LedgerPanel>
       )}
 
       <PersonaMailModal personaId={persona.id} mailId={selectedMailId} onClose={() => setSelectedMailId(null)} onRead={markRowRead} />

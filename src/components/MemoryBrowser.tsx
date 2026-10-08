@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import clsx from "clsx";
 import { Check, Copy } from "lucide-react";
 import type { MemoryRepoSummary } from "@shared/types";
 import { useCopy } from "../hooks/useCopy";
@@ -12,7 +13,7 @@ import { MemoryImport } from "./memory/MemoryImport";
 import { MemorySync } from "./memory/MemorySync";
 import { Callout } from "./ui/Callout";
 import { IconButton } from "./ui/IconButton";
-import { Select } from "./ui/Select";
+import { LedgerGroup, ledgerRowClass } from "./ui/Ledger";
 import { Skeleton } from "./ui/Skeleton";
 import { Tip } from "./ui/Tip";
 
@@ -112,24 +113,34 @@ function RepoHeader({ repos, summary }: { repos: MemoryRepoSummary[]; summary: M
   const whose = summary.kind === "you" ? "Your memory" : `${summary.name}'s memory`;
 
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Select
-          size="sm"
-          value={summary.id}
-          onValueChange={pickMemoryRepo}
-          aria-label="Which memory"
-          className="w-60 max-w-full"
-          options={repos.map((repo) => ({
-            value: repo.id,
-            label: repo.name,
-            description: repo.kind === "you" ? "What you've told any agent" : "What agents learned in this project",
-          }))}
-        />
-        <span className="text-xs text-fg-subtle tabular-nums">
-          {summary.entries} {summary.entries === 1 ? "entry" : "entries"} · {summary.files} {summary.files === 1 ? "file" : "files"}
-        </span>
-      </div>
+    <section className="space-y-4">
+      <LedgerGroup body="rows" title="Repos" count={repos.length}>
+        <ul>
+          {repos.map((repo) => {
+            const current = repo.id === summary.id;
+            return (
+              <li key={repo.id}>
+                <button
+                  type="button"
+                  onClick={() => pickMemoryRepo(repo.id)}
+                  aria-current={current ? "true" : undefined}
+                  className={ledgerRowClass({ interactive: true, className: current ? "bg-selected" : undefined })}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className={clsx("block truncate text-ui", current ? "text-fg" : "text-fg-muted")}>{repo.name}</span>
+                    <span className="block truncate text-xs text-fg-subtle">
+                      {repo.kind === "you" ? "What you've told any agent" : "What agents learned in this project"}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs text-fg-subtle tabular-nums">
+                    {repo.entries} {repo.entries === 1 ? "entry" : "entries"}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </LedgerGroup>
       <p className="text-xs leading-relaxed text-fg-subtle">
         {whose} is a git repo at <code className="font-mono text-fg-muted">{summary.path}</code>
         {summary.kind === "project" ? ", on this device only" : ""}. Claude Code, Codex and Cursor can read it too:

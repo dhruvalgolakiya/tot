@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
-import clsx from "clsx";
-import { ChevronRight, SquareKanban } from "lucide-react";
+import { SquareKanban } from "lucide-react";
 import type { MissionOverview } from "@shared/types";
 import { useNow } from "../../hooks/useNow";
 import { boardSections, SECTION_TITLES, type MissionSection } from "../../lib/mission";
@@ -10,9 +9,11 @@ import { navigateToMission, useStore } from "../../store";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
 import { Kbd } from "../ui/Kbd";
+import { LedgerHeader, LedgerPanel, LedgerSection } from "../ui/Ledger";
+import { PageHeader } from "../ui/PageHeader";
 import { Select } from "../ui/Select";
 import { Skeleton } from "../ui/Skeleton";
-import { MissionCard } from "./MissionCard";
+import { MissionRow } from "./MissionRow";
 import { useMissionOverview } from "./useMissionOverview";
 
 /**
@@ -29,18 +30,23 @@ const DESCRIPTIONS: Partial<Record<MissionSection, string>> = {
 export function MissionControl() {
   const projectId = useStore((s) => s.missionProjectId);
   const { state, reload: load } = useMissionOverview(projectId);
+  const overview = state.status === "ready" ? state.overview : null;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl px-4 pt-20 pb-12 sm:px-6 md:pt-24">
-        <BoardHeader projectId={projectId} overview={state.status === "ready" ? state.overview : null} />
-        {state.status === "loading" ? (
-          <div aria-busy="true" aria-label="Loading tasks" className="mt-8 grid gap-2 sm:grid-cols-2">
-            {[0, 1, 2, 3].map((key) => (
-              <Skeleton key={key} className="h-28 rounded-xl" />
-            ))}
-          </div>
-        ) : state.status === "error" ? (
+        <PageHeader
+          title="Mission control"
+          description={
+            <span className="flex items-center gap-2">
+              Every task from every agent, and where it stands.
+              <span className="hidden md:inline-flex">
+                <Kbd keys={["mod", "shift", "M"]} />
+              </span>
+            </span>
+          }
+        />
+        {state.status === "error" ? (
           <Callout
             tone="danger"
             className="mt-8"
@@ -53,14 +59,24 @@ export function MissionControl() {
             Couldn't load your tasks. {state.message}
           </Callout>
         ) : (
-          <Board overview={state.overview} />
+          <LedgerPanel className="mt-8" header={<BoardHeader projectId={projectId} overview={overview} />}>
+            {overview ? (
+              <Board overview={overview} />
+            ) : (
+              <div aria-busy="true" aria-label="Loading tasks" className="space-y-1 p-2">
+                {[0, 1, 2, 3].map((key) => (
+                  <Skeleton key={key} className="h-10 rounded-lg" />
+                ))}
+              </div>
+            )}
+          </LedgerPanel>
         )}
       </div>
     </div>
   );
 }
 
-/** Title, one line of counts, and the project filter. */
+/** The board panel's header row: what's in flight, in one line, and the project filter. */
 function BoardHeader({ projectId, overview }: { projectId: string | null; overview: MissionOverview | null }) {
   const projects = useProjects((s) => s.projects);
   const conversations = useStore((s) => s.conversations);
@@ -83,25 +99,20 @@ function BoardHeader({ projectId, overview }: { projectId: string | null; overvi
   }, [overview, conversations]);
 
   return (
-    <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-      <div className="min-w-0">
-        <h1 className="text-title text-fg-strong">Mission control</h1>
-        <p className="mt-1 flex items-center gap-2 text-sm text-fg-muted">
-          {counts === null ? <span>Every task, and where it stands</span> : counts.length ? counts.join(" · ") : "Nothing in flight"}
-          <span className="hidden md:inline-flex">
-            <Kbd keys={["mod", "shift", "M"]} />
-          </span>
-        </p>
-      </div>
-      <Select
-        size="sm"
-        aria-label="Project"
-        value={projectId ?? ""}
-        onValueChange={(value) => navigateToMission(value || null)}
-        options={options}
-        className="w-48 max-sm:w-full"
-      />
-    </header>
+    <LedgerHeader
+      title={projectId ? (projects.find((p) => p.id === projectId)?.name ?? "Project") : "All tasks"}
+      meta={counts === null ? "Loading…" : counts.length ? counts.join(" · ") : "Nothing in flight"}
+      action={
+        <Select
+          size="sm"
+          aria-label="Project"
+          value={projectId ?? ""}
+          onValueChange={(value) => navigateToMission(value || null)}
+          options={options}
+          className="w-44"
+        />
+      }
+    />
   );
 }
 
@@ -121,56 +132,46 @@ function Board({ overview }: { overview: MissionOverview }) {
   if (!tasks.length) {
     return (
       <EmptyState
-        variant="dashed"
-        className="mt-8"
+        variant="quiet"
+        className="py-3"
         icon={<SquareKanban />}
         title="No tasks here yet"
-        description="Ask for real work in a chat — the agent starts a task when it needs one, or type /best-of to compare two attempts. They show up here while they work, and until you land them."
+        description="Ask for real work in a chat (the agent starts a task when it needs one), or type /best-of to compare two attempts. Tasks show up here while they work, and until you land them."
       />
     );
   }
 
-  const grid = (list: TaskConversation[]) => (
-    <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-      {list.map((task) => (
-        <li key={task.id} className="min-w-0">
-          <MissionCard task={task} agent={agents.find((a) => a.id === task.agentId)} overlaps={overlaps.get(task.id) ?? []} now={now} />
-        </li>
-      ))}
-    </ul>
-  );
+  const rows = (list: TaskConversation[]) =>
+    list.map((task) => <MissionRow key={task.id} task={task} agent={agents.find((a) => a.id === task.agentId)} overlaps={overlaps.get(task.id) ?? []} now={now} />);
 
   return (
-    <div className="mt-8 space-y-8">
+    <>
       {(["needs-you", "working", "ready"] as const).map(
         (key) =>
           sections[key].length > 0 && (
-            <section key={key} aria-labelledby={`mission-${key}`}>
-              <h2 id={`mission-${key}`} className="flex items-baseline gap-2 text-sm font-semibold text-fg">
-                {SECTION_TITLES[key]}
-                <span className="text-xs font-normal text-fg-subtle tabular-nums">{sections[key].length}</span>
-              </h2>
-              {DESCRIPTIONS[key] && <p className="mt-0.5 text-xs leading-relaxed text-fg-subtle">{DESCRIPTIONS[key]}</p>}
-              {grid(sections[key])}
-            </section>
+            <LedgerSection
+              key={key}
+              layout="stacked"
+              label={SECTION_TITLES[key]}
+              count={sections[key].length}
+              tone={key === "needs-you" ? "warning" : "neutral"}
+              description={DESCRIPTIONS[key]}
+            >
+              {rows(sections[key])}
+            </LedgerSection>
           ),
       )}
       {sections.landed.length > 0 && (
-        <section aria-labelledby="mission-landed">
-          <button
-            id="mission-landed"
-            type="button"
-            aria-expanded={showLanded}
-            onClick={() => setShowLanded((value) => !value)}
-            className="-ml-2 flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-fg transition-colors hover:bg-hover"
-          >
-            <ChevronRight className={clsx("size-3.5 text-fg-subtle transition-transform", showLanded && "rotate-90")} />
-            {SECTION_TITLES.landed}
-            <span className="text-xs font-normal text-fg-subtle tabular-nums">{sections.landed.length}</span>
-          </button>
-          {showLanded && grid(sections.landed)}
-        </section>
+        <LedgerSection
+          layout="stacked"
+          label={SECTION_TITLES.landed}
+          count={sections.landed.length}
+          collapsed={!showLanded}
+          onToggle={() => setShowLanded((value) => !value)}
+        >
+          {rows(sections.landed)}
+        </LedgerSection>
       )}
-    </div>
+    </>
   );
 }

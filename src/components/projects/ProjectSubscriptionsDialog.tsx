@@ -118,7 +118,6 @@ export function ProjectSubscriptionsDialog({ project, open, onOpenChange }: Prop
               )}
               {schedules?.length === 0 && (
                 <EmptyState
-                  variant="dashed"
                   size="sm"
                   description="Nothing scheduled. For example, every weekday at 9:00: what's stuck?"
                   action={

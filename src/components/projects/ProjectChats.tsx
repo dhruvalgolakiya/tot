@@ -47,7 +47,7 @@ export function ProjectChats({ project }: { project: Project }) {
           ))}
         </div>
       ) : list.length === 0 ? (
-        <EmptyState size="sm" variant="dashed" className="mt-2" description={`Chats and tasks in ${project.name} show up here, from every agent.`} />
+        <EmptyState variant="quiet" className="mt-1" description={`Chats and tasks in ${project.name} show up here, from every agent.`} />
       ) : (
         <ul className="space-y-px">
           {list.map((conversation) => (

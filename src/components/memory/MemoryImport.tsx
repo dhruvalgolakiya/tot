@@ -1,12 +1,11 @@
 import { useState } from "react";
-import clsx from "clsx";
 import type { MemoryImportStatus, MemorySkippedMemory } from "@shared/types";
 import { api } from "../../lib/api";
 import { notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
-import { cardClass } from "../ui/Card";
+import { LedgerGroup, ledgerRowClass } from "../ui/Ledger";
 
 const day = (time: number) => new Date(time).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
@@ -42,13 +41,15 @@ export function MemoryImport({ status, onChanged }: { status: MemoryImportStatus
         </Callout>
       )}
       {count > 0 && (
-        <div className={cardClass({ padding: "none" })}>
-          <p className="px-4 py-3 text-sm text-fg">
-            {count === 1 ? "1 memory wasn't imported because it looks like a secret." : `${count} memories weren't imported because they look like secrets.`}
-          </p>
-          <ul className="border-t border-hairline">
-            {status.skipped.map((item, index) => (
-              <li key={item.id} className={clsx("flex items-start gap-3 px-4 py-2.5", index > 0 && "border-t border-hairline")}>
+        <LedgerGroup body="rows"
+          title="Skipped"
+          count={count}
+         
+          description={count === 1 ? "1 memory wasn't imported because it looks like a secret." : `${count} memories weren't imported because they look like secrets.`}
+        >
+          <ul>
+            {status.skipped.map((item) => (
+              <li key={item.id} className={ledgerRowClass({ className: "group items-start" })}>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm leading-relaxed text-fg [overflow-wrap:anywhere]">{item.text}</p>
                   <p className="mt-0.5 text-xs text-fg-subtle tabular-nums">
@@ -58,7 +59,13 @@ export function MemoryImport({ status, onChanged }: { status: MemoryImportStatus
                 </div>
                 <div className="flex h-7 shrink-0 items-center gap-1">
                   {item.importable && (
-                    <Button size="sm" variant="ghost" disabled={busy === item.id} onClick={() => void act(item.id, () => api.importSkippedMemory(item.id))}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy === item.id}
+                      onClick={() => void act(item.id, () => api.importSkippedMemory(item.id))}
+                      className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                    >
                       Import anyway
                     </Button>
                   )}
@@ -69,7 +76,7 @@ export function MemoryImport({ status, onChanged }: { status: MemoryImportStatus
               </li>
             ))}
           </ul>
-        </div>
+        </LedgerGroup>
       )}
       <ConfirmDialog
         open={Boolean(dropping)}

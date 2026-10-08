@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import clsx from "clsx";
-import { Check, ChevronDown, Copy, ExternalLink } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
+import { Check, ChevronDown, Copy, Ellipsis, ExternalLink, Unplug } from "lucide-react";
 import type { GitHubDeviceStart } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { useCopy } from "../../hooks/useCopy";
@@ -9,14 +10,13 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
 import { buttonClass } from "../ui/buttonStyles";
 import { Callout } from "../ui/Callout";
-import { cardClass } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { IconButton } from "../ui/IconButton";
+import { LedgerField, LedgerGroup, LedgerHeader } from "../ui/Ledger";
 import { SecretInput } from "../ui/SecretInput";
 import { Skeleton } from "../ui/Skeleton";
 import { Switch } from "../ui/Switch";
 import { Tip } from "../ui/Tip";
-import { SettingRow } from "./SettingRow";
 
 const TOKEN_URL = "https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=TOT";
 
@@ -151,28 +151,41 @@ export function GitHubSettings() {
     );
   }
 
-  // Connected: avatar, who it's connected as, the writes switch, and a quiet Disconnect.
+  // Connected: avatar, who it's connected as, the writes switch, and Disconnect in the menu.
   if (github.connection && !reconnecting) {
     const { connection, problem, allowWrites } = github;
     return (
-      <div className={cardClass()}>
-        <div className="flex items-center gap-3">
-          <img src={connection.avatarUrl} alt="" className="size-10 shrink-0 rounded-full" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-fg">{connection.name ?? connection.login}</p>
-            <p className="truncate text-xs text-fg-subtle">@{connection.login}</p>
-          </div>
-        </div>
-
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <p className="text-xs text-fg-subtle">Connected with {SOURCE_LABELS[connection.source]}</p>
-          <button type="button" onClick={() => setConfirmOpen(true)} className="link-muted shrink-0 text-xs">
-            Disconnect
-          </button>
-        </div>
-
+      <LedgerGroup
+        header={
+          <LedgerHeader
+            title={
+              <span className="flex items-center gap-2.5">
+                <img src={connection.avatarUrl} alt="" className="size-6 shrink-0 rounded-full" />
+                {connection.name ?? connection.login}
+              </span>
+            }
+            meta={`@${connection.login} · Connected with ${SOURCE_LABELS[connection.source]}`}
+            action={
+              <DropdownMenu.Root modal={false}>
+                <DropdownMenu.Trigger asChild>
+                  <IconButton label="More GitHub options" size="sm">
+                    <Ellipsis />
+                  </IconButton>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content align="end" sideOffset={4} className="menu w-44">
+                    <DropdownMenu.Item className="menu-item menu-item-danger" onSelect={() => setConfirmOpen(true)}>
+                      <Unplug className="size-4" /> Disconnect
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            }
+          />
+        }
+      >
         {problem && (
-          <div className="mt-3">
+          <div className="px-4 py-3">
             <Callout
               tone="warning"
               action={
@@ -186,21 +199,19 @@ export function GitHubSettings() {
           </div>
         )}
 
-        <div className="mt-4 border-t border-hairline pt-1">
-          <SettingRow
-            htmlFor="github-allow-writes"
-            title="Agents can push and open pull requests"
-            description="Off: GitHub tools are read-only and pushes are blocked. On: agents work on branches and open pull requests when you ask; merging and pushing to the main branch stay off-limits unless you ask. For a hard read-only guarantee, connect a read-only token."
-            control={
-              <Switch
-                id="github-allow-writes"
-                checked={allowWrites}
-                onCheckedChange={(checked) => void setWrites(checked)}
-                disabled={writesSaving}
-              />
-            }
-          />
-        </div>
+        <LedgerField
+          htmlFor="github-allow-writes"
+          title="Agents can push and open pull requests"
+          description="Off: GitHub tools are read-only and pushes are blocked. On: agents work on branches and open pull requests when you ask; merging and pushing to the main branch stay off-limits unless you ask. For a hard read-only guarantee, connect a read-only token."
+          control={
+            <Switch
+              id="github-allow-writes"
+              checked={allowWrites}
+              onCheckedChange={(checked) => void setWrites(checked)}
+              disabled={writesSaving}
+            />
+          }
+        />
 
         <ConfirmDialog
           open={confirmOpen}
@@ -210,7 +221,7 @@ export function GitHubSettings() {
           confirmLabel="Disconnect"
           onConfirm={() => void disconnect()}
         />
-      </div>
+      </LedgerGroup>
     );
   }
 
@@ -221,136 +232,142 @@ export function GitHubSettings() {
   const hasOthers = oauthIsOther || tokenIsOther;
 
   return (
-    <div className={cardClass()}>
-      {mode === "token" && (
-        <form onSubmit={(event) => void submitToken(event)} className="space-y-3">
-          <Field
-            label="Personal access token"
-            htmlFor="github-token"
-            hint={
-              <>
-                <a href={TOKEN_URL} target="_blank" rel="noopener noreferrer" className="link">
-                  Create a classic token
-                </a>{" "}
-                with these scopes, or paste a fine-grained token.
-              </>
-            }
-          >
-            <SecretInput
-              id="github-token"
-              value={tokenValue}
-              onChange={(value) => {
-                setTokenValue(value);
-                setTokenError(null);
-              }}
-              saved={false}
-              cleared={false}
-              onClearedChange={() => {}}
-              placeholder="ghp_… or github_pat_…"
-            />
-          </Field>
-          {tokenError && <Callout tone="danger">{tokenError}</Callout>}
-          <div className="flex items-center gap-2">
-            <Button type="submit" variant="primary" size="sm" disabled={!tokenValue.trim() || busy}>
-              {busy ? "Connecting…" : "Connect"}
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={resetConnectUi} disabled={busy}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      )}
-
-      {mode === "device" && (
-        <div className="space-y-3">
-          {device ? (
-            <>
-              <p className="text-xs text-fg-subtle">Enter this code at GitHub to connect your account:</p>
-              <div className="flex items-center gap-2">
-                <span className="flex-1 rounded-xl border border-edge bg-fill-subtle px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-fg">
-                  {device.userCode}
-                </span>
-                <Tip content={copied ? "Copied" : "Copy code"}>
-                  <IconButton label="Copy code" onClick={() => void copy(device.userCode)}>
-                    {copied ? <Check /> : <Copy />}
-                  </IconButton>
-                </Tip>
-              </div>
-              <div className="flex items-center gap-2">
-                <a href={device.verificationUri} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm")}>
-                  <ExternalLink /> Open GitHub
-                </a>
-                <Button type="button" variant="ghost" size="sm" onClick={resetConnectUi}>
-                  Cancel
-                </Button>
-              </div>
-              <p className="text-xs text-fg-subtle">Waiting for you to approve…</p>
-            </>
-          ) : (
-            <>
-              {deviceMessage && <Callout tone="warning">{deviceMessage}</Callout>}
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="secondary" size="sm" onClick={() => void startDevice()} disabled={busy}>
-                  Try again
-                </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={resetConnectUi}>
-                  Cancel
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {mode === "idle" && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            {primary === "cli" && github.cli && (
-              <Button variant="primary" size="sm" onClick={() => void connectCli()} disabled={busy}>
-                {busy ? "Connecting…" : `Connect as @${github.cli.login}`}
+    <LedgerGroup body="fields">
+      <div className="p-4">
+        {mode === "token" && (
+          <form onSubmit={(event) => void submitToken(event)} className="space-y-3">
+            <Field
+              label="Personal access token"
+              htmlFor="github-token"
+              hint={
+                <>
+                  <a href={TOKEN_URL} target="_blank" rel="noopener noreferrer" className="link">
+                    Create a classic token
+                  </a>{" "}
+                  with these scopes, or paste a fine-grained token.
+                </>
+              }
+            >
+              <SecretInput
+                id="github-token"
+                value={tokenValue}
+                onChange={(value) => {
+                  setTokenValue(value);
+                  setTokenError(null);
+                }}
+                saved={false}
+                cleared={false}
+                onClearedChange={() => {}}
+                placeholder="ghp_… or github_pat_…"
+              />
+            </Field>
+            {tokenError && <Callout tone="danger">{tokenError}</Callout>}
+            <div className="flex items-center gap-2">
+              <Button type="submit" variant="primary" size="sm" disabled={!tokenValue.trim() || busy}>
+                {busy ? "Connecting…" : "Connect"}
               </Button>
-            )}
-            {primary === "oauth" && (
-              <Button variant="primary" size="sm" onClick={() => void startDevice()} disabled={busy}>
-                Sign in with GitHub
-              </Button>
-            )}
-            {primary === "token" && (
-              <Button variant="primary" size="sm" onClick={() => setMode("token")} disabled={busy}>
-                Use a token
-              </Button>
-            )}
-            {reconnecting && (
-              <Button type="button" variant="ghost" size="sm" onClick={resetConnectUi}>
+              <Button type="button" variant="ghost" size="sm" onClick={resetConnectUi} disabled={busy}>
                 Cancel
               </Button>
+            </div>
+          </form>
+        )}
+
+        {mode === "device" && (
+          <div className="space-y-3">
+            {device ? (
+              <>
+                <p className="text-xs text-fg-subtle">Enter this code at GitHub to connect your account:</p>
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 rounded-xl border border-edge bg-fill-subtle px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-fg">
+                    {device.userCode}
+                  </span>
+                  <Tip content={copied ? "Copied" : "Copy code"}>
+                    <IconButton label="Copy code" onClick={() => void copy(device.userCode)}>
+                      {copied ? <Check /> : <Copy />}
+                    </IconButton>
+                  </Tip>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a href={device.verificationUri} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm")}>
+                    <ExternalLink /> Open GitHub
+                  </a>
+                  <Button type="button" variant="ghost" size="sm" onClick={resetConnectUi}>
+                    Cancel
+                  </Button>
+                </div>
+                <p className="text-xs text-fg-subtle">Waiting for you to approve…</p>
+              </>
+            ) : (
+              <>
+                {deviceMessage && <Callout tone="warning">{deviceMessage}</Callout>}
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="secondary" size="sm" onClick={() => void startDevice()} disabled={busy}>
+                    Try again
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={resetConnectUi}>
+                    Cancel
+                  </Button>
+                </div>
+              </>
             )}
           </div>
+        )}
 
-          {hasOthers && (
-            <div>
-              <button type="button" onClick={() => setShowOptions((value) => !value)} className="link-muted flex items-center gap-1 text-xs">
-                <ChevronDown className={clsx("size-3.5 transition-transform", showOptions && "rotate-180")} />
-                Other ways to connect
-              </button>
-              {showOptions && (
-                <div className="mt-2 flex flex-col items-start gap-1.5 border-l border-hairline pl-3">
-                  {oauthIsOther && (
-                    <button type="button" onClick={() => void startDevice()} disabled={busy} className="link-muted text-xs">
-                      Sign in with GitHub
-                    </button>
-                  )}
-                  {tokenIsOther && (
-                    <button type="button" onClick={() => setMode("token")} className="link-muted text-xs">
-                      Use a token
-                    </button>
-                  )}
-                </div>
+        {mode === "idle" && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
+              <div className="min-w-0 flex-1 basis-56">
+                <p className="text-sm font-medium text-fg">Connect GitHub</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-fg-subtle">Agents act as you: issues, pull requests and private repos.</p>
+              </div>
+              {primary === "cli" && github.cli && (
+                <Button variant="primary" size="sm" onClick={() => void connectCli()} disabled={busy}>
+                  {busy ? "Connecting…" : `Connect as @${github.cli.login}`}
+                </Button>
+              )}
+              {primary === "oauth" && (
+                <Button variant="primary" size="sm" onClick={() => void startDevice()} disabled={busy}>
+                  Sign in with GitHub
+                </Button>
+              )}
+              {primary === "token" && (
+                <Button variant="primary" size="sm" onClick={() => setMode("token")} disabled={busy}>
+                  Use a token
+                </Button>
+              )}
+              {reconnecting && (
+                <Button type="button" variant="ghost" size="sm" onClick={resetConnectUi}>
+                  Cancel
+                </Button>
               )}
             </div>
-          )}
-        </div>
-      )}
-    </div>
+
+            {hasOthers && (
+              <div>
+                <button type="button" onClick={() => setShowOptions((value) => !value)} className="link-muted flex items-center gap-1 text-xs">
+                  <ChevronDown className={clsx("size-3.5 transition-transform", showOptions && "rotate-180")} />
+                  Other ways to connect
+                </button>
+                {showOptions && (
+                  <div className="mt-2 flex flex-col items-start gap-1.5 pl-5">
+                    {oauthIsOther && (
+                      <button type="button" onClick={() => void startDevice()} disabled={busy} className="link-muted text-xs">
+                        Sign in with GitHub
+                      </button>
+                    )}
+                    {tokenIsOther && (
+                      <button type="button" onClick={() => setMode("token")} className="link-muted text-xs">
+                        Use a token
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </LedgerGroup>
   );
 }

@@ -5,7 +5,8 @@ import type { AppRule } from "@shared/types";
 import { api } from "../../lib/api";
 import { humanizeAppTool, RULE_ACTION_LABELS } from "../../lib/apps";
 import { notifyError } from "../../store";
-import { Badge } from "../ui/Badge";
+import { Chip } from "../ui/Chip";
+import { ledgerRowClass } from "../ui/Ledger";
 
 type AppRuleRowProps = {
   rule: AppRule;
@@ -31,10 +32,10 @@ export function AppRuleRow({ rule, appId, onChanged }: AppRuleRowProps) {
   }
 
   return (
-    <li className="flex items-center gap-3 px-3.5 py-2.5">
+    <div className={ledgerRowClass({ className: "justify-between gap-3" })}>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-fg">{humanizeAppTool(rule.tool)}</p>
-        {rule.description && <p className="mt-0.5 truncate text-xs text-fg-subtle">{rule.description}</p>}
+        <p className="truncate text-ui text-fg">{humanizeAppTool(rule.tool)}</p>
+        {rule.description && <p className="truncate text-xs text-fg-subtle">{rule.description}</p>}
       </div>
       <DropdownMenu.Root modal={false}>
         <DropdownMenu.Trigger asChild>
@@ -44,7 +45,7 @@ export function AppRuleRow({ rule, appId, onChanged }: AppRuleRowProps) {
             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-edge bg-fill-subtle px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-hover disabled:opacity-50"
           >
             <span className={rule.isDefault ? "text-fg-subtle" : "text-fg"}>{RULE_ACTION_LABELS[rule.action]}</span>
-            {rule.isDefault && <Badge tone="neutral">default</Badge>}
+            {rule.isDefault && <Chip tone="neutral">default</Chip>}
             <ChevronDown className="size-3.5 text-fg-subtle" />
           </button>
         </DropdownMenu.Trigger>
@@ -71,6 +72,6 @@ export function AppRuleRow({ rule, appId, onChanged }: AppRuleRowProps) {
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
-    </li>
+    </div>
   );
 }

@@ -5,12 +5,12 @@ import type { SettingsSectionProps } from "../../lib/settings";
 import { connectProvider, refreshProviders, useStore } from "../../store";
 import { Button } from "../ui/Button";
 import { Field } from "../ui/Field";
+import { LedgerField } from "../ui/Ledger";
 import { RadioCards } from "../ui/RadioCards";
 import { SecretInput } from "../ui/SecretInput";
 import { Switch } from "../ui/Switch";
 import { TierSettings } from "../orchestration/TierSettings";
 import { ProviderCard } from "./ProviderCard";
-import { SettingRow } from "./SettingRow";
 
 export function ModelsSettings({ draft, onChange, secrets, onSecretsChange }: SettingsSectionProps) {
   const providers = useStore((s) => s.providers);
@@ -26,43 +26,49 @@ export function ModelsSettings({ draft, onChange, secrets, onSecretsChange }: Se
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <p className="text-sm leading-relaxed text-fg-muted">
-          TOT runs on the subscriptions you already have. Connect one or both.
-        </p>
+    <div className="space-y-8">
+      <div className="flex items-center justify-between gap-4 px-1">
+        <p className="text-xs leading-relaxed text-fg-subtle">TOT runs on the subscriptions you already have. Connect one or both.</p>
         <Button size="sm" variant="ghost" onClick={() => void refresh()} disabled={refreshing}>
           <RefreshCw className={clsx(refreshing && "animate-spin")} /> Refresh
         </Button>
       </div>
 
       <ProviderCard id="claude" provider={claude}>
-        <RadioCards
-          label="Claude sign-in"
-          value={draft.claude.authMode}
-          onValueChange={(authMode) => onChange({ ...draft, claude: { ...draft.claude, authMode } })}
-          className="sm:grid-cols-2"
-          options={[
-            { value: "subscription", label: "Subscription", description: "Use the Claude Code login on this machine." },
-            { value: "api-key", label: "API key", description: "Pay per token with an Anthropic API key." },
-          ]}
-        />
-        {draft.claude.authMode === "api-key" && (
-          <Field label="Anthropic API key" htmlFor="anthropic-key">
-            <SecretInput
-              id="anthropic-key"
-              placeholder="sk-ant-…"
-              value={secrets.anthropicApiKey}
-              onChange={(anthropicApiKey) =>
-                onSecretsChange((s) => ({ ...s, anthropicApiKey, clearAnthropicApiKey: false }))
-              }
-              saved={draft.claude.apiKeySet}
-              cleared={secrets.clearAnthropicApiKey}
-              onClearedChange={(clearAnthropicApiKey) => onSecretsChange((s) => ({ ...s, clearAnthropicApiKey }))}
+        <LedgerField
+          stacked
+          title="Sign-in"
+          description="How TOT reaches Claude."
+          control={
+            <RadioCards
+              label="Claude sign-in"
+              value={draft.claude.authMode}
+              onValueChange={(authMode) => onChange({ ...draft, claude: { ...draft.claude, authMode } })}
+              className="sm:grid-cols-2"
+              options={[
+                { value: "subscription", label: "Subscription", description: "Use the Claude Code login on this machine." },
+                { value: "api-key", label: "API key", description: "Pay per token with an Anthropic API key." },
+              ]}
             />
-          </Field>
-        )}
-        <SettingRow
+          }
+        >
+          {draft.claude.authMode === "api-key" && (
+            <Field label="Anthropic API key" htmlFor="anthropic-key" className="mt-4">
+              <SecretInput
+                id="anthropic-key"
+                placeholder="sk-ant-…"
+                value={secrets.anthropicApiKey}
+                onChange={(anthropicApiKey) =>
+                  onSecretsChange((s) => ({ ...s, anthropicApiKey, clearAnthropicApiKey: false }))
+                }
+                saved={draft.claude.apiKeySet}
+                cleared={secrets.clearAnthropicApiKey}
+                onClearedChange={(clearAnthropicApiKey) => onSecretsChange((s) => ({ ...s, clearAnthropicApiKey }))}
+              />
+            </Field>
+          )}
+        </LedgerField>
+        <LedgerField
           htmlFor="claude-connectors"
           title="Use my claude.ai connectors"
           description="Let Claude use the connectors (Gmail, Drive, …) connected to your claude.ai account."
@@ -88,7 +94,7 @@ export function ModelsSettings({ draft, onChange, secrets, onSecretsChange }: Se
           ) : null
         }
       >
-        <SettingRow
+        <LedgerField
           htmlFor="chatgpt-apps"
           title="Use my ChatGPT connected apps"
           description="Let ChatGPT use the apps and connectors on your ChatGPT account, when supported."

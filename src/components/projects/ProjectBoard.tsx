@@ -1,22 +1,22 @@
 import { useMemo, useState } from "react";
-import clsx from "clsx";
-import { ChevronRight, SquareKanban } from "lucide-react";
+import { SquareKanban } from "lucide-react";
 import type { Project } from "@shared/types";
 import { useNow } from "../../hooks/useNow";
 import { boardSections, SECTION_TITLES } from "../../lib/mission";
 import { isTask, type TaskConversation } from "../../lib/tasks";
 import { navigateToMission, useStore } from "../../store";
-import { MissionCard } from "../mission/MissionCard";
+import { MissionRow } from "../mission/MissionRow";
 import { useMissionOverview } from "../mission/useMissionOverview";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
+import { LedgerPanel, LedgerSection } from "../ui/Ledger";
 import { Skeleton } from "../ui/Skeleton";
 import { ProjectSignals } from "./ProjectSignals";
 
 /**
  * A project's board, compact (roadmap module 11, lane D): mission control (module 09) for one project in
  * one column, beside its Lead. Needs you, Working and Ready to land (in the order to land), then what
- * landed today, folded. Live like the board page: the cards read each task from the store. Below them, what
+ * landed today, folded. Live like the board page: the rows read each task from the store. Below them, what
  * the Lead heard about on its own (module 12: ProjectSignals).
  */
 export function ProjectBoard({ project }: { project: Project }) {
@@ -35,9 +35,9 @@ export function ProjectBoard({ project }: { project: Project }) {
 
   if (state.status === "loading") {
     return (
-      <div aria-busy="true" aria-label="Loading tasks" className="space-y-2">
+      <div aria-busy="true" aria-label="Loading tasks" className="space-y-1 rounded-2xl border border-hairline p-2">
         {[0, 1, 2].map((key) => (
-          <Skeleton key={key} className="h-24 rounded-xl" />
+          <Skeleton key={key} className="h-10 rounded-lg" />
         ))}
       </div>
     );
@@ -57,58 +57,53 @@ export function ProjectBoard({ project }: { project: Project }) {
     );
   }
 
-  const cards = (list: TaskConversation[]) => (
-    <ul className="mt-2 space-y-2">
-      {list.map((task) => (
-        <li key={task.id} className="min-w-0">
-          <MissionCard task={task} agent={agents.find((a) => a.id === task.agentId)} overlaps={overlaps.get(task.id) ?? []} now={now} />
-        </li>
-      ))}
-    </ul>
-  );
+  const rows = (list: TaskConversation[]) =>
+    list.map((task) => (
+      <MissionRow key={task.id} compact task={task} agent={agents.find((a) => a.id === task.agentId)} overlaps={overlaps.get(task.id) ?? []} now={now} />
+    ));
 
   return (
-    <div className="space-y-6">
-      {tasks.length === 0 ? (
-        <EmptyState
-          size="sm"
-          variant="dashed"
-          icon={<SquareKanban />}
-          title="Nothing on the board"
-          description="Ask the Lead to plan the work. Tasks show here while they work, and until they land."
-        />
-      ) : (
-        (["needs-you", "working", "ready"] as const).map(
-          (key) =>
-            sections[key].length > 0 && (
-              <section key={key} aria-labelledby={`board-${key}`}>
-                <h3 id={`board-${key}`} className="flex items-baseline gap-2 text-ui font-semibold text-fg">
-                  {SECTION_TITLES[key]}
-                  <span className="text-xs font-normal text-fg-subtle tabular-nums">{sections[key].length}</span>
-                </h3>
-                {cards(sections[key])}
-              </section>
-            ),
-        )
-      )}
-      {sections.landed.length > 0 && (
-        <section aria-labelledby="board-landed">
-          <button
-            id="board-landed"
-            type="button"
-            aria-expanded={showLanded}
-            onClick={() => setShowLanded((value) => !value)}
-            className="-ml-2 flex h-8 items-center gap-1.5 rounded-lg px-2 text-ui font-semibold text-fg transition-colors hover:bg-hover"
+    <div className="space-y-4">
+      <LedgerPanel aria-label="Board">
+        {tasks.length === 0 ? (
+          <EmptyState
+            variant="quiet"
+            icon={<SquareKanban />}
+            title="Nothing on the board"
+            description="Ask the Lead to plan the work. Tasks show here while they work, and until they land."
+          />
+        ) : (
+          (["needs-you", "working", "ready"] as const).map(
+            (key) =>
+              sections[key].length > 0 && (
+                <LedgerSection
+                  key={key}
+                  layout="stacked"
+                  as="h3"
+                  label={SECTION_TITLES[key]}
+                  count={sections[key].length}
+                  tone={key === "needs-you" ? "warning" : "neutral"}
+                >
+                  {rows(sections[key])}
+                </LedgerSection>
+              ),
+          )
+        )}
+        {sections.landed.length > 0 && (
+          <LedgerSection
+            layout="stacked"
+            as="h3"
+            label={SECTION_TITLES.landed}
+            count={sections.landed.length}
+            collapsed={!showLanded}
+            onToggle={() => setShowLanded((value) => !value)}
           >
-            <ChevronRight className={clsx("size-3.5 text-fg-subtle transition-transform", showLanded && "rotate-90")} />
-            {SECTION_TITLES.landed}
-            <span className="text-xs font-normal text-fg-subtle tabular-nums">{sections.landed.length}</span>
-          </button>
-          {showLanded && cards(sections.landed)}
-        </section>
-      )}
+            {rows(sections.landed)}
+          </LedgerSection>
+        )}
+      </LedgerPanel>
       <ProjectSignals project={project} />
-      <button type="button" onClick={() => navigateToMission(project.id)} className="link-muted text-xs">
+      <button type="button" onClick={() => navigateToMission(project.id)} className="link-muted px-2 text-xs">
         Open mission control
       </button>
     </div>

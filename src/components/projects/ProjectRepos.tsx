@@ -60,7 +60,7 @@ export function ProjectRepos({ project }: { project: Project }) {
 
   // A paired device's TOT from before module 11 doesn't list a project's repos.
   if (!project.repos) {
-    return <EmptyState size="sm" variant="dashed" description="Update TOT on this project's device to work with several repos here." />;
+    return <EmptyState variant="quiet" description="Update TOT on this project's device to work with several repos here." />;
   }
 
   return (
@@ -81,8 +81,7 @@ export function ProjectRepos({ project }: { project: Project }) {
 
       {repos.length === 0 ? (
         <EmptyState
-          size="sm"
-          variant="dashed"
+          variant="quiet"
           icon={<FolderGit />}
           title="No repos yet"
           description="Add a GitHub repo or a folder on your Mac, and tasks in this project can work on its code."

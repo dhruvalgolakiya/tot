@@ -139,11 +139,13 @@ Reduced motion is handled globally.
 | `SearchInput` | input props + `compact`, `trailing`, `containerClassName` | icon included; behavior stays with the caller |
 | `Switch`, `RadioCards`, `SecretInput` | unchanged APIs | |
 | `Card`, `cardClass()` | `padding` none · sm · md, `interactive` | sections: `border-t border-hairline` |
-| `PageHeader`, `SectionHeader` | `title`, `description`, `action`; section `as` h2/h3 | |
+| `PageHeader`, `SectionHeader` | `title`, `description`, `action`; section `as` h2/h3 | page title is the landing's: 24px tight semibold + one muted lede line |
+| `Ledger`, `LedgerPanel`, `LedgerHeader`, `LedgerSection`, `LedgerRow`, `ledgerRowClass()`, `LedgerMore`, `LedgerField`, `LedgerGroup` | panel `header`, `body` rows · fields; section `label`, `count`, `tone`, `layout` margin · stacked, `description`, `action`, `collapsed`/`onToggle`; row `leading`, `title`, `detail`, `mono`, `layout` inline · stacked, `trailing`, `href`/`onClick`; field `title`, `description`, `control`, `stacked`; group `title`, `action` | the landing's ledger: one bordered `rounded-2xl` panel, labelled sections with counts, dense rows. `src/components/home/Ledger.tsx` re-exports it |
+| `Chip` | `icon`, `tone` neutral · success · warning · danger | outlined 20px pill for tags; `Badge` for statuses that must stand out |
 | `ListRow`, `listRowClass()` | `selected`, `size` sm (32) · md (36), `icon`, `trailing` | class helper for rows with custom children |
 | `Badge` | `tone` neutral · accent · success · warning · danger, `dot` | 20px, `text-2xs` |
 | `Callout` | `tone` info · success · warning · danger, `action` | inline errors/notes; danger = `role="alert"` |
-| `EmptyState` | `icon` or `media`, `title`, `description`, `action`, `variant` plain · dashed, `size` sm · md | |
+| `EmptyState` | `icon` or `media`, `title`, `description`, `action`, `variant` quiet · plain · dashed (legacy), `size` sm · md | quiet = one muted row inside a ledger or list |
 | `Skeleton` | `className` (shape) | wrap groups in `aria-busy` + `aria-label` |
 | `Tip`, `Kbd`, `StatusDot`, `TickText` | unchanged | tooltips are always dark |
 
@@ -173,8 +175,12 @@ sentence case — replaces `.label-caps`) · `.surface-raised` · `.accent-focus
   confirm (`danger` or `primary`) with the verb ("Delete", not "OK").
 - **Side panel:** `SidePanel`; body `min-h-0 flex-1 overflow-y-auto p-4 space-y-6`; tabs are underline tabs
   (`h-10 text-sm text-fg-muted data-[state=active]:text-fg` + 2px `border-accent` underline).
-- **Empty state:** `EmptyState` — say what will appear here and how to make it appear; one action. Lists inside a
-  page use `variant="dashed"`; sidebars/panels `size="sm"`; search misses: "No chats match “x”".
+- **Empty state:** `EmptyState` — say what will appear here and how to make it appear; one action. Lists and ledgers
+  use `variant="quiet"` (a muted row where the rows would be, no dashed box); a whole empty page or panel `plain`;
+  sidebars/panels `size="sm"`; search misses: "No chats match “x”".
+- **Settings section:** `LedgerGroup`s (`space-y-8`), each a small label above one panel of `LedgerField`s (label and
+  help left, control right; `stacked` for textareas). Lists (devices, apps, plugins…) are a `body="rows"` panel whose
+  label carries the count, rows built with `ledgerRowClass()`: one visible control, the rest in an Ellipsis menu.
 - **Loading:** `Skeleton` shaped like the content (rows → lines, cards → `h-16 rounded-xl`). No bare "Loading…" for
   regions; buttons switch label to the -ing verb ("Saving…") and disable.
 - **Inline error:** `Callout tone="danger"` where the failure happened, plus `action={<button className="link-muted">Try again</button>}`.

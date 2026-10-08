@@ -12,6 +12,7 @@ import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { Field } from "../ui/Field";
 import { IconButton } from "../ui/IconButton";
+import { LedgerField } from "../ui/Ledger";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { QrCode } from "../ui/QrCode";
 import { RadioCards } from "../ui/RadioCards";
@@ -51,68 +52,70 @@ export function RemoteAccessPanel({ status, onSetUp }: { status: DevicesStatus; 
 
   if (access.mode === "off" && !status.signIn) {
     return (
-      <div className="flex items-start gap-3">
-        <Smartphone className="mt-0.5 size-4 shrink-0 text-fg-muted" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-fg">Use TOT on your phone and other computers</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
-            Choose a password, then scan a code with your phone. This computer never asks for it.
-          </p>
-        </div>
-        <Button size="sm" variant="primary" onClick={() => onSetUp()}>
-          Set up
-        </Button>
-      </div>
+      <LedgerField
+        title={
+          <span className="flex items-center gap-2">
+            <Smartphone className="size-4 text-fg-muted" />
+            Use TOT on your phone and other computers
+          </span>
+        }
+        description="Choose a password, then scan a code with your phone. This computer never asks for it."
+        control={
+          <Button size="sm" variant="primary" onClick={() => onSetUp()}>
+            Set up
+          </Button>
+        }
+      />
     );
   }
 
   const on = access.mode !== "off";
+  const hasExtra = Boolean(access.setBy || access.problem || (access.envToken && !access.passwordSet) || (on && address));
   return (
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <label htmlFor="remote-access" className="block text-sm font-medium text-fg">
-            Remote access
-          </label>
-          <p className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
-            {on ? MODE_LINE[access.mode as Exclude<RemoteAccessMode, "off">] : "Off · only this computer can open TOT. Your password is kept."}
-          </p>
-        </div>
+    <LedgerField
+      htmlFor="remote-access"
+      title="Remote access"
+      description={on ? MODE_LINE[access.mode as Exclude<RemoteAccessMode, "off">] : "Off · only this computer can open TOT. Your password is kept."}
+      control={
         <Switch
           id="remote-access"
           checked={on}
           disabled={Boolean(access.setBy) || busy}
           onCheckedChange={(next) => (next ? onSetUp("network") : access.onThisMachine ? void turnOff() : setTurningOff(true))}
         />
-      </div>
+      }
+    >
+      {hasExtra && (
+        <div className="mt-3 space-y-3">
+          {access.setBy && (
+            <Callout tone="info">
+              Set by <code className="text-2xs">{access.setBy}</code> in .env. Remove it there and restart TOT to manage it here.
+            </Callout>
+          )}
+          {access.problem && <Callout tone="warning">{access.problem}</Callout>}
+          {access.envToken && !access.passwordSet && (
+            <p className="text-xs leading-relaxed text-fg-subtle">
+              Signing in uses <code className="text-2xs">TOT_ACCESS_TOKEN</code> from .env.{" "}
+              <button type="button" className="link-muted" onClick={() => onSetUp("password")}>
+                Set a password you'll remember
+              </button>
+              ; the token keeps working for scripts.
+            </p>
+          )}
 
-      {access.setBy && (
-        <Callout tone="info">
-          Set by <code className="text-2xs">{access.setBy}</code> in .env. Remove it there and restart TOT to manage it here.
-        </Callout>
-      )}
-      {access.problem && <Callout tone="warning">{access.problem}</Callout>}
-      {access.envToken && !access.passwordSet && (
-        <p className="text-xs leading-relaxed text-fg-subtle">
-          Signing in uses <code className="text-2xs">TOT_ACCESS_TOKEN</code> from .env.{" "}
-          <button type="button" className="link-muted" onClick={() => onSetUp("password")}>
-            Set a password you'll remember
-          </button>
-          ; the token keeps working for scripts.
-        </p>
-      )}
-
-      {on && address && (
-        <div className="flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-lg bg-fill px-2.5 py-1.5 font-mono text-xs text-fg">{address}</code>
-          <Tip content={copied ? "Copied" : "Copy address"}>
-            <IconButton label="Copy address" size="sm" onClick={() => void copy(address)}>
-              {copied ? <Check /> : <Copy />}
-            </IconButton>
-          </Tip>
-          <Button size="sm" onClick={() => onSetUp("phone")}>
-            <Smartphone /> Add a phone
-          </Button>
+          {on && address && (
+            <div className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-lg bg-fill px-2.5 py-1.5 font-mono text-xs text-fg">{address}</code>
+              <Tip content={copied ? "Copied" : "Copy address"}>
+                <IconButton label="Copy address" size="sm" onClick={() => void copy(address)}>
+                  {copied ? <Check /> : <Copy />}
+                </IconButton>
+              </Tip>
+              <Button size="sm" onClick={() => onSetUp("phone")}>
+                <Smartphone /> Add a phone
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -124,7 +127,7 @@ export function RemoteAccessPanel({ status, onSetUp }: { status: DevicesStatus; 
         confirmLabel="Turn off"
         onConfirm={() => void turnOff()}
       />
-    </div>
+    </LedgerField>
   );
 }
 

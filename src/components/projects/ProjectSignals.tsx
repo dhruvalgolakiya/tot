@@ -21,8 +21,9 @@ import { api } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { notifyError, useStore } from "../../store";
 import { Callout } from "../ui/Callout";
-import { cardClass } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
 import { IconButton } from "../ui/IconButton";
+import { LedgerHeader, LedgerMore, LedgerPanel, ledgerRowClass } from "../ui/Ledger";
 import { Tip } from "../ui/Tip";
 
 /**
@@ -97,65 +98,74 @@ export function ProjectSignals({ project }: { project: Project }) {
     }
   }
 
+  const github = project.repos?.length ? project.repos.some((repo) => repo.kind === "github") : project.kind === "github";
   return (
-    <section aria-labelledby="board-signals" className="space-y-2">
-      <div className="flex min-h-7 items-center justify-between gap-2">
-        <h3 id="board-signals" className="flex items-baseline gap-2 text-ui font-semibold text-fg">
-          Signals
-          {unread > 0 && <span className="text-xs font-normal text-fg-subtle tabular-nums">{unread} new</span>}
-        </h3>
-        {watching && hasGitHub(project) && (
-          <Tip content="Look at pull requests now">
-            <IconButton size="sm" label="Look at pull requests now" disabled={checking} onClick={() => void checkNow()}>
-              <RefreshCw className={clsx(checking && "animate-spin")} />
-            </IconButton>
-          </Tip>
+    <section aria-labelledby="board-signals">
+      <LedgerPanel
+        header={
+          <LedgerHeader
+            title={<span id="board-signals">Signals</span>}
+            meta={unread > 0 ? `${unread} new` : undefined}
+            action={
+              watching &&
+              hasGitHub(project) && (
+                <Tip content="Look at pull requests now">
+                  <IconButton size="sm" label="Look at pull requests now" disabled={checking} onClick={() => void checkNow()}>
+                    <RefreshCw className={clsx(checking && "animate-spin")} />
+                  </IconButton>
+                </Tip>
+              )
+            }
+            className="min-h-11 pr-2"
+          />
+        }
+      >
+        {failed && !signals && (
+          <Callout
+            tone="danger"
+            action={
+              <button type="button" className="link-muted" onClick={() => void load()}>
+                Try again
+              </button>
+            }
+          >
+            Couldn't load the signals.
+          </Callout>
         )}
-      </div>
-      {failed && !signals && (
-        <Callout
-          tone="danger"
-          action={
-            <button type="button" className="link-muted" onClick={() => void load()}>
-              Try again
-            </button>
-          }
-        >
-          Couldn't load the signals.
-        </Callout>
-      )}
-      {signals && !signals.length && (
-        <p className="text-xs leading-relaxed text-fg-subtle">
-          {!(project.repos?.length ? project.repos.some((repo) => repo.kind === "github") : project.kind === "github")
-            ? "When a ticket or schedule comes in, the Lead hears about it, and it shows here."
-            : watching
-              ? "When a pull request's checks or reviews change, or a ticket or schedule comes in, the Lead hears about it, and it shows here."
-              : "When a ticket or schedule comes in, the Lead hears about it, and it shows here. Pull requests aren't watched for this project."}
-        </p>
-      )}
-      {shown.length > 0 && (
-        <ul className={cardClass({ padding: "none" })}>
-          {shown.map((signal, index) => (
-            <SignalRow key={signal.id} signal={signal} first={index === 0} now={now} />
-          ))}
-        </ul>
-      )}
-      {(signals?.length ?? 0) > limit && (
-        <button type="button" className="link-muted text-xs" onClick={() => setLimit((n) => n + 20)}>
-          Show older signals
-        </button>
-      )}
+        {signals && !signals.length && (
+          <EmptyState
+            variant="quiet"
+            description={
+              !github
+                ? "When a ticket or schedule comes in, the Lead hears about it, and it shows here."
+                : watching
+                  ? "When a pull request's checks or reviews change, or a ticket or schedule comes in, the Lead hears about it, and it shows here."
+                  : "When a ticket or schedule comes in, the Lead hears about it, and it shows here. Pull requests aren't watched for this project."
+            }
+          />
+        )}
+        {shown.length > 0 && (
+          <ul className="flex flex-col">
+            {shown.map((signal) => (
+              <SignalRow key={signal.id} signal={signal} now={now} />
+            ))}
+          </ul>
+        )}
+        {(signals?.length ?? 0) > limit && <LedgerMore label="Show older signals" onClick={() => setLimit((n) => n + 20)} />}
+      </LedgerPanel>
     </section>
   );
 }
 
-function SignalRow({ signal, first, now }: { signal: LeadSignal; first: boolean; now: number }) {
+function SignalRow({ signal, now }: { signal: LeadSignal; now: number }) {
   const Icon = ICONS[signal.kind] ?? MessageSquare;
   const unread = signal.readAt === null;
   const meta = [signal.repoName, relativeTime(signal.at, now)].filter(Boolean).join(" · ");
   return (
-    <li className={clsx("group flex items-start gap-3 px-3 py-2.5", !first && "border-t border-hairline")}>
-      <Icon className={clsx("mt-0.5 size-4 shrink-0", TONES[signal.kind] ?? "text-fg-subtle")} />
+    <li className={ledgerRowClass({ className: "group items-start gap-2.5 py-2" })}>
+      <span className="grid size-5 shrink-0 place-items-center">
+        <Icon className={clsx("size-3.5", TONES[signal.kind] ?? "text-fg-subtle")} />
+      </span>
       <div className="min-w-0 flex-1">
         <p className={clsx("line-clamp-2 text-ui [overflow-wrap:anywhere]", unread ? "font-medium text-fg" : "text-fg-muted")} title={signal.detail ?? undefined}>
           {signal.title}

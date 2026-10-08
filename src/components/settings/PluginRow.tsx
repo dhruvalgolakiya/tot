@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { Puzzle, Trash } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
+import { Ellipsis, Puzzle, Trash } from "lucide-react";
 import type { Plugin } from "@shared/types";
 import { api } from "../../lib/api";
 import { PROVIDER_LABELS } from "../../lib/models";
 import { pluginTarget } from "../../lib/plugins";
 import { notifyError } from "../../store";
-import { Badge } from "../ui/Badge";
-import { Button } from "../ui/Button";
-import { cardClass } from "../ui/Card";
+import { ConfirmDialog } from "../ConfirmDialog";
+import { Chip } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
+import { ledgerRowClass } from "../ui/Ledger";
 import { Switch } from "../ui/Switch";
-import { Tip } from "../ui/Tip";
 
 type PluginRowProps = {
   plugin: Plugin;
@@ -48,49 +48,49 @@ export function PluginRow({ plugin, onChanged, onDeleted }: PluginRowProps) {
   }
 
   return (
-    <li className={cardClass({ padding: "sm" })}>
-      <div className="flex items-start gap-3">
+    <>
+      <div className={ledgerRowClass({ className: "items-start gap-3 py-2" })}>
         <Puzzle className="mt-0.5 size-4 shrink-0 text-fg-subtle" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-mono text-sm text-fg">{plugin.name}</span>
-            <Badge>{plugin.config.type}</Badge>
+            <span className="font-mono text-ui text-fg">{plugin.name}</span>
+            <Chip>{plugin.config.type}</Chip>
             {plugin.providers.map((provider) => (
-              <Badge key={provider}>{PROVIDER_LABELS[provider]}</Badge>
+              <Chip key={provider}>{PROVIDER_LABELS[provider]}</Chip>
             ))}
           </div>
           {plugin.description && <p className="mt-1 text-xs text-fg-muted">{plugin.description}</p>}
-          <p className="mt-1 truncate font-mono text-xs text-fg-subtle" title={target}>
+          <p className="mt-1 truncate font-mono text-2xs text-fg-subtle" title={target}>
             {target}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Switch
-            checked={plugin.enabled}
-            onCheckedChange={(enabled) => void setEnabled(enabled)}
-            disabled={busy}
-            label={`Enable ${plugin.name}`}
-          />
-          {!confirming && (
-            <Tip content="Delete">
-              <IconButton label={`Delete ${plugin.name}`} size="sm" onClick={() => setConfirming(true)} disabled={busy}>
-                <Trash />
+        <div className="flex shrink-0 items-center gap-2 pt-0.5">
+          <Switch checked={plugin.enabled} onCheckedChange={(enabled) => void setEnabled(enabled)} disabled={busy} label={`Enable ${plugin.name}`} />
+          <DropdownMenu.Root modal={false}>
+            <DropdownMenu.Trigger asChild>
+              <IconButton label={`More options for ${plugin.name}`} size="sm">
+                <Ellipsis />
               </IconButton>
-            </Tip>
-          )}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content align="end" sideOffset={4} className="menu w-44">
+                <DropdownMenu.Item className="menu-item menu-item-danger" disabled={busy} onSelect={() => setConfirming(true)}>
+                  <Trash className="size-4" /> Delete
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </div>
       </div>
-      {confirming && (
-        <div className="mt-3 flex items-center justify-end gap-2 border-t border-hairline pt-3">
-          <span className="mr-auto text-xs text-fg-muted">Remove this plugin?</span>
-          <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button size="sm" variant="danger" onClick={() => void remove()} disabled={busy}>
-            Delete
-          </Button>
-        </div>
-      )}
-    </li>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Delete plugin?"
+        description={`Removes ${plugin.name} and its tools from TOT.`}
+        confirmLabel="Delete"
+        onConfirm={() => void remove()}
+      />
+    </>
   );
 }

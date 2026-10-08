@@ -9,18 +9,8 @@ type HeaderProps = {
   className?: string;
 };
 
-/** Top of a page's content column: 20px title, one-line muted description, optional action. */
-export function PageHeader({ title, description, action, className }: HeaderProps) {
-  return (
-    <div className={clsx("flex items-start justify-between gap-4", className)}>
-      <div className="min-w-0">
-        {title && <h1 className="text-title text-fg-strong">{title}</h1>}
-        {description && <p className={clsx("text-sm text-fg-muted", title && "mt-1")}>{description}</p>}
-      </div>
-      {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
-    </div>
-  );
-}
+/** The page title moved to `./PageHeader`; re-exported so existing imports keep working. */
+export { PageHeader } from "./PageHeader";
 
 type SectionHeaderProps = HeaderProps & {
   /** Heading level; h2 under a page title, h3 inside a card or panel. */

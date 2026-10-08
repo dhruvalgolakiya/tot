@@ -5,9 +5,9 @@ import type { MemoryPeerSync, MemorySyncStatus } from "@shared/types";
 import { api } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { goToSettings, notifyError, saveSettings, useStore } from "../../store";
-import { SettingRow } from "../settings/SettingRow";
 import { Button } from "../ui/Button";
-import { cardClass } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
+import { LedgerField, LedgerGroup, ledgerRowClass } from "../ui/Ledger";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusDot } from "../ui/StatusDot";
 import { Switch } from "../ui/Switch";
@@ -60,25 +60,30 @@ export function MemorySync({ sync, onChanged }: { sync: MemorySyncStatus; onChan
           ) : undefined
         }
       />
-      {sync.peers.length ? (
-        <ul className={cardClass({ padding: "none" })}>
-          {sync.peers.map((peer, index) => (
-            <PeerRow key={peer.deviceId} peer={peer} first={index === 0} />
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm text-fg-muted">
-          No paired devices yet.{" "}
-          <button type="button" className="link" onClick={() => goToSettings("devices")}>
-            Pair one
-          </button>{" "}
-          and this memory follows you there.
-        </p>
-      )}
+      <LedgerGroup body="rows" title="Paired devices" count={sync.peers.length}>
+        {sync.peers.length ? (
+          <ul>
+            {sync.peers.map((peer) => (
+              <PeerRow key={peer.deviceId} peer={peer} />
+            ))}
+          </ul>
+        ) : (
+          <EmptyState
+            variant="quiet"
+            icon={<Laptop />}
+            title="No paired devices yet"
+            description="This memory follows you there once you pair one."
+            action={
+              <Button size="sm" variant="secondary" onClick={() => goToSettings("devices")}>
+                Pair a device
+              </Button>
+            }
+          />
+        )}
+      </LedgerGroup>
 
-      <div className={cardClass({ padding: "none", className: "divide-y divide-hairline" })}>
-        <SettingRow
-          className="px-4"
+      <LedgerGroup title="Backup">
+        <LedgerField
           htmlFor="memory-remote"
           title="Back up to a git remote"
           description="Optional: a private repo you made. TOT pulls and pushes it after changes, with this computer's SSH keys. Turn it on on one device."
@@ -91,27 +96,30 @@ export function MemorySync({ sync, onChanged }: { sync: MemorySyncStatus; onChan
             />
           }
         />
-        <form onSubmit={(event) => void saveUrl(event)} className="space-y-1.5 px-4 py-3">
-          <label htmlFor="memory-remote-url" className="block text-sm font-medium text-fg">
-            Remote URL
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="memory-remote-url"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-              placeholder="git@github.com:you/memory.git"
-              spellCheck={false}
-              autoComplete="off"
-              className="input input-sm min-w-0 flex-1 font-mono"
-            />
-            {urlChanged && (
-              <Button type="submit" size="sm" variant="primary" disabled={saving}>
-                {saving ? "Saving…" : "Save"}
-              </Button>
-            )}
-          </div>
-          <p className={clsx("text-xs", status.error ? "text-danger" : "text-fg-subtle")}>
+        <LedgerField
+          stacked
+          htmlFor="memory-remote-url"
+          title="Remote URL"
+          control={
+            <form onSubmit={(event) => void saveUrl(event)} className="flex gap-2">
+              <input
+                id="memory-remote-url"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="git@github.com:you/memory.git"
+                spellCheck={false}
+                autoComplete="off"
+                className="input input-sm min-w-0 flex-1 font-mono"
+              />
+              {urlChanged && (
+                <Button type="submit" size="sm" variant="primary" disabled={saving}>
+                  {saving ? "Saving…" : "Save"}
+                </Button>
+              )}
+            </form>
+          }
+        >
+          <p className={clsx("mt-2 text-xs", status.error ? "text-danger" : "text-fg-subtle")}>
             {status.error
               ? status.error
               : status.lastPushAt
@@ -120,8 +128,8 @@ export function MemorySync({ sync, onChanged }: { sync: MemorySyncStatus; onChan
                   ? "Not pushed yet."
                   : "Off. Nothing leaves this computer except to your paired devices."}
           </p>
-        </form>
-      </div>
+        </LedgerField>
+      </LedgerGroup>
     </section>
   );
 }
@@ -133,17 +141,17 @@ function peerLine(peer: MemoryPeerSync): string {
   return peer.online ? "Not synced yet" : "Offline";
 }
 
-function PeerRow({ peer, first }: { peer: MemoryPeerSync; first: boolean }) {
+function PeerRow({ peer }: { peer: MemoryPeerSync }) {
   return (
-    <li className={clsx("flex min-h-14 items-center gap-3 px-4 py-2.5", !first && "border-t border-hairline")}>
-      <span className="relative shrink-0">
+    <li className={ledgerRowClass()}>
+      <span className="relative grid size-5 shrink-0 place-items-center">
         <Laptop className="size-4 text-fg-subtle" />
         <span className="absolute -right-1 -bottom-0.5">
           <StatusDot tone={peer.error ? "red" : peer.online ? "green" : "gray"} />
         </span>
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-fg">{peer.name}</p>
+        <p className="truncate text-ui text-fg">{peer.name}</p>
         <p className={clsx("truncate text-xs", peer.error ? "text-danger" : "text-fg-subtle")}>{peerLine(peer)}</p>
       </div>
     </li>

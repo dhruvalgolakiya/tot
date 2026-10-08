@@ -4,6 +4,7 @@ import type { Project } from "@shared/types";
 import { api } from "../../lib/api";
 import { pickMemoryRepo, projectMemoryRepo, useMemoryUi } from "../../lib/memory";
 import { goToSettings } from "../../store";
+import { ledgerRowClass } from "../ui/Ledger";
 
 /**
  * A project's memory (roadmap module 10) on its page: "Memory · 12 entries", opening Settings → Memory with the
@@ -34,7 +35,7 @@ export function ProjectMemoryRow({ project }: { project: Project }) {
         pickMemoryRepo(repo);
         goToSettings("memory");
       }}
-      className="mt-6 flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+      className={ledgerRowClass({ interactive: true, className: "mt-6 text-sm text-fg-muted hover:text-fg" })}
     >
       <Brain className="size-4 shrink-0" />
       <span>Memory</span>

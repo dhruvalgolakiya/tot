@@ -125,8 +125,7 @@ export function KnowledgeUpdates({ project }: { project: Project }) {
       )}
       {updates && !updates.length && (
         <EmptyState
-          size="sm"
-          variant="dashed"
+          variant="quiet"
           title="No updates yet"
           description="When a task lands or a repo's main branch moves, TOT updates this project's docs and facts, and the change shows here."
         />

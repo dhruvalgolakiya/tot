@@ -1,7 +1,7 @@
-import { ChevronRight } from "lucide-react";
 import type { Agent, Persona } from "@shared/types";
 import { mailboxStatus } from "../../lib/personas";
 import { Badge } from "../ui/Badge";
+import { LedgerRow } from "../ui/Ledger";
 import { StatusDot } from "../ui/StatusDot";
 import { Tip } from "../ui/Tip";
 import { PersonaAvatar } from "./PersonaAvatar";
@@ -21,34 +21,27 @@ export function PersonaRow({ persona, agents, onClick }: PersonaRowProps) {
     .join(", ");
 
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-hover"
-      >
-        <PersonaAvatar name={persona.name} url={persona.avatarUrl} size="size-10" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p className="truncate text-sm font-medium text-fg">{persona.name}</p>
-            <Tip content={status.label}>
-              <span>
-                <StatusDot tone={status.tone} pulse={status.pulse} />
-              </span>
-            </Tip>
-          </div>
-          <p className="truncate text-xs text-fg-subtle">{persona.email}</p>
-          {agentNames && <p className="truncate text-xs text-fg-subtle">{agentNames}</p>}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {persona.unread > 0 && (
-            <Badge tone="accent" aria-label={`${persona.unread} unread`}>
-              {persona.unread}
-            </Badge>
-          )}
-          <ChevronRight className="size-4 text-fg-subtle" />
-        </div>
-      </button>
-    </li>
+    <LedgerRow
+      onClick={onClick}
+      leading={<PersonaAvatar name={persona.name} url={persona.avatarUrl} size="size-5" />}
+      title={
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{persona.name}</span>
+          <Tip content={status.label}>
+            <span>
+              <StatusDot tone={status.tone} pulse={status.pulse} />
+            </span>
+          </Tip>
+        </span>
+      }
+      detail={agentNames ? `${persona.email} · ${agentNames}` : persona.email}
+      trailing={
+        persona.unread > 0 ? (
+          <Badge tone="accent" aria-label={`${persona.unread} unread`}>
+            {persona.unread}
+          </Badge>
+        ) : undefined
+      }
+    />
   );
 }

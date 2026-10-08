@@ -4,6 +4,7 @@ import { loadPersonas, useLocalAgents, useStore } from "../../store";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
+import { LedgerGroup, LedgerHeader } from "../ui/Ledger";
 import { Skeleton } from "../ui/Skeleton";
 import { PersonaDetail } from "./PersonaDetail";
 import { PersonaFormModal } from "./PersonaFormModal";
@@ -27,48 +28,48 @@ export function PersonasSettings() {
   if (selected) return <PersonaDetail persona={selected} onBack={() => setSelectedId(null)} />;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-end">
-        <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
-          <Plus /> New persona
-        </Button>
-      </div>
-
+    <div className="space-y-8">
       {personasState === "error" && (
         <Callout tone="danger" action={<button type="button" onClick={() => void loadPersonas()} className="link-muted">Try again</button>}>
           Couldn't load personas.
         </Callout>
       )}
 
-      {personasState === "loading" && (
-        <div className="space-y-1.5" aria-busy="true" aria-label="Loading personas">
-          {[0, 1].map((key) => (
-            <Skeleton key={key} className="h-16 w-full rounded-xl" />
-          ))}
-        </div>
-      )}
+      <LedgerGroup
+        body="rows"
+        header={
+          <LedgerHeader
+            title="Personas"
+            meta={personasState === "ready" ? `${personas.length}` : undefined}
+            action={
+              <Button variant="secondary" size="sm" onClick={() => setCreating(true)}>
+                <Plus /> New persona
+              </Button>
+            }
+          />
+        }
+      >
+        {personasState === "loading" && (
+          <div className="space-y-1 p-1" aria-busy="true" aria-label="Loading personas">
+            {[0, 1].map((key) => (
+              <Skeleton key={key} className="h-9 w-full rounded-lg" />
+            ))}
+          </div>
+        )}
 
-      {personasState !== "loading" && personas.length === 0 && (
-        <EmptyState
-          variant="dashed"
-          icon={<IdCard />}
-          title="No personas yet"
-          description="Give an agent its own email so its sign-ups, emails and commits show up as the agent, not you."
-          action={
-            <Button variant="secondary" size="sm" onClick={() => setCreating(true)}>
-              <Plus /> New persona
-            </Button>
-          }
-        />
-      )}
+        {personasState !== "loading" && personas.length === 0 && (
+          <EmptyState
+            variant="quiet"
+            icon={<IdCard />}
+            title="No personas yet"
+            description="Give an agent its own email so its sign-ups, emails and commits show up as the agent, not you."
+          />
+        )}
 
-      {personas.length > 0 && (
-        <ul className="space-y-0.5">
-          {personas.map((persona) => (
-            <PersonaRow key={persona.id} persona={persona} agents={agents} onClick={() => setSelectedId(persona.id)} />
-          ))}
-        </ul>
-      )}
+        {personas.map((persona) => (
+          <PersonaRow key={persona.id} persona={persona} agents={agents} onClick={() => setSelectedId(persona.id)} />
+        ))}
+      </LedgerGroup>
 
       <PersonaFormModal open={creating} onOpenChange={setCreating} persona={null} onCreated={(persona) => setSelectedId(persona.id)} />
     </div>

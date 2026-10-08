@@ -5,13 +5,11 @@ import type { Playbook, PlaybookInput, PlaybookStepKind, WorkflowSettings } from
 import { errorMessage } from "../../lib/api";
 import { notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { SettingRow } from "../settings/SettingRow";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
-import { Card, cardClass } from "../ui/Card";
 import { IconButton } from "../ui/IconButton";
-import { SectionHeader } from "../ui/SectionHeader";
+import { LedgerField, LedgerGroup, ledgerRowClass } from "../ui/Ledger";
 import { Select } from "../ui/Select";
 import { Skeleton } from "../ui/Skeleton";
 import { Switch } from "../ui/Switch";
@@ -130,59 +128,56 @@ export function WorkflowsSettings() {
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <SectionHeader title="Defaults" description="For every coding task, whichever playbook it follows." />
-        <Card padding="none" className="divide-y divide-hairline">
-          <SettingRow
-            className="px-4"
-            title="Require my OK on plans"
-            description="Agents stop after planning and wait for you before changing code."
-            control={<Switch checked={flows.requirePlanApproval} onCheckedChange={(on) => void patchFlows({ requirePlanApproval: on })} label="Require my OK on plans" />}
-          />
-          <SettingRow
-            className="px-4"
-            title="Reviewer"
-            description="A fresh model reviews every diff before you see it. The other provider catches what the author's own model misses."
-            control={
-              <Select
-                aria-label="Reviewer"
-                size="sm"
-                value={flows.reviewer}
-                onValueChange={(reviewer) => void patchFlows({ reviewer: reviewer as WorkflowSettings["reviewer"] })}
-                options={[
-                  { value: "other", label: "Other provider" },
-                  { value: "claude", label: "Claude" },
-                  { value: "chatgpt", label: "ChatGPT" },
-                ]}
-                className="w-40 rounded-lg"
-              />
-            }
-          />
-          <SettingRow
-            className="px-4"
-            title="Fix rounds"
-            description="Rounds of fixes after failed checks or a review, before the agent asks you."
-            control={
-              <Select
-                aria-label="Fix rounds"
-                size="sm"
-                value={String(flows.maxFixRounds)}
-                onValueChange={(rounds) => void patchFlows({ maxFixRounds: Number(rounds) })}
-                options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n === 1 ? "1 round" : `${n} rounds` }))}
-                className="w-40 rounded-lg"
-              />
-            }
-          />
-        </Card>
-      </section>
+      <LedgerGroup title="Defaults" description="For every coding task, whichever playbook it follows.">
+        <LedgerField
+          title="Require my OK on plans"
+          description="Agents stop after planning and wait for you before changing code."
+          control={<Switch checked={flows.requirePlanApproval} onCheckedChange={(on) => void patchFlows({ requirePlanApproval: on })} label="Require my OK on plans" />}
+        />
+        <LedgerField
+          title="Reviewer"
+          description="A fresh model reviews every diff before you see it. The other provider catches what the author's own model misses."
+          control={
+            <Select
+              aria-label="Reviewer"
+              size="sm"
+              value={flows.reviewer}
+              onValueChange={(reviewer) => void patchFlows({ reviewer: reviewer as WorkflowSettings["reviewer"] })}
+              options={[
+                { value: "other", label: "Other provider" },
+                { value: "claude", label: "Claude" },
+                { value: "chatgpt", label: "ChatGPT" },
+              ]}
+              className="w-40 rounded-lg"
+            />
+          }
+        />
+        <LedgerField
+          title="Fix rounds"
+          description="Rounds of fixes after failed checks or a review, before the agent asks you."
+          control={
+            <Select
+              aria-label="Fix rounds"
+              size="sm"
+              value={String(flows.maxFixRounds)}
+              onValueChange={(rounds) => void patchFlows({ maxFixRounds: Number(rounds) })}
+              options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n === 1 ? "1 round" : `${n} rounds` }))}
+              className="w-40 rounded-lg"
+            />
+          }
+        />
+      </LedgerGroup>
 
       <section className="space-y-3">
-        <SectionHeader
+        <LedgerGroup body="rows"
           title="Playbooks"
+          count={playbooks.length}
+         
           description="Each coding task follows the playbook that fits it best; its steps become the task's checklist."
           action={
             <Button
               size="sm"
+              variant="secondary"
               onClick={() =>
                 setEditing({
                   title: "New playbook",
@@ -194,11 +189,10 @@ export function WorkflowsSettings() {
               <Plus /> New playbook
             </Button>
           }
-        />
-        <ul className="space-y-2">
-          {playbooks.map((playbook) => (
-            <li key={playbook.id} className={cardClass({ padding: "sm" })}>
-              <div className="flex items-start gap-3">
+        >
+          <ul>
+            {playbooks.map((playbook) => (
+              <li key={playbook.id} className={ledgerRowClass({ className: "items-start" })}>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium text-fg">{playbook.name}</span>
@@ -246,10 +240,10 @@ export function WorkflowsSettings() {
                     </DropdownMenu.Portal>
                   </DropdownMenu.Root>
                 </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </LedgerGroup>
       </section>
 
       <PlaybookEditor

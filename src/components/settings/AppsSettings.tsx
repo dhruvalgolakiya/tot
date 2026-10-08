@@ -9,9 +9,9 @@ import { notifyError, setAppsStatus, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
-import { cardClass } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { IconButton } from "../ui/IconButton";
+import { LedgerField, LedgerGroup } from "../ui/Ledger";
 import { SearchInput } from "../ui/SearchInput";
 import { Skeleton } from "../ui/Skeleton";
 import { AppCatalogCard } from "./AppCatalogCard";
@@ -99,7 +99,7 @@ export function AppsSettings() {
   }
 
   const footnote = (
-    <p className="mt-4 border-t border-hairline pt-3 text-xs text-fg-subtle">
+    <p className="border-t border-hairline pt-5 text-xs text-fg-subtle">
       <a href={EXECUTOR_URL} target="_blank" rel="noopener noreferrer" className="link-muted">
         Powered by Executor
       </a>
@@ -115,17 +115,24 @@ export function AppsSettings() {
   }
 
   return (
-    <div className={cardClass()}>
+    <div className="space-y-8">
       {(apps.state === "not-installed" || apps.state === "stopped") && (
-        <div className="space-y-1.5">
-          <Button variant="primary" size="sm" onClick={() => void setup()} disabled={busy}>
-            {busy && <LoaderCircle className="animate-spin" />}
-            {apps.state === "stopped" ? "Turn on" : "Set up"}
-          </Button>
-          {apps.state === "not-installed" && (
-            <p className="text-xs text-fg-subtle">Installs Executor (open source, ~90 MB) on this Mac</p>
-          )}
-        </div>
+        <LedgerGroup>
+          <LedgerField
+            title={apps.state === "stopped" ? "Apps are off" : "Connect your apps"}
+            description={
+              apps.state === "not-installed"
+                ? "Installs Executor (open source, ~90 MB) on this Mac."
+                : "Agents lose access to your apps until you turn them back on."
+            }
+            control={
+              <Button variant="primary" size="sm" onClick={() => void setup()} disabled={busy}>
+                {busy && <LoaderCircle className="animate-spin" />}
+                {apps.state === "stopped" ? "Turn on" : "Set up"}
+              </Button>
+            }
+          />
+        </LedgerGroup>
       )}
 
       {(apps.state === "installing" || apps.state === "starting") && (
@@ -145,10 +152,12 @@ export function AppsSettings() {
       )}
 
       {apps.state === "running" && (
-        <div className="space-y-5">
-          <section>
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="group-label">Your apps</h3>
+        <>
+          <LedgerGroup
+            body="rows"
+            title="Your apps"
+            count={apps.apps.length}
+            action={
               <DropdownMenu.Root modal={false}>
                 <DropdownMenu.Trigger asChild>
                   <IconButton label="More Apps options" size="sm">
@@ -163,11 +172,12 @@ export function AppsSettings() {
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>
               </DropdownMenu.Root>
-            </div>
+            }
+          >
             {apps.apps.length === 0 ? (
-              <p className="text-sm text-fg-subtle">Add an app below to let agents use it.</p>
+              <EmptyState variant="quiet" title="No apps connected yet" description="Add one below to let agents use it." />
             ) : (
-              <ul className="space-y-1.5">
+              <ul className="space-y-0.5">
                 {apps.apps.map((connection) => (
                   <AppRow
                     key={connection.id}
@@ -178,41 +188,40 @@ export function AppsSettings() {
                 ))}
               </ul>
             )}
-          </section>
+          </LedgerGroup>
 
-          <section>
-            <h3 className="group-label mb-2">Add apps</h3>
-            <SearchInput
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search apps"
-              aria-label="Search apps"
-              containerClassName="mb-2.5"
-            />
+          <LedgerGroup title="Add apps" body="fields">
+            <div className="space-y-2.5 p-4">
+              <SearchInput
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search apps"
+                aria-label="Search apps"
+              />
 
-            {catalogError && <Callout tone="danger">{catalogError}</Callout>}
-            {!catalog && !catalogError && (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-busy="true" aria-label="Loading apps">
-                {[0, 1, 2, 3].map((key) => (
-                  <Skeleton key={key} className="h-14 rounded-xl" />
-                ))}
-              </div>
-            )}
-            {catalog && catalog.length === 0 && <EmptyState variant="dashed" size="sm" title={`No apps match “${debouncedQuery}”.`} />}
-            {catalog && catalog.length > 0 && (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {catalog.map((item) => (
-                  <AppCatalogCard
-                    key={item.appId}
-                    item={{ ...item, accounts: connectedCounts.get(item.appId) ?? 0 }}
-                    onConnect={() => start(item.appId, item.name, item.connect === "sign-in")}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-        </div>
+              {catalogError && <Callout tone="danger">{catalogError}</Callout>}
+              {!catalog && !catalogError && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-busy="true" aria-label="Loading apps">
+                  {[0, 1, 2, 3].map((key) => (
+                    <Skeleton key={key} className="h-14 rounded-2xl" />
+                  ))}
+                </div>
+              )}
+              {catalog && catalog.length === 0 && <EmptyState variant="quiet" title={`No apps match “${debouncedQuery}”.`} />}
+              {catalog && catalog.length > 0 && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {catalog.map((item) => (
+                    <AppCatalogCard
+                      key={item.appId}
+                      item={{ ...item, accounts: connectedCounts.get(item.appId) ?? 0 }}
+                      onConnect={() => start(item.appId, item.name, item.connect === "sign-in")}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </LedgerGroup>
+        </>
       )}
 
       {footnote}

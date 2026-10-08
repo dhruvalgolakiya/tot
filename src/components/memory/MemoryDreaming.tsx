@@ -5,10 +5,8 @@ import { api } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { notifyError, saveSettings, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { SettingRow } from "../settings/SettingRow";
 import { Button } from "../ui/Button";
-import { cardClass } from "../ui/Card";
-import { SectionHeader } from "../ui/SectionHeader";
+import { LedgerField, LedgerGroup } from "../ui/Ledger";
 import { Switch } from "../ui/Switch";
 
 /**
@@ -58,20 +56,17 @@ export function MemoryDreaming({ summary, onChanged }: { summary: MemoryRepoSumm
 
   return (
     <section className="space-y-3">
-      <SectionHeader
+      <LedgerGroup
         title="Dreaming"
         description="While you sleep, TOT tidies memory: merges duplicates, drops stale entries, settles contradictions. Each night is one change you can undo."
-      />
-      <div className={cardClass({ padding: "none", className: "divide-y divide-hairline" })}>
-        <SettingRow
-          className="px-4"
+      >
+        <LedgerField
           htmlFor="memory-dreaming"
           title="Dream every night"
           description="Only for memory that changed, or after chats, since the last dream. Uses your Claude or ChatGPT plan's light model."
           control={<Switch id="memory-dreaming" checked={dreaming.enabled} onCheckedChange={(enabled) => void saveSettings({ memory: { dreaming: { enabled } } })} />}
         />
-        <SettingRow
-          className="px-4"
+        <LedgerField
           htmlFor="memory-dreaming-time"
           title="At"
           description="Local time on this device."
@@ -88,8 +83,7 @@ export function MemoryDreaming({ summary, onChanged }: { summary: MemoryRepoSumm
             />
           }
         />
-        <SettingRow
-          className="px-4"
+        <LedgerField
           title={summary.kind === "you" ? "Last dream about you" : `Last dream about ${summary.name}`}
           description={
             busy ? (
@@ -120,7 +114,7 @@ export function MemoryDreaming({ summary, onChanged }: { summary: MemoryRepoSumm
             </Button>
           }
         />
-      </div>
+      </LedgerGroup>
       <ConfirmDialog
         open={confirmUndo}
         onOpenChange={setConfirmUndo}
