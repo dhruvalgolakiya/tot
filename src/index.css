@@ -406,9 +406,10 @@
   .hero-art {
     mask-image: linear-gradient(to bottom, #000 0%, #000 52%, transparent 100%);
   }
-  /* An agent's Home: the scene stays at full strength until just above the composer. */
+  /* An agent's Home: the scene, softened, stays even until just above the composer. */
   .hero-art.hero-art-home {
     mask-image: linear-gradient(to bottom, #000 0%, #000 80%, transparent 100%);
+    opacity: 0.7;
   }
   .hero-art img {
     /* The scenes keep their subject in the left third: crop from the right first on narrow screens. */
