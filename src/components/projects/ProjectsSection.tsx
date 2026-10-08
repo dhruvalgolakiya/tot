@@ -1,6 +1,6 @@
 import { useMemo, type MouseEvent } from "react";
 import clsx from "clsx";
-import { ChevronRight, Plus, SquarePen } from "lucide-react";
+import { ChevronRight, Pin, Plus, SquarePen } from "lucide-react";
 import type { Conversation, Project } from "@shared/types";
 import { conversationTitle } from "../../lib/conversations";
 import { PROJECT_ICONS, setNewProjectOpen, toggleProjectExpanded, useProjects } from "../../lib/projects";
@@ -42,11 +42,12 @@ export function ProjectsSection({ query }: { query: string }) {
   const agentDevice = useStore((s) => selectActiveAgent(s)?.deviceId);
   const live = useMemo(() => projects.filter((p) => !p.archived && p.deviceId === agentDevice), [projects, agentDevice]);
   /** This agent's conversations in each project, newest first; and the open tasks under each chat or task. */
-  const { byProject, childrenOf, leads } = useMemo(() => {
+  const { byProject, childrenOf, leads, leadOf } = useMemo(() => {
     const byProject = new Map<string, Conversation[]>();
     const childrenOf = new Map<string, Conversation[]>();
-    // A project's Lead (module 11) is its row itself: it isn't listed under it, and its tasks show as the project's own.
+    // A project's Lead (module 11) is pinned first under it (it opens the project's page); its tasks show as the project's own.
     const leads = new Set(conversations.filter((c) => c.lead).map((c) => c.id));
+    const leadOf = new Map(conversations.filter((c) => c.lead && c.projectId).map((c) => [c.projectId!, c]));
     for (const c of conversations) {
       if (!c.projectId || c.agentId !== agentId || c.lead) continue;
       byProject.set(c.projectId, [...(byProject.get(c.projectId) ?? []), c]);
@@ -58,20 +59,20 @@ export function ProjectsSection({ query }: { query: string }) {
     const newest = (a: Conversation, b: Conversation) => toMs(b.updatedAt) - toMs(a.updatedAt);
     for (const list of byProject.values()) list.sort(newest);
     for (const list of childrenOf.values()) list.sort(newest);
-    return { byProject, childrenOf, leads };
+    return { byProject, childrenOf, leads, leadOf };
   }, [conversations, agentId, currentId]);
 
-  type Row = { project: Project; list: Conversation[]; nested: Map<string, Conversation[]> | null; open: boolean };
+  type Row = { project: Project; lead: Conversation | null; list: Conversation[]; nested: Map<string, Conversation[]> | null; open: boolean };
   const rows = live.flatMap((project): Row[] => {
     const all = byProject.get(project.id) ?? [];
     if (!needle) {
       const top = all.filter((c) => !(isTask(c) && c.parentId && !leads.has(c.parentId)));
-      return [{ project, list: top, nested: childrenOf, open: expanded.has(project.id) || project.id === currentProjectId }];
+      return [{ project, lead: leadOf.get(project.id) ?? null, list: top, nested: childrenOf, open: expanded.has(project.id) || project.id === currentProjectId || project.id === pageProjectId }];
     }
     // Searching: every match, chats and tasks alike, without nesting.
     const matches = all.filter((c) => conversationTitle(c).toLowerCase().includes(needle));
     if (!matches.length && !project.name.toLowerCase().includes(needle)) return [];
-    return [{ project, list: matches, nested: null, open: matches.length > 0 }];
+    return [{ project, lead: null, list: matches, nested: null, open: matches.length > 0 }];
   });
 
   if (needle && rows.length === 0) return null;
@@ -86,10 +87,11 @@ export function ProjectsSection({ query }: { query: string }) {
         </div>
       )}
       <ul className="space-y-px">
-        {rows.map(({ project, list, nested, open }) => (
+        {rows.map(({ project, lead, list, nested, open }) => (
           <ProjectRow
             key={project.id}
             project={project}
+            lead={lead}
             agentId={agentId}
             list={list}
             nested={nested}
@@ -113,6 +115,8 @@ export function ProjectsSection({ query }: { query: string }) {
 
 type ProjectRowProps = {
   project: Project;
+  /** The project's Lead chat, pinned first under it; null while searching or before it's made. */
+  lead: Conversation | null;
   agentId: string | null;
   /** The rows to list: chats and the tasks started on their own (or, while searching, every match). */
   list: Conversation[];
@@ -124,7 +128,7 @@ type ProjectRowProps = {
 };
 
 /** The kind icon turns into a chevron on hover (always, on touch screens): it shows or hides the chats; the name opens the page. */
-function ProjectRow({ project, agentId, list, nested, open, selected, canToggle }: ProjectRowProps) {
+function ProjectRow({ project, lead, agentId, list, nested, open, selected, canToggle }: ProjectRowProps) {
   const currentId = useStore((s) => s.currentId);
   const activeRuns = useStore((s) => s.activeRuns);
   const Icon = PROJECT_ICONS[project.kind];
@@ -147,9 +151,9 @@ function ProjectRow({ project, agentId, list, nested, open, selected, canToggle 
         <a
           href={agentId ? projectPath(agentId, project.id) : undefined}
           onClick={openPage}
-          aria-current={selected ? "page" : undefined}
+          aria-current={selected && !(open && lead) ? "page" : undefined}
           title={project.name}
-          className={listRowClass({ selected })}
+          className={listRowClass({ selected: selected && !(open && lead) })}
         >
           <Icon
             aria-hidden="true"
@@ -193,6 +197,21 @@ function ProjectRow({ project, agentId, list, nested, open, selected, canToggle 
 
       {open && (
         <ul className="space-y-px pt-px pl-6">
+          {lead && (
+            <li>
+              <a
+                href={agentId ? projectPath(agentId, project.id) : undefined}
+                onClick={openPage}
+                aria-current={selected ? "page" : undefined}
+                title={`${project.name}'s Lead: the chat you run the project from`}
+                className={listRowClass({ selected })}
+              >
+                <span className="min-w-0 flex-1 truncate">Lead</span>
+                {activeRuns[lead.id] && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />}
+                <Pin aria-hidden="true" className="size-3.5 shrink-0 text-fg-subtle" />
+              </a>
+            </li>
+          )}
           {rows.map(({ conversation, depth }) => (
             <li key={conversation.id} className={clsx(depth > 0 && "pl-4")}>
               {isTask(conversation) ? (
@@ -207,7 +226,7 @@ function ProjectRow({ project, agentId, list, nested, open, selected, canToggle 
               )}
             </li>
           ))}
-          {list.length === 0 && <li className="flex h-8 items-center px-2.5 text-xs text-fg-subtle">No chats yet</li>}
+          {list.length === 0 && !lead && <li className="flex h-8 items-center px-2.5 text-xs text-fg-subtle">No chats yet</li>}
           {list.length > SHOWN && (
             <li>
               <button

@@ -40,7 +40,7 @@ An agent's home screen — what you see with no chat open — lists everything i
 
 ## The Lead
 
-Each project has one pinned chat, titled **Lead**, that you run the project from. TOT makes it the first time you open the project, and opens it every time after.
+Each project has one pinned chat, titled **Lead**, that you run the project from. It's listed first under the project in the sidebar. TOT makes it the first time you open the project, and opens it every time after.
 
 - It plans the work, and can start a task in each of the project's repos.
 - It watches every task in the project, not only the ones it started, and wakes up when one finishes or needs you. It can also stop, pause or resume a task.
