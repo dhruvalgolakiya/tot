@@ -98,3 +98,29 @@ export function sortTasks(tasks: TaskConversation[]): { open: TaskConversation[]
     .sort((a, b) => toMs(b.task.finishedAt ?? b.updatedAt) - toMs(a.task.finishedAt ?? a.updatedAt));
   return { open, finished };
 }
+
+/** Paused because the tasks of its chat used their token budget (older tasks only say so in their progress line). */
+export function pausedForBudget(task: TaskInfo): boolean {
+  return task.status === "paused" && (task.pausedFor === "budget" || /token budget/.test(task.progress ?? ""));
+}
+
+/** Why it paused for the budget, without the "Raise it in Settings → Tasks, then resume." the UI offers as actions. */
+export function budgetReason(task: TaskInfo): string {
+  return (task.progress ?? "Paused: the token budget is used up.").replace(/\s*Raise it in Settings → Tasks.*$/, "");
+}
+
+/** "Waiting to start: 2 tasks ahead", from its place in the queue. */
+export function queueLine(task: TaskInfo): string {
+  const ahead = task.queuePosition ? task.queuePosition - 1 : null;
+  if (ahead === null) return "Waiting to start";
+  if (ahead === 0) return "Waiting to start: next in line";
+  return `Waiting to start: ${ahead} ${ahead === 1 ? "task" : "tasks"} ahead`;
+}
+
+/** A row's one muted line about where the task is: its progress, its result, or (paused for the budget) why, short. */
+export function taskLine(task: TaskInfo): string | null {
+  if (pausedForBudget(task)) return task.turns === 0 ? "Didn't start: budget used" : "Paused: budget used";
+  if (task.status === "queued") return queueLine(task);
+  if (isOpenTask(task.status)) return task.progress;
+  return task.result?.summary ?? task.summary;
+}

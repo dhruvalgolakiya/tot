@@ -214,7 +214,7 @@ function reportToParent(task: TaskRecord): void {
       id: randomUUID(),
       conversationId: parent.id,
       role: "assistant",
-      parts: [{ type: "notice", id: `n_${randomUUID().slice(0, 12)}`, kind: task.task.status === "done" ? "info" : "warning", text: endingNotice(task) }],
+      parts: [{ type: "notice", id: `n_${randomUUID().slice(0, 12)}`, kind: task.task.status === "done" ? "info" : "warning", text: endingNotice(task), taskId: task.id }],
       status: "complete",
       createdAt: Date.now(),
     });

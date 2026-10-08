@@ -19,7 +19,7 @@ const { conversations, toPublicConversation } = await import("./data/conversatio
 const { messages } = await import("./data/messages.ts");
 const { settings } = await import("./data/settings.ts");
 const { createApp } = await import("./app.ts");
-const { checkSpawn, missionUsage, missionRoot } = await import("./orchestration/budget.ts");
+const { checkSpawn, missionUsage, missionRoot, shortTokens } = await import("./orchestration/budget.ts");
 const { taskFailover } = await import("./orchestration/failover.ts");
 const { fanIn } = await import("./orchestration/fanin.ts");
 const { handoffs, packetFromState, validateHandoff } = await import("./orchestration/handoff.ts");
@@ -296,11 +296,30 @@ try {
 } catch (err) {
   refused = err;
 }
-check("over the token budget: no more tasks", refused instanceof HttpError && /token budget/.test(refused.message), String(refused));
+check(
+  "over the token budget: no more tasks",
+  refused instanceof HttpError && /^The tasks from this chat used [\d.]+k of their 1k-token budget\. Raise it in Settings → Tasks to start more\.$/.test(refused.message),
+  String(refused),
+);
+check("short token counts", [shortTokens(17_833_000), shortTokens(15_000_000), shortTokens(850_000), shortTokens(1500), shortTokens(999)].join(" ") === "17.8M 15M 850k 1.5k 999");
 const budgetTask = tasks.create({ agentId: dana.id, parentId: chat.id, goal: "Runs over budget" });
 await until(() => status(budgetTask.id) === "paused");
-check("…and running ones pause", status(budgetTask.id) === "paused" && /token budget/.test(taskStore.get(budgetTask.id)!.task.progress ?? ""), taskStore.get(budgetTask.id)?.task.progress ?? "");
+const budgetPaused = taskStore.get(budgetTask.id)!.task;
+check(
+  "…and ones that haven't run yet don't start, saying why",
+  budgetPaused.pausedFor === "budget" && /^Didn't start: the tasks from this chat used [\d.]+k of their 1k-token budget\. Raise it in Settings → Tasks, then resume\.$/.test(budgetPaused.progress ?? ""),
+  budgetPaused.progress ?? "",
+);
+const refusedResume = await request("POST", `/tasks/${budgetTask.id}/resume`);
+check(
+  "resuming while still over budget: refused, with why",
+  refusedResume.status === 400 && /^Can't resume yet: the tasks from this chat used .* Raise it in Settings → Tasks first\.$/.test(refusedResume.data?.error ?? "") && status(budgetTask.id) === "paused",
+  JSON.stringify(refusedResume),
+);
+check("…and so is running it now", (await request("POST", `/tasks/${budgetTask.id}/run-now`)).status === 400);
 settings.patch({ tasks: { missionTokenBudget: 0 } });
+const resumed = await request("POST", `/tasks/${budgetTask.id}/resume`);
+check("under budget again: it resumes, and the reason goes", resumed.status === 200 && !resumed.data.task.pausedFor, JSON.stringify(resumed.data?.task));
 await request("POST", `/tasks/${budgetTask.id}/stop`);
 
 // =============================================================================

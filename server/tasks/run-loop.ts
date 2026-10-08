@@ -8,7 +8,7 @@ import { appEvents } from "../app-events.ts";
 import { conversations } from "../data/conversations.ts";
 import { messageText, messages } from "../data/messages.ts";
 import { queueHolds } from "../data/queue-holds.ts";
-import { overBudget } from "../orchestration/budget.ts";
+import { budgetPauseText, overBudget } from "../orchestration/budget.ts";
 import { renderBrief } from "../orchestration/roles.ts";
 import { grantFor, prepareTask } from "../projects/checkout.ts";
 import { continuationPreamble, handoffPreamble } from "./prompt.ts";
@@ -239,9 +239,7 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
     }
     const spent = overBudget(task);
     if (spent) {
-      taskStore.transition(taskId, "paused", {
-        progress: `Paused: this work used its token budget (${Math.round(spent.used / 1000)}k tokens). Raise it in Settings → Tasks, then resume.`,
-      });
+      taskStore.transition(taskId, "paused", { progress: budgetPauseText(task, spent), pausedFor: "budget" });
       return;
     }
     const before = snapshot(task);

@@ -51,6 +51,39 @@ export function overBudget(conversation: ConversationRecord): { used: number; bu
   return used >= budget ? { used, budget } : null;
 }
 
+/** "17.8M", "15M", "850k", "1.5k": a token count, short. */
+export function shortTokens(count: number): string {
+  const short = (value: number, unit: string) => `${value >= 100 ? Math.round(value) : Number(value.toFixed(1))}${unit}`;
+  if (count >= 1_000_000) return short(count / 1_000_000, "M");
+  if (count >= 1000) return short(count / 1000, "k");
+  return String(count);
+}
+
+/**
+ * Whose budget ran out and by how much, e.g. "the tasks from this chat used 17.8M of their 15M-token budget":
+ * the chat's tasks, this (top-level) task, or the tasks of the task everything started from.
+ */
+export function budgetUsedLine(conversation: ConversationRecord, spent: { used: number; budget: number }): string {
+  const root = missionRoot(conversation);
+  const amounts = `${shortTokens(spent.used)} of`;
+  if (root.kind !== "task") return `the tasks from this chat used ${amounts} their ${shortTokens(spent.budget)}-token budget`;
+  if (root.id === conversation.id) return `this task used ${amounts} its ${shortTokens(spent.budget)}-token budget`;
+  return `the tasks from “${root.title}” used ${amounts} their ${shortTokens(spent.budget)}-token budget`;
+}
+
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** Why a task paused for the budget: before its first turn it didn't start at all. */
+export function budgetPauseText(task: ConversationRecord & { task: { turns: number } }, spent: { used: number; budget: number }): string {
+  return `${task.task.turns === 0 ? "Didn't start" : "Paused"}: ${budgetUsedLine(task, spent)}. Raise it in Settings → Tasks, then resume.`;
+}
+
+/** Throws (400) when resuming the task would only pause it again: its mission is over budget. */
+export function checkResume(task: ConversationRecord): void {
+  const spent = overBudget(task);
+  if (spent) throw new HttpError(400, `Can't resume yet: ${budgetUsedLine(task, spent)}. Raise it in Settings → Tasks first.`);
+}
+
 /** The depth a new task under `parent` would have. */
 export const childDepth = (parent: ConversationRecord): number => (parent.kind === "task" && parent.task ? parent.task.depth + 1 : 1);
 
@@ -66,6 +99,6 @@ export function checkSpawn(parent: ConversationRecord, count: number): void {
   }
   const spent = overBudget(parent);
   if (spent) {
-    throw new HttpError(400, `This work has used its token budget (${Math.round(spent.used / 1000)}k of ${Math.round(spent.budget / 1000)}k tokens). Raise it in Settings → Tasks to start more.`);
+    throw new HttpError(400, `${capitalize(budgetUsedLine(parent, spent))}. Raise it in Settings → Tasks to start more.`);
   }
 }

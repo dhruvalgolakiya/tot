@@ -57,13 +57,13 @@ Tasks that were running when TOT stopped are marked **Interrupted**, then pick u
 
 ## Bigger jobs: many tasks at once
 
-For a big job, the agent can split the work into several tasks, each with a role: explorer, planner, implementer, tester, reviewer, researcher or writer. Each role runs on a model tier (fast, standard or deep), and a reviewer always runs on the other provider from the work it reviews. When the tasks finish, their results come back to the chat as one answer.
+For a big job, the agent can split the work into several tasks, each with a role: explorer, planner, implementer, tester, reviewer, researcher or writer. Each role runs on a model tier (fast, standard or deep), and a reviewer always runs on the other provider from the work it reviews. They stack into one card in your chat ("6 tasks · 4 done · 2 paused"), a row each with its status icon, its latest line and how long it has run; click a row to open that task. As each one finishes, a one-line note under the card says so. When the tasks finish, their results come back to the chat as one answer.
 
 A few limits keep this sane, all in **Settings → Tasks → Splitting work**:
 
 - A chat or task can start up to 6 tasks.
 - Tasks can start tasks, two levels deep.
-- A token budget per request (5 million tokens by default; 0 means no limit). Over budget, no new tasks start and running ones pause.
+- A token budget per request (5 million tokens by default; 0 means no limit). Over budget, no new tasks start and running ones pause, saying why ("Didn't start: the tasks from this chat used 17.8M of their 15M-token budget."). The task's page offers **Raise the budget** (Settings → Tasks) and **Resume**; resuming while still over budget is refused with the same reason.
 
 ### When a plan runs out mid-task
 

@@ -2,9 +2,12 @@ import { useEffect, useMemo } from "react";
 import { ArrowDown } from "lucide-react";
 import type { Message } from "@shared/types";
 import { useStickToBottom } from "../hooks/useStickToBottom";
+import { isTask, pausedForBudget } from "../lib/tasks";
 import { retryConversation, selectActiveAgent, setChatScrolled, useStore } from "../store";
 import { AssistantMessage } from "./AssistantMessage";
 import { ForkedFrom } from "./ForkedFrom";
+import { TaskEmptyState, TaskStateLine } from "./tasks/TaskEmptyState";
+import { isTaskEndingMessage, TaskNotices } from "./tasks/TaskNotices";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { UserMessage } from "./UserMessage";
 import { Callout } from "./ui/Callout";
@@ -20,6 +23,8 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
   const loadState = useStore((s) => s.detailState[conversationId]);
   const justFinished = useStore((s) => Boolean(s.justFinished[conversationId]));
   const agent = useStore(selectActiveAgent);
+  const conversation = useStore((s) => s.conversations.find((c) => c.id === conversationId));
+  const task = isTask(conversation) ? conversation : null;
   const { scrollRef, contentRef, atBottom, scrollToBottom } = useStickToBottom();
 
   // Jump to the bottom whenever the user sends something.
@@ -52,7 +57,15 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
       if (message.role === "user" && into && ids.has(into)) notes.set(into, [...(notes.get(into) ?? []), message]);
       else top.push(message);
     }
-    return { shown: top, notesByReply: notes };
+    // Tasks' "… is done" notices in a row read as one compact list, not a message each.
+    const rows: (Message | Message[])[] = [];
+    for (const message of top) {
+      const last = rows.at(-1);
+      if (!isTaskEndingMessage(message)) rows.push(message);
+      else if (Array.isArray(last)) last.push(message);
+      else rows.push([message]);
+    }
+    return { shown: rows, notesByReply: notes };
   }, [messages]);
 
   // Between "sent" and the run's first event there is no assistant message yet.
@@ -89,8 +102,12 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
 
           {messages.length > 0 && <ForkedFrom conversationId={conversationId} />}
 
+          {messages.length === 0 && loadState === "ready" && task && !awaitingReply && <TaskEmptyState task={task} />}
+
           {shown.map((message) =>
-            message.role === "user" ? (
+            Array.isArray(message) ? (
+              <TaskNotices key={message[0]!.id} messages={message} conversationId={conversationId} />
+            ) : message.role === "user" ? (
               <UserMessage key={message.id} message={message} />
             ) : (
               <AssistantMessage
@@ -105,6 +122,8 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
           )}
 
           {awaitingReply && <ThinkingIndicator agentName={agentName} />}
+
+          {messages.length > 0 && task && pausedForBudget(task.task) && <TaskStateLine task={task} />}
         </div>
       </div>
 

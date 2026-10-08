@@ -304,6 +304,8 @@ export type MessagePart =
       projectId?: string;
       /** For "Best of 2 finished" (module 09): the best-of group, so the UI can offer Compare. */
       group?: string;
+      /** For "“Research” is done: …" in the chat that started a task: the task, so the UI can open it. */
+      taskId?: string;
     }
   /** A file the user attached (images render inline). */
   | { type: "file"; id: string; attachment: Attachment }
@@ -1415,6 +1417,8 @@ export interface TaskInfo {
   handoff: HandoffPacket | null;
   /** Paused for a usage limit: when it resumes by itself. */
   resumeAt: number | null;
+  /** Paused because its mission used its token budget (Settings → Tasks); null for any other pause. */
+  pausedFor?: "budget" | null;
   // Mission control (module 09). Optional: tasks from before 09 don't have them.
   /** Lines changed on its branch, refreshed after every turn. */
   stats?: TaskDiffStats | null;
