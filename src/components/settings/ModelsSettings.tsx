@@ -6,7 +6,7 @@ import type { AccountPatch, AccountStatus, ProviderId } from "@shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { PROVIDER_LABELS } from "../../lib/models";
 import type { SettingsSectionProps } from "../../lib/settings";
-import { notifyError, refreshProviders } from "../../store";
+import { notifyError, refreshProviders, saveSettings } from "../../store";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { Field } from "../ui/Field";
@@ -63,6 +63,14 @@ export function ModelsSettings({ draft, onChange, secrets, onSecretsChange }: Se
     setRefreshing(true);
     await reload();
     setRefreshing(false);
+  }
+
+  /** The account Auto and tasks use first for its provider: saved right away, like the other account changes. */
+  async function makeDefault(account: AccountStatus) {
+    const chosen = { ...(draft.models.accounts ?? { claude: "claude", chatgpt: "chatgpt" }), [account.driver]: account.id };
+    if (!(await saveSettings({ models: { accounts: chosen } }))) return;
+    onChange({ ...draft, models: { ...draft.models, accounts: chosen } });
+    await reload();
   }
 
   async function patch(account: AccountStatus, change: AccountPatch) {
@@ -192,6 +200,7 @@ export function ModelsSettings({ draft, onChange, secrets, onSecretsChange }: Se
                   onToggleEnabled={(enabled) => void patch(account, { enabled })}
                   onSignIn={() => void signIn(account)}
                   onRemove={() => void remove(account)}
+                  onMakeDefault={() => void makeDefault(account)}
                 />
               ))
             )}

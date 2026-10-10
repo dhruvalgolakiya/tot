@@ -52,7 +52,7 @@ When a name clashes, TOT's own server keeps the name. TOT still never loads the 
 
 **Import from T3 Code.** Open the **…** menu next to **Add account** and choose **Import from T3 Code**. TOT lists the Claude and Codex instances T3 Code keeps in their own folders, and adds the ones you pick. It only reads T3 Code's settings.
 
-**Picking an account.** The model menu groups models by account. In Settings, **Accounts for Auto and tasks** picks which account TOT Auto and tasks use. When an account hits its usage limit, TOT moves the reply to another signed-in account of the same provider first. Only then does Auto switch to the other provider.
+**Picking an account.** The model menu groups models by account. TOT Auto and tasks use each provider's **Default** account first: pick it with **…** → **Make default** on an account in Settings → Models & accounts (the built-in one is the default until you do). When an account hits its usage limit, TOT moves the reply to another signed-in account of the same provider first. Only then does Auto switch to the other provider.
 
 To sign in an added Claude account, choose **Sign in** in its **…** menu. TOT shows the command to run, for example `CLAUDE_CONFIG_DIR=~/.claude-work claude`, and then you type `/login`.
 

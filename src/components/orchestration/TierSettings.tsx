@@ -27,34 +27,12 @@ function defaultLabel(tier: Tier, provider: ProviderId, models: { model: string;
 export function TierSettings({ draft, onChange, accounts = [] }: { draft: Settings; onChange: (next: Settings) => void; accounts?: AccountStatus[] }) {
   const providers = useStore((s) => s.providers);
   const { tiers, roles } = draft.models;
-  const chosenAccounts = draft.models.accounts ?? { claude: "claude", chatgpt: "chatgpt" };
-  const setAccount = (provider: ProviderId, id: string) =>
-    onChange({ ...draft, models: { ...draft.models, accounts: { ...chosenAccounts, [provider]: id } } });
-  const several = PROVIDERS.filter((provider) => accounts.filter((a) => a.driver === provider && a.enabled).length > 1);
   const setTier = (tier: Tier, provider: ProviderId, model: string) =>
     onChange({ ...draft, models: { ...draft.models, tiers: { ...tiers, [tier]: { ...tiers[tier], [provider]: model || null } } } });
   const setRole = (role: Role, tier: Tier) => onChange({ ...draft, models: { ...draft.models, roles: { ...roles, [role]: tier } } });
 
   return (
     <div className="space-y-8">
-      {several.length > 0 && (
-        <LedgerGroup title="Accounts for Auto and tasks" description="TOT Auto and tasks run on this account of each provider. When it's at its usage limit, another signed-in account of the same provider takes over before Auto moves to the other provider.">
-          {several.map((provider) => (
-            <div key={provider} className="flex items-center justify-between gap-4 px-4 py-2.5">
-              <span className="text-sm text-fg">{PROVIDER_LABELS[provider]}</span>
-              <Select
-                size="sm"
-                className="w-48"
-                aria-label={`Account for ${PROVIDER_LABELS[provider]}`}
-                value={accounts.some((a) => a.id === chosenAccounts[provider] && a.enabled) ? chosenAccounts[provider] : provider}
-                onValueChange={(id) => setAccount(provider, id)}
-                options={accounts.filter((a) => a.driver === provider && a.enabled).map((a) => ({ value: a.id, label: a.name }))}
-              />
-            </div>
-          ))}
-        </LedgerGroup>
-      )}
-
       <LedgerGroup
         title="Model tiers"
         description="TOT Auto runs each turn on a tier: fast for quick asks, deep for hard work, and whatever a task's role needs. Pick the model behind each one, or leave TOT's default."

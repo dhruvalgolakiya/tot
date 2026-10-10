@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Check, Ellipsis, LogIn, Pencil, Power, Trash } from "lucide-react";
+import { Check, Ellipsis, LogIn, Pencil, Power, Star, Trash } from "lucide-react";
 import type { AccountStatus } from "@shared/types";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Badge, type BadgeTone } from "../ui/Badge";
@@ -17,6 +17,8 @@ type AccountRowProps = {
   onToggleEnabled: (on: boolean) => void;
   onSignIn: () => void;
   onRemove: () => void;
+  /** Make it the account TOT Auto and tasks use first for its provider. */
+  onMakeDefault: () => void;
 };
 
 /** Where an account stands, as one badge: off, signed in (or through a proxy), or not signed in. */
@@ -34,7 +36,7 @@ function names(list: string[]): string {
 }
 
 /** One provider account: its name, folder, sign-in and what it brings; everything else in its "…" menu. */
-export function AccountRow({ account, several, signingIn, onRename, onToggleTools, onToggleEnabled, onSignIn, onRemove }: AccountRowProps) {
+export function AccountRow({ account, several, signingIn, onRename, onToggleTools, onToggleEnabled, onSignIn, onRemove, onMakeDefault }: AccountRowProps) {
   const [confirming, setConfirming] = useState(false);
   const badge = state(account);
   const who = [account.authMethod, account.email].filter(Boolean).join(" · ");
@@ -54,7 +56,7 @@ export function AccountRow({ account, several, signingIn, onRename, onToggleTool
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="truncate text-ui font-medium text-fg">{account.name}</span>
-            {several && account.isDefault && account.enabled && <Badge>Auto & tasks</Badge>}
+            {several && account.isDefault && account.enabled && <Badge>Default</Badge>}
           </div>
           <p className="mt-0.5 truncate font-mono text-2xs text-fg-subtle" title={account.dir}>
             {account.dir}
@@ -78,6 +80,11 @@ export function AccountRow({ account, several, signingIn, onRename, onToggleTool
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content align="end" sideOffset={4} className="menu w-64">
+                {several && account.enabled && !account.isDefault && (
+                  <DropdownMenu.Item className="menu-item" onSelect={onMakeDefault}>
+                    <Star className="size-4 text-fg-muted" /> Make default
+                  </DropdownMenu.Item>
+                )}
                 <DropdownMenu.Item className="menu-item" onSelect={onRename}>
                   <Pencil className="size-4 text-fg-muted" /> Rename…
                 </DropdownMenu.Item>

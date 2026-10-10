@@ -24,7 +24,7 @@ Decided with the user (2026-10-10): accounts are config folders, modelled on T3 
 ## API and UI
 
 - `server/accounts/routes.ts`: `GET/POST /api/accounts`, `PATCH/DELETE /api/accounts/:id`, `POST /api/accounts/:id/login` (ChatGPT: a URL; Claude: the command `CLAUDE_CONFIG_DIR=… claude`), `POST /api/accounts/folders/pick`, `GET/POST /api/accounts/import/t3` (`server/accounts/t3.ts` reads `~/.t3/userdata/settings.json`, never writes it). Paired devices may read, not change.
-- Settings → **Models & accounts**: one panel per provider listing its accounts (name, folder, Signed in / Proxy / Not signed in, MCP servers), each with a "…" menu (Rename, Sign in, Use this account's MCP servers, Turn off, Remove). **Add account** and **Import from T3 Code** above. "Accounts for Auto and tasks" in the tiers section.
+- Settings → **Models & accounts**: one panel per provider listing its accounts (name, folder, Signed in / Proxy / Not signed in, MCP servers), each with a "…" menu (Make default, Rename, Sign in, Use this account's MCP servers, Turn off, Remove). **Add account** and **Import from T3 Code** above. "Accounts for Auto and tasks" in the tiers section.
 - The header model menu groups models by account name.
 
 ## Milestones
