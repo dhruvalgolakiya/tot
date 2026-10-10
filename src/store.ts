@@ -149,8 +149,6 @@ export interface TotState {
   personasState: LoadState;
   /** Bumped on every `mail` AppEvent; an open inbox watches this to insert the message live. */
   mailEvent: { personaId: string; mail: MailSummary; at: number } | null;
-  /** A browser login is in progress; we poll until the provider reports loggedIn. */
-  connectingProvider: ProviderId | null;
   /** Model picked before a conversation exists. */
   draftModelId: string | null;
   /** The project a new chat (one not sent yet) starts in: picked in its composer, or set by a project's "New chat". */
@@ -238,7 +236,6 @@ export const useStore = create<TotState>()(() => ({
   personas: [],
   personasState: "loading",
   mailEvent: null,
-  connectingProvider: null,
   draftModelId: null,
   draftProjectId: null,
   draftWorkspace: "checkout",
@@ -443,56 +440,6 @@ function watchProviders() {
     checkedAt = Date.now();
     void refreshProviders({ quiet: true });
   });
-}
-
-const LOGIN_POLL_MS = 3_000;
-const LOGIN_TIMEOUT_MS = 3 * 60_000;
-let loginPoll: number | undefined;
-
-/**
- * Browser login (ChatGPT): open the provider's login page in a new tab, then
- * poll provider status until it reports loggedIn (or we give up).
- */
-export async function connectProvider(id: ProviderId) {
-  // Open the tab synchronously (inside the click) so popup blockers allow it.
-  const tab = window.open("about:blank", "_blank");
-  if (tab) tab.opener = null;
-  let url: string;
-  try {
-    ({ url } = await api.loginProvider(id));
-  } catch (error) {
-    tab?.close();
-    notifyError(error);
-    return;
-  }
-  if (tab) tab.location.href = url;
-  else window.open(url, "_blank", "noopener");
-
-  window.clearInterval(loginPoll);
-  set({ connectingProvider: id });
-  const startedAt = Date.now();
-  const label = PROVIDER_LABELS[id];
-
-  loginPoll = window.setInterval(async () => {
-    if (Date.now() - startedAt > LOGIN_TIMEOUT_MS) {
-      window.clearInterval(loginPoll);
-      set({ connectingProvider: null });
-      toast.error(`Didn't see a ${label} login yet. Finish signing in, then press Refresh.`);
-      return;
-    }
-    try {
-      const providers = await api.listProviders({ refresh: true });
-      set({ providers });
-      if (providers.find((p) => p.id === id)?.loggedIn) {
-        window.clearInterval(loginPoll);
-        set({ connectingProvider: null });
-        toast.success(`${label} connected`);
-        void refreshProviders({ quiet: true });
-      }
-    } catch {
-      // Keep polling; the server may be restarting the harness.
-    }
-  }, LOGIN_POLL_MS);
 }
 
 export async function loadSettings() {

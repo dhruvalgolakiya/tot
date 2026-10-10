@@ -37,7 +37,7 @@ import {
   type PersonaAccess,
   type WorkspaceContext,
 } from "./prompts.ts";
-import { providerStatuses, providers } from "./providers/index.ts";
+import { providerFor, providerStatuses, providers, routingStatuses } from "./providers/index.ts";
 import type { McpServerSpec, TurnInput } from "./providers/types.ts";
 import { CLAUDE_SONNET, parseModelId, resolveRoute, type Complexity, type Route } from "./router.ts";
 import { runRegistry, type Run } from "./runs.ts";
@@ -76,6 +76,26 @@ const MAX_ATTACHMENTS = 10;
 const starting = new Set<string>();
 /** How long the end of a turn may wait for the chat title to land. */
 const TITLE_GRACE_MS = 1500;
+
+/**
+ * After an account hits its usage limit: another enabled, signed-in account of the same provider that isn't at its
+ * limit too, on the same model when it offers it (else its first one). Null when there's none.
+ */
+export function sameProviderFallback(
+  route: Route,
+  statuses: { id: ProviderId; accountId?: string; loggedIn: boolean; label: string; models: { model: string; available: boolean }[] }[],
+  limited: ReadonlySet<string>,
+): { ok: true; route: Route } | null {
+  for (const status of statuses) {
+    const account = status.accountId ?? status.id;
+    if (status.id !== route.provider || account === route.account || !status.loggedIn || limited.has(account)) continue;
+    const available = status.models.filter((m) => m.available);
+    const model = available.find((m) => m.model === route.model)?.model ?? available[0]?.model;
+    if (!model) continue;
+    return { ok: true, route: { ...route, account, model, reason: `${route.reason} · ${status.label} (the other account was at its limit)` } };
+  }
+  return null;
+}
 
 /** Server-side extras for a turn (not part of the public API). */
 export interface TurnOptions {
@@ -124,8 +144,9 @@ export async function sendMessage(
   // Held from here until the run exists (no await after this one), so two messages can't both start a turn.
   starting.add(conversationId);
   let statuses: Awaited<ReturnType<typeof providerStatuses>>;
+  let accountStatuses: Awaited<ReturnType<typeof routingStatuses>>;
   try {
-    statuses = await providerStatuses();
+    [statuses, accountStatuses] = await Promise.all([providerStatuses(), routingStatuses()]);
   } finally {
     starting.delete(conversationId);
   }
@@ -134,6 +155,7 @@ export async function sendMessage(
   const result = resolveRoute(modelId, routingText, {
     thinkHarder: request.thinkHarder,
     statuses,
+    accounts: accountStatuses,
     limited: limits.active(),
     complexity,
     tier: options.tier,
@@ -168,6 +190,7 @@ export async function sendMessage(
     parts: [],
     status: "streaming",
     provider: route.provider,
+    account: route.account,
     model: route.model,
     routeReason: route.reason,
     createdAt: now + 1,
@@ -307,9 +330,11 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
 
     /** Turn input for a route: resume the provider's session when this chat already has one. */
     const inputFor = (route: Route, fresh = false): TurnInput => {
-      const resumable = !fresh && !ctx.freshSession && conversation.provider === route.provider && conversation.providerSessionId;
-      // A fork's first turn continues a copy of the source's session when this provider wrote the reply it was forked at.
-      const fork = !fresh && !ctx.freshSession ? forks.nativeStart(conversation, route.provider) : null;
+      // A session lives in its account's folder: only the same account (of the same provider) can resume it.
+      const sameAccount = conversation.provider === route.provider && (conversation.providerAccount ?? conversation.provider) === route.account;
+      const resumable = !fresh && !ctx.freshSession && sameAccount && conversation.providerSessionId;
+      // A fork's first turn continues a copy of the source's session when this account wrote the reply it was forked at.
+      const fork = !fresh && !ctx.freshSession ? forks.nativeStart(conversation, route.account) : null;
       // A different provider can't resume the old session (nor a fork's copy another's): carry the transcript over instead.
       const needsTranscript = !resumable && !fork && !ctx.freshSession && (conversation.provider !== null || conversation.forkedFrom !== null);
       return {
@@ -334,9 +359,11 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
 
     let lastSave = 0;
     const attempt = async (route: Route, input: TurnInput): Promise<void> => {
-      for await (const event of providers[route.provider].runTurn(input)) {
+      for await (const event of providerFor(route.account).runTurn(input)) {
         if (event.type === "session") {
-          conversations.update(conversation.id, { provider: route.provider, providerSessionId: event.sessionId });
+          // Kept in memory too: a fallback to another account of this provider must not try to resume it.
+          Object.assign(conversation, { provider: route.provider, providerAccount: route.account, providerSessionId: event.sessionId });
+          conversations.update(conversation.id, { provider: route.provider, providerAccount: route.account, providerSessionId: event.sessionId });
           place.session = event.sessionId;
           continue;
         }
@@ -356,26 +383,31 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
     try {
       await attempt(route, inputFor(route));
     } catch (err) {
-      // A limit counts even when it hits mid-reply: Auto avoids the provider, and a task's failover sees it.
-      if (err instanceof TurnError && err.kind === "limit" && !signal.aborted) limits.mark(route.provider, err.message);
+      // A limit counts even when it hits mid-reply: Auto avoids the account, and a task's failover sees it.
+      if (err instanceof TurnError && err.kind === "limit" && !signal.aborted) limits.mark(route.account, err.message);
       if (signal.aborted || builder.hasContent) throw err;
 
       if (err instanceof TurnError && err.kind === "limit") {
-        const fallback = ctx.auto
-          ? resolveRoute("auto", text, {
-              thinkHarder: ctx.thinkHarder,
-              statuses: await providerStatuses(),
-              limited: limits.active(),
-              complexity: ctx.complexity,
-              tier: ctx.tier,
-            })
-          : null;
-        if (!fallback?.ok || fallback.route.provider === route.provider) throw err;
-        const from = providers[route.provider].label;
+        // Another signed-in account of the same provider comes first (same model, its own plan), then under Auto
+        // the other provider, as before accounts.
+        const accountsNow = await routingStatuses();
+        const fallback = sameProviderFallback(route, accountsNow, limits.active()) ??
+          (ctx.auto
+            ? resolveRoute("auto", text, {
+                thinkHarder: ctx.thinkHarder,
+                statuses: await providerStatuses(),
+                accounts: accountsNow,
+                limited: limits.active(),
+                complexity: ctx.complexity,
+                tier: ctx.tier,
+              })
+            : null);
+        if (!fallback?.ok || fallback.route.account === route.account) throw err;
+        const from = providerFor(route.account).label;
         route = fallback.route;
         const reset = /resets [^.]*/i.exec(err.message)?.[0];
-        builder.notice("warning", `${from} is at its usage limit${reset ? ` (${reset})` : ""} — switched to ${providers[route.provider].label}.`);
-        Object.assign(assistant, { provider: route.provider, model: route.model, routeReason: route.reason });
+        builder.notice("warning", `${from} is at its usage limit${reset ? ` (${reset})` : ""} — switched to ${providerFor(route.account).label}.`);
+        Object.assign(assistant, { provider: route.provider, account: route.account, model: route.model, routeReason: route.reason });
         await attempt(route, inputFor(route));
       } else if (inputFor(route).sessionId || inputFor(route).fork) {
         // A session that can't be resumed or forked (deleted transcript, expired thread) shouldn't
@@ -386,7 +418,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         throw err;
       }
     }
-    limits.clear(route.provider);
+    limits.clear(route.account);
   } catch (err) {
     status = "error";
     error = err instanceof Error ? err.message : String(err);

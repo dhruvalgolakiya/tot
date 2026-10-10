@@ -42,7 +42,8 @@ import { onSignOut } from "./devices/sessions.ts";
 import { github, GitHubError } from "./github.ts";
 import { clientAddress, isThisMachine, isTrustedLocalHost } from "./net.ts";
 import { slack } from "./slack.ts";
-import { modelOptions, providerStatuses, providers } from "./agent/providers/index.ts";
+import { accountStatuses, modelOptions, providerStatuses, providers } from "./agent/providers/index.ts";
+import { accountRoutes } from "./accounts/routes.ts";
 import { runRegistry } from "./agent/runs.ts";
 import { runRoutine } from "./agent/scheduler.ts";
 import { answerApproval } from "./agent/approvals.ts";
@@ -125,7 +126,7 @@ api.use("*", async (c, next) => {
 // sign-ins, reach a third device through this one, or change this device's logins and settings.
 // Memory repo (module 10): memory is this device's too; a paired device may only fetch the sync bundle.
 const DEVICE_NEVER = /^\/api\/(devices|sessions|d|access|memory|memories)(\/|$)/;
-const DEVICE_READ_ONLY = /^\/api\/(settings|github|slack|apps|personas|plugins)(\/|$)/;
+const DEVICE_READ_ONLY = /^\/api\/(settings|github|slack|apps|personas|plugins|accounts)(\/|$)/;
 api.use("*", async (c, next) => {
   if (callerOf(c).kind !== "device" || c.req.path === "/api/devices/unpaired" || c.req.path === BUNDLE_PATH) return next();
   if (DEVICE_NEVER.test(c.req.path) || (c.req.method !== "GET" && DEVICE_READ_ONLY.test(c.req.path))) {
@@ -370,6 +371,8 @@ api.post("/conversations/:id/computer/stop", async (c) => {
 });
 
 api.route("/", taskRoutes);
+// Provider accounts: several Claude / ChatGPT sign-ins (config folders).
+api.route("/", accountRoutes);
 // Module 09: mission control (lanes A, B, C).
 api.route("/", landingRoutes);
 api.route("/", missionRoutes);
@@ -956,6 +959,8 @@ api.patch("/settings", async (c) => {
   if (patch.tasks) taskQueue.pump();
   // Auth changes alter provider status; don't serve a stale cached one.
   if (patch.claude || patch.anthropicApiKey !== undefined) void providerStatuses(true);
+  // Which account Auto and tasks use shows on the accounts list.
+  if (patch.models?.accounts) void accountStatuses(true);
   return c.json(next);
 });
 

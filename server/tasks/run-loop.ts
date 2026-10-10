@@ -51,7 +51,7 @@ const restarted = new Set<string>();
 const handOffs = new Map<string, string>();
 const idleListeners = new Set<() => void>();
 /** What to do when a task's provider hits its usage limit mid-run (orchestration/failover.ts): switch, or pause. */
-let onLimit: ((taskId: string, provider: ProviderId) => Promise<"switched" | "paused">) | null = null;
+let onLimit: ((taskId: string, provider: ProviderId, account: string) => Promise<"switched" | "paused">) | null = null;
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -271,10 +271,12 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
       return;
     }
     if (status === "error") {
-      // Its provider hit its usage limit: carry on with the other one, or wait for the reset.
+      // Its provider hit its usage limit: carry on with the other one, or wait for the reset. Limits are kept per
+      // provider account (a built-in one by its provider's id).
       const provider = end?.message.provider;
-      if (provider && onLimit && limits.active().has(provider)) {
-        if ((await onLimit(taskId, provider)) === "paused") return;
+      const account = end?.message.account ?? provider;
+      if (provider && account && onLimit && limits.active().has(account)) {
+        if ((await onLimit(taskId, provider, account)) === "paused") return;
         stalls = 0;
         continue;
       }
@@ -285,7 +287,7 @@ async function loop(taskId: string, first: SendMessageRequest | null): Promise<v
         // until the user resumes it. Not for the task's own trouble (too many steps, too long for the model),
         // and never for a usage limit (failover switches or waits for the reset).
         const providerFault = end?.errorKind !== "turn" && end?.errorKind !== "limit";
-        if (providerFault && !(provider && limits.active().has(provider))) {
+        if (providerFault && !(account && limits.active().has(account))) {
           queueHolds.set(task.agentId, provider ?? null, error);
           appEvents.agentChanged(task.agentId);
         }

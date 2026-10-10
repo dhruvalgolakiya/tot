@@ -1,16 +1,16 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ProviderId } from "../../shared/types.ts";
 import { DATA_DIR } from "../config.ts";
 
-/** After a usage-limit error without a readable reset time, Auto avoids that provider this long. */
+/** After a usage-limit error without a readable reset time, Auto avoids that account this long. */
 const DEFAULT_COOLDOWN_MS = 15 * 60_000;
 const MAX_COOLDOWN_MS = 24 * 60 * 60_000;
 
-// Persisted so a server restart doesn't send the next turn into a known limit.
+// Persisted so a server restart doesn't send the next turn into a known limit. Keyed by provider account: the
+// built-in accounts' ids are the provider ids ("claude", "chatgpt"), so files from before accounts still read right.
 const FILE = join(DATA_DIR, "limits.json");
-const limited = new Map<ProviderId, { until: number; message: string }>(
-  existsSync(FILE) ? Object.entries(JSON.parse(readFileSync(FILE, "utf8"))) as [ProviderId, { until: number; message: string }][] : [],
+const limited = new Map<string, { until: number; message: string }>(
+  existsSync(FILE) ? Object.entries(JSON.parse(readFileSync(FILE, "utf8"))) as [string, { until: number; message: string }][] : [],
 );
 const save = () => writeFileSync(FILE, JSON.stringify(Object.fromEntries(limited)));
 
@@ -49,19 +49,19 @@ export function parseResetTime(message: string, now = Date.now()): number | unde
 }
 
 export const limits = {
-  mark(provider: ProviderId, message: string): void {
+  mark(provider: string, message: string): void {
     const reset = parseResetTime(message);
     const until = reset ? Math.min(reset, Date.now() + MAX_COOLDOWN_MS) : Date.now() + DEFAULT_COOLDOWN_MS;
     limited.set(provider, { until, message });
     save();
   },
 
-  clear(provider: ProviderId): void {
+  clear(provider: string): void {
     if (limited.delete(provider)) save();
   },
 
   /** The provider's last limit message while its cooldown is running. */
-  message(provider: ProviderId): string | undefined {
+  message(provider: string): string | undefined {
     const entry = limited.get(provider);
     if (!entry) return undefined;
     if (Date.now() > entry.until) {
@@ -72,11 +72,11 @@ export const limits = {
   },
 
   /** When the provider's cooldown ends; undefined when it isn't limited. */
-  until(provider: ProviderId): number | undefined {
+  until(provider: string): number | undefined {
     return limits.message(provider) === undefined ? undefined : limited.get(provider)?.until;
   },
 
-  active(): Set<ProviderId> {
+  active(): Set<string> {
     return new Set([...limited.keys()].filter((provider) => limits.message(provider) !== undefined));
   },
 };

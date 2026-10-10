@@ -40,7 +40,7 @@ function resumeAt(taskId: string, at: number): void {
   timers.set(taskId, timer);
 }
 
-export async function failover(taskId: string, limited: ProviderId): Promise<"switched" | "paused"> {
+export async function failover(taskId: string, limited: ProviderId, account: string = limited): Promise<"switched" | "paused"> {
   const task = taskStore.require(taskId);
   const other = otherProvider(limited);
   const signedIn = await statuses.get();
@@ -50,7 +50,7 @@ export async function failover(taskId: string, limited: ProviderId): Promise<"sw
     await switchProvider(taskId, other, `${LABELS[limited]} hit its usage limit, so this continues on ${LABELS[other]}`, limited);
     return "switched";
   }
-  const until = limits.until(limited) ?? Date.now() + RETRY_MS;
+  const until = limits.until(account) ?? Date.now() + RETRY_MS;
   taskStore.transition(taskId, "paused", { resumeAt: until, progress: `Paused: ${LABELS[limited]} is at its usage limit until ${clock(until)}. It resumes by itself.` });
   resumeAt(taskId, until);
   return "paused";

@@ -54,7 +54,7 @@ New apps start at **Ask me**: actions that change things show you a card first, 
 
 ## Connectors you already have
 
-If you set up connectors on claude.ai, or apps on your ChatGPT account, TOT can use them. Turn on **Use my claude.ai connectors** or **Use my ChatGPT connected apps** in **Settings → Models**.
+If you set up connectors on claude.ai, or apps on your ChatGPT account, TOT can use them. Turn on **Use my claude.ai connectors** or **Use my ChatGPT connected apps** in **Settings → Models & accounts**.
 
 ## Plugins (MCP)
 

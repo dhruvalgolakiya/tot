@@ -32,8 +32,8 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   },
   {
     id: "models",
-    label: "Models",
-    description: "Connect Claude and ChatGPT with the subscriptions you already have.",
+    label: "Models & accounts",
+    description: "Your Claude and ChatGPT sign-ins (as many as you like), and the models TOT uses on them.",
     icon: Sparkles,
     hasDraft: true,
   },

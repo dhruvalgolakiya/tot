@@ -50,9 +50,9 @@ Claude and ChatGPT plans have usage limits. When one hits its limit, TOT remembe
 
 ### Model tiers (optional)
 
-TOT runs each turn on a tier: **Fast** for quick asks, **Standard** for most work, **Deep** for the hard change. **Settings → Models → Model tiers** lets you choose the model behind each tier, for Claude and for ChatGPT. You don't have to touch it.
+TOT runs each turn on a tier: **Fast** for quick asks, **Standard** for most work, **Deep** for the hard change. **Settings → Models & accounts → Model tiers** lets you choose the model behind each tier, for Claude and for ChatGPT. You don't have to touch it.
 
-**Settings → Models** also has two switches: **Use my claude.ai connectors** and **Use my ChatGPT connected apps**. They let each model use the connectors (like Gmail or Drive) you already set up on those accounts.
+**Settings → Models & accounts** also has two switches: **Use my claude.ai connectors** and **Use my ChatGPT connected apps**. They let each model use the connectors (like Gmail or Drive) you already set up on those accounts.
 
 ## Knowledge: your agents' pages
 

@@ -15,9 +15,16 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
  * light turns -> Claude Sonnet 5.5, complex turns -> Claude Opus 5.5.
  */
 export interface ModelOption {
-  /** "auto" | "<provider>:<model>", e.g. "claude:claude-opus-5-5", "chatgpt:gpt-5.5" */
+  /**
+   * "auto" | "<account>:<model>", e.g. "claude:claude-opus-5-5", "chatgpt:gpt-5.5". The built-in accounts' ids are
+   * "claude" and "chatgpt", so older ids keep working; another account's models carry its id ("claude-mix:…").
+   */
   id: string;
   provider: ProviderId | "auto";
+  /** The provider account the model runs on (Provider accounts); absent for "auto". */
+  accountId?: string;
+  /** That account's name, for grouping the model menu ("Claude Mix"). */
+  accountName?: string;
   /** Provider-native model id ("claude-opus-5-5"), or "auto". */
   model: string;
   label: string;
@@ -28,6 +35,8 @@ export interface ModelOption {
 
 export interface ProviderStatus {
   id: ProviderId;
+  /** The provider account this status is for; the built-in one ("claude" / "chatgpt") when absent. */
+  accountId?: string;
   /** "Claude" | "ChatGPT" */
   label: string;
   /** The local harness (Claude Code / Codex CLI) was found. */
@@ -380,6 +389,8 @@ export interface Message {
   parts: MessagePart[];
   status: MessageStatus;
   provider?: ProviderId;
+  /** The provider account that answered (Provider accounts); the built-in one when absent. */
+  account?: string;
   /** Provider-native model id actually used for this turn. */
   model?: string;
   /** Why TOT picked this model, e.g. "Auto · complex task → Opus 5.5". */
@@ -1049,7 +1060,15 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //
 // GET    /api/health                          -> { ok: true, version: string }
 // GET    /api/providers                       -> ProviderStatus[]
-// GET    /api/models                          -> ModelOption[]   ("auto" first)
+// GET    /api/models                          -> ModelOption[]   ("auto" first; then each enabled account's models)
+// GET    /api/accounts                        -> AccountStatus[] (?refresh=1 re-checks sign-ins; never env values)
+// POST   /api/accounts                        AccountInput -> ProviderAccount
+// PATCH  /api/accounts/:id                    AccountPatch -> ProviderAccount
+// DELETE /api/accounts/:id                    -> { ok: true }    (400 for a built-in account)
+// POST   /api/accounts/:id/login              -> AccountLogin    (ChatGPT: a URL to open; Claude: a command to run)
+// POST   /api/accounts/folders/pick           -> { path: string | null }  (macOS folder picker; this Mac only)
+// GET    /api/accounts/import/t3              -> T3ImportCandidate[]  (reads T3 Code's settings, never writes them)
+// POST   /api/accounts/import/t3              { ids: string[] } -> ProviderAccount[]
 //
 // GET    /api/agents                          -> Agent[]         (creation order; the default agent first)
 // POST   /api/agents                          AgentInput -> Agent
@@ -1817,6 +1836,8 @@ export interface ModelTierSettings {
   tiers: Record<Tier, Record<ProviderId, string | null>>;
   /** The tier each role runs on by default. */
   roles: Record<Role, Tier>;
+  /** The account TOT Auto and tasks use for each provider (Provider accounts); the built-in one by default. */
+  accounts: Record<ProviderId, string>;
 }
 
 /** What a child session gets instead of the parent's transcript. */
@@ -2380,4 +2401,80 @@ export interface MemoryFileContent {
 export interface MemoryDreamRequest {
   /** One repo; omit for every repo that changed since its last dream. */
   repo?: MemoryRepoId;
+}
+
+// ---------------------------------------------------------------------------
+// Provider accounts
+//
+// Several sign-ins per provider, like T3 Code's provider instances: a Claude
+// account is a Claude Code config folder (CLAUDE_CONFIG_DIR: its login, the
+// `env` block of its settings.json — e.g. a CCS proxy — and its MCP servers),
+// a ChatGPT account a Codex home (CODEX_HOME). Two built-in accounts, "claude"
+// and "chatgpt", use the default folders; every older provider id is one of them.
+// ---------------------------------------------------------------------------
+
+export interface ProviderAccount {
+  /** "claude" / "chatgpt" for the built-ins; a slug of the name otherwise ("claude-mix"). Never contains ":". */
+  id: string;
+  driver: ProviderId;
+  name: string;
+  /** The config folder ("~/.claude-t3-ccs"); null = the driver's default (~/.claude, ~/.codex). */
+  configDir: string | null;
+  /** A specific CLI to run (an absolute path); null = the one TOT ships with. */
+  binaryPath: string | null;
+  /** Also give agents this account's own MCP servers (and, for Claude, its enabled plugins). */
+  useAccountTools: boolean;
+  enabled: boolean;
+  builtIn: boolean;
+}
+
+export interface AccountStatus extends ProviderAccount {
+  /** The folder it uses, "~/…" for home; the driver's default folder when configDir is null. */
+  dir: string;
+  dirExists: boolean;
+  installed: boolean;
+  loggedIn: boolean;
+  /** e.g. "Claude Max subscription", "ChatGPT Pro plan", "Through a proxy". */
+  authMethod?: string;
+  /** Non-secret hint: the signed-in email, when known. */
+  email?: string;
+  /** How to sign in, or the last error. */
+  detail?: string;
+  /** Names of the keys in the folder's settings.json `env` (Claude). Values never leave the server. */
+  envKeys: string[];
+  /** ANTHROPIC_BASE_URL is set there: Claude Code talks to a proxy (e.g. CCS). */
+  proxy: boolean;
+  /** The account's own MCP servers (names), given to agents when useAccountTools is on. */
+  mcpServers: string[];
+  /** Its enabled Claude Code plugins (names), loaded when useAccountTools is on. */
+  plugins: string[];
+  models: ModelOption[];
+  /** TOT Auto and tasks use this account for its provider (Settings → Models). */
+  isDefault: boolean;
+  /** Its usage-limit cooldown, when one is running. */
+  limitedUntil: number | null;
+}
+
+export interface AccountInput {
+  driver: ProviderId;
+  name: string;
+  configDir: string | null;
+  binaryPath?: string | null;
+  useAccountTools?: boolean;
+}
+
+export type AccountPatch = Partial<Pick<ProviderAccount, "name" | "configDir" | "binaryPath" | "useAccountTools" | "enabled">>;
+
+export type AccountLogin = { kind: "url"; url: string } | { kind: "command"; command: string };
+
+/** A provider instance in T3 Code's settings that TOT could add as an account. */
+export interface T3ImportCandidate {
+  /** Its key in T3 Code's providerInstances. */
+  t3Id: string;
+  driver: ProviderId;
+  name: string;
+  configDir: string;
+  binaryPath: string | null;
+  /** An account with this folder exists already. */
+  alreadyAdded: boolean;
 }

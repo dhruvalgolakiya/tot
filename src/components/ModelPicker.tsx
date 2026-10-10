@@ -1,14 +1,15 @@
+import { Fragment } from "react";
 import { DropdownMenu } from "radix-ui";
 import { ChevronDown } from "lucide-react";
 import { groupModels, modelLabel } from "../lib/models";
 import { selectActiveModels, selectCurrentModelId, setModel, useStore } from "../store";
 import { ModelMenuItem } from "./ModelMenuItem";
 
-/** Header model menu: TOT Auto, then Claude models, then ChatGPT models. */
+/** Header model menu: TOT Auto, then each provider account's models under its name (Claude accounts first). */
 export function ModelPicker() {
   const models = useStore(selectActiveModels);
   const currentModelId = useStore(selectCurrentModelId);
-  const groups = groupModels(models);
+  const { auto, groups } = groupModels(models);
 
   return (
     <DropdownMenu.Root>
@@ -32,27 +33,18 @@ export function ModelPicker() {
             <div className="px-3 py-3 text-sm text-fg-subtle">Models aren't available yet. Is the TOT server running?</div>
           ) : (
             <DropdownMenu.RadioGroup value={currentModelId} onValueChange={(id) => void setModel(id)}>
-              {groups.auto.map((model) => (
+              {auto.map((model) => (
                 <ModelMenuItem key={model.id} model={model} />
               ))}
-              {groups.claude.length > 0 && (
-                <>
-                  {groups.auto.length > 0 && <DropdownMenu.Separator className="menu-separator" />}
-                  <DropdownMenu.Label className="menu-label">Claude</DropdownMenu.Label>
-                  {groups.claude.map((model) => (
+              {groups.map((group, index) => (
+                <Fragment key={group.accountId}>
+                  {(index > 0 || auto.length > 0) && <DropdownMenu.Separator className="menu-separator" />}
+                  <DropdownMenu.Label className="menu-label">{group.label}</DropdownMenu.Label>
+                  {group.models.map((model) => (
                     <ModelMenuItem key={model.id} model={model} />
                   ))}
-                </>
-              )}
-              {groups.chatgpt.length > 0 && (
-                <>
-                  <DropdownMenu.Separator className="menu-separator" />
-                  <DropdownMenu.Label className="menu-label">ChatGPT</DropdownMenu.Label>
-                  {groups.chatgpt.map((model) => (
-                    <ModelMenuItem key={model.id} model={model} />
-                  ))}
-                </>
-              )}
+                </Fragment>
+              ))}
             </DropdownMenu.RadioGroup>
           )}
         </DropdownMenu.Content>

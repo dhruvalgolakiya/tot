@@ -131,6 +131,8 @@ export interface SpawnOptions {
   config?: string[];
   /** Extra environment for the child (merged over process.env). */
   env?: Record<string, string>;
+  /** A specific codex binary (an account's own CLI); the bundled one, else PATH, when absent. */
+  binary?: CodexBinary;
   cwd?: string;
   /** Used in logs. */
   label?: string;
@@ -174,7 +176,7 @@ export class CodexAppServer {
   }
 
   private async spawnAndInitialize(timeoutMs: number): Promise<void> {
-    const binary = resolveCodexBinary();
+    const binary = this.options.binary ?? resolveCodexBinary();
     if (!binary) throw new CodexExitError("Codex CLI not found. Install it with `npm i -g @openai/codex` or `brew install codex`.");
 
     const args: string[] = [];

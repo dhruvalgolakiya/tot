@@ -1,8 +1,10 @@
 // ChatGPT provider: drives `codex app-server` (the JSON-RPC protocol behind the Codex
 // IDE extension) with the user's own ChatGPT login.
 //
-// Process model: ONE shared app-server process serves every conversation, status
-// check, title completion and login. Each conversation is a Codex thread; its MCP
+// Process model: ONE app-server process per provider account serves every
+// conversation, status check, title completion and login of that account (an
+// account with its own folder runs with CODEX_HOME set to it; the built-in one
+// uses the default ~/.codex). Each conversation is a Codex thread; its MCP
 // servers (TOT's "tot" server + enabled plugins) and the connected-apps switch are
 // passed as per-thread config over JSON-RPC (dotted keys, so they merge with the
 // process-level lockdown flags and never appear in argv or rollout files). A loaded
@@ -13,10 +15,13 @@
 // Lockdown: the agent's computer is TOT's remote VM (via the tot MCP tools), never
 // this Mac. Process flags remove the shell, unified exec, computer/browser use,
 // plugins, hooks, sub-agents, image generation, memories and the user's own MCP
-// servers; the sandbox is read-only with approval "never" (so Code Mode's nested
-// apply_patch is rejected), and every approval request we still receive is declined.
+// servers (unless the account's tools are on: then its config.toml MCP servers
+// stay, pre-approved); the sandbox is read-only with approval "never" (so Code
+// Mode's nested apply_patch is rejected), and every approval request we still
+// receive is declined.
 
-import type { Effort, ModelOption, ProviderStatus, Usage } from "../../../shared/types.ts";
+import type { Effort, ModelOption, ProviderAccount, ProviderStatus, Usage } from "../../../shared/types.ts";
+import { accountDir, accounts, binaryFor } from "../../accounts/accounts.ts";
 import { VERSION, paths } from "../../config.ts";
 import { settings as settingsStore } from "../../data/settings.ts";
 import { CodexAppServer, CodexExitError, CodexRpcError, resolveCodexBinary } from "./codex-app-server.ts";
@@ -34,7 +39,7 @@ const RPC_TIMEOUT_MS = 30_000;
 const TOT_TOOL_TIMEOUT_SEC = 620;
 const PLUGIN_TOOL_TIMEOUT_SEC = 300;
 
-const LOGIN_HINT = "Click Connect ChatGPT, or run `codex login` in a terminal.";
+const LOGIN_HINT = "Choose Sign in on its row in Settings → Models & accounts, or run `codex login` in a terminal.";
 
 /**
  * Process-level `-c` overrides (TOML values). Everything that could execute on, or
@@ -114,7 +119,7 @@ type Notification = { method: string; params: any };
 type ErrorEvent = Extract<ProviderEvent, { type: "error" }>;
 
 // ---------------------------------------------------------------------------
-// Shared runtime: one app-server, thread bookkeeping, idle reaping
+// Runtime per account: one app-server, thread bookkeeping, idle reaping
 // ---------------------------------------------------------------------------
 
 interface LoadedThread {
@@ -124,6 +129,8 @@ interface LoadedThread {
 }
 
 class CodexRuntime {
+  constructor(readonly accountId: string) {}
+
   private current: CodexAppServer | null = null;
   private starting: Promise<CodexAppServer> | null = null;
   private readonly sinks = new Map<string, (n: Notification) => void>();
@@ -134,10 +141,19 @@ class CodexRuntime {
   private pins = 0;
   private lastUsed = Date.now();
   readonly threads = new Map<string, LoadedThread>();
-  /** MCP servers from the user's own ~/.codex/config.toml; disabled on every TOT thread. */
+  /** MCP servers from the account's own config.toml; disabled on TOT threads unless the account's tools are on. */
   userMcpServers: string[] = [];
   models: CodexModel[] | null = null;
   rateLimits: RateLimitSnapshot | null = null;
+  statusCache: { key: string; at: number; ttl: number; value: Promise<ProviderStatus> } | null = null;
+  pendingLogin: { url: string } | null = null;
+
+  /** The account, looked up on each use so its settings (tools on or off, its name) are current. */
+  account(): ProviderAccount {
+    const found = accounts.get(this.accountId);
+    if (!found) throw new Error("This ChatGPT account was removed. Pick another model.");
+    return found;
+  }
 
   async server(): Promise<CodexAppServer> {
     this.lastUsed = Date.now();
@@ -149,10 +165,15 @@ class CodexRuntime {
   }
 
   private async spawn(): Promise<CodexAppServer> {
+    const account = this.account();
+    const binary = binaryFor(account);
     const server = new CodexAppServer({
-      label: "codex",
+      label: account.builtIn ? "codex" : `codex:${account.id}`,
       cwd: paths.agentHome,
       config: LOCKDOWN_FLAGS,
+      // An account with its own folder signs in, keeps its threads and reads its config.toml there.
+      env: account.builtIn ? undefined : { CODEX_HOME: accountDir(account) },
+      ...(binary ? { binary: { path: binary, pathDirs: [], source: "env" as const } } : {}),
       clientName: "tot",
       clientVersion: VERSION,
     });
@@ -273,11 +294,24 @@ class CodexRuntime {
   }
 }
 
-const runtime = new CodexRuntime();
+const runtimes = new Map<string, CodexRuntime>();
 
-/** Stops the shared app-server (tests, shutdown). Safe to call repeatedly. */
+function runtimeFor(accountId: string): CodexRuntime {
+  let runtime = runtimes.get(accountId);
+  if (!runtime) runtimes.set(accountId, (runtime = new CodexRuntime(accountId)));
+  return runtime;
+}
+
+/** Stops every account's app-server (tests, shutdown). Safe to call repeatedly. */
 export async function stopCodex(): Promise<void> {
-  await runtime.stop();
+  await Promise.all([...runtimes.values()].map((runtime) => runtime.stop()));
+}
+
+/** Stops one account's app-server (its folder changed, or it was removed); the next use starts a fresh one. */
+export async function stopCodexAccount(accountId: string): Promise<void> {
+  const runtime = runtimes.get(accountId);
+  runtimes.delete(accountId);
+  await runtime?.stop();
 }
 
 // ---------------------------------------------------------------------------
@@ -371,8 +405,15 @@ function useConnectedApps(): boolean {
   }
 }
 
-/** Per-thread config (dotted keys merge with the process lockdown flags). */
-function threadConfig(mcpServers: McpServerSpec[], apps: boolean): Record<string, unknown> {
+/**
+ * Per-thread config (dotted keys merge with the process lockdown flags). The account's own config.toml MCP servers
+ * are switched off, or with its tools on kept and pre-approved (approval "never" would reject them otherwise).
+ */
+export function threadConfig(
+  mcpServers: McpServerSpec[],
+  apps: boolean,
+  account: { userMcpServers: string[]; useAccountTools: boolean } = { userMcpServers: [], useAccountTools: false },
+): Record<string, unknown> {
   const config: Record<string, unknown> = { "features.apps": apps };
   // Codex Code Mode hides MCP tools behind one JS `exec` tool (the model first searches
   // ALL_TOOLS, then calls). TOT's own tools and plugins are few and core: expose them as
@@ -385,8 +426,10 @@ function threadConfig(mcpServers: McpServerSpec[], apps: boolean): Record<string
   }
   if (direct.size) config["features.code_mode.direct_only_tool_namespaces"] = [...direct];
   const ours = new Set(mcpServers.map((s) => s.name));
-  for (const name of runtime.userMcpServers) {
-    if (SAFE_KEY.test(name) && !ours.has(name)) config[`mcp_servers.${name}.enabled`] = false;
+  for (const name of account.userMcpServers) {
+    if (!SAFE_KEY.test(name) || ours.has(name)) continue;
+    if (account.useAccountTools) config[`mcp_servers.${name}.default_tools_approval_mode`] = "approve";
+    else config[`mcp_servers.${name}.enabled`] = false;
   }
   for (const spec of mcpServers) {
     if (!SAFE_KEY.test(spec.name)) {
@@ -427,7 +470,7 @@ export function codexEffort(effort: Effort | string, supported?: string[]): stri
   return options[0];
 }
 
-function supportedEfforts(model: string): string[] | undefined {
+function supportedEfforts(runtime: CodexRuntime, model: string): string[] | undefined {
   return runtime.models
     ?.find((m) => m.id === model || m.model === model)
     ?.supportedReasoningEfforts?.map((e) => e.reasoningEffort);
@@ -469,7 +512,7 @@ function isRetired(model: CodexModel): boolean {
   return typeof at === "number" && at * 1000 <= Date.now();
 }
 
-function toModelOptions(models: CodexModel[], loggedIn: boolean): ModelOption[] {
+function toModelOptions(models: CodexModel[], loggedIn: boolean, account: ProviderAccount): ModelOption[] {
   const visible = models.filter((m) => !m.hidden && !isRetired(m));
   // Default model first: TOT Auto uses models[0] for quick asks.
   visible.sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)));
@@ -480,13 +523,15 @@ function toModelOptions(models: CodexModel[], loggedIn: boolean): ModelOption[] 
         ? ` Retires ${new Date(retiring * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}.`
         : "";
     return {
-      id: `chatgpt:${m.id}`,
+      id: `${account.id}:${m.id}`,
       provider: "chatgpt",
+      accountId: account.id,
+      accountName: account.name,
       model: m.id,
       label: modelLabel(m),
       description: `${(m.description ?? "").trim()}${note}`.trim() || undefined,
       available: loggedIn,
-      unavailableReason: loggedIn ? undefined : "Connect ChatGPT first",
+      unavailableReason: loggedIn ? undefined : `Connect ${account.builtIn ? "ChatGPT" : account.name} first`,
     };
   });
 }
@@ -502,8 +547,7 @@ function formatReset(resetsAt: number | null | undefined): string | null {
   return `on ${new Date(resetsAt * 1000).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" })}`;
 }
 
-function limitMessage(detail: string | undefined): string {
-  const limits = runtime.rateLimits;
+function limitMessage(detail: string | undefined, limits: RateLimitSnapshot | null): string {
   const windows = [limits?.primary, limits?.secondary].filter((w): w is RateLimitWindow => Boolean(w));
   const hit = windows.filter((w) => w.usedPercent >= 100).sort((a, b) => (b.resetsAt ?? 0) - (a.resetsAt ?? 0))[0];
   const when = formatReset(hit?.resetsAt);
@@ -521,8 +565,8 @@ function errorCode(info: unknown): { code?: string; httpStatus?: number } {
   return {};
 }
 
-/** A Codex turn error -> TOT's fatal error event (friendly limit/auth messages). */
-export function turnErrorEvent(error: TurnError | null | undefined): ErrorEvent {
+/** A Codex turn error -> TOT's fatal error event (friendly limit/auth messages; `limits` says when a limit resets). */
+export function turnErrorEvent(error: TurnError | null | undefined, limits: RateLimitSnapshot | null = null): ErrorEvent {
   const message = error?.message?.trim() || "ChatGPT couldn't finish this reply.";
   const { code, httpStatus } = errorCode(error?.codexErrorInfo);
   if (
@@ -532,7 +576,7 @@ export function turnErrorEvent(error: TurnError | null | undefined): ErrorEvent 
     httpStatus === 429 ||
     /usage limit|rate limit|too many requests|quota/i.test(message)
   ) {
-    return { type: "error", message: limitMessage(message), kind: "limit" };
+    return { type: "error", message: limitMessage(message, limits), kind: "limit" };
   }
   if (
     code === "unauthorized" ||
@@ -547,8 +591,8 @@ export function turnErrorEvent(error: TurnError | null | undefined): ErrorEvent 
   return { type: "error", message: error?.additionalDetails ? `${message} (${error.additionalDetails})` : message };
 }
 
-function failure(err: unknown): ErrorEvent {
-  if (err instanceof CodexRpcError) return turnErrorEvent({ message: err.message });
+function failure(err: unknown, limits: RateLimitSnapshot | null = null): ErrorEvent {
+  if (err instanceof CodexRpcError) return turnErrorEvent({ message: err.message }, limits);
   if (err instanceof CodexExitError) return { type: "error", message: `ChatGPT (Codex) stopped unexpectedly. ${err.message}` };
   return { type: "error", message: err instanceof Error ? err.message : String(err) };
 }
@@ -622,7 +666,10 @@ export class TurnMapper {
   private lastError: TurnError | null = null;
   usage: Usage = {};
 
-  constructor(private readonly startedAt: number) {}
+  constructor(
+    private readonly startedAt: number,
+    private readonly limits: () => RateLimitSnapshot | null = () => null,
+  ) {}
 
   map(n: Notification, out: ProviderEvent[]): TurnOutcome {
     const p = n.params ?? {};
@@ -671,7 +718,7 @@ export class TurnMapper {
         this.usage = { ...this.usage, durationMs };
         out.push({ type: "usage", usage: { ...this.usage } });
         this.closeTools(out, turn.status === "interrupted" ? "Stopped." : undefined);
-        if (turn.status === "failed") return { done: true, error: turnErrorEvent(turn.error ?? this.lastError) };
+        if (turn.status === "failed") return { done: true, error: turnErrorEvent(turn.error ?? this.lastError, this.limits()) };
         return { done: true };
       }
       case "tot/exit":
@@ -772,15 +819,10 @@ function toolEnd(item: any): { output?: string; isError?: boolean } {
 // Provider
 // ---------------------------------------------------------------------------
 
-let statusCache: { at: number; ttl: number; value: Promise<ProviderStatus> } | null = null;
-
-function invalidateStatus(): void {
-  statusCache = null;
-}
-
-async function loadStatus(): Promise<ProviderStatus> {
-  const base = { id: "chatgpt" as const, label: "ChatGPT" };
-  if (!resolveCodexBinary()) {
+async function loadStatus(runtime: CodexRuntime): Promise<ProviderStatus> {
+  const owner = runtime.account();
+  const base = { id: "chatgpt" as const, accountId: owner.id, label: owner.builtIn ? "ChatGPT" : owner.name };
+  if (!binaryFor(owner) && !resolveCodexBinary()) {
     return {
       ...base,
       installed: false,
@@ -814,15 +856,13 @@ async function loadStatus(): Promise<ProviderStatus> {
     loggedIn,
     authMethod: account ? authMethod(account) : undefined,
     account: account?.type === "chatgpt" ? (account.email ?? undefined) : undefined,
-    detail: loggedIn ? undefined : `ChatGPT isn't connected. ${LOGIN_HINT}`,
-    models: toModelOptions(models, loggedIn),
+    detail: loggedIn ? undefined : `${base.label} isn't connected. ${owner.builtIn ? LOGIN_HINT : "Use Sign in on its row in Settings → Models & accounts."}`,
+    models: toModelOptions(models, loggedIn, owner),
   };
 }
 
-let pendingLogin: { url: string } | null = null;
-
-async function startLogin(): Promise<{ url: string }> {
-  if (pendingLogin) return { url: pendingLogin.url };
+async function startLogin(runtime: CodexRuntime): Promise<{ url: string }> {
+  if (runtime.pendingLogin) return { url: runtime.pendingLogin.url };
   const server = await runtime.server();
   const release = runtime.pin();
   let res: { loginId: string; authUrl: string };
@@ -839,8 +879,8 @@ async function startLogin(): Promise<{ url: string }> {
     offGlobal();
     offExit();
     release();
-    pendingLogin = null;
-    invalidateStatus();
+    runtime.pendingLogin = null;
+    runtime.statusCache = null;
   };
   const offGlobal = runtime.onGlobal((n) => {
     if (n.method === "account/login/completed" && (!n.params?.loginId || n.params.loginId === res.loginId)) finish();
@@ -851,11 +891,12 @@ async function startLogin(): Promise<{ url: string }> {
     finish();
   }, LOGIN_TIMEOUT_MS);
   timer.unref();
-  pendingLogin = { url: res.authUrl };
+  runtime.pendingLogin = { url: res.authUrl };
   return { url: res.authUrl };
 }
 
 async function openThread(
+  runtime: CodexRuntime,
   server: CodexAppServer,
   input: TurnInput,
   config: Record<string, unknown>,
@@ -928,10 +969,12 @@ class NotificationQueue {
   }
 }
 
-async function* runTurn(input: TurnInput): AsyncGenerator<ProviderEvent> {
+async function* runTurn(runtime: CodexRuntime, input: TurnInput): AsyncGenerator<ProviderEvent> {
   if (input.signal.aborted) return;
   let server: CodexAppServer;
+  let account: ProviderAccount;
   try {
+    account = runtime.account();
     server = await runtime.server();
     if (!runtime.models) await runtime.modelCatalog(server).catch(() => {});
   } catch (err) {
@@ -939,13 +982,13 @@ async function* runTurn(input: TurnInput): AsyncGenerator<ProviderEvent> {
     return;
   }
 
-  const config = threadConfig(input.mcpServers, useConnectedApps());
+  const config = threadConfig(input.mcpServers, useConnectedApps(), { userMcpServers: runtime.userMcpServers, useAccountTools: account.useAccountTools });
   const signature = JSON.stringify({ config, system: input.systemPrompt });
   let threadId: string;
   try {
-    threadId = await openThread(server, input, config, signature);
+    threadId = await openThread(runtime, server, input, config, signature);
   } catch (err) {
-    yield failure(err);
+    yield failure(err, runtime.rateLimits);
     return;
   }
   yield { type: "session", sessionId: threadId };
@@ -960,7 +1003,7 @@ async function* runTurn(input: TurnInput): AsyncGenerator<ProviderEvent> {
     unsubscribeNotifications();
     if (runtime.elicitors.get(threadId) === input.elicit) runtime.elicitors.delete(threadId);
   };
-  const mapper = new TurnMapper(Date.now());
+  const mapper = new TurnMapper(Date.now(), () => runtime.rateLimits);
   let turnId: string | null = null;
   let finished = false;
   let abortTimer: NodeJS.Timeout | undefined;
@@ -983,7 +1026,7 @@ async function* runTurn(input: TurnInput): AsyncGenerator<ProviderEvent> {
             ...(input.images ?? []).map((image) => ({ type: "localImage", path: image.path })),
           ],
           model: input.model,
-          effort: codexEffort(input.effort, supportedEfforts(input.model)),
+          effort: codexEffort(input.effort, supportedEfforts(runtime, input.model)),
           summary: "auto",
           cwd: input.workDir,
         },
@@ -994,7 +1037,7 @@ async function* runTurn(input: TurnInput): AsyncGenerator<ProviderEvent> {
       yield { type: "ref", ref: turnId };
     } catch (err) {
       finished = true;
-      if (!input.signal.aborted) yield failure(err);
+      if (!input.signal.aborted) yield failure(err, runtime.rateLimits);
       return;
     }
     if (input.signal.aborted) interrupt();
@@ -1045,15 +1088,15 @@ async function* runTurn(input: TurnInput): AsyncGenerator<ProviderEvent> {
 }
 
 /** Fast model for light tasks: the newest "luna" model, else the default. */
-function lightModel(): string | undefined {
+function lightModel(runtime: CodexRuntime): string | undefined {
   const models = (runtime.models ?? []).filter((m) => !m.hidden && !isRetired(m));
   return (models.find((m) => /luna/i.test(m.id)) ?? models.find((m) => m.isDefault) ?? models[0])?.id;
 }
 
-async function complete(prompt: string, opts: { model?: string; system?: string; signal?: AbortSignal } = {}): Promise<string> {
+async function complete(runtime: CodexRuntime, prompt: string, opts: { model?: string; system?: string; signal?: AbortSignal } = {}): Promise<string> {
   const server = await runtime.server();
   if (!runtime.models) await runtime.modelCatalog(server).catch(() => {});
-  const model = opts.model ?? lightModel();
+  const model = opts.model ?? lightModel(runtime);
   const config = { ...threadConfig([], false), web_search: "disabled" };
   const started = await server.request<{ thread: { id: string } }>(
     "thread/start",
@@ -1086,7 +1129,7 @@ async function complete(prompt: string, opts: { model?: string; system?: string;
         threadId,
         input: [{ type: "text", text: prompt, text_elements: [] }],
         model,
-        effort: codexEffort("low", model ? supportedEfforts(model) : undefined),
+        effort: codexEffort("low", model ? supportedEfforts(runtime, model) : undefined),
         summary: "none",
       },
       { timeoutMs: RPC_TIMEOUT_MS, signal: opts.signal },
@@ -1117,30 +1160,43 @@ async function complete(prompt: string, opts: { model?: string; system?: string;
   }
 }
 
-export const chatgptProvider: AgentProvider = {
-  id: "chatgpt",
-  label: "ChatGPT",
+/** Codex on one provider account: its own app-server, sign-in and status. */
+export function makeChatgptProvider(accountId: string): AgentProvider {
+  const runtime = runtimeFor(accountId);
+  return {
+    id: "chatgpt",
+    get label() {
+      const found = accounts.get(accountId);
+      return !found || found.builtIn ? "ChatGPT" : found.name;
+    },
 
-  status() {
-    const now = Date.now();
-    if (statusCache && now - statusCache.at < statusCache.ttl) return statusCache.value;
-    const entry = { at: now, ttl: STATUS_TTL_MS, value: loadStatus() };
-    statusCache = entry;
-    entry.value.then(
-      (status) => {
-        if (!status.loggedIn) entry.ttl = STATUS_TTL_LOGGED_OUT_MS;
-      },
-      () => {
-        if (statusCache === entry) statusCache = null;
-      },
-    );
-    return entry.value;
-  },
+    status() {
+      const now = Date.now();
+      const account = runtime.account();
+      const key = JSON.stringify([account.configDir, account.binaryPath, account.name]);
+      const cached = runtime.statusCache;
+      if (cached && cached.key === key && now - cached.at < cached.ttl) return cached.value;
+      const entry = { key, at: now, ttl: STATUS_TTL_MS, value: loadStatus(runtime) };
+      runtime.statusCache = entry;
+      entry.value.then(
+        (status) => {
+          if (!status.loggedIn) entry.ttl = STATUS_TTL_LOGGED_OUT_MS;
+        },
+        () => {
+          if (runtime.statusCache === entry) runtime.statusCache = null;
+        },
+      );
+      return entry.value;
+    },
 
-  runTurn,
-  complete,
+    runTurn: (input) => runTurn(runtime, input),
+    complete: (prompt, opts) => complete(runtime, prompt, opts),
 
-  login() {
-    return startLogin();
-  },
-};
+    login() {
+      return startLogin(runtime);
+    },
+  };
+}
+
+/** The built-in ChatGPT account (the default ~/.codex login). */
+export const chatgptProvider: AgentProvider = makeChatgptProvider("chatgpt");

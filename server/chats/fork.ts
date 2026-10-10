@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Message, ProviderId } from "../../shared/types.ts";
+import type { Message } from "../../shared/types.ts";
 import { contextMessages } from "../agent/context-select.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
@@ -78,10 +78,11 @@ export const forks = {
   },
 
   /**
-   * For a fork's first turn on `provider`: the provider session to copy and where to cut it, when
-   * the reply it was forked at came from that provider (null otherwise: context selection then).
+   * For a fork's first turn on `account` (a provider account; the built-in ones are named after their provider): the
+   * provider session to copy and where to cut it, when the reply it was forked at came from that account — its session
+   * lives in that account's folder (null otherwise: context selection then).
    */
-  nativeStart(conversation: ConversationRecord, provider: ProviderId): { sessionId: string; at: string | null } | null {
+  nativeStart(conversation: ConversationRecord, account: string): { sessionId: string; at: string | null } | null {
     if (!conversation.forkedFrom || conversation.providerSessionId) return null;
     const { conversationId, messageId } = conversation.forkedFrom;
     // Forked after notices only (a task finished, a fork came back): the reply before them is where the session stands.
@@ -89,7 +90,7 @@ export const forks = {
     let index = history.findIndex((m) => m.id === messageId);
     while (index > 0 && isNoticeOnly(history[index]!)) index--;
     const at = index >= 0 ? history[index] : null;
-    const ref = at?.role === "assistant" && at.provider === provider ? messages.providerRef(at.id) : null;
+    const ref = at?.role === "assistant" && at.provider && (at.account ?? at.provider) === account ? messages.providerRef(at.id) : null;
     return ref ? { sessionId: ref.session, at: ref.ref } : null;
   },
 

@@ -33,6 +33,7 @@ function toMessage(row: Row): Message {
     parts: parseJson<MessagePart[]>(row.parts, []),
     status: row.status as MessageStatus,
     provider: (row.provider as ProviderId | null) ?? undefined,
+    ...(row.account ? { account: String(row.account) } : {}),
     model: (row.model as string | null) ?? undefined,
     routeReason: (row.route_reason as string | null) ?? undefined,
     error: (row.error as string | null) ?? undefined,
@@ -66,8 +67,8 @@ export const messages = {
 
   insert(message: Message): void {
     db.prepare(
-      `INSERT INTO messages (id, conversation_id, role, parts, status, provider, model, route_reason, error, usage, meta, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (id, conversation_id, role, parts, status, provider, account, model, route_reason, error, usage, meta, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       message.id,
       message.conversationId,
@@ -75,6 +76,7 @@ export const messages = {
       JSON.stringify(message.parts),
       message.status,
       message.provider ?? null,
+      message.account ?? null,
       message.model ?? null,
       message.routeReason ?? null,
       message.error ?? null,
@@ -104,11 +106,12 @@ export const messages = {
   /** Overwrites the mutable fields of an assistant message as it streams. */
   save(message: Message): void {
     const { changes } = db.prepare(
-      `UPDATE messages SET parts = ?, status = ?, provider = ?, model = ?, route_reason = ?, error = ?, usage = ? WHERE id = ?`,
+      `UPDATE messages SET parts = ?, status = ?, provider = ?, account = ?, model = ?, route_reason = ?, error = ?, usage = ? WHERE id = ?`,
     ).run(
       JSON.stringify(message.parts),
       message.status,
       message.provider ?? null,
+      message.account ?? null,
       message.model ?? null,
       message.routeReason ?? null,
       message.error ?? null,

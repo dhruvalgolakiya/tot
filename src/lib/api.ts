@@ -1,4 +1,9 @@
 import type {
+  AccountInput,
+  AccountLogin,
+  AccountPatch,
+  AccountStatus,
+  T3ImportCandidate,
   AddProjectRepoRequest,
   Brain,
   BrainAccess,
@@ -61,6 +66,7 @@ import type {
   PluginInput,
   Project,
   ProjectSubscriptions,
+  ProviderAccount,
   ProviderId,
   ProviderStatus,
   Routine,
@@ -173,6 +179,17 @@ export const api = {
   /** Starts a browser login (ChatGPT only for now); open the returned URL in a new tab. */
   loginProvider: (id: ProviderId) => request<{ url: string }>("POST", `/providers/${seg(id)}/login`, {}),
   listModels: () => request<ModelOption[]>("GET", "/models"),
+
+  /** Provider accounts: several Claude / ChatGPT sign-ins. `refresh` re-checks every sign-in. */
+  listAccounts: ({ refresh = false } = {}) => request<AccountStatus[]>("GET", refresh ? "/accounts?refresh=1" : "/accounts"),
+  addAccount: (input: AccountInput) => request<ProviderAccount>("POST", "/accounts", input),
+  updateAccount: (id: string, patch: AccountPatch) => request<ProviderAccount>("PATCH", `/accounts/${seg(id)}`, patch),
+  deleteAccount: (id: string) => request<{ ok: true }>("DELETE", `/accounts/${seg(id)}`),
+  /** ChatGPT: a sign-in page to open; Claude: a command to run in a terminal. */
+  loginAccount: (id: string) => request<AccountLogin>("POST", `/accounts/${seg(id)}/login`, {}),
+  pickAccountFolder: () => request<{ path: string | null }>("POST", "/accounts/folders/pick", {}),
+  t3ImportCandidates: () => request<T3ImportCandidate[]>("GET", "/accounts/import/t3"),
+  importFromT3: (ids: string[]) => request<ProviderAccount[]>("POST", "/accounts/import/t3", { ids }),
 
   listAgents: () => request<Agent[]>("GET", "/agents"),
   createAgent: (input: AgentInput) => request<Agent>("POST", "/agents", input),

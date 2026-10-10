@@ -26,6 +26,7 @@ The plan has eight modules. Each has its own doc, written so an agent can pick i
 | 10 | **Memory repo**: memory as git repos of markdown (Agent Memory Repo spec): about you and per project, shared by paired devices, cleaned up nightly by Dreaming | [10-memory-repo.md](10-memory-repo.md) | 06, 07 | `tot-memory` |
 | 11 | **Workspaces**: a project holds several repos; one git knowledge base per project (wiki + memory) that updates itself; a Lead chat that runs the project, landing with your OK; one screen and a Home overview | [11-workspaces.md](11-workspaces.md) | 06, 09, 10 | `tot-ws` |
 | 12 | **Coordinator**: the Lead keeps working like a Cursor Project: it hears about pull requests, tickets and schedules, controls tasks, starts from your first request, and stays lean over months | [12-coordinator.md](12-coordinator.md) | 09, 11 | `tot-coord` |
+| 13 | **Provider accounts**: several Claude / ChatGPT sign-ins as config folders (a CCS proxy, a second Codex home), their MCP servers, import from T3 Code, limits per account | [13-accounts.md](13-accounts.md) | 02, 05 | `tot-accounts` |
 
 01, 02, 03 (M1–M4), 05 and 06 (M1–M4) are merged into `main`. 07 (M1–M4) is built on `feat/devices`. 08 (M1) is built on `feat/mac-app`. 04 is next.
 
@@ -123,7 +124,7 @@ These come from the user's standing rules.
 | Area | Files |
 |------|-------|
 | Turn pipeline (model routing, system prompt, MCP servers per turn, approvals) | `server/agent/orchestrator.ts` (`sendMessage`, `TurnOptions`: `preamble`, `heavy`, `freshSession`, `maxSteps`), `router.ts`, `prompts.ts`, `approvals.ts` |
-| Providers | `server/agent/providers/claude.ts` (Agent SDK `query()`), `chatgpt.ts` (Codex app-server JSON-RPC: `thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`) |
+| Providers | `server/agent/providers/claude.ts` (Agent SDK `query()`), `chatgpt.ts` (Codex app-server JSON-RPC: `thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`); one per provider account (`server/accounts/`, `providerFor(accountId)`) |
 | Live runs | `server/agent/runs.ts`: in memory only (`Run` keeps events, `runRegistry.activeFor(conversationId)`); **nothing survives a restart** |
 | Usage limits / cooldowns | `server/agent/limits.ts` (persisted cooldown per provider; Auto avoids a limited provider) |
 | Multi-step jobs (precedent) | `server/agent/learn-repo.ts`: steps sent one after another with `freshSession`, state kept in a brain checklist, stall detection |

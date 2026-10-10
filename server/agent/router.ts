@@ -1,22 +1,26 @@
 import type { Effort, ProviderId, ProviderStatus, Tier } from "../../shared/types.ts";
-import { pickTier, tierModel } from "../orchestration/tiers.ts";
+import { accounts } from "../accounts/accounts.ts";
+import { PROVIDERS, pickTier, tierModel } from "../orchestration/tiers.ts";
 
 export { CLAUDE_OPUS, CLAUDE_SONNET } from "../orchestration/tiers.ts";
 
 export interface Route {
   provider: ProviderId;
+  /** The provider account the turn runs on; the built-in one ("claude" / "chatgpt") unless another was picked. */
+  account: string;
   model: string;
   effort: Effort;
   /** Shown to the user under the reply, e.g. "Auto · coding task → Opus 5.5". */
   reason: string;
 }
 
-export function parseModelId(modelId: string): { provider: ProviderId; model: string } | "auto" {
+/** "<account>:<model>" → its provider, account and model; "auto" for Auto and for ids of accounts that don't exist. */
+export function parseModelId(modelId: string): { provider: ProviderId; account: string; model: string } | "auto" {
   if (modelId === "auto") return "auto";
-  const [provider, ...rest] = modelId.split(":");
+  const [account = "", ...rest] = modelId.split(":");
   const model = rest.join(":");
-  if ((provider === "claude" || provider === "chatgpt") && model) return { provider, model };
-  return "auto";
+  const provider = model ? accounts.driverOf(account) : null;
+  return provider ? { provider, account, model } : "auto";
 }
 
 export type Complexity = { complex: false } | { complex: true; why: string };
@@ -46,8 +50,13 @@ export type RouteResult = { ok: true; route: Route } | { ok: false; error: strin
 export interface RouteOptions {
   thinkHarder?: boolean;
   statuses: ProviderStatus[];
-  /** Providers in a usage-limit cooldown; Auto avoids them while an alternative exists. */
-  limited: ReadonlySet<ProviderId>;
+  /** Accounts (built-in ones by their provider id) in a usage-limit cooldown; Auto avoids them while an alternative exists. */
+  limited: ReadonlySet<string>;
+  /**
+   * Every provider account's status (`accountId` set). With it, a picked model runs on its own account and Auto on
+   * each provider's default account (Settings → Models); without it, only the built-in accounts in `statuses` count.
+   */
+  accounts?: ProviderStatus[];
   /** Overrides the text-based guess, e.g. for work TOT itself started (studying a repo). */
   complexity?: Complexity;
   /** Auto only: the model tier to use, whatever the text looks like (a task's role, a dispatch decision). */
@@ -68,14 +77,14 @@ function modelLabel(statuses: ProviderStatus[], provider: ProviderId, model: str
  * rate-limited, Auto uses the same tier on ChatGPT.
  */
 export function resolveRoute(modelId: string, text: string, opts: RouteOptions): RouteResult {
-  const status = (id: ProviderId) => opts.statuses.find((s) => s.id === id);
+  const ofAccount = (id: string) => (opts.accounts ?? opts.statuses).find((s) => (s.accountId ?? s.id) === id);
   const complexity = opts.complexity ?? assessComplexity(text);
   const parsed = parseModelId(modelId);
 
   if (parsed !== "auto") {
-    const picked = status(parsed.provider);
+    const picked = ofAccount(parsed.account);
     if (!picked?.loggedIn) {
-      return { ok: false, error: `${picked?.label ?? parsed.provider} isn't connected. ${picked?.detail ?? ""}`.trim() };
+      return { ok: false, error: `${picked?.label ?? parsed.account} isn't connected. ${picked?.detail ?? ""}`.trim() };
     }
     const effort: Effort = opts.thinkHarder ? "xhigh" : parsed.provider === "claude" || complexity.complex ? "high" : "medium";
     return { ok: true, route: { ...parsed, effort, reason: opts.thinkHarder ? "Think harder" : "Picked by you" } };
@@ -83,7 +92,25 @@ export function resolveRoute(modelId: string, text: string, opts: RouteOptions):
 
   const tier: Tier = opts.thinkHarder ? "deep" : (opts.tier ?? (complexity.complex ? "deep" : "fast"));
   const why = opts.thinkHarder ? "think harder" : complexity.complex ? complexity.why : opts.tier ? `${opts.tier} tier` : "quick ask";
-  const picked = pickTier(tier, { statuses: opts.statuses, limited: opts.limited, prefer: opts.prefer, thinkHarder: opts.thinkHarder });
+  // Auto runs each provider on its default account: tiers see that account's status and cooldown as the provider's.
+  // When the default is at its limit or signed out, another signed-in account of the same provider stands in, before
+  // Auto moves to the other provider.
+  const usable = (id: string) => Boolean(ofAccount(id)?.loggedIn) && !opts.limited.has(id);
+  const accountOf = (provider: ProviderId): string => {
+    if (!opts.accounts) return provider;
+    const preferred = accounts.defaultId(provider);
+    if (usable(preferred)) return preferred;
+    const other = opts.accounts.find((s) => s.id === provider && s.accountId && usable(s.accountId));
+    return other?.accountId ?? preferred;
+  };
+  const statuses = opts.accounts
+    ? PROVIDERS.flatMap((provider) => {
+        const status = ofAccount(accountOf(provider)) ?? ofAccount(provider);
+        return status ? [{ ...status, id: provider }] : [];
+      })
+    : opts.statuses;
+  const limited = opts.accounts ? new Set(PROVIDERS.filter((provider) => opts.limited.has(accountOf(provider)))) : opts.limited;
+  const picked = pickTier(tier, { statuses, limited, prefer: opts.prefer, thinkHarder: opts.thinkHarder });
   if (!picked) {
     return {
       ok: false,
@@ -93,7 +120,13 @@ export function resolveRoute(modelId: string, text: string, opts: RouteOptions):
   const { provider, model, effort, note } = picked;
   return {
     ok: true,
-    route: { provider, model, effort, reason: `Auto · ${why} → ${modelLabel(opts.statuses, provider, model)}${note ? ` (${note})` : ""}` },
+    route: {
+      provider,
+      account: statuses.find((s) => s.id === provider)?.accountId ?? provider,
+      model,
+      effort,
+      reason: `Auto · ${why} → ${modelLabel(statuses, provider, model)}${note ? ` (${note})` : ""}`,
+    },
   };
 }
 

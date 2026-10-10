@@ -25,6 +25,8 @@ function toTaskInfo(value: unknown): TaskInfo | null {
 /** Server-side view of a conversation, including provider session state. */
 export interface ConversationRecord extends Conversation {
   providerSessionId: string | null;
+  /** The provider account that session belongs to (Provider accounts); null = the built-in account of `provider`. */
+  providerAccount: string | null;
   systemPrompt: string | null;
   /** Tasks started from this chat that finished since its model last heard about them. */
   childResults: string[];
@@ -61,6 +63,7 @@ function toRecord(row: Row): ConversationRecord {
     parentId: (row.parent_id as string | null) ?? null,
     task: toTaskInfo(row.task),
     providerSessionId: (row.provider_session_id as string | null) ?? null,
+    providerAccount: (row.provider_account as string | null) ?? null,
     systemPrompt: (row.system_prompt as string | null) ?? null,
     childResults: parseJson<string[]>(row.child_results, []),
     forkedFrom: parseJson<ForkOrigin | null>(row.forked_from, null),
@@ -76,7 +79,7 @@ function toRecord(row: Row): ConversationRecord {
 }
 
 export function toPublicConversation(record: ConversationRecord): Conversation {
-  const { providerSessionId: _s, systemPrompt: _p, childResults: _c, wakePending: _w, wakeTokens: _t, mergeNotes: _m, ...conversation } = record;
+  const { providerSessionId: _s, providerAccount: _a, systemPrompt: _p, childResults: _c, wakePending: _w, wakeTokens: _t, mergeNotes: _m, ...conversation } = record;
   return conversation;
 }
 
@@ -86,6 +89,7 @@ type ConversationPatch = Partial<{
   modelId: string;
   provider: ProviderId | null;
   providerSessionId: string | null;
+  providerAccount: string | null;
   systemPrompt: string | null;
   kind: ConversationKind;
   parentId: string | null;
@@ -198,6 +202,7 @@ export const conversations = {
       model_id: patch.modelId,
       provider: patch.provider,
       provider_session_id: patch.providerSessionId,
+      provider_account: patch.providerAccount,
       system_prompt: patch.systemPrompt,
       kind: patch.kind,
       parent_id: patch.parentId,

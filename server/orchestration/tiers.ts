@@ -71,7 +71,7 @@ export interface TierPick {
  */
 export function pickTier(
   tier: Tier,
-  opts: { statuses: ProviderStatus[]; limited: ReadonlySet<ProviderId>; prefer?: ProviderId | null; thinkHarder?: boolean },
+  opts: { statuses: ProviderStatus[]; limited: ReadonlySet<string>; prefer?: ProviderId | null; thinkHarder?: boolean },
 ): TierPick | null {
   const candidates = opts.prefer ? [opts.prefer, ...PROVIDERS.filter((p) => p !== opts.prefer)] : PROVIDERS;
   const up = candidates.filter((provider) => tierModel(tier, provider, opts.statuses));

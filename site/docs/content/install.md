@@ -19,7 +19,7 @@ TOT talks to Claude through Claude Code, and to ChatGPT through Codex. These are
    claude
    ```
 
-2. **ChatGPT.** Run `codex login` and sign in with your ChatGPT account. Check it with `codex login status`. You can also do this later from TOT: **Settings → Models → Connect ChatGPT**.
+2. **ChatGPT.** Run `codex login` and sign in with your ChatGPT account. Check it with `codex login status`. You can also do this later from TOT: **Settings → Models & accounts**, then **Sign in** in the ChatGPT account's **…** menu.
 
    ```bash
    codex login
@@ -27,6 +27,34 @@ TOT talks to Claude through Claude Code, and to ChatGPT through Codex. These are
    ```
 
 You can log in to just one. TOT works with either, and uses both when you have both.
+
+## Accounts
+
+You can give TOT more than one Claude or ChatGPT sign-in, like T3 Code's provider instances. Each one is a folder:
+
+- **A Claude account** is a Claude Code config folder. TOT runs Claude Code with `CLAUDE_CONFIG_DIR` set to it, so it uses that folder's login, and the `env` block of its `settings.json`.
+- **A ChatGPT account** is a Codex home. TOT runs Codex with `CODEX_HOME` set to it.
+
+The default folders (`~/.claude` and `~/.codex`) are the built-in **Claude** and **ChatGPT** accounts. Add more in **Settings → Models & accounts → Add account**: pick the provider, give it a name, and choose its folder.
+
+**A proxy, like CCS.** Point a Claude account at a folder whose `settings.json` has an `env` block such as `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`. TOT passes that block to Claude Code, so the account talks to the proxy. The account shows **Proxy**, and names the keys it found. TOT never shows or stores their values.
+
+```json
+{ "env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:…", "ANTHROPIC_AUTH_TOKEN": "…" } }
+```
+
+**MCP servers from the account.** With **Use this account's MCP servers** on (the default for added accounts), agents also get the servers set up in that folder, next to TOT's own tools:
+
+- **Claude:** the `mcpServers` in its `.claude.json` (for the default folder, `~/.claude.json`) and its enabled plugins.
+- **ChatGPT:** the `[mcp_servers]` in its `config.toml`.
+
+When a name clashes, TOT's own server keeps the name. TOT still never loads the folder's `CLAUDE.md` or hooks.
+
+**Import from T3 Code.** Open the **…** menu next to **Add account** and choose **Import from T3 Code**. TOT lists the Claude and Codex instances T3 Code keeps in their own folders, and adds the ones you pick. It only reads T3 Code's settings.
+
+**Picking an account.** The model menu groups models by account. In Settings, **Accounts for Auto and tasks** picks which account TOT Auto and tasks use. When an account hits its usage limit, TOT moves the reply to another signed-in account of the same provider first. Only then does Auto switch to the other provider.
+
+To sign in an added Claude account, choose **Sign in** in its **…** menu. TOT shows the command to run, for example `CLAUDE_CONFIG_DIR=~/.claude-work claude`, and then you type `/login`.
 
 ## Run TOT from source
 
@@ -59,7 +87,7 @@ It makes a `.dmg` and a `.zip` in the `release` folder. The build is signed "ad 
 ## Your first five minutes
 
 1. **Open TOT.** You'll meet Tot, your first agent. This computer never asks you to sign in.
-2. **Check your logins.** Open **Settings → Models**. Claude and ChatGPT each show **Connected** or **Not connected**. Press **Refresh** after you log in.
+2. **Check your logins.** Open **Settings → Models & accounts**. Each account shows **Signed in**, **Proxy** or **Not signed in**. Choose **Check sign-ins again** in the **…** menu after you log in.
 3. **Pick a computer for your agents.** Open **Settings → Computer** and choose:
    - **Local sandboxed folder**: commands run in a locked-down folder on this Mac. No account needed.
    - **Boat cloud VM**: a cloud machine per agent, with a desktop. Paste your **Boat API key**.
@@ -78,4 +106,5 @@ It makes a `.dmg` and a `.zip` in the `release` folder. The build is signed "ad 
 - No public download yet, and the code is private.
 - The Mac app isn't signed or notarized by Apple, and doesn't update itself.
 - macOS only. There's no Windows or Linux version.
-- You log in to Claude Code in a terminal. TOT has a **Connect ChatGPT** button, but no button for Claude.
+- You log in to Claude Code in a terminal. TOT signs ChatGPT accounts in from Settings, but for Claude it only shows the command to run.
+- An account's Claude Code plugins load with their skills and hooks. Its `CLAUDE.md` and settings hooks don't.

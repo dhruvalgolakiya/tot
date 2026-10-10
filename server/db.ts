@@ -799,6 +799,11 @@ if (!hasColumn("agents", "tagline")) db.exec(`ALTER TABLE agents ADD COLUMN tagl
 // before, which only read the project's folder.
 if (!hasColumn("conversations", "workspace")) db.exec(`ALTER TABLE conversations ADD COLUMN workspace TEXT`);
 
+// Provider accounts: which account a chat's provider session belongs to (a session lives in that account's folder,
+// so only that account can resume it), and which account wrote a reply. Null for rows from before: the built-in one.
+if (!hasColumn("conversations", "provider_account")) db.exec(`ALTER TABLE conversations ADD COLUMN provider_account TEXT`);
+if (!hasColumn("messages", "account")) db.exec(`ALTER TABLE messages ADD COLUMN account TEXT`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 export function parseJson<T>(value: unknown, fallback: T): T {

@@ -31,6 +31,7 @@ function defaults(): StoredSettings {
     models: {
       tiers: { fast: { claude: null, chatgpt: null }, standard: { claude: null, chatgpt: null }, deep: { claude: null, chatgpt: null } },
       roles: { explorer: "fast", planner: "deep", implementer: "deep", tester: "standard", reviewer: "deep", researcher: "standard", writer: "standard" },
+      accounts: { claude: "claude", chatgpt: "chatgpt" },
     },
   };
 }
@@ -44,6 +45,7 @@ function mergeModels(base: ModelTierSettings, patch: Partial<ModelTierSettings> 
       deep: { ...base.tiers.deep, ...patch?.tiers?.deep },
     },
     roles: { ...base.roles, ...patch?.roles },
+    accounts: { ...base.accounts, ...patch?.accounts },
   };
 }
 
