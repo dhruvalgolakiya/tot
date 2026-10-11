@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Alert, Platform, RefreshControl, ScrollView, Text, View } from "react-native";
 import type { AccountPatch, AccountStatus, ProviderId, ProviderStatus, Role, Tier } from "@shared/types";
 import { Cell, Footnote, Group, Status, SwitchCell, Tag } from "../../components/settings";
 import { showMenu } from "../../components/ui";
@@ -89,7 +89,8 @@ export default function ModelsSettings() {
   const more = (account: AccountStatus, several: boolean) =>
     showMenu(account.name, [
       ...(several && account.enabled && !account.isDefault ? [{ label: "Make default", onPress: () => void makeDefault(account) }] : []),
-      { label: "Rename…", onPress: () => rename(account) },
+      // Alert.prompt is iOS-only; on Android, rename on the computer.
+      ...(Platform.OS === "ios" ? [{ label: "Rename…", onPress: () => rename(account) }] : []),
       { label: account.loggedIn ? "Sign in again…" : "Sign in…", onPress: ON_THE_COMPUTER },
       {
         label: account.useAccountTools ? "Stop using this account's MCP servers" : "Use this account's MCP servers",
