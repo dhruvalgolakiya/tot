@@ -23,7 +23,7 @@ Requirements: Node ≥ 22.13 (24 recommended), and at least one provider logged 
 
 ```bash
 npm install
-npm run dev          # API on :8787, web app on :5173
+npm run dev          # API on :8790, web app on :5173, data in ~/.tot-dev
 open http://localhost:5173
 ```
 
@@ -39,7 +39,7 @@ Production-style run: `npm run build && npm start` (serves the built UI from the
 
 ## Mac app
 
-TOT also runs as **TOT.app** (Apple silicon). It starts the TOT server itself, with the Node built into the app, and opens it in its own window, signed in like any browser on this computer. Close the window and TOT keeps running in the menu bar, so your phone and paired devices keep working; **Quit TOT** in the menu bar (or Cmd+Q) stops it and everything it started. If a TOT is already running on the port (say `npm run dev`), the app opens that one instead of starting a second. It uses the same port (8787) and data (`~/.tot`) as `npm start`, and you still log in to Claude and Codex once in a terminal.
+TOT also runs as **TOT.app** (Apple silicon). It starts the TOT server itself, with the Node built into the app, and opens it in its own window, signed in like any browser on this computer. Close the window and TOT keeps running in the menu bar, so your phone and paired devices keep working; **Quit TOT** in the menu bar (or Cmd+Q) stops it and everything it started. If a TOT is already running on the port (say `npm run dev`), the app opens that one instead of starting a second. It uses the same port (8787) and data (`~/.tot`) as `npm start`; `npm run dev` keeps its own (port 8790, `~/.tot-dev`), so the installed app and a dev server run side by side, and you still log in to Claude and Codex once in a terminal.
 
 ```bash
 npm run app:build    # release/TOT-0.1.0-arm64.dmg and .zip (and release/mac-arm64/TOT.app)
@@ -147,7 +147,7 @@ electron/                the Mac app: main process, bundled server, menu bar, pa
 mobile/                  the iPhone app (Expo); its own package.json, shares shared/types.ts
 ```
 
-Data lives in `~/.tot` (override with `TOT_DATA_DIR`). All settings can go in `.env` — see `.env.example`: `BOAT_API_KEY`, `ANTHROPIC_API_KEY` (only for Claude API-key mode), `TOT_PORT` (8787), `TOT_WEB_PORT` (5173, the dev web server), `TOT_CLAUDE_CONFIG_DIR`, `TOT_CODEX_PATH`.
+Data lives in `~/.tot` (`~/.tot-dev` for `npm run dev`; override with `TOT_DATA_DIR`). All settings can go in `.env` — see `.env.example`: `BOAT_API_KEY`, `ANTHROPIC_API_KEY` (only for Claude API-key mode), `TOT_PORT` (8787; 8790 for `npm run dev`), `TOT_WEB_PORT` (5173, the dev web server), `TOT_CLAUDE_CONFIG_DIR`, `TOT_CODEX_PATH`.
 
 ## Subscriptions, and "everyone can use it"
 
