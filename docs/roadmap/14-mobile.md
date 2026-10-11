@@ -95,7 +95,7 @@ The web app's ChatGPT/Codex look (DESIGN.md), as a phone app: true neutral greys
 
 ## Not done in M5
 
-- The icon and splash weren't seen on a home screen: Expo Go shows its own, and a local native build (`npx expo run:ios`) doesn't compile with this Mac's Xcode 26.2 (SDK 57's `expo-modules-jsi` 57.1.1 fails in its Swift sources; Swift 5 mode doesn't fix it). EAS builds use their own, newer Xcode; locally, update Xcode first. The PNGs are checked by eye (`mobile/assets/`).
+- Xcode 26.2 couldn't compile SDK 57's `expo-modules-jsi` 57.1.1 (a `SWIFT_RETURNS_RETAINED` on two constructors, and 7 "sending … risks causing data races" errors). `mobile/patches/expo-modules-jsi+57.1.1.patch` (applied by `patch-package` on install) fixes both without changing behaviour: the annotations go, and the pointers cross into `JavaScriptActor.assumeIsolated` as their integer addresses. Drop the patch once Expo ships a fixed version. A local release build for a device: `npx expo prebuild --platform ios`, then `xcodebuild -workspace ios/TOT.xcworkspace -scheme TOT -configuration Release -sdk iphoneos DEVELOPMENT_TEAM=<team> -allowProvisioningUpdates build`, and `xcrun devicectl device install app --device <id> <TOT.app>` (the iPhone needs Developer Mode on).
 - Not run on Android (no SDK here) or on a real iPhone; the keyboard avoidance on Android (edge-to-edge in SDK 57) is the likeliest thing to need a fix.
 - Attachments are photos from the library only (no camera, no files); a steering note can't carry one.
 - A task's Changes are read-only and plain (no syntax colors, no per-file view); Activity, Update from base, Run checks and the rest of M2's list are still on the computer.
