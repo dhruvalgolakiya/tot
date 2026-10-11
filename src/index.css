@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The phone app (mobile/) is React Native: no Tailwind classes to find there. */
+@source not "../mobile";
 @plugin "@tailwindcss/typography";
 
 /* `dark:` follows TOT's theme (the `dark` class), not just the OS setting. */

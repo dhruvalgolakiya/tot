@@ -80,6 +80,18 @@ How it's kept safe:
 
 **Older setups:** `TOT_ACCESS_TOKEN`, `TOT_LAN=1` and `TOT_HOST=tailscale` in `.env` still work. The token is accepted as a password and as `Authorization: Bearer <token>` for scripts, and the other two fix the remote-access setting (the Devices page says so). Remove them to manage everything in the app.
 
+## Mobile app
+
+`mobile/` is TOT's iPhone app (in development; Expo, React Native): every agent on this TOT and its paired devices, their chats, live replies and approvals. It's a client of your TOT, not a copy: nothing is synced and no TOT runs on the phone. It signs in like a phone browser, with the QR code from **Settings → Devices → Add a phone** (or the address and password), and shows up in the sign-in list there. Details in [14 · Mobile app](docs/roadmap/14-mobile.md).
+
+```bash
+cd mobile && npm install
+npx expo start --ios     # opens it in the iOS Simulator with Expo Go (Xcode installed)
+npx tsc --noEmit         # typecheck; mobile/ isn't part of the root build or tests
+```
+
+On this Mac's simulator, connect to `127.0.0.1:8787` (no sign-in needed: this computer never signs in). To try the real sign-in, turn on remote access and connect to the address Settings → Devices shows. On a real iPhone, scan the QR code `npx expo start` prints with the Expo Go app.
+
 ## Install TOT on another Mac, and pair them
 
 Each computer runs its own TOT, with its own agents, chats and logins. Pair two once, and each shows the other's agents: talk to the MacBook's agents from the Mac mini and the other way round, live on both. Nothing is copied: an agent's chats, files and logins stay on the computer it lives on. ([07 · Devices](docs/roadmap/07-devices.md) has the details.)
@@ -130,6 +142,7 @@ server/
   data/                  SQLite repositories
 src/                     React app (sidebar, chat, model picker, computer panel, memory, settings)
 electron/                the Mac app: main process, bundled server, menu bar, packaging
+mobile/                  the iPhone app (Expo); its own package.json, shares shared/types.ts
 ```
 
 Data lives in `~/.tot` (override with `TOT_DATA_DIR`). All settings can go in `.env` — see `.env.example`: `BOAT_API_KEY`, `ANTHROPIC_API_KEY` (only for Claude API-key mode), `TOT_PORT` (8787), `TOT_WEB_PORT` (5173, the dev web server), `TOT_CLAUDE_CONFIG_DIR`, `TOT_CODEX_PATH`.

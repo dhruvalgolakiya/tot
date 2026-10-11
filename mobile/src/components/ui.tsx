@@ -1,0 +1,116 @@
+import Feather from "@expo/vector-icons/Feather";
+import type { ComponentProps, ReactNode } from "react";
+import { ActivityIndicator, Pressable, type PressableProps, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import type { MascotSpec } from "@shared/types";
+import { font, type as typeScale, useColors } from "../theme";
+
+export type IconName = ComponentProps<typeof Feather>["name"];
+
+/** Feather icons (lucide is a fork of Feather), stroke-like and muted by default. */
+export function Icon({ name, size = 18, color }: { name: IconName; size?: number; color?: string }) {
+  const colors = useColors();
+  return <Feather name={name} size={size} color={color ?? colors.fgMuted} />;
+}
+
+/** M1's mascot: a circle in the agent's color with its initial. The full mascot art comes later. */
+export function Mascot({ name, mascot, size = 36, faded = false }: { name: string; mascot: MascotSpec; size?: number; faded?: boolean }) {
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: mascot.color, alignItems: "center", justifyContent: "center", opacity: faded ? 0.4 : 1 }}>
+      <Text style={{ fontFamily: font.semibold, fontSize: size * 0.42, color: readableOn(mascot.color) }}>{(name.trim()[0] ?? "?").toUpperCase()}</Text>
+    </View>
+  );
+}
+
+/** Black or white, whichever reads on a mascot color. */
+function readableOn(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return "#fff";
+  const n = parseInt(m[1], 16);
+  const luminance = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return luminance > 0.62 ? "#111" : "#fff";
+}
+
+/** A pill button: primary is monochrome (fg on canvas), like the web app; secondary is a hairline outline. */
+export function Button({
+  label,
+  onPress,
+  variant = "primary",
+  busy = false,
+  disabled = false,
+  icon,
+  style,
+  onDark = false,
+}: {
+  label: string;
+  onPress: () => void;
+  variant?: "primary" | "secondary" | "ghost";
+  busy?: boolean;
+  disabled?: boolean;
+  icon?: IconName;
+  style?: ViewStyle;
+  /** White on black whatever the theme, for the camera screen. */
+  onDark?: boolean;
+}) {
+  const themed = useColors();
+  const colors = onDark ? { ...themed, fg: "#fff", canvas: "#000", edge: "rgba(255,255,255,0.3)" } : themed;
+  const primary = variant === "primary";
+  const fg = primary ? colors.canvas : colors.fg;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      disabled={disabled || busy}
+      style={({ pressed }) => [
+        styles.button,
+        primary && { backgroundColor: colors.fg },
+        variant === "secondary" && { borderWidth: StyleSheet.hairlineWidth * 2, borderColor: colors.edge },
+        (disabled || busy) && { opacity: 0.5 },
+        pressed && { opacity: 0.7 },
+        style,
+      ]}
+    >
+      {busy ? <ActivityIndicator color={fg} size="small" /> : icon ? <Feather name={icon} size={16} color={fg} /> : null}
+      <Text style={{ fontFamily: font.medium, fontSize: 15, color: fg }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** A flat list row: hairline between rows, a pressed overlay, no card and no side bar. */
+export function Row({ children, onPress, onLongPress, style }: { children: ReactNode; onPress?: () => void; onLongPress?: PressableProps["onLongPress"]; style?: ViewStyle }) {
+  const colors = useColors();
+  return (
+    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={350} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.selected }, style]}>
+      {children}
+    </Pressable>
+  );
+}
+
+export function Separator({ inset = 16 }: { inset?: number }) {
+  const colors = useColors();
+  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.hairline, marginLeft: inset }} />;
+}
+
+export function SectionTitle({ children }: { children: ReactNode }) {
+  const colors = useColors();
+  return <Text style={[typeScale.xs, { fontFamily: font.medium, color: colors.fgSubtle, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 6 }]}>{children}</Text>;
+}
+
+/** A small status dot: the only place a color says something about a row. */
+export function Dot({ color }: { color: string }) {
+  return <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />;
+}
+
+export function IconButton({ name, onPress, label, size = 20, color }: { name: IconName; onPress: () => void; label: string; size?: number; color?: string }) {
+  const colors = useColors();
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={8} onPress={onPress} style={({ pressed }) => [styles.iconButton, pressed && { backgroundColor: colors.selected }]}>
+      <Feather name={name} size={size} color={color ?? colors.fg} />
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  button: { height: 44, borderRadius: 22, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 52 },
+  iconButton: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+});

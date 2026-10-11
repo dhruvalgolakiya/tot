@@ -53,7 +53,7 @@ If one Mac can't reach the other's address, pairing still works one way, and TOT
 
 ## Limits
 
-- There's no iPhone or Android app. Your phone uses TOT in the browser, or from your home screen as a web app.
+- The [iPhone app](/docs/mobile-app) is in development. Until it ships, your phone uses TOT in the browser, or from your home screen as a web app.
 - Voice input needs HTTPS. Over a plain `http://` address, the mic button hides.
 - Agents can't move from one Mac to another yet.
 - An agent on one Mac can't start a task for an agent on another.

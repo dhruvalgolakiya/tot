@@ -27,6 +27,7 @@ The plan has eight modules. Each has its own doc, written so an agent can pick i
 | 11 | **Workspaces**: a project holds several repos; one git knowledge base per project (wiki + memory) that updates itself; a Lead chat that runs the project, landing with your OK; one screen and a Home overview | [11-workspaces.md](11-workspaces.md) | 06, 09, 10 | `tot-ws` |
 | 12 | **Coordinator**: the Lead keeps working like a Cursor Project: it hears about pull requests, tickets and schedules, controls tasks, starts from your first request, and stays lean over months | [12-coordinator.md](12-coordinator.md) | 09, 11 | `tot-coord` |
 | 13 | **Provider accounts**: several Claude / ChatGPT sign-ins as config folders (a CCS proxy, a second Codex home), their MCP servers, import from T3 Code, limits per account | [13-accounts.md](13-accounts.md) | 02, 05 | `tot-accounts` |
+| 14 | **Mobile app**: an iPhone app (Expo) that's a client of your TOT: every agent across paired devices, chats, live replies, approvals; then tasks, projects, settings, notifications | [14-mobile.md](14-mobile.md) | 07, 13 | `tot-mobile` |
 
 01, 02, 03 (M1–M4), 05 and 06 (M1–M4) are merged into `main`. 07 (M1–M4) is built on `feat/devices`. 08 (M1) is built on `feat/mac-app`. 04 is next.
 

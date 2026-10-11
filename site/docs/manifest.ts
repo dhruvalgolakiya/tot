@@ -138,6 +138,15 @@ export const PAGES: DocPage[] = [
     mascot: "tot",
   },
   {
+    slug: "mobile-app",
+    title: "The iPhone app",
+    description: "Every agent on every paired Mac, their chats, live replies and approvals, from your phone.",
+    group: "Devices",
+    status: "partly",
+    missing: "In development: no App Store or TestFlight build yet, and no tasks, projects, settings or notifications in it yet.",
+    mascot: "splash",
+  },
+  {
     slug: "safety",
     title: "Safety and your rules",
     description: "What TOT never does, what it asks you first, and how your files and secrets are kept safe.",
