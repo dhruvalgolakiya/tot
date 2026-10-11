@@ -19,9 +19,11 @@ Or type the Mac's address (it's shown in **Settings → Devices**, e.g. `100.101
 ## What you can do
 
 - [Available] **Every agent**, on this Mac and on paired Macs, with a dot while one is working and **Needs you** when a chat waits for your OK.
-- [Available] **An agent's chats**: pinned first, then chats, then one section per project. Long-press a chat to pin or delete it.
+- [Available] **An agent's chats**: pinned first, then chats, then one section per project (tap its name to open the project). Long-press a chat to pin or delete it.
 - [Available] **Chat**: send a message and watch the reply stream in; tap a tool step or "Thought for…" to open it; stop a reply.
 - [Available] **Approvals**: approve or decline right in the chat, including a project Lead's land and discard cards.
-- [Not yet] Tasks and mission control: steer, pause, land.
-- [Not yet] Projects, the model picker, and TOT's settings (models and accounts, memory, devices).
+- [Available] **Tasks**: the layers button on the Agents screen opens every task from every Mac, sorted like mission control: Needs you, Working, Ready to land, Landed. A task's page shows its status, role and branch; type to add a note while it works, and use **…** to run it now, pause, resume or stop it. Long-press a task row for the same.
+- [Available] **Landing**: a finished coding task shows its changes and checks, with **Merge into main** (or **Open draft PR** for a GitHub project) and **Discard**, each asking first.
+- [Available] **Projects**: a project's page lists its chats from every agent, and starts a new chat in it, in the main checkout or a new worktree. Its **…** starts or opens the project's Lead, or archives it. A new chat can start in any project.
+- [Not yet] The model picker, and TOT's settings (models and accounts, memory, devices).
 - [Not yet] Notifications when an agent needs you or a task is done.

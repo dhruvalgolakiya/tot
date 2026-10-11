@@ -5,10 +5,14 @@ import type {
   ConversationDetail,
   CreateConversationRequest,
   DevicesStatus,
+  LandTaskRequest,
   LiveRuns,
+  Message,
+  MissionOverview,
   Project,
   SendMessageRequest,
   SendMessageResponse,
+  TaskLandOptions,
   UpdateConversationRequest,
 } from "@shared/types";
 import { tokenRefused, useConnection } from "./connection";
@@ -17,7 +21,7 @@ import { adopt, apiPath, deviceFor } from "./devices";
 /**
  * The TOT API, ported from the web app's src/lib/api.ts: the same paths and types (shared/types.ts), sent to
  * the signed-in TOT's address with its token instead of same-origin with a cookie. Another device's things
- * go through /api/d/<id>/… (devices.ts). M1 needs only the calls below; later milestones port more.
+ * go through /api/d/<id>/… (devices.ts). Only the calls the app uses are ported; later milestones port more.
  */
 
 /** A failed API call. `status` is 0 when the server couldn't be reached at all. */
@@ -104,6 +108,24 @@ export const api = {
   answerLeadAsk: (partId: string, decision: "accept" | "decline") =>
     request<{ status: "accepted" | "declined"; ok: boolean; text: string }>("POST", `/lead/asks/${seg(partId)}`, { decision }),
 
+  // Tasks (modules 01, 09): a task is a chat with kind "task" that works until it's done.
+  /** A note for a running task; resolves with the saved message. */
+  steerTask: (conversationId: string, text: string) => request<Message>("POST", `/conversations/${seg(conversationId)}/steer`, { text }),
+  pauseTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/pause`, {}),
+  resumeTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/resume`, {}),
+  stopTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/stop`, {}),
+  runTaskNow: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/run-now`, {}),
+  /** How a finished coding task can land right now: merge into the folder's branch, or a draft PR, each with why it can't. */
+  taskLandOptions: (id: string) => request<TaskLandOptions>("GET", `/tasks/${seg(id)}/land`),
+  landTask: (id: string, body: LandTaskRequest) => request<Conversation>("POST", `/tasks/${seg(id)}/land`, body),
+  /** Stops it, removes its worktree, and deletes its branch unless it was pushed. */
+  discardTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/discard`, {}),
+  /** Mission control: open tasks, finished ones still to land (with their land order), and the last day's landed ones. */
+  getMission: () => request<MissionOverview>("GET", "/mission"),
+
   listProjects: () => request<Project[]>("GET", "/projects"),
+  /** The project's Lead chat: made the first time (for `agentId`), the same one after. */
+  openLead: (projectId: string, agentId?: string | null) => request<Conversation>("POST", `/projects/${seg(projectId)}/lead`, agentId ? { agentId } : {}),
+  archiveProject: (id: string) => request<Project>("DELETE", `/projects/${seg(id)}`),
   getDevices: () => request<DevicesStatus>("GET", "/devices"),
 };

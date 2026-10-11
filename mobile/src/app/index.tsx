@@ -9,7 +9,7 @@ import { font, type as typeScale, useColors } from "../theme";
 
 /**
  * Every agent: this TOT's first, then each paired device's (module 07), offline ones faded. A dot while one is
- * working; "Needs you" when one of its chats waits for an approval.
+ * working; "Needs you" when one of its chats waits for an approval. Tasks (mission control) is in the header.
  */
 export default function Agents() {
   const colors = useColors();
@@ -46,7 +46,12 @@ export default function Agents() {
       <Stack.Screen
         options={{
           title: deviceName ?? "Agents",
-          headerRight: () => <IconButton name="settings" label="Settings" onPress={() => router.push("/settings")} />,
+          headerRight: () => (
+            <View style={{ flexDirection: "row", gap: 4 }}>
+              <IconButton name="layers" label="Tasks" onPress={() => router.push("/tasks")} />
+              <IconButton name="settings" label="Settings" onPress={() => router.push("/settings")} />
+            </View>
+          ),
         }}
       />
       {!loaded ? null : error && !agents.length ? (

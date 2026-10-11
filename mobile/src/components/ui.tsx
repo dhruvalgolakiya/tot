@@ -1,6 +1,6 @@
 import Feather from "@expo/vector-icons/Feather";
-import type { ComponentProps, ReactNode } from "react";
-import { ActivityIndicator, Pressable, type PressableProps, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
+import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, type PressableProps, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import type { MascotSpec } from "@shared/types";
 import { font, type as typeScale, useColors } from "../theme";
 
@@ -114,3 +114,45 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 52 },
   iconButton: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
 });
+
+export interface MenuItem {
+  label: string;
+  onPress: () => void;
+  destructive?: boolean;
+}
+
+/** The "…" menu: a native action sheet on iOS (an alert elsewhere), so screens keep one visible action. */
+export function showMenu(title: string | undefined, items: MenuItem[]) {
+  if (!items.length) return;
+  if (Platform.OS === "ios") {
+    const destructive = items.findIndex((item) => item.destructive);
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title, options: [...items.map((item) => item.label), "Cancel"], cancelButtonIndex: items.length, destructiveButtonIndex: destructive === -1 ? undefined : destructive },
+      (index) => items[index]?.onPress(),
+    );
+  } else {
+    Alert.alert(title ?? "", undefined, [...items.map((item) => ({ text: item.label, style: item.destructive ? ("destructive" as const) : undefined, onPress: item.onPress })), { text: "Cancel", style: "cancel" }]);
+  }
+}
+
+/** A native confirm for what can't be undone (land, discard, archive); resolves true on the confirm button. */
+export function confirm(title: string, message: string, action: string, destructive = false): Promise<boolean> {
+  return new Promise((resolve) =>
+    Alert.alert(title, message, [
+      { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+      { text: action, style: destructive ? "destructive" : "default", onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) }),
+  );
+}
+
+/** The time now, ticking every `ms` while `active` (elapsed times on working tasks). */
+export function useNow(active: boolean, ms = 30_000): number {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(timer);
+  }, [active, ms]);
+  return now;
+}

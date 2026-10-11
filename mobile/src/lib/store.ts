@@ -1,4 +1,4 @@
-import type { Agent, AppEvent, Conversation, DevicesStatus, LiveRuns, Message, MessagePart, Project, RunEvent } from "@shared/types";
+import type { Agent, AppEvent, ChatWorkspaceMode, Conversation, DevicesStatus, LandTaskRequest, LiveRuns, Message, MessagePart, Project, RunEvent } from "@shared/types";
 import { create } from "zustand";
 import { api, apiUrl, authHeaders, errorMessage } from "./api";
 import { setDeviceName, tokenRefused } from "./connection";
@@ -36,6 +36,8 @@ interface State {
   error: string | null;
   /** The event stream is up. */
   live: boolean;
+  /** Mission control's board (module 09) across this TOT and its online paired devices; null until the Tasks screen loads it. */
+  mission: { taskIds: string[]; landOrder: string[]; error: string | null } | null;
 }
 
 const initial: State = {
@@ -50,6 +52,7 @@ const initial: State = {
   loaded: false,
   error: null,
   live: false,
+  mission: null,
 };
 
 export const useStore = create<State>()(() => initial);
@@ -165,7 +168,8 @@ export function startLive() {
     headers: authHeaders,
     onOpen: (again) => {
       set({ live: true });
-      if (again) void loadAll();
+      // No replay: reload the lists, and the board if a screen shows it.
+      if (again) void loadAll().then(() => (missionWatchers ? loadMission().catch(() => {}) : undefined));
     },
     onMessage: (data) => {
       let event: AppEvent;
@@ -203,11 +207,15 @@ function handleEvent(event: AppEvent, deviceId: string | null) {
       set((s) => ({ agents: s.agents.filter((a) => a.id !== event.agentId) }));
       break;
     case "conversation":
+      set((s) => ({ conversations: upsert(s.conversations, event.conversation) }));
+      break;
     case "task":
       set((s) => ({ conversations: upsert(s.conversations, event.conversation) }));
+      scheduleMission();
       break;
     case "conversation-deleted":
       set((s) => ({ conversations: s.conversations.filter((c) => c.id !== event.conversationId) }));
+      scheduleMission();
       break;
     case "project":
       set((s) => ({
@@ -256,6 +264,59 @@ function handleEvent(event: AppEvent, deviceId: string | null) {
       }));
       break;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Mission control
+// ---------------------------------------------------------------------------
+
+let missionWatchers = 0;
+let missionTimer: ReturnType<typeof setTimeout> | null = null;
+let missionRequest = 0;
+
+/**
+ * Every device's board, merged: each TOT's own overview (open tasks, unlanded ones in land order, the last day's
+ * landed ones), its tasks kept in `conversations` so task events keep the rows live.
+ */
+export async function loadMission(): Promise<void> {
+  const id = ++missionRequest;
+  const online = (get().devices?.devices ?? []).filter((d) => d.online);
+  const results = await Promise.allSettled([api.getMission(), ...online.map((d) => onDevice(d.id, () => api.getMission()))]);
+  if (id !== missionRequest) return;
+  const ok = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  const failed = results[0]!.status === "rejected" ? errorMessage((results[0] as PromiseRejectedResult).reason) : null;
+  set((s) => {
+    let conversations = s.conversations;
+    for (const overview of ok) for (const task of overview.tasks) conversations = upsert(conversations, task.conversation);
+    return {
+      conversations,
+      mission: {
+        taskIds: ok.flatMap((o) => o.tasks.map((t) => t.conversation.id)),
+        landOrder: ok.flatMap((o) => o.landOrder),
+        // This TOT's board failing is worth saying; a paired device that can't answer just has no rows.
+        error: failed && !ok.length ? failed : null,
+      },
+    };
+  });
+}
+
+/** Keeps the board loaded and live while a screen shows it. */
+export function watchMission(): () => void {
+  missionWatchers++;
+  void loadMission().catch(() => {});
+  return () => {
+    missionWatchers--;
+  };
+}
+
+/** Any task changing refetches the board a moment later, so a burst gives one fetch (as the web's useMissionOverview). */
+function scheduleMission() {
+  if (!missionWatchers) return;
+  if (missionTimer) clearTimeout(missionTimer);
+  missionTimer = setTimeout(() => {
+    missionTimer = null;
+    void loadMission().catch(() => {});
+  }, 600);
 }
 
 /** Chats on screen right now (a chat screen registers itself), so turns started elsewhere show up live. */
@@ -360,14 +421,27 @@ function flush() {
 // Actions
 // ---------------------------------------------------------------------------
 
+/** Where a new chat starts: an agent, and optionally a project and (in a code project) where it works. */
+export interface NewChatTarget {
+  agentId: string;
+  projectId?: string | null;
+  workspace?: ChatWorkspaceMode;
+}
+
 /** Sends a message; with no chat yet, starts one with the agent first. Resolves with the chat's id. */
-export async function sendMessage(text: string, target: { conversationId: string } | { agentId: string }): Promise<string> {
+export async function sendMessage(text: string, target: { conversationId: string } | NewChatTarget): Promise<string> {
   let conversationId: string;
   if ("conversationId" in target) {
     conversationId = target.conversationId;
   } else {
     const agent = get().agents.find((a) => a.id === target.agentId);
-    const conversation = await onDevice(agent?.deviceId, () => api.createConversation({ agentId: target.agentId }));
+    const conversation = await onDevice(agent?.deviceId, () =>
+      api.createConversation({
+        agentId: target.agentId,
+        ...(target.projectId ? { projectId: target.projectId } : {}),
+        ...(target.projectId && target.workspace ? { workspace: target.workspace } : {}),
+      }),
+    );
     conversationId = conversation.id;
     set((s) => ({ conversations: upsert(s.conversations, conversation), messages: { ...s.messages, [conversation.id]: [] } }));
   }
@@ -376,8 +450,43 @@ export async function sendMessage(text: string, target: { conversationId: string
     conversations: upsert(s.conversations, response.conversation),
     messages: { ...s.messages, [conversationId]: upsertMessage(s.messages[conversationId] ?? [], response.userMessage) },
   }));
-  attachRun(conversationId, response.runId);
+  // A task that was already working took the message as a note: there's no new run to follow.
+  if (response.runId) attachRun(conversationId, response.runId);
   return conversationId;
+}
+
+/** A note for a working task ("steering"): it reads it at its next step, no new turn. */
+export async function steerTask(conversationId: string, text: string) {
+  const message = await api.steerTask(conversationId, text);
+  set((s) => ({ messages: { ...s.messages, [conversationId]: upsertMessage(s.messages[conversationId] ?? [], message) } }));
+}
+
+/** A task action's answer is the task itself, shown at once (its `task` event follows). */
+async function taskAction(action: () => Promise<Conversation>): Promise<Conversation> {
+  const task = await action();
+  set((s) => ({ conversations: upsert(s.conversations, task) }));
+  scheduleMission();
+  return task;
+}
+
+export const pauseTask = (id: string) => taskAction(() => api.pauseTask(id));
+export const resumeTask = (id: string) => taskAction(() => api.resumeTask(id));
+export const stopTask = (id: string) => taskAction(() => api.stopTask(id));
+export const runTaskNow = (id: string) => taskAction(() => api.runTaskNow(id));
+export const landTask = (id: string, body: LandTaskRequest) => taskAction(() => api.landTask(id, body));
+export const discardTask = (id: string) => taskAction(() => api.discardTask(id));
+
+/** The project's Lead chat, started the first time (with this agent). Resolves with its id. */
+export async function openLead(projectId: string, agentId?: string | null): Promise<string> {
+  const lead = await api.openLead(projectId, agentId);
+  set((s) => ({ conversations: upsert(s.conversations, lead) }));
+  return lead.id;
+}
+
+/** Archived projects leave every list; their chats stay. */
+export async function archiveProject(id: string) {
+  await api.archiveProject(id);
+  set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
 }
 
 export async function stopRun(conversationId: string) {

@@ -1,16 +1,21 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
-import { ActionSheetIOS, Alert, Platform, SectionList, StyleSheet, Text, View } from "react-native";
-import type { Conversation } from "@shared/types";
+import { ActionSheetIOS, Alert, Platform, Pressable, SectionList, StyleSheet, Text, View } from "react-native";
+import type { Conversation, Project } from "@shared/types";
+import { PROJECT_ICONS, TaskStatusIcon } from "../../components/tasks";
 import { Dot, Icon, IconButton, Mascot, Row, SectionTitle, Separator } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 import { ago } from "../../lib/format";
 import { deleteConversation, setPinned, useStore } from "../../lib/store";
 import { font, type as typeScale, useColors } from "../../theme";
 
+/** A section of the list: chats, or (`projects`) the device's projects this agent has no chats in yet. */
+type Section = { title: string; project?: Project; data: Conversation[] } | { title: string; projects: Project[]; data: Project[] };
+
 /**
  * An agent's chats, like the web app's sidebar: pinned first, then chats in no project, then a section per
- * project. Tasks show their status. Long-press a chat for Pin and Delete.
+ * project (its title opens the project's page), then the device's other projects. Tasks show their status.
+ * Long-press a chat for Pin and Delete.
  */
 export default function AgentChats() {
   const colors = useColors();
@@ -29,14 +34,20 @@ export default function AgentChats() {
     const loose = mine.filter((c) => !c.pinned && !c.projectId);
     const byProject = new Map<string, Conversation[]>();
     for (const c of mine) if (!c.pinned && c.projectId) byProject.set(c.projectId, [...(byProject.get(c.projectId) ?? []), c]);
-    const list: { title: string; data: Conversation[] }[] = [];
+    const list: Section[] = [];
     if (pinned.length) list.push({ title: "Pinned", data: pinned });
     if (loose.length) list.push({ title: pinned.length || byProject.size ? "Chats" : "", data: loose });
     for (const [projectId, data] of byProject) {
-      list.push({ title: projects.find((p) => p.id === projectId)?.name ?? "Project", data });
+      const project = projects.find((p) => p.id === projectId);
+      list.push({ title: project?.name ?? "Project", project, data });
     }
+    // Projects live on a device and are shared by its agents: the ones this agent hasn't worked in yet are one tap away too.
+    const others = projects.filter((p) => !p.archived && p.deviceId === agent?.deviceId && !byProject.has(p.id));
+    if (others.length) list.push({ title: "Projects", projects: others, data: others });
     return list;
-  }, [conversations, projects, id]);
+  }, [conversations, projects, id, agent?.deviceId]);
+
+  const openProject = (projectId: string) => router.push({ pathname: "/project/[id]", params: { id: projectId, agentId: id } });
 
   const more = (conversation: Conversation) => {
     const options = [conversation.pinned ? "Unpin" : "Pin", "Delete", "Cancel"];
@@ -84,9 +95,9 @@ export default function AgentChats() {
           headerRight: () => (offline ? null : <IconButton name="edit" label="New chat" onPress={newChat} />),
         }}
       />
-      <SectionList
+      <SectionList<Conversation | Project, Section>
         sections={sections}
-        keyExtractor={(c) => c.id}
+        keyExtractor={(item) => item.id}
         contentInsetAdjustmentBehavior="automatic"
         stickySectionHeadersEnabled={false}
         ListHeaderComponent={
@@ -98,23 +109,53 @@ export default function AgentChats() {
             </Text>
           </View>
         }
-        renderSectionHeader={({ section }) => (section.title ? <SectionTitle>{section.title}</SectionTitle> : null)}
+        renderSectionHeader={({ section }) =>
+          "project" in section && section.project ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${section.title}`}
+              onPress={() => openProject(section.project!.id)}
+              style={({ pressed }) => [styles.projectHeader, pressed && { opacity: 0.6 }]}
+            >
+              <Icon name={PROJECT_ICONS[section.project.kind]} size={12} color={colors.fgSubtle} />
+              <Text numberOfLines={1} style={[typeScale.xs, { fontFamily: font.medium, color: colors.fgSubtle, flexShrink: 1 }]}>
+                {section.title}
+              </Text>
+              <Icon name="chevron-right" size={12} color={colors.fgFaint} />
+            </Pressable>
+          ) : section.title ? (
+            <SectionTitle>{section.title}</SectionTitle>
+          ) : null
+        }
         ItemSeparatorComponent={() => <Separator />}
-        renderItem={({ item }) => {
-          const working = Boolean(activeRuns[item.id]) || item.task?.status === "running";
-          const needsYou = Boolean(pendingApprovals[item.id]) || item.task?.status === "needs-input";
+        renderItem={({ item, section }) => {
+          if ("projects" in section) {
+            const project = item as Project;
+            return (
+              <Row onPress={() => openProject(project.id)}>
+                <Icon name={PROJECT_ICONS[project.kind]} size={16} color={colors.fgSubtle} />
+                <Text numberOfLines={1} style={[typeScale.body, { color: colors.fg, flex: 1 }]}>
+                  {project.name}
+                </Text>
+                <Icon name="chevron-right" size={16} color={colors.fgFaint} />
+              </Row>
+            );
+          }
+          const chat = item as Conversation;
+          const working = Boolean(activeRuns[chat.id]);
+          const needsYou = Boolean(pendingApprovals[chat.id]) || chat.task?.status === "needs-input";
           return (
-            <Row onPress={() => router.push({ pathname: "/chat/[id]", params: { id: item.id } })} onLongPress={() => more(item)}>
-              {item.kind === "task" ? <Icon name="layers" size={16} color={colors.fgSubtle} /> : item.lead ? <Icon name="compass" size={16} color={colors.fgSubtle} /> : null}
+            <Row onPress={() => router.push({ pathname: "/chat/[id]", params: { id: chat.id } })} onLongPress={() => more(chat)}>
+              {chat.task ? <TaskStatusIcon status={chat.task.status} /> : chat.lead ? <Icon name="compass" size={16} color={colors.fgSubtle} /> : null}
               <Text numberOfLines={1} style={[typeScale.body, { color: colors.fg, flex: 1 }]}>
-                {item.title || "New chat"}
+                {chat.title || "New chat"}
               </Text>
               {needsYou ? (
                 <Text style={[typeScale.xs, { fontFamily: font.medium, color: colors.warning }]}>Needs you</Text>
-              ) : working ? (
+              ) : working && !chat.task ? (
                 <Dot color={colors.success} />
               ) : null}
-              <Text style={[typeScale.xs, { color: colors.fgSubtle, fontVariant: ["tabular-nums"] }]}>{ago(item.updatedAt)}</Text>
+              <Text style={[typeScale.xs, { color: colors.fgSubtle, fontVariant: ["tabular-nums"] }]}>{ago(chat.updatedAt)}</Text>
             </Row>
           );
         }}
@@ -131,4 +172,5 @@ export default function AgentChats() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   hero: { alignItems: "center", gap: 6, paddingTop: 12, paddingBottom: 12, paddingHorizontal: 24 },
+  projectHeader: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 6 },
 });

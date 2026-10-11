@@ -2,9 +2,10 @@ import { memo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Message, MessagePart } from "@shared/types";
 import { errorMessage } from "../lib/api";
-import { answerApproval, useStore } from "../lib/store";
+import { answerApproval } from "../lib/store";
 import { font, type as typeScale, useColors } from "../theme";
 import { Markdown } from "./Markdown";
+import { TaskGroupCard } from "./tasks";
 import { Button, Icon } from "./ui";
 
 /**
@@ -29,9 +30,13 @@ function MessageViewBase({ message, streaming }: { message: Message; streaming: 
   const empty = message.parts.length === 0;
   return (
     <View style={styles.assistant}>
-      {message.parts.map((part) => (
-        <PartView key={part.id} part={part} conversationId={message.conversationId} />
-      ))}
+      {message.parts.map((part, index) => {
+        // Tasks started together stack into one card, at the first of them (the rest are folded in).
+        const run = taskRun(message.parts, index);
+        if (run === null) return null;
+        if (run.length) return <TaskGroupCard key={part.id} taskIds={run} />;
+        return <PartView key={part.id} part={part} conversationId={message.conversationId} />;
+      })}
       {streaming && empty ? <Thinking label="Thinking" /> : null}
       {message.error && message.status === "error" ? (
         <Text style={[typeScale.sm, { color: colors.danger }]}>{message.error}</Text>
@@ -42,6 +47,15 @@ function MessageViewBase({ message, streaming }: { message: Message; streaming: 
 }
 
 export const MessageView = memo(MessageViewBase);
+
+/** At a run of task cards' first part: the run's task ids; at its other parts: null; for any other part: []. */
+function taskRun(parts: MessagePart[], index: number): string[] | null {
+  if (parts[index]?.type !== "task") return [];
+  if (parts[index - 1]?.type === "task") return null;
+  const ids: string[] = [];
+  for (let i = index; parts[i]?.type === "task"; i++) ids.push((parts[i] as Extract<MessagePart, { type: "task" }>).taskId);
+  return ids;
+}
 
 function PartView({ part, conversationId }: { part: MessagePart; conversationId: string }) {
   const colors = useColors();
@@ -75,7 +89,7 @@ function PartView({ part, conversationId }: { part: MessagePart; conversationId:
         </View>
       );
     case "task":
-      return <TaskLine taskId={part.taskId} />;
+      return <TaskGroupCard taskIds={[part.taskId]} />;
     case "approval":
       return <ApprovalCard part={part} conversationId={conversationId} />;
   }
@@ -119,32 +133,6 @@ function Thinking({ label }: { label: string }) {
     <View style={styles.line}>
       <ActivityIndicator size="small" color={colors.fgSubtle} style={{ transform: [{ scale: 0.7 }] }} />
       <Text style={[typeScale.ui, { color: colors.fgSubtle }]}>{label}…</Text>
-    </View>
-  );
-}
-
-const TASK_STATUS: Record<string, string> = {
-  queued: "Queued",
-  running: "Running",
-  "needs-input": "Needs you",
-  paused: "Paused",
-  done: "Done",
-  failed: "Failed",
-  stopped: "Stopped",
-  interrupted: "Interrupted",
-};
-
-/** A task started from this chat. Its full card (steer, pause, land) comes with tasks in M2. */
-function TaskLine({ taskId }: { taskId: string }) {
-  const colors = useColors();
-  const task = useStore((s) => s.conversations.find((c) => c.id === taskId));
-  return (
-    <View style={[styles.task, { borderColor: colors.hairline }]}>
-      <Icon name="layers" size={14} color={colors.fgSubtle} />
-      <Text numberOfLines={1} style={[typeScale.ui, { color: colors.fg, flex: 1 }]}>
-        {task?.title || "Task"}
-      </Text>
-      <Text style={[typeScale.xs, { color: colors.fgSubtle }]}>{task?.task ? TASK_STATUS[task.task.status] : ""}</Text>
     </View>
   );
 }
@@ -193,7 +181,6 @@ const styles = StyleSheet.create({
   bubble: { maxWidth: "85%", borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10 },
   assistant: { gap: 12 },
   line: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 22 },
-  task: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: StyleSheet.hairlineWidth * 2, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   card: { borderWidth: StyleSheet.hairlineWidth * 2, borderRadius: 16, padding: 14, gap: 8 },
   cardActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 4 },
 });

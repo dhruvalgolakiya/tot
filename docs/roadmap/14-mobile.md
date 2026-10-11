@@ -69,7 +69,12 @@ The web app's ChatGPT/Codex look (DESIGN.md), as a phone app: true neutral greys
   - An agent's chats: pinned first, then chats in no project, then a section per project; tasks and Lead chats marked. New chat; long-press for Pin and Delete.
   - Chat: messages with markdown, tool steps and thinking one quiet line each (tap to open), the reply streaming live, the pill composer, Stop. Approval cards (Approve / Decline, a Lead's land / discard / push) inline; form approvals say to answer on the computer for now.
   - Settings sheet: which TOT, its address, the paired devices, Sign out. Signed out from the computer, the app goes back to Connect at once (address kept).
-- [ ] **M2 Tasks and projects.** Task status, steer, pause/resume/stop, land/discard cards for the Lead's asks; mission control (every task); projects list, a project's page, new chat in a project with the workspace picker (checkout / new worktree).
+- [x] **M2 Tasks and projects.** Built 2026-10-11 on `feat/mobile`, client only (no server changes), checked on the iOS Simulator against two paired throwaway TOTs seeded with a six-task group (done, running, queued, paused, failed, ready to land), a folder project on a throwaway git repo and a Lead with a land card.
+  - Tasks (the layers button on Agents): mission control across this TOT and its online paired devices (each device's `GET /api/mission`, merged; rows read the store, the board refetches 600 ms after task events). Needs you, Working, Ready to land (in land order), Landed (folded). Each row: status icon, title, status line, agent (and device), branch, `+/− · files`, checks icon, elapsed. Long-press: Run now / Pause / Resume / Stop.
+  - Task page (a chat with kind "task"): a strip under the title with status · role · tier and repo · branch; "…" with Run now / Pause / Resume / Stop; the web's TaskEmptyState (Asked to…, where it stands, Resume when that moves it on); the composer adds notes (`/steer`) while the task is steerable, Stop with nothing typed.
+  - In chats: tasks started together are one card ("6 tasks · 1 running · 2 done · 1 paused…", a row each, tap opens, long-press for actions; a single task is the same card without its header); "… is done" notices stack into one compact list.
+  - Landing: a ready-to-land task's page ends with its changes, checks (a line per gate), how far behind its base it is and why it can't land, and Discard / Merge into <branch> (Open draft PR for GitHub projects), each with a native confirm. Landed: where the code went. Lead cards (M1) still land.
+  - Projects: project sections in an agent's chats open the project's page, and the device's other projects are listed under Projects. The page: icon, name, source, a composer that starts a chat in it with this agent (Main checkout / New worktree for code projects), and its chats from every agent. "…": Start / Open the Lead, Archive (confirm). New chat anywhere: a project picker (and the workspace picker) above the composer.
 - [ ] **M3 Settings and the top bar.** The model/account picker in a chat; an agent's settings (name, mascot, island, tagline, model); Settings sections that make sense on a phone: Models & accounts (incl. Make default), Tasks, Memory / About you, Devices and remote access, Slack and GitHub status (read-only).
 - [ ] **M4 Notifications and knowledge.** Local notifications for "needs you" and "task done" while the app is open or recently backgrounded. APNs push needs an Apple Developer account and a relay that can reach the phone: designed here (the server would keep each app session's push token and send on `approval` and task events), not built. The knowledge viewer (a project's wiki and memory, read-only).
 - [ ] **M5 Polish.** Reconnect and offline (last lists cached, clear "can't reach Mac mini" state), several saved TOTs, the real mascots, app icon and splash, Android pass, TestFlight notes (EAS build, bundle id, signing).
@@ -77,9 +82,17 @@ The web app's ChatGPT/Codex look (DESIGN.md), as a phone app: true neutral greys
 ## Not done in M1
 
 - The mascots are a colored circle with an initial; offline devices' agents aren't remembered (the web app caches them per browser).
-- No attachments, model picker, task cards (a task started from a chat shows as one line with its status) or form approvals.
+- No attachments, model picker or form approvals.
 - The QR scanner is untested on a real phone (the simulator has no camera); the code path is the same as a pasted link, which is tested.
 - An older paired TOT answers `/api/runs/live` with its web page (unknown API paths fall through to the app in production); the app treats an HTML answer as "not supported" and shows that device's live state from events only.
+
+## Not done in M2
+
+- A task's Plan, Changes (file list and diff) and Activity tabs, Update from base, Run checks, Rename, Delete, Turn back into a chat, Continue on the other provider, previews and best-of Compare: the web app has them.
+- Steering notes show as the user's bubbles in order, not inside the reply they were handed to.
+- Draft-PR landing is wired (`method: "pr"`) but was only checked against folder projects (no real GitHub in development).
+- A folder project the user hasn't allowed yet says to allow it on the computer; the app can't grant it. Projects can't be created, renamed or set up (repos, instructions, subscriptions, worktree setup) from the phone yet.
+- The board shows online devices only; an offline device's tasks reappear when it's back.
 
 ## Rules
 

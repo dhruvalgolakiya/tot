@@ -75,6 +75,8 @@ export default function RootLayout() {
         <Stack.Screen name="scan" options={{ presentation: "modal", headerShown: false }} />
         <Stack.Screen name="agent/[id]" options={{ title: "" }} />
         <Stack.Screen name="chat/[id]" options={{ title: "" }} />
+        <Stack.Screen name="tasks" options={{ title: "Tasks" }} />
+        <Stack.Screen name="project/[id]" options={{ title: "" }} />
         <Stack.Screen name="settings" options={{ presentation: "formSheet", title: "Settings", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }} />
       </Stack>
     </>
