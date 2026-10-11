@@ -82,13 +82,15 @@ How it's kept safe:
 
 ## Mobile app
 
-`mobile/` is TOT's iPhone app (in development; Expo, React Native): every agent on this TOT and its paired devices, their chats, live replies and approvals, tasks (mission control, steer, pause, land) and projects, the model picker, agent settings, Settings (models and accounts, tasks, memory, devices), notifications while it's open or just closed (with a catch-up when it comes back), and a read-only Knowledge viewer. It's a client of your TOT, not a copy: nothing is synced and no TOT runs on the phone. It signs in like a phone browser, with the QR code from **Settings → Devices → Add a phone** (or the address and password), and shows up in the sign-in list there. Details in [14 · Mobile app](docs/roadmap/14-mobile.md).
+`mobile/` is TOT's iPhone app (Expo, React Native; not on TestFlight yet): every agent on this TOT and its paired devices with their mascots, their chats, live replies, photos and approvals, tasks (mission control, steer, pause, land, plan and changes) and projects, the model picker, agent settings, Settings (models and accounts, tasks, memory, devices), notifications while it's open or just closed (with a catch-up when it comes back), a read-only Knowledge viewer, several saved TOTs, and the last lists under a Reconnecting banner while a TOT can't be reached. It's a client of your TOT, not a copy: nothing is synced and no TOT runs on the phone (it keeps only a cache of what it last showed). It signs in like a phone browser, with the QR code from **Settings → Devices → Add a phone** (or the address and password), and shows up in the sign-in list there. Details in [14 · Mobile app](docs/roadmap/14-mobile.md).
 
 ```bash
 cd mobile && npm install
 npx expo start --ios     # opens it in the iOS Simulator with Expo Go (Xcode installed)
 npx tsc --noEmit         # typecheck; mobile/ isn't part of the root build or tests
 ```
+
+`mobile/eas.json` has the build profiles; the TestFlight steps (Apple account, bundle id, signing, `eas build` / `eas submit`) are in [14 · Mobile app](docs/roadmap/14-mobile.md#testflight-what-the-user-does). `npx tsx mobile/scripts/icons.mts` redraws the icon and splash from TOT's rings.
 
 On this Mac's simulator, connect to `127.0.0.1:8787` (no sign-in needed: this computer never signs in). To try the real sign-in, turn on remote access and connect to the address Settings → Devices shows. On a real iPhone, scan the QR code `npx expo start` prints with the Expo Go app.
 

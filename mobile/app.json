@@ -16,6 +16,9 @@
           "NSAllowsLocalNetworking": true
         },
         "NSLocalNetworkUsageDescription": "TOT connects to your TOT on this network or over Tailscale."
+      },
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
