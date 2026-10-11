@@ -4,7 +4,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "../components/ui";
 import { errorMessage } from "../lib/api";
-import { connectOpen, lastAddress, parseSignInLink, probe, signIn } from "../lib/connection";
+import { connectOpen, lastAddress, parseSignInLink, probe, serverLabel, signIn, stopAdding, switchServer, useConnection } from "../lib/connection";
 import { font, type as typeScale, useColors } from "../theme";
 
 /**
@@ -21,10 +21,22 @@ export default function Connect() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const passwordRef = useRef<TextInput>(null);
+  // Opened from Settings → TOT servers to add another, over the TOT that's open; else the saved ones to go back to.
+  const adding = useConnection((s) => s.adding);
+  const saved = useConnection((s) => s.servers);
 
   useEffect(() => {
+    if (adding) return;
     void lastAddress().then((url) => url && setAddress((current) => current || url));
-  }, []);
+  }, [adding]);
+
+  // Leaving Connect any way (back swipe, a successful sign-in) ends adding.
+  useEffect(() => stopAdding, []);
+
+  const cancel = () => {
+    stopAdding();
+    router.back();
+  };
 
   const go = async () => {
     setBusy(true);
@@ -60,7 +72,7 @@ export default function Connect() {
         <View style={[styles.logo, { borderColor: colors.fg }]}>
           <View style={[styles.logoInner, { borderColor: colors.fg }]} />
         </View>
-        <Text style={[styles.title, { color: colors.fgStrong }]}>Connect to TOT</Text>
+        <Text style={[styles.title, { color: colors.fgStrong }]}>{adding ? "Add a TOT" : "Connect to TOT"}</Text>
         <Text style={[typeScale.body, { color: colors.fgMuted, textAlign: "center" }]}>
           On your computer, open TOT → Settings → Devices → Add a phone, and scan its code.
         </Text>
@@ -111,8 +123,17 @@ export default function Connect() {
           onPress={() => void go()}
           style={{ alignSelf: "stretch", marginTop: 12 }}
         />
+        {adding ? <Button label="Cancel" variant="ghost" onPress={cancel} style={{ alignSelf: "stretch", marginTop: 4 }} /> : null}
+        {!adding && saved.length ? (
+          <View style={{ alignSelf: "stretch", marginTop: 24, gap: 8 }}>
+            <Text style={[typeScale.xs, { color: colors.fgSubtle, textAlign: "center" }]}>Or open a TOT this phone is signed in to</Text>
+            {saved.map((server) => (
+              <Button key={server.id} label={serverLabel(server)} icon="monitor" variant="secondary" onPress={() => void switchServer(server.id)} />
+            ))}
+          </View>
+        ) : null}
         <Text style={[typeScale.xs, { color: colors.fgSubtle, textAlign: "center", marginTop: 20 }]}>
-          The app talks only to your own TOT, over your Wi‑Fi or Tailscale. Nothing is stored on this phone but the address and your sign-in.
+          The app talks only to your own TOT, over your Wi‑Fi or Tailscale. Nothing is kept on this phone but the address, your sign-in and the last lists it showed.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

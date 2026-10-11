@@ -52,7 +52,7 @@ function appsLine(status: AppsStatus | null): string {
 export default function Settings() {
   const colors = useColors();
   const router = useRouter();
-  const { url, token, deviceName } = useConnection();
+  const { url, token, deviceName, servers } = useConnection();
   const live = useStore((s) => s.live);
   const [elsewhere, setElsewhere] = useState<Elsewhere>({ github: null, slack: null, apps: null, personas: null, plugins: null });
 
@@ -80,6 +80,7 @@ export default function Settings() {
         <Cell title={deviceName ?? "TOT"} right={<Status label={live ? "Live" : "Connecting"} tone={live ? "success" : "neutral"} />} />
         <Cell title="Address" value={url?.replace(/^https?:\/\//, "") ?? ""} />
         <Cell title="Sign-in" value={token ? "Signed in as this phone" : "Not needed here"} />
+        <Cell title="TOT servers" value={servers.length > 1 ? `${servers.length} saved` : "Add another"} chevron onPress={() => open("servers")} />
       </Group>
 
       <Group>

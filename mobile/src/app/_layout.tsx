@@ -15,7 +15,7 @@ export default function RootLayout() {
   const colors = useColors();
   const scheme = useColorScheme();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold });
-  const { loaded, url, token } = useConnection();
+  const { loaded, url, token, adding } = useConnection();
   const segments = useSegments();
   const router = useRouter();
 
@@ -85,8 +85,12 @@ export default function RootLayout() {
       // Connect doesn't take the sheet's place.
       if (router.canDismiss()) router.dismissAll();
       router.replace("/connect");
-    } else if (url && onConnect) router.replace("/");
-  }, [loaded, url, onConnect, router]);
+    } else if (url && onConnect && !adding) {
+      // Connected (or another TOT added from Settings → TOT servers): start at its Agents.
+      if (router.canDismiss()) router.dismissAll();
+      router.replace("/");
+    }
+  }, [loaded, url, onConnect, adding, router]);
 
   if (!loaded || !fontsLoaded) return <View style={{ flex: 1, backgroundColor: colors.canvas }} />;
 
@@ -117,6 +121,7 @@ export default function RootLayout() {
         <Stack.Screen name="settings/memory" options={{ title: "Memory" }} />
         <Stack.Screen name="settings/devices" options={{ title: "Devices" }} />
         <Stack.Screen name="settings/notifications" options={{ title: "Notifications" }} />
+        <Stack.Screen name="settings/servers" options={{ title: "TOT servers" }} />
         <Stack.Screen name="knowledge/index" options={{ title: "" }} />
         <Stack.Screen name="knowledge/page" options={{ title: "" }} />
         <Stack.Screen name="knowledge/facts" options={{ title: "Facts" }} />
