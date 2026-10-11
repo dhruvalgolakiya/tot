@@ -172,7 +172,7 @@ export default function Chat() {
 
   const working = Boolean(run);
   // While a task works, typed text is a note for it; with nothing typed, the button stops the turn.
-  const showStop = working && !(steering && text.trim()) && !files.length;
+  const showStop = working && !(steering && text.trim());
   const canSend = Boolean(text.trim() || ready.length) && !uploading && !offline;
   const title = conversation?.title || (conversationId ? "" : "New chat");
   const menu = task ? taskActions(task) : [];
