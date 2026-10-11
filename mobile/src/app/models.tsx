@@ -68,8 +68,11 @@ export default function ModelSheet() {
         const description = item.available ? displayDescription(item) : (item.unavailableReason ?? "Unavailable");
         return (
           <Pressable
-            accessibilityRole="radio"
-            accessibilityLabel={displayLabel(item)}
+            // A plain button with its state spelled out: iOS left "radio" rows inside the form sheet out of the
+            // accessibility tree, so VoiceOver couldn't reach them.
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={[displayLabel(item), description].filter(Boolean).join(", ")}
             accessibilityState={{ selected: picked, disabled: !item.available }}
             disabled={!item.available}
             onPress={() => pick(item)}

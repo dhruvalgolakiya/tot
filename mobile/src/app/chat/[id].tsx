@@ -1,15 +1,17 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { ChatWorkspaceMode, Message } from "@shared/types";
+import type { Attachment, ChatWorkspaceMode, Message } from "@shared/types";
 import { MessageView } from "../../components/MessageView";
 import { LandCard, PROJECT_ICONS, TaskEmptyState, TaskNotices, TaskStatusIcon, taskActions } from "../../components/tasks";
 import { Icon, type IconName, IconButton, Mascot, showMenu } from "../../components/ui";
 import { AUTO_MODEL_ID, modelLabel } from "../../lib/models";
 import { setFocusedChat } from "../../lib/notify";
 import { openModelPicker } from "../../lib/picker";
-import { errorMessage } from "../../lib/api";
+import { api, errorMessage } from "../../lib/api";
+import { onDevice } from "../../lib/devices";
 import { loadConversation, loadModels, sendMessage, setConversationModel, steerTask, stopRun, useStore, watchChat } from "../../lib/store";
 import { canPickWorkspace, isSteerable, isTask, isTaskEndingMessage, repoLabel, roleLine, TASK_STATUS_LABELS } from "../../lib/tasks";
 import { font, type as typeScale, useColors } from "../../theme";
@@ -20,6 +22,16 @@ const EMPTY: Message[] = [];
 /** A message, or several tasks' "… is done" notices in a row, shown as one compact list. */
 type Item = Message | Message[];
 const itemKey = (item: Item) => (Array.isArray(item) ? `notices-${item[0]!.id}` : item.id);
+
+/** A photo picked for the next message: uploaded at once (the web uploads on pick too), sent with the text. */
+interface Pending {
+  key: string;
+  uri: string;
+  attachment: Attachment | null;
+  error: string | null;
+}
+/** The server takes at most 10 attachments per message. */
+const MAX_FILES = 10;
 
 const WORKSPACES: { mode: ChatWorkspaceMode; label: string; icon: IconName }[] = [
   { mode: "checkout", label: "Main checkout", icon: "monitor" },
@@ -49,6 +61,7 @@ export default function Chat() {
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [files, setFiles] = useState<Pending[]>([]);
   // A new chat's project (none, or one on the agent's device) and, in a code project, where it works.
   const [draftProjectId, setDraftProjectId] = useState<string | null>(params.projectId ?? null);
   const [workspace, setWorkspace] = useState<ChatWorkspaceMode>("checkout");
@@ -100,11 +113,35 @@ export default function Chat() {
   const pickable = useMemo(() => projects.filter((p) => !p.archived && p.deviceId === agent?.deviceId), [projects, agent?.deviceId]);
   const draftProject = pickable.find((p) => p.id === draftProjectId) ?? null;
 
+  /** Photos from the library, uploaded to the agent's device right away so Send doesn't wait on them. */
+  const attach = async () => {
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsMultipleSelection: true, selectionLimit: MAX_FILES - files.length, quality: 0.85 });
+    if (picked.canceled) return;
+    const added = picked.assets.slice(0, MAX_FILES - files.length).map((asset, i): Pending & { asset: ImagePicker.ImagePickerAsset } => ({
+      key: `${Date.now()}-${i}`,
+      uri: asset.uri,
+      attachment: null,
+      error: null,
+      asset,
+    }));
+    setFiles((list) => [...list, ...added.map(({ asset: _asset, ...pending }) => pending)]);
+    for (const { key, asset } of added) {
+      const name = asset.fileName ?? `photo-${key}.${asset.mimeType === "image/png" ? "png" : "jpg"}`;
+      onDevice(agent?.deviceId, () => api.upload({ uri: asset.uri, name, type: asset.mimeType ?? "image/jpeg" }))
+        .then((attachment) => setFiles((list) => list.map((f) => (f.key === key ? { ...f, attachment } : f))))
+        .catch((e) => setFiles((list) => list.map((f) => (f.key === key ? { ...f, error: errorMessage(e) } : f))));
+    }
+  };
+  const uploading = files.some((f) => !f.attachment && !f.error);
+  const ready = files.flatMap((f) => (f.attachment ? [f.attachment.id] : []));
+
   const send = async () => {
     const body = text.trim();
-    if (!body || sending || !agentId || offline) return;
+    if ((!body && !ready.length) || sending || uploading || !agentId || offline) return;
+    const sent = files;
     setSending(true);
     setText("");
+    setFiles([]);
     setError(null);
     try {
       if (steering && conversationId) {
@@ -118,7 +155,7 @@ export default function Chat() {
               workspace: draftProject && canPickWorkspace(draftProject) ? workspace : undefined,
               modelId: draftModelId ?? undefined,
             };
-        const id = await sendMessage(body, target);
+        const id = await sendMessage(body, target, ready);
         if (!conversationId) {
           setConversationId(id);
           router.setParams({ id, agentId: undefined, projectId: undefined });
@@ -126,6 +163,7 @@ export default function Chat() {
       }
     } catch (e) {
       setText(body);
+      setFiles(sent);
       setError(errorMessage(e));
     } finally {
       setSending(false);
@@ -134,7 +172,8 @@ export default function Chat() {
 
   const working = Boolean(run);
   // While a task works, typed text is a note for it; with nothing typed, the button stops the turn.
-  const showStop = working && !(steering && text.trim());
+  const showStop = working && !(steering && text.trim()) && !files.length;
+  const canSend = Boolean(text.trim() || ready.length) && !uploading && !offline;
   const title = conversation?.title || (conversationId ? "" : "New chat");
   const menu = task ? taskActions(task) : [];
   const role = task ? roleLine(task.task.role, task.task.tier) : null;
@@ -255,7 +294,38 @@ export default function Chat() {
         </ScrollView>
       ) : null}
       <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+        {files.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.files} style={{ flexGrow: 0 }}>
+            {files.map((file) => (
+              <View key={file.key} style={styles.file}>
+                <Image source={{ uri: file.uri }} style={[styles.thumb, { backgroundColor: colors.fill }, file.error ? { opacity: 0.4 } : null]} accessibilityIgnoresInvertColors />
+                {!file.attachment && !file.error ? <ActivityIndicator style={StyleSheet.absoluteFill} color="#fff" /> : null}
+                {file.error ? <Icon name="alert-circle" size={16} color={colors.danger} /> : null}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={file.error ? `Remove photo that didn't upload: ${file.error}` : "Remove photo"}
+                  hitSlop={6}
+                  onPress={() => setFiles((list) => list.filter((f) => f.key !== file.key))}
+                  style={[styles.unattach, { backgroundColor: colors.fg }]}
+                >
+                  <Icon name="x" size={11} color={colors.canvas} />
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
         <View style={[styles.composer, { backgroundColor: colors.elevated, borderColor: colors.edge }]}>
+          {steering ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Attach photos"
+              disabled={offline || files.length >= MAX_FILES}
+              onPress={() => void attach().catch((e) => setError(errorMessage(e)))}
+              style={({ pressed }) => [styles.attach, pressed && { backgroundColor: colors.selected }, (offline || files.length >= MAX_FILES) && { opacity: 0.4 }]}
+            >
+              <Icon name="plus" size={20} color={colors.fgMuted} />
+            </Pressable>
+          )}
           <TextInput
             value={text}
             onChangeText={setText}
@@ -263,7 +333,7 @@ export default function Chat() {
             placeholder={offline ? "Waiting for the connection…" : steering ? "Add a note for the task" : draftProject && !conversationId ? `New chat in ${draftProject.name}` : agent ? `Message ${agent.name}` : "Message"}
             placeholderTextColor={colors.fgSubtle}
             multiline
-            style={[typeScale.chat, styles.input, { color: colors.fg }]}
+            style={[typeScale.chat, styles.input, { color: colors.fg }, steering && { marginLeft: 12 }]}
           />
           {showStop ? (
             <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={() => conversationId && void stopRun(conversationId).catch((e) => setError(errorMessage(e)))} style={[styles.send, { backgroundColor: colors.fg }]}>
@@ -273,11 +343,11 @@ export default function Chat() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={steering ? "Add note" : "Send"}
-              disabled={!text.trim() || sending || offline}
+              disabled={(!text.trim() && !ready.length) || sending || uploading || offline}
               onPress={() => void send()}
-              style={[styles.send, { backgroundColor: text.trim() ? colors.fg : colors.fillStrong }]}
+              style={[styles.send, { backgroundColor: canSend ? colors.fg : colors.fillStrong }]}
             >
-              {sending ? <ActivityIndicator size="small" color={colors.canvas} /> : <Icon name="arrow-up" size={18} color={text.trim() ? colors.canvas : colors.fgSubtle} />}
+              {sending ? <ActivityIndicator size="small" color={colors.canvas} /> : <Icon name="arrow-up" size={18} color={canSend ? colors.canvas : colors.fgSubtle} />}
             </Pressable>
           )}
         </View>
@@ -315,7 +385,12 @@ const styles = StyleSheet.create({
   subtitle: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: 240 },
   picker: { flexDirection: "row", alignItems: "center", gap: 6, height: 32, borderRadius: 16, paddingHorizontal: 12 },
   composerWrap: { paddingHorizontal: 12, paddingTop: 6 },
-  composer: { flexDirection: "row", alignItems: "flex-end", borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, paddingLeft: 18, paddingRight: 6, paddingVertical: 6, minHeight: 52 },
+  composer: { flexDirection: "row", alignItems: "flex-end", borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, paddingLeft: 6, paddingRight: 6, paddingVertical: 6, minHeight: 52 },
+  attach: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", marginRight: 4 },
+  files: { flexDirection: "row", gap: 10, paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8 },
+  file: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
+  thumb: { position: "absolute", width: 56, height: 56, borderRadius: 12 },
+  unattach: { position: "absolute", top: -4, right: -4, width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   input: { flex: 1, maxHeight: 140, paddingTop: 7, paddingBottom: 7 },
   send: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", marginLeft: 8 },
   stop: { width: 12, height: 12, borderRadius: 2 },

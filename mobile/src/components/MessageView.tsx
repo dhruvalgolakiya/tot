@@ -1,7 +1,8 @@
 import { memo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import type { Message, MessagePart } from "@shared/types";
-import { errorMessage } from "../lib/api";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import type { Attachment, Message, MessagePart } from "@shared/types";
+import { authHeaders, errorMessage } from "../lib/api";
+import { useConnection } from "../lib/connection";
 import { answerApproval } from "../lib/store";
 import { font, type as typeScale, useColors } from "../theme";
 import { Markdown } from "./Markdown";
@@ -15,15 +16,29 @@ import { Button, Icon } from "./ui";
 function MessageViewBase({ message, streaming }: { message: Message; streaming: boolean }) {
   const colors = useColors();
   if (message.role === "user") {
-    const text = message.parts.map((p) => (p.type === "text" ? p.text : p.type === "file" ? `Attached: ${p.attachment.name}` : "")).join("\n").trim();
+    // Photos show as thumbnails above the bubble; other files as a line in it.
+    const images = message.parts.flatMap((p) => (p.type === "file" && IMAGE_TYPES.has(p.attachment.mimeType) ? [p.attachment] : []));
+    const text = message.parts
+      .map((p) => (p.type === "text" ? p.text : p.type === "file" && !IMAGE_TYPES.has(p.attachment.mimeType) ? `Attached: ${p.attachment.name}` : ""))
+      .join("\n")
+      .trim();
     if (message.auto) return <Text style={[typeScale.xs, { color: colors.fgSubtle, textAlign: "center", paddingVertical: 4 }]}>{text}</Text>;
     return (
-      <View style={styles.userRow}>
-        <View style={[styles.bubble, { backgroundColor: colors.bubble }]}>
-          <Text selectable style={[typeScale.chat, { color: colors.fg }]}>
-            {text}
-          </Text>
-        </View>
+      <View style={[styles.userRow, { gap: 6 }]}>
+        {images.length ? (
+          <View style={styles.images}>
+            {images.map((image) => (
+              <Photo key={image.id} attachment={image} />
+            ))}
+          </View>
+        ) : null}
+        {text ? (
+          <View style={[styles.bubble, { backgroundColor: colors.bubble }]}>
+            <Text selectable style={[typeScale.chat, { color: colors.fg }]}>
+              {text}
+            </Text>
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -47,6 +62,22 @@ function MessageViewBase({ message, streaming }: { message: Message; streaming: 
 }
 
 export const MessageView = memo(MessageViewBase);
+
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+/** A sent photo, fetched from the TOT with this phone's sign-in (its URL is an /api/ path there). */
+function Photo({ attachment }: { attachment: Attachment }) {
+  const colors = useColors();
+  const base = useConnection((s) => s.url);
+  return (
+    <Image
+      accessibilityLabel={attachment.name}
+      source={{ uri: `${base ?? ""}${attachment.url}`, headers: authHeaders() }}
+      style={[styles.photo, { backgroundColor: colors.fill }]}
+      resizeMode="cover"
+    />
+  );
+}
 
 /** At a run of task cards' first part: the run's task ids; at its other parts: null; for any other part: []. */
 function taskRun(parts: MessagePart[], index: number): string[] | null {
@@ -177,6 +208,8 @@ function ApprovalCard({ part, conversationId }: { part: Extract<MessagePart, { t
 }
 
 const styles = StyleSheet.create({
+  images: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, maxWidth: "85%" },
+  photo: { width: 120, height: 120, borderRadius: 14 },
   userRow: { alignItems: "flex-end" },
   bubble: { maxWidth: "85%", borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10 },
   assistant: { gap: 12 },

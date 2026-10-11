@@ -4,6 +4,7 @@ import type {
   Agent,
   AgentInput,
   AppsStatus,
+  Attachment,
   ApprovalAnswer,
   Brain,
   Conversation,
@@ -106,6 +107,44 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   return (device ? adopt(device, data) : data) as T;
 }
 
+/** A photo picked on the phone, sent as the web's file input sends a file: multipart, one "file" field. */
+export interface LocalFile {
+  uri: string;
+  name: string;
+  type: string;
+}
+
+/**
+ * POST /api/uploads (the web's uploadFile): resolves with the attachment to send with a message. Call it inside
+ * `onDevice(agent.deviceId, …)` for a paired device's agent, whose turn reads the file there.
+ */
+async function upload(file: LocalFile): Promise<Attachment> {
+  const device = deviceFor("/uploads");
+  const base = useConnection.getState().url;
+  const form = new FormData();
+  // React Native's FormData sends a { uri, name, type } entry as the file's bytes.
+  form.append("file", file as unknown as Blob);
+  let response: Response;
+  try {
+    response = await fetch(apiUrl("/uploads", device), { method: "POST", headers: authHeaders(), body: form });
+  } catch {
+    throw new ApiError(`Can't reach ${useConnection.getState().deviceName ?? "TOT"} to send the photo.`, 0);
+  }
+  if (response.status === 401 && !device) void tokenRefused(base);
+  const text = await response.text();
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+  if (!response.ok) {
+    const message = data && typeof data === "object" && "error" in data && typeof data.error === "string" ? data.error : `Upload failed (${response.status})`;
+    throw new ApiError(message, response.status);
+  }
+  return (device ? adopt(device, data) : data) as Attachment;
+}
+
 export function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "Something went wrong.";
 }
@@ -114,6 +153,7 @@ const seg = encodeURIComponent;
 
 export const api = {
   health: () => request<{ ok: true; version: string }>("GET", "/health"),
+  upload,
 
   listAgents: () => request<Agent[]>("GET", "/agents"),
   listConversations: (agentId?: string) => request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}` : "/conversations"),

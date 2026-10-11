@@ -603,7 +603,7 @@ export interface NewChatTarget {
 }
 
 /** Sends a message; with no chat yet, starts one with the agent first. Resolves with the chat's id. */
-export async function sendMessage(text: string, target: { conversationId: string } | NewChatTarget): Promise<string> {
+export async function sendMessage(text: string, target: { conversationId: string } | NewChatTarget, attachments: string[] = []): Promise<string> {
   // A message can start tasks that finish later: ask iOS once, as the web asks the browser on the first send.
   void askForNotifications().catch(() => {});
   let conversationId: string;
@@ -622,7 +622,7 @@ export async function sendMessage(text: string, target: { conversationId: string
     conversationId = conversation.id;
     set((s) => ({ conversations: upsert(s.conversations, conversation), messages: { ...s.messages, [conversation.id]: [] } }));
   }
-  const response = await api.sendMessage(conversationId, { text });
+  const response = await api.sendMessage(conversationId, { text, ...(attachments.length ? { attachments } : {}) });
   set((s) => ({
     conversations: upsert(s.conversations, response.conversation),
     messages: { ...s.messages, [conversationId]: upsertMessage(s.messages[conversationId] ?? [], response.userMessage) },
