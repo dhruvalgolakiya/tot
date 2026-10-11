@@ -5,11 +5,14 @@ import type {
   AgentInput,
   AppsStatus,
   ApprovalAnswer,
+  Brain,
   Conversation,
   ConversationDetail,
   CreateConversationRequest,
   DevicesStatus,
   GitHubStatus,
+  KnowledgeCommit,
+  KnowledgeStatus,
   LandTaskRequest,
   LiveRuns,
   Memory,
@@ -31,6 +34,9 @@ import type {
   SlackStatus,
   TaskLandOptions,
   UpdateConversationRequest,
+  WikiPage,
+  WikiPageSummary,
+  WikiSearchHit,
 } from "@shared/types";
 import { tokenRefused, useConnection } from "./connection";
 import { adopt, apiPath, deviceFor } from "./devices";
@@ -171,6 +177,17 @@ export const api = {
   memoryHistory: (repo: string, limit: number) => request<MemoryCommit[]>("GET", `/memory/${seg(repo)}/history?limit=${limit}&skip=0`),
   revertMemory: (repo: string, sha: string) => request<MemoryCommit>("POST", `/memory/${seg(repo)}/revert`, { sha }),
   dreamMemory: (repo?: string) => request<Ok>("POST", "/memory/dream", repo ? { repo } : {}),
+
+  // Knowledge (modules 10, 11), read-only on the phone but for a project's facts and undo: brains (each agent's
+  // notebook, shared ones, each project's), their wiki pages, and a project's facts and history.
+  listBrains: () => request<Brain[]>("GET", "/brains"),
+  listWikiPages: (brainId: string) => request<WikiPageSummary[]>("GET", `/brains/${seg(brainId)}/wiki`),
+  searchWiki: (brainId: string, q: string) => request<WikiSearchHit[]>("GET", `/brains/${seg(brainId)}/wiki?q=${seg(q)}`),
+  getWikiPage: (pageId: string) => request<WikiPage>("GET", `/wiki/${seg(pageId)}`),
+  knowledgeStatus: (projectId: string) => request<KnowledgeStatus>("GET", `/projects/${seg(projectId)}/knowledge`),
+  knowledgeHistory: (projectId: string, limit: number) => request<KnowledgeCommit[]>("GET", `/projects/${seg(projectId)}/knowledge/history?limit=${limit}&skip=0`),
+  /** Puts back what one change did, as a new change; 409 when later changes touched the same lines. */
+  undoKnowledge: (projectId: string, sha: string) => request<KnowledgeCommit>("POST", `/projects/${seg(projectId)}/knowledge/undo`, { sha }),
 
   // Set up on the computer; the phone only shows where they stand.
   getGithub: () => request<GitHubStatus>("GET", "/github"),

@@ -75,6 +75,10 @@ export default function ProjectScreen() {
   const more = () =>
     showMenu(project.name, [
       {
+        label: "Knowledge",
+        onPress: () => router.push({ pathname: "/knowledge", params: { brainId: project.brainId, deviceId: project.deviceId ?? "", agentId: agent?.id ?? "" } }),
+      },
+      {
         label: lead ? "Open the Lead" : "Start a Lead",
         onPress: () =>
           void openLead(project.id, agent?.id)

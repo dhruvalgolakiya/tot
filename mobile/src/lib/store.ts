@@ -47,6 +47,8 @@ interface State {
   deviceModels: Record<string, ModelOption[]>;
   /** Bumped by `memory` events about "you", so an open Memory screen reloads. */
   memoryVersion: number;
+  /** Bumped by any wiki or memory change (here or on a paired device), so an open Knowledge screen reloads. */
+  knowledgeVersion: number;
 }
 
 const initial: State = {
@@ -66,6 +68,7 @@ const initial: State = {
   models: [],
   deviceModels: {},
   memoryVersion: 0,
+  knowledgeVersion: 0,
 };
 
 export const useStore = create<State>()(() => initial);
@@ -243,6 +246,10 @@ function handleEvent(event: AppEvent, deviceId: string | null) {
       break;
     case "memory":
       if (!deviceId && event.repo === "you") set((s) => ({ memoryVersion: s.memoryVersion + 1 }));
+      set((s) => ({ knowledgeVersion: s.knowledgeVersion + 1 }));
+      break;
+    case "wiki":
+      set((s) => ({ knowledgeVersion: s.knowledgeVersion + 1 }));
       break;
     case "conversation":
       set((s) => ({ conversations: upsert(s.conversations, event.conversation) }));

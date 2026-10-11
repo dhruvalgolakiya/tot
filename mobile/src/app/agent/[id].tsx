@@ -103,6 +103,7 @@ export default function AgentChats() {
                   label="Agent options"
                   onPress={() =>
                     showMenu(agent.name, [
+                      { label: "Knowledge", onPress: () => router.push({ pathname: "/knowledge", params: { agentId: agent.id } }) },
                       { label: "Agent settings", onPress: () => router.push({ pathname: "/agent-settings/[id]", params: { id: agent.id } }) },
                       ...(canDelete ? [{ label: "Delete agent…", destructive: true, onPress: () => void confirmDeleteAgent(agent) }] : []),
                     ])
