@@ -1,4 +1,5 @@
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, useFonts } from "@expo-google-fonts/inter";
+import * as Notifications from "expo-notifications";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
@@ -6,6 +7,7 @@ import { useEffect } from "react";
 import { AppState, useColorScheme, View } from "react-native";
 import { loadAppearance } from "../lib/appearance";
 import { loadConnection, useConnection } from "../lib/connection";
+import { loadNotifyPrefs, notifyFor, type NotifyTarget, refreshPermission, targetOf } from "../lib/notify";
 import { loadAll, startLive, stopLive } from "../lib/store";
 import { font, useColors } from "../theme";
 
@@ -20,6 +22,7 @@ export default function RootLayout() {
   useEffect(() => {
     void loadConnection();
     void loadAppearance();
+    void loadNotifyPrefs();
   }, []);
 
   useEffect(() => {
@@ -28,6 +31,8 @@ export default function RootLayout() {
 
   // Signed in: load everything and keep it live. Signed out (or refused): drop it all.
   useEffect(() => {
+    // Before loadAll: its catch-up reads what this TOT already notified.
+    notifyFor(url);
     if (!url) return;
     void loadAll();
     startLive();
@@ -37,13 +42,38 @@ export default function RootLayout() {
   // iOS drops connections in the background; coming back, reload (a dropped event stream reconnects by itself).
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
-      if (state !== "active" || !useConnection.getState().url) return;
+      if (state !== "active") return;
+      // Allowed or turned off in iOS Settings while away.
+      void refreshPermission().catch(() => {});
+      if (!useConnection.getState().url) return;
       void loadAll();
       // A stream that ended for good (a refused request, say) starts again; a live one is left alone.
       startLive();
     });
     return () => sub.remove();
   }, []);
+
+  // A tapped notification opens its chat or task (or the Tasks board for a summary), once signed in and loaded,
+  // including the one that launched the app.
+  const appLoaded = loaded && Boolean(url) && fontsLoaded;
+  useEffect(() => {
+    if (!appLoaded) return;
+    const open = (target: NotifyTarget | null) => {
+      if (!target) return;
+      if ("screen" in target) router.push("/tasks");
+      else router.push({ pathname: "/chat/[id]", params: { id: target.conversationId } });
+    };
+    const launched = Notifications.getLastNotificationResponse();
+    if (launched) {
+      open(targetOf(launched));
+      void Notifications.clearLastNotificationResponseAsync().catch(() => {});
+    }
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      open(targetOf(response));
+      void Notifications.clearLastNotificationResponseAsync().catch(() => {});
+    });
+    return () => sub.remove();
+  }, [appLoaded, router]);
 
   // Not connected: the Connect screen (and its QR scanner) only.
   const onConnect = segments[0] === "connect" || segments[0] === "scan";
@@ -85,6 +115,11 @@ export default function RootLayout() {
         <Stack.Screen name="settings/tasks" options={{ title: "Tasks" }} />
         <Stack.Screen name="settings/memory" options={{ title: "Memory" }} />
         <Stack.Screen name="settings/devices" options={{ title: "Devices" }} />
+        <Stack.Screen name="settings/notifications" options={{ title: "Notifications" }} />
+        <Stack.Screen name="knowledge/index" options={{ title: "" }} />
+        <Stack.Screen name="knowledge/page" options={{ title: "" }} />
+        <Stack.Screen name="knowledge/facts" options={{ title: "Facts" }} />
+        <Stack.Screen name="knowledge/history" options={{ title: "History" }} />
         <Stack.Screen name="agent-settings/[id]" options={{ title: "Agent settings" }} />
         <Stack.Screen name="new-agent" options={{ presentation: "modal", title: "New agent" }} />
         <Stack.Screen name="models" options={{ presentation: "formSheet", title: "Model", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }} />

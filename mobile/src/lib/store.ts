@@ -5,6 +5,7 @@ import { api, apiUrl, authHeaders, errorMessage } from "./api";
 import { setDeviceName, tokenRefused } from "./connection";
 import { adopt, deviceOf, forgetDevices, onDevice } from "./devices";
 import { applyRunEvent, createAssistantMessage, upsertMessage } from "./reducer";
+import { askForNotifications, catchUp, onApproval, onRun, onTask } from "./notify";
 import { openSse } from "./sse";
 
 /**
@@ -91,6 +92,7 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
 
 /** The signed-in TOT's agents, chats and projects, then every online paired device's. */
 export async function loadAll(): Promise<void> {
+  const at = Date.now();
   try {
     const [devices, agents, conversations, projects, live, settings, models] = await Promise.all([
       api.getDevices().catch(() => null),
@@ -116,6 +118,14 @@ export async function loadAll(): Promise<void> {
       loaded: true,
       error: null,
     });
+    // What changed while the app wasn't listening (launch, coming back, a reconnect): notify what's new.
+    void catchUp({
+      at,
+      conversations: get().conversations,
+      waiting: allLive.flatMap((l) => l.waiting.map((w) => w.conversationId)),
+      running: allLive.flatMap((l) => l.running.map((r) => r.conversationId)),
+      agentName,
+    }).catch(() => {});
   } catch (error) {
     set({ loaded: true, error: errorMessage(error) });
   }
@@ -145,6 +155,9 @@ async function loadRemote(deviceId: string): Promise<{ agents: Agent[]; conversa
 }
 
 const NOTHING_LIVE: LiveRuns = { running: [], waiting: [] };
+
+const agentName = (agentId: string) => get().agents.find((a) => a.id === agentId)?.name ?? "An agent";
+const chatOf = (id: string) => get().conversations.find((c) => c.id === id);
 
 async function refreshDevice(deviceId: string) {
   const remote = await loadRemote(deviceId);
@@ -234,10 +247,13 @@ function handleEvent(event: AppEvent, deviceId: string | null) {
     case "conversation":
       set((s) => ({ conversations: upsert(s.conversations, event.conversation) }));
       break;
-    case "task":
+    case "task": {
+      const previous = chatOf(event.conversation.id);
       set((s) => ({ conversations: upsert(s.conversations, event.conversation) }));
+      onTask(event.conversation, previous);
       scheduleMission();
       break;
+    }
     case "conversation-deleted":
       set((s) => ({ conversations: s.conversations.filter((c) => c.id !== event.conversationId) }));
       scheduleMission();
@@ -253,6 +269,7 @@ function handleEvent(event: AppEvent, deviceId: string | null) {
       set((s) => ({
         runningAgents: event.status === "running" ? { ...s.runningAgents, [event.agentId]: true } : without(s.runningAgents, event.agentId),
       }));
+      onRun(chatOf(event.conversationId), agentName(event.agentId), event.runId, event.status);
       // A turn TOT started on its own (a task's next turn) in a chat that's open here: follow it.
       if (event.status === "running" && openChats.has(event.conversationId) && !runStreams[event.conversationId]) {
         void loadConversation(event.conversationId).catch(() => {});
@@ -262,6 +279,7 @@ function handleEvent(event: AppEvent, deviceId: string | null) {
       set((s) => ({
         pendingApprovals: event.pending ? { ...s.pendingApprovals, [event.conversationId]: true } : without(s.pendingApprovals, event.conversationId),
       }));
+      onApproval(chatOf(event.conversationId), agentName(event.agentId), event.message, event.pending);
       // Answered elsewhere (another phone, the Mac): an open chat shows the answer.
       if (!event.pending && openChats.has(event.conversationId) && !runStreams[event.conversationId]) {
         void loadConversation(event.conversationId).catch(() => {});
@@ -457,6 +475,8 @@ export interface NewChatTarget {
 
 /** Sends a message; with no chat yet, starts one with the agent first. Resolves with the chat's id. */
 export async function sendMessage(text: string, target: { conversationId: string } | NewChatTarget): Promise<string> {
+  // A message can start tasks that finish later: ask iOS once, as the web asks the browser on the first send.
+  void askForNotifications().catch(() => {});
   let conversationId: string;
   if ("conversationId" in target) {
     conversationId = target.conversationId;

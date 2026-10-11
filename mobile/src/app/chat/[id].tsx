@@ -1,5 +1,5 @@
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ChatWorkspaceMode, Message } from "@shared/types";
@@ -7,6 +7,7 @@ import { MessageView } from "../../components/MessageView";
 import { LandCard, PROJECT_ICONS, TaskEmptyState, TaskNotices, TaskStatusIcon, taskActions } from "../../components/tasks";
 import { Icon, type IconName, IconButton, Mascot, showMenu } from "../../components/ui";
 import { AUTO_MODEL_ID, modelLabel } from "../../lib/models";
+import { setFocusedChat } from "../../lib/notify";
 import { openModelPicker } from "../../lib/picker";
 import { errorMessage } from "../../lib/api";
 import { loadConversation, loadModels, sendMessage, setConversationModel, steerTask, stopRun, useStore, watchChat } from "../../lib/store";
@@ -71,6 +72,14 @@ export default function Chat() {
       .finally(() => setLoading(false));
     return unwatch;
   }, [conversationId]);
+
+  // The chat on screen gets no notifications about itself (another screen pushed on top doesn't count).
+  useFocusEffect(
+    useCallback(() => {
+      setFocusedChat(conversationId);
+      return () => setFocusedChat(null);
+    }, [conversationId]),
+  );
 
   // Newest first, for an inverted list that stays pinned to the bottom while the reply streams. Tasks' "… is done"
   // notices in a row read as one compact list, not a message each.

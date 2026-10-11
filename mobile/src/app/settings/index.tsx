@@ -87,6 +87,7 @@ export default function Settings() {
         <Cell title="Models & accounts" icon="star" chevron onPress={() => open("models")} />
         <Cell title="Tasks" icon="list" chevron onPress={() => open("tasks")} />
         <Cell title="Memory" icon="book-open" chevron onPress={() => open("memory")} />
+        <Cell title="Notifications" icon="bell" chevron onPress={() => open("notifications")} />
         <Cell title="Devices" icon="smartphone" chevron onPress={() => open("devices")} />
       </Group>
 
