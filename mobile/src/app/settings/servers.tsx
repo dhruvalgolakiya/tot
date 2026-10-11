@@ -1,9 +1,8 @@
 import { useRouter } from "expo-router";
 import { Alert } from "react-native";
 import { Cell, Group, SettingsScroll } from "../../components/settings";
-import { Icon, showMenu } from "../../components/ui";
+import { showMenu } from "../../components/ui";
 import { removeServer, type SavedServer, serverLabel, startAdding, switchServer, useConnection } from "../../lib/connection";
-import { useColors } from "../../theme";
 
 /**
  * Settings → TOT servers: every TOT this phone is signed in to (a home Mac and a work Mac, say), which one is open,
@@ -11,7 +10,6 @@ import { useColors } from "../../theme";
  * there). Most people need one: a TOT already shows its paired devices' agents.
  */
 export default function Servers() {
-  const colors = useColors();
   const router = useRouter();
   const { servers, serverId } = useConnection();
 
@@ -58,8 +56,8 @@ export default function Servers() {
           <Cell
             key={server.id}
             title={serverLabel(server)}
-            subtitle={`${server.url.replace(/^https?:\/\//, "")}${server.id === serverId ? " · open now" : ""}`}
-            right={server.id === serverId ? <Icon name="check" size={18} color={colors.fg} /> : null}
+            subtitle={server.url.replace(/^https?:\/\//, "")}
+            value={server.id === serverId ? "Open" : undefined}
             onPress={() => menu(server)}
           />
         ))}

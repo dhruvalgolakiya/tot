@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { TotLogo } from "../components/TotLogo";
 import { Button } from "../components/ui";
 import { errorMessage } from "../lib/api";
 import { connectOpen, lastAddress, parseSignInLink, probe, serverLabel, signIn, stopAdding, switchServer, useConnection } from "../lib/connection";
@@ -69,8 +70,8 @@ export default function Connect() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.canvas }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={[styles.page, { paddingTop: insets.top + 56, paddingBottom: insets.bottom + 24 }]} keyboardShouldPersistTaps="handled">
-        <View style={[styles.logo, { borderColor: colors.fg }]}>
-          <View style={[styles.logoInner, { borderColor: colors.fg }]} />
+        <View style={styles.logo}>
+          <TotLogo size={28} />
         </View>
         <Text style={[styles.title, { color: colors.fgStrong }]}>{adding ? "Add a TOT" : "Connect to TOT"}</Text>
         <Text style={[typeScale.body, { color: colors.fgMuted, textAlign: "center" }]}>
@@ -142,8 +143,7 @@ export default function Connect() {
 
 const styles = StyleSheet.create({
   page: { paddingHorizontal: 24, alignItems: "center" },
-  logo: { width: 44, height: 44, borderRadius: 22, borderWidth: 2.5, alignItems: "center", justifyContent: "center", marginBottom: 20 },
-  logoInner: { width: 18, height: 18, borderRadius: 9, borderWidth: 2.5 },
+  logo: { marginBottom: 20 },
   title: { fontFamily: font.semibold, fontSize: 26, lineHeight: 34, letterSpacing: -0.5, marginBottom: 8 },
   or: { flexDirection: "row", alignItems: "center", gap: 10, alignSelf: "stretch", marginVertical: 20 },
   rule: { flex: 1, height: StyleSheet.hairlineWidth },

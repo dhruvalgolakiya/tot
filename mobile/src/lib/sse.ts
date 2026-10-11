@@ -26,6 +26,11 @@ export interface SseHandle {
 const MAX_DELAY_MS = 15_000;
 /** A TOT that's gone (a Mac asleep, off Tailscale) often doesn't refuse: the request just hangs. Give up on it after this. */
 const CONNECT_TIMEOUT_MS = 12_000;
+/**
+ * TOT's streams send a heartbeat every 15 s (server/routes.ts). A connection that stays silent much longer than that is
+ * dead without having said so (the Mac slept, Wi‑Fi changed): drop it and reconnect.
+ */
+const IDLE_TIMEOUT_MS = 40_000;
 
 /** Opens the stream; returns the function that closes it. */
 export function openSse(options: SseOptions): SseHandle {
@@ -56,11 +61,17 @@ export function openSse(options: SseOptions): SseHandle {
         failures = 0;
         options.onOpen?.(opened);
         opened = true;
-        await read(response.body, (field) => {
+        const live = controller;
+        let idle = setTimeout(() => live.abort(), IDLE_TIMEOUT_MS);
+        const alive = () => {
+          clearTimeout(idle);
+          idle = setTimeout(() => live.abort(), IDLE_TIMEOUT_MS);
+        };
+        await read(response.body, alive, (field) => {
           if (field.retry) retryMs = field.retry;
           if (field.id !== null) lastId = field.id;
           if (field.data !== null && field.event === null) options.onMessage(field.data, field.id);
-        });
+        }).finally(() => clearTimeout(idle));
       } catch {
         // Dropped, unreachable, or closed by us: retry below unless closed.
       }
@@ -96,13 +107,14 @@ interface Field {
   retry: number | null;
 }
 
-async function read(body: ReadableStream<Uint8Array>, onEvent: (field: Field) => void) {
+async function read(body: ReadableStream<Uint8Array>, onChunk: () => void, onEvent: (field: Field) => void) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   for (;;) {
     const { done, value } = await reader.read();
     if (done) return;
+    onChunk();
     buffer += decoder.decode(value, { stream: true });
     // Events end with a blank line; keep any unfinished one for the next chunk.
     let end: number;

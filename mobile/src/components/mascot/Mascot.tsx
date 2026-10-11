@@ -159,10 +159,23 @@ export function mascotLabel(spec: MascotSpec): string {
 }
 
 /**
- * The mascot at `size` points. Below 24 pt (as on the web) the small ink details and the accessory are left out so
+ * The mascot at `size` points. It's decorative next to the agent's name (VoiceOver reads the name), unless `describe`
+ * (a mascot editor) has it read out as "Cat mascot with sunglasses". Below 24 pt (as on the web) the small ink details and the accessory are left out so
  * the silhouette and eyes stay crisp; the eyes alone still tell agents apart in a dense list.
  */
-export const Mascot = memo(function Mascot({ mascot, size = 36, faded = false, sleeping = false }: { mascot: MascotSpec; size?: number; faded?: boolean; sleeping?: boolean }) {
+export const Mascot = memo(function Mascot({
+  mascot,
+  size = 36,
+  faded = false,
+  sleeping = false,
+  describe = false,
+}: {
+  mascot: MascotSpec;
+  size?: number;
+  faded?: boolean;
+  sleeping?: boolean;
+  describe?: boolean;
+}) {
   const id = useId().replace(/[^\w-]/g, "");
   const shape = SHAPES[mascot.shape] ?? SHAPES.blob;
   const palette = useMemo(() => derivePalette(mascot.color), [mascot.color]);
@@ -171,7 +184,14 @@ export const Mascot = memo(function Mascot({ mascot, size = 36, faded = false, s
   const shine = `shine-${id}`;
   const h = shape.highlight;
   return (
-    <View accessible accessibilityRole="image" accessibilityLabel={mascotLabel(mascot)} style={{ width: size, height: size, opacity: faded ? 0.45 : 1 }}>
+    <View
+      accessible={describe}
+      accessibilityRole={describe ? "image" : undefined}
+      accessibilityLabel={describe ? mascotLabel(mascot) : undefined}
+      accessibilityElementsHidden={!describe}
+      importantForAccessibility={describe ? "auto" : "no-hide-descendants"}
+      style={{ width: size, height: size, opacity: faded ? 0.45 : 1 }}
+    >
       <Svg width={size} height={size} viewBox="0 0 100 100">
         <Defs>
           <LinearGradient id={body} x1="0.12" y1="0.06" x2="0.9" y2="0.98">

@@ -124,25 +124,29 @@ async function upload(file: LocalFile): Promise<Attachment> {
   const device = deviceFor("/uploads");
   const base = useConnection.getState().url;
   const form = new FormData();
-  // React Native's FormData sends a { uri, name, type } entry as the file's bytes.
+  // React Native's FormData sends a { uri, name, type } entry as the file's bytes, read from disk by its networking.
   form.append("file", file as unknown as Blob);
-  let response: Response;
-  try {
-    response = await fetch(apiUrl("/uploads", device), { method: "POST", headers: authHeaders(), body: form });
-  } catch {
-    throw new ApiError(`Can't reach ${useConnection.getState().deviceName ?? "TOT"} to send the photo.`, 0);
-  }
-  if (response.status === 401 && !device) void tokenRefused(base);
-  const text = await response.text();
+  // XMLHttpRequest, not fetch: the global fetch (expo/fetch) streams, but its FormData doesn't take a local file's uri.
+  const { status, text } = await new Promise<{ status: number; text: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", apiUrl("/uploads", device));
+    for (const [name, value] of Object.entries(authHeaders())) xhr.setRequestHeader(name, value);
+    xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
+    xhr.onerror = () => reject(new ApiError(`Can't reach ${useConnection.getState().deviceName ?? "TOT"} to send the photo.`, 0));
+    xhr.ontimeout = xhr.onerror;
+    xhr.timeout = 120_000;
+    xhr.send(form);
+  });
+  if (status === 401 && !device) void tokenRefused(base);
   let data: unknown = null;
   try {
     data = text ? JSON.parse(text) : null;
   } catch {
     data = text;
   }
-  if (!response.ok) {
-    const message = data && typeof data === "object" && "error" in data && typeof data.error === "string" ? data.error : `Upload failed (${response.status})`;
-    throw new ApiError(message, response.status);
+  if (status < 200 || status >= 300) {
+    const message = data && typeof data === "object" && "error" in data && typeof data.error === "string" ? data.error : `Upload failed (${status})`;
+    throw new ApiError(message, status);
   }
   return (device ? adopt(device, data) : data) as Attachment;
 }
