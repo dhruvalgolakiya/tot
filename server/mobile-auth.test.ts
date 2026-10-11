@@ -9,7 +9,9 @@ process.env.TOT_HOST = "";
 
 const { createApp } = await import("./app.ts");
 const { newSignInCode } = await import("./access.ts");
+const { db } = await import("./db.ts");
 type Status = import("../shared/types.ts").DevicesStatus;
+type LiveRuns = import("../shared/types.ts").LiveRuns;
 const app = createApp();
 
 let failures = 0;
@@ -119,6 +121,23 @@ res = await send("/login", {
   headers: { "content-type": "application/x-www-form-urlencoded" },
 });
 check("the browser form still sets a cookie and redirects", res.status === 302 && (res.headers.get("set-cookie") ?? "").startsWith("tot_session="));
+
+// --- What's running and waiting, for a screen that just opened ----------------------------------------------------
+console.log("\n# GET /api/runs/live");
+res = await send("/api/runs/live");
+check("it needs sign-in like the rest", res.status === 401);
+let live = (await (await send("/api/runs/live", {}, HERE)).json()) as LiveRuns;
+check("nothing running or waiting in a quiet TOT", live.running.length === 0 && live.waiting.length === 0, JSON.stringify(live));
+const agent = ((await (await send("/api/agents", {}, HERE)).json()) as { id: string }[])[0];
+const chat = (await (await send("/api/conversations", json({ agentId: agent.id }), HERE)).json()) as { id: string };
+db.prepare(`INSERT INTO lead_asks (id, conversation_id, message_id, task_id, action, method, head_sha, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  "a_test", chat.id, "m_test", "t_test", "land", "merge", null, Date.now(), Date.now() + 60_000,
+);
+live = (await (await send("/api/runs/live", {}, HERE)).json()) as LiveRuns;
+check("a Lead's open land card counts as waiting, with its agent", live.waiting.some((w) => w.conversationId === chat.id && w.agentId === agent.id), JSON.stringify(live));
+db.prepare(`UPDATE lead_asks SET answered_at = ?, decision = 'accept' WHERE id = 'a_test'`).run(Date.now());
+live = (await (await send("/api/runs/live", {}, HERE)).json()) as LiveRuns;
+check("…and stops once it's answered", live.waiting.length === 0);
 
 // --- Guessing ---------------------------------------------------------------------------------------------------
 console.log("\n# Guessing");

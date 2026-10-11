@@ -86,6 +86,11 @@ export const runRegistry = {
     setTimeout(() => runs.delete(run.id), RETAIN_FINISHED_MS).unref();
   },
 
+  /** Turns running right now, one per conversation. */
+  active(): Run[] {
+    return [...activeByConversation.values()].filter((run) => !run.done);
+  },
+
   stopAll(): void {
     for (const run of activeByConversation.values()) run.stop();
   },

@@ -1141,6 +1141,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/uploads/:id/:name               -> the file
 //
 // GET    /api/events                          -> text/event-stream of AppEvent (app-wide)
+// GET    /api/runs/live                       -> LiveRuns  (what runs and waits for the user right now; the phone app, module 14)
 // GET    /api/runs/:runId/events              -> text/event-stream of RunEvent
 // POST   /api/runs/:runId/stop                -> { ok: true }
 // POST   /api/runs/:runId/approvals/:partId   ApprovalAnswer -> { ok: true }  (404 when it's no longer pending)
@@ -2501,4 +2502,12 @@ export interface AppSignInResponse {
   token: string;
   /** The TOT device it signed in to, e.g. "Mac mini". */
   deviceName: string;
+}
+
+/** GET /api/runs/live: what's running and waiting right now, for a screen that just opened (app events only tell changes). */
+export interface LiveRuns {
+  /** Turns in flight; follow one at /api/runs/:runId/events. */
+  running: { runId: string; conversationId: string; agentId: string }[];
+  /** Chats with a request waiting for the user: a tool's approval in a running turn, or a Lead's land / discard / push card. */
+  waiting: { conversationId: string; agentId: string }[];
 }

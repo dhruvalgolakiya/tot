@@ -111,6 +111,12 @@ export const leadAsks = {
     return part.id;
   },
 
+  /** Chats with a land / discard / push card still waiting for the user. */
+  waitingChats(): string[] {
+    const rows = db.prepare(`SELECT DISTINCT conversation_id FROM lead_asks WHERE answered_at IS NULL AND expires_at > ?`).all(Date.now()) as Row[];
+    return rows.map((row) => String(row.conversation_id));
+  },
+
   get(id: string): LeadAsk | null {
     const row = db.prepare(`SELECT * FROM lead_asks WHERE id = ?`).get(id) as Row | undefined;
     return row ? toAsk(row) : null;

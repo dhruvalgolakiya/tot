@@ -14,6 +14,7 @@ import type {
   ConversationDetail,
   CreateConversationRequest,
   GitHubConnectRequest,
+  LiveRuns,
   LearnRepoRequest,
   MailboxConnectRequest,
   PersonaGitHubConnectRequest,
@@ -46,7 +47,8 @@ import { accountStatuses, modelOptions, providerStatuses, providers } from "./ag
 import { accountRoutes } from "./accounts/routes.ts";
 import { runRegistry } from "./agent/runs.ts";
 import { runRoutine } from "./agent/scheduler.ts";
-import { answerApproval } from "./agent/approvals.ts";
+import { answerApproval, runsWaiting } from "./agent/approvals.ts";
+import { leadAsks } from "./lead/asks.ts";
 import { learnRepo, validateRepoSource } from "./agent/learn-repo.ts";
 import { refreshGitHubLogins } from "./computer/github-login.ts";
 import { computerManager } from "./computer/manager.ts";
@@ -504,6 +506,30 @@ api.get("/runs/:runId/events", (c) => {
     unsubscribe();
     await writes.catch(() => {});
   });
+});
+
+/**
+ * What's running and what's waiting for the user right now, for a screen that just opened (the phone app,
+ * module 14): app events only tell what changes after that.
+ */
+api.get("/runs/live", (c) => {
+  const waitingRuns = runsWaiting();
+  const running: LiveRuns["running"] = [];
+  const waiting = new Set(leadAsks.waitingChats());
+  for (const run of runRegistry.active()) {
+    const agentId = conversations.get(run.conversationId)?.agentId;
+    if (!agentId) continue;
+    running.push({ runId: run.id, conversationId: run.conversationId, agentId });
+    if (waitingRuns.has(run.id)) waiting.add(run.conversationId);
+  }
+  const body: LiveRuns = {
+    running,
+    waiting: [...waiting].flatMap((conversationId) => {
+      const agentId = conversations.get(conversationId)?.agentId;
+      return agentId ? [{ conversationId, agentId }] : [];
+    }),
+  };
+  return c.json(body);
 });
 
 api.post("/runs/:runId/approvals/:partId", async (c) => {

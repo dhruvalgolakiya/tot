@@ -164,6 +164,11 @@ function cleanValues(fields: ApprovalField[], values: Record<string, unknown>): 
   return out;
 }
 
+/** Runs with a request waiting for the user right now. */
+export function runsWaiting(): Set<string> {
+  return new Set([...pending.values()].map((entry) => entry.runId));
+}
+
 /** The user's answer to a pending request; false when it already ended (answered, expired, stopped). */
 export function answerApproval(runId: string, partId: string, answer: ApprovalAnswer): boolean {
   const waiting = pending.get(partId);
