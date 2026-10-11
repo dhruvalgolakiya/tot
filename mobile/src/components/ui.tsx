@@ -1,7 +1,6 @@
 import Feather from "@expo/vector-icons/Feather";
 import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
 import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, type PressableProps, StyleSheet, Text, View, type ViewStyle } from "react-native";
-import type { MascotSpec } from "@shared/types";
 import { font, type as typeScale, useColors } from "../theme";
 
 export type IconName = ComponentProps<typeof Feather>["name"];
@@ -12,23 +11,8 @@ export function Icon({ name, size = 18, color }: { name: IconName; size?: number
   return <Feather name={name} size={size} color={color ?? colors.fgMuted} />;
 }
 
-/** M1's mascot: a circle in the agent's color with its initial. The full mascot art comes later. */
-export function Mascot({ name, mascot, size = 36, faded = false }: { name: string; mascot: MascotSpec; size?: number; faded?: boolean }) {
-  return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: mascot.color, alignItems: "center", justifyContent: "center", opacity: faded ? 0.4 : 1 }}>
-      <Text style={{ fontFamily: font.semibold, fontSize: size * 0.42, color: readableOn(mascot.color) }}>{(name.trim()[0] ?? "?").toUpperCase()}</Text>
-    </View>
-  );
-}
-
-/** Black or white, whichever reads on a mascot color. */
-function readableOn(hex: string): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return "#fff";
-  const n = parseInt(m[1], 16);
-  const luminance = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
-  return luminance > 0.62 ? "#111" : "#fff";
-}
+/** The agent's mascot (components/mascot), drawn like the web's. */
+export { Mascot } from "./mascot/Mascot";
 
 /** A pill button: primary is monochrome (fg on canvas), like the web app; secondary is a hairline outline. */
 export function Button({

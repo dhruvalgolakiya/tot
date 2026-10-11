@@ -172,6 +172,7 @@ export default function Chat() {
               </Text>
               {agent ? (
                 <View style={styles.subtitle}>
+                  <Mascot mascot={agent.mascot} size={14} />
                   <Text numberOfLines={1} style={[typeScale.xs, { color: colors.fgSubtle, flexShrink: 1 }]}>
                     {task ? `Task · ${agent.name}` : `${agent.name} · ${modelLabel(models, modelId)}`}
                   </Text>
@@ -230,7 +231,7 @@ export default function Chat() {
               )
             ) : agent ? (
               <View style={[styles.empty, { transform: [{ scaleY: -1 }] }]}>
-                <Mascot name={agent.name} mascot={agent.mascot} size={48} />
+                <Mascot mascot={agent.mascot} size={48} />
                 <Text style={[typeScale.title, { color: colors.fgStrong, textAlign: "center" }]}>
                   {draftProject ? `New chat in ${draftProject.name}` : `What can ${agent.name} do for you?`}
                 </Text>
@@ -306,7 +307,7 @@ const styles = StyleSheet.create({
   taskStrip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   branch: { fontFamily: font.mono, fontSize: 11, flexShrink: 1 },
   pickers: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 4 },
-  subtitle: { flexDirection: "row", alignItems: "center", gap: 3, maxWidth: 240 },
+  subtitle: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: 240 },
   picker: { flexDirection: "row", alignItems: "center", gap: 6, height: 32, borderRadius: 16, paddingHorizontal: 12 },
   composerWrap: { paddingHorizontal: 12, paddingTop: 6 },
   composer: { flexDirection: "row", alignItems: "flex-end", borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, paddingLeft: 18, paddingRight: 6, paddingVertical: 6, minHeight: 52 },

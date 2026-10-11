@@ -74,7 +74,7 @@ function Form({ agent, models, computer, deviceName, canDelete }: { agent: Agent
     <SettingsScroll>
       <Stack.Screen options={{ title: `${agent.name} settings` }} />
       <View style={styles.hero}>
-        <Mascot name={agent.name} mascot={agent.mascot} size={64} />
+        <Mascot mascot={agent.mascot} size={64} />
         <Text style={[typeScale.ui, { color: colors.fgSubtle }]}>{[agent.tagline || islandName(island), deviceName ? `on ${deviceName}` : ""].filter(Boolean).join(" · ")}</Text>
       </View>
 

@@ -98,7 +98,7 @@ export default function Agents() {
             const chats = conversations.filter((c) => c.agentId === item.id && !c.parentId).length;
             return (
               <Row onPress={() => router.push({ pathname: "/agent/[id]", params: { id: item.id } })}>
-                <Mascot name={item.name} mascot={item.mascot} faded={offline} />
+                <Mascot mascot={item.mascot} faded={offline} sleeping={offline} />
                 <View style={{ flex: 1, opacity: offline ? 0.5 : 1 }}>
                   <Text numberOfLines={1} style={[typeScale.body, { fontFamily: font.medium, color: colors.fg }]}>
                     {item.name}

@@ -121,7 +121,7 @@ export default function AgentChats() {
         stickySectionHeadersEnabled={false}
         ListHeaderComponent={
           <View style={styles.hero}>
-            <Mascot name={agent.name} mascot={agent.mascot} size={56} faded={offline} />
+            <Mascot mascot={agent.mascot} size={56} faded={offline} sleeping={offline} />
             <Text style={[typeScale.title, { color: colors.fgStrong }]}>{agent.name}</Text>
             <Text style={[typeScale.ui, { color: colors.fgSubtle, textAlign: "center" }]}>
               {[agent.tagline, device ? `on ${device.name}${offline ? " · offline" : ""}` : ""].filter(Boolean).join(" · ") || " "}

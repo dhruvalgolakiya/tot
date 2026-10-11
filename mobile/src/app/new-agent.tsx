@@ -60,7 +60,7 @@ export default function NewAgent() {
         }}
       />
       <View style={styles.hero}>
-        <Mascot name={name || "?"} mascot={mascot} size={64} />
+        <Mascot mascot={mascot} size={64} />
         {device ? <Text style={[typeScale.ui, { color: colors.fgSubtle }]}>Lives on {device.name}</Text> : null}
       </View>
       <Group>
