@@ -9,6 +9,7 @@ import { errorMessage } from "../../lib/api";
 import { ago } from "../../lib/format";
 import { deleteConversation, setPinned, useStore } from "../../lib/store";
 import { font, type as typeScale, useColors } from "../../theme";
+import { ConnectionBanner } from "../../components/ConnectionBanner";
 
 /** A section of the list: chats, or (`projects`) the device's projects this agent has no chats in yet. */
 type Section = { title: string; project?: Project; data: Conversation[] } | { title: string; projects: Project[]; data: Project[] };
@@ -90,6 +91,7 @@ export default function AgentChats() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <ConnectionBanner />
       <Stack.Screen
         options={{
           // The name is in the big header below; the bar stays quiet.

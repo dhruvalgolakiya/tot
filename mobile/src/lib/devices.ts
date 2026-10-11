@@ -76,3 +76,13 @@ export function deviceFor(path: string, body?: unknown): string | null {
 export function apiPath(path: string, deviceId: string | null): string {
   return deviceId ? `/api/d/${encodeURIComponent(deviceId)}${path}` : `/api${path}`;
 }
+
+/** Every remembered id and its device, for the offline cache (lib/cache.ts). */
+export function ownedIds(): [string, string][] {
+  return [...owners];
+}
+
+/** Puts back the cache's ids, so rows shown from it still send their calls to their device. */
+export function restoreOwners(entries: [string, string][]) {
+  for (const [id, deviceId] of entries) if (!owners.has(id)) owners.set(id, deviceId);
+}

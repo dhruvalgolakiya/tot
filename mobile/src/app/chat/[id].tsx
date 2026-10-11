@@ -13,6 +13,7 @@ import { errorMessage } from "../../lib/api";
 import { loadConversation, loadModels, sendMessage, setConversationModel, steerTask, stopRun, useStore, watchChat } from "../../lib/store";
 import { canPickWorkspace, isSteerable, isTask, isTaskEndingMessage, repoLabel, roleLine, TASK_STATUS_LABELS } from "../../lib/tasks";
 import { font, type as typeScale, useColors } from "../../theme";
+import { ConnectionBanner, useOffline } from "../../components/ConnectionBanner";
 
 const EMPTY: Message[] = [];
 
@@ -61,6 +62,8 @@ export default function Chat() {
     if (agent?.deviceId && !hasDeviceModels) void loadModels(agent.deviceId).catch(() => {});
   }, [agent?.deviceId, hasDeviceModels]);
 
+  // The TOT can't be reached: the chat shows what was loaded last, and the composer waits.
+  const offline = useOffline();
   const task = isTask(conversation) ? conversation : null;
   const steering = Boolean(task && isSteerable(task.task));
 
@@ -99,7 +102,7 @@ export default function Chat() {
 
   const send = async () => {
     const body = text.trim();
-    if (!body || sending || !agentId) return;
+    if (!body || sending || !agentId || offline) return;
     setSending(true);
     setText("");
     setError(null);
@@ -157,6 +160,7 @@ export default function Chat() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.canvas }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}>
+      <ConnectionBanner />
       <Stack.Screen
         options={{
           headerTitle: () => (
@@ -240,7 +244,7 @@ export default function Chat() {
           }
         />
       )}
-      {error ? <Text style={[typeScale.sm, { color: colors.danger, paddingHorizontal: 20, paddingBottom: 6 }]}>{error}</Text> : null}
+      {error && !offline ? <Text style={[typeScale.sm, { color: colors.danger, paddingHorizontal: 20, paddingBottom: 6 }]}>{error}</Text> : null}
       {!conversationId && agent ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.pickers} style={{ flexGrow: 0 }}>
           <Picker icon="cpu" label={modelLabel(models, modelId)} onPress={pickModel} />
@@ -255,7 +259,8 @@ export default function Chat() {
           <TextInput
             value={text}
             onChangeText={setText}
-            placeholder={steering ? "Add a note for the task" : draftProject && !conversationId ? `New chat in ${draftProject.name}` : agent ? `Message ${agent.name}` : "Message"}
+            editable={!offline}
+            placeholder={offline ? "Waiting for the connection…" : steering ? "Add a note for the task" : draftProject && !conversationId ? `New chat in ${draftProject.name}` : agent ? `Message ${agent.name}` : "Message"}
             placeholderTextColor={colors.fgSubtle}
             multiline
             style={[typeScale.chat, styles.input, { color: colors.fg }]}
@@ -268,7 +273,7 @@ export default function Chat() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={steering ? "Add note" : "Send"}
-              disabled={!text.trim() || sending}
+              disabled={!text.trim() || sending || offline}
               onPress={() => void send()}
               style={[styles.send, { backgroundColor: text.trim() ? colors.fg : colors.fillStrong }]}
             >

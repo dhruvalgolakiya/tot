@@ -8,7 +8,7 @@ import { AppState, useColorScheme, View } from "react-native";
 import { loadAppearance } from "../lib/appearance";
 import { loadConnection, useConnection } from "../lib/connection";
 import { loadNotifyPrefs, notifyFor, type NotifyTarget, refreshPermission, targetOf } from "../lib/notify";
-import { loadAll, startLive, stopLive } from "../lib/store";
+import { hydrate, loadAll, retryNow, startLive, stopLive } from "../lib/store";
 import { font, useColors } from "../theme";
 
 export default function RootLayout() {
@@ -34,7 +34,8 @@ export default function RootLayout() {
     // Before loadAll: its catch-up reads what this TOT already notified.
     notifyFor(url);
     if (!url) return;
-    void loadAll();
+    // The last lists from this TOT first (instant, and all there is while it's unreachable), then the TOT's own.
+    void hydrate(url).then(() => loadAll());
     startLive();
     return stopLive;
   }, [url, token]);
@@ -46,9 +47,9 @@ export default function RootLayout() {
       // Allowed or turned off in iOS Settings while away.
       void refreshPermission().catch(() => {});
       if (!useConnection.getState().url) return;
-      void loadAll();
-      // A stream that ended for good (a refused request, say) starts again; a live one is left alone.
+      // A stream that ended for good (a refused request, say) starts again; one waiting out a backoff tries now.
       startLive();
+      retryNow();
     });
     return () => sub.remove();
   }, []);

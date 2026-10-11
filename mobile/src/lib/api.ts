@@ -74,6 +74,7 @@ export function apiUrl(path: string, device: string | null): string {
 
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   const device = deviceFor(path, body);
+  const base = useConnection.getState().url;
   const name = useConnection.getState().deviceName ?? "TOT";
   let response: Response;
   try {
@@ -86,7 +87,7 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
     throw new ApiError(`Can't reach ${name}. Is it on, and is this phone on its Wi‑Fi or Tailscale?`, 0);
   }
   // Signed out in Settings → Devices (or the password changed): only this TOT's own 401 means that.
-  if (response.status === 401 && !device) void tokenRefused();
+  if (response.status === 401 && !device) void tokenRefused(base);
   const text = await response.text();
   let data: unknown = null;
   try {

@@ -6,6 +6,7 @@ import { Button, Dot, Icon, IconButton, Mascot, Row, SectionTitle, Separator } f
 import { useConnection } from "../lib/connection";
 import { loadAll, useStore } from "../lib/store";
 import { font, type as typeScale, useColors } from "../theme";
+import { ConnectionBanner } from "../components/ConnectionBanner";
 
 /**
  * Every agent: this TOT's first, then each paired device's (module 07), offline ones faded. A dot while one is
@@ -43,6 +44,7 @@ export default function Agents() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <ConnectionBanner />
       <Stack.Screen
         options={{
           title: deviceName ?? "Agents",

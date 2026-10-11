@@ -13,18 +13,29 @@ export interface SseOptions {
   onOpen?: (again: boolean) => void;
   /** It ended for good: the status that ended it (204 for a finished run stream). */
   onEnd?: (status: number) => void;
+  /** A connect failed or a live stream dropped; it retries by itself, with backoff. */
+  onDrop?: () => void;
+}
+
+/** Closes the stream; `retryNow` cuts a backoff wait short (the app came back, or the user tapped Retry). */
+export interface SseHandle {
+  (): void;
+  retryNow: () => void;
 }
 
 const MAX_DELAY_MS = 15_000;
+/** A TOT that's gone (a Mac asleep, off Tailscale) often doesn't refuse: the request just hangs. Give up on it after this. */
+const CONNECT_TIMEOUT_MS = 12_000;
 
 /** Opens the stream; returns the function that closes it. */
-export function openSse(options: SseOptions): () => void {
+export function openSse(options: SseOptions): SseHandle {
   let closed = false;
   let controller: AbortController | null = null;
   let lastId: string | null = null;
   let retryMs = 1000;
   let failures = 0;
   let opened = false;
+  let wake: (() => void) | null = null;
 
   const run = async () => {
     while (!closed) {
@@ -33,7 +44,9 @@ export function openSse(options: SseOptions): () => void {
       try {
         const headers: Record<string, string> = { accept: "text/event-stream", ...options.headers() };
         if (lastId) headers["last-event-id"] = lastId;
-        const response = await fetch(options.url(), { headers, signal: controller.signal });
+        const connecting = controller;
+        const timeout = setTimeout(() => connecting.abort(), CONNECT_TIMEOUT_MS);
+        const response = await fetch(options.url(), { headers, signal: controller.signal }).finally(() => clearTimeout(timeout));
         status = response.status;
         if (status === 204 || (status >= 400 && status < 500) || !response.body) {
           if (!closed) options.onEnd?.(status);
@@ -53,15 +66,27 @@ export function openSse(options: SseOptions): () => void {
       }
       if (closed) return;
       failures++;
-      await sleep(Math.min(retryMs * 2 ** Math.min(failures - 1, 4), MAX_DELAY_MS));
+      options.onDrop?.();
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(done, Math.min(retryMs * 2 ** Math.min(failures - 1, 4), MAX_DELAY_MS));
+        function done() {
+          clearTimeout(timer);
+          wake = null;
+          resolve();
+        }
+        wake = done;
+      });
     }
   };
   void run();
 
-  return () => {
+  const close = (() => {
     closed = true;
     controller?.abort();
-  };
+    wake?.();
+  }) as SseHandle;
+  close.retryNow = () => wake?.();
+  return close;
 }
 
 interface Field {
@@ -100,4 +125,3 @@ async function read(body: ReadableStream<Uint8Array>, onEvent: (field: Field) =>
   }
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

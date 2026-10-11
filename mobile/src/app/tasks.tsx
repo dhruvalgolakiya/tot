@@ -6,6 +6,7 @@ import { Button, Icon, Separator, useNow } from "../components/ui";
 import { loadMission, useStore, watchMission } from "../lib/store";
 import { boardSections, isTask, type MissionSection, SECTION_TITLES, type TaskConversation } from "../lib/tasks";
 import { font, type as typeScale, useColors } from "../theme";
+import { ConnectionBanner } from "../components/ConnectionBanner";
 
 /**
  * Mission control (module 09) on the phone: every task from every agent, on this TOT and its paired devices.
@@ -58,6 +59,7 @@ export default function Tasks() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <ConnectionBanner />
       <Stack.Screen options={{ title: "Tasks" }} />
       {!mission ? (
         <View style={styles.center}>

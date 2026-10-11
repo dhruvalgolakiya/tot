@@ -10,6 +10,7 @@ import { ago } from "../../lib/format";
 import { archiveProject, openLead, sendMessage, useStore } from "../../lib/store";
 import { canPickWorkspace, isTask, sourceLabel } from "../../lib/tasks";
 import { font, type as typeScale, useColors } from "../../theme";
+import { ConnectionBanner } from "../../components/ConnectionBanner";
 
 const WORKSPACES: { mode: ChatWorkspaceMode; label: string; icon: IconName }[] = [
   { mode: "checkout", label: "Main checkout", icon: "monitor" },
@@ -105,6 +106,7 @@ export default function ProjectScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.canvas }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}>
+      <ConnectionBanner />
       <Stack.Screen options={{ title: "", headerRight: () => <IconButton name="more-horizontal" label="Project options" onPress={more} /> }} />
       <FlatList
         data={chats}

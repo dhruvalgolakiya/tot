@@ -1,12 +1,13 @@
 import { Alert } from "react-native";
 import type { Agent, AgentInput, AppEvent, ChatWorkspaceMode, Conversation, DevicesStatus, LandTaskRequest, LiveRuns, Message, MessagePart, ModelOption, Project, RunEvent, Settings, SettingsPatch } from "@shared/types";
 import { create } from "zustand";
-import { api, apiUrl, authHeaders, errorMessage } from "./api";
-import { setDeviceName, tokenRefused } from "./connection";
-import { adopt, deviceOf, forgetDevices, onDevice } from "./devices";
+import { ApiError, api, apiUrl, authHeaders, errorMessage } from "./api";
+import { CACHED_CHATS, CACHED_MESSAGES, readSnapshot, type Snapshot, writeSnapshot } from "./cache";
+import { setDeviceName, tokenRefused, useConnection } from "./connection";
+import { adopt, deviceOf, forgetDevices, onDevice, ownedIds, restoreOwners } from "./devices";
 import { applyRunEvent, createAssistantMessage, upsertMessage } from "./reducer";
 import { askForNotifications, catchUp, onApproval, onRun, onTask } from "./notify";
-import { openSse } from "./sse";
+import { openSse, type SseHandle } from "./sse";
 
 /**
  * Everything the app shows, from the signed-in TOT and its online paired devices (module 07), kept live by its
@@ -38,6 +39,13 @@ interface State {
   error: string | null;
   /** The event stream is up. */
   live: boolean;
+  /**
+   * False while the TOT can't be reached (a load failed to connect, or the event stream has been down a moment):
+   * the Reconnecting banner shows, and what's on screen is the last loaded (read-only) until it's back.
+   */
+  reachable: boolean;
+  /** When the lists on screen were saved, while they come from the phone's cache rather than the TOT; null once loaded live. */
+  cachedAt: number | null;
   /** Mission control's board (module 09) across this TOT and its online paired devices; null until the Tasks screen loads it. */
   mission: { taskIds: string[]; landOrder: string[]; error: string | null } | null;
   /** The signed-in TOT's settings (M3); null until loaded. Saved one field at a time. */
@@ -63,6 +71,8 @@ const initial: State = {
   loaded: false,
   error: null,
   live: false,
+  reachable: true,
+  cachedAt: null,
   mission: null,
   settings: null,
   models: [],
@@ -109,18 +119,31 @@ export async function loadAll(): Promise<void> {
     if (devices) setDeviceName(devices.self.name);
     const remote = await Promise.all((devices?.devices ?? []).filter((d) => d.online).map((d) => loadRemote(d.id)));
     const allLive = [live, ...remote.map((r) => r.live)];
+    // An offline paired device keeps the agents, chats and projects last seen from it (faded, its chats read-only),
+    // as the web app remembers them, instead of an empty section.
+    const away = new Set((devices?.devices ?? []).filter((d) => !d.online).map((d) => d.id));
+    const before = get();
+    const remembered = {
+      agents: before.agents.filter((a) => a.deviceId && away.has(a.deviceId)),
+      conversations: before.conversations.filter((c) => away.has(deviceOf(c.id) ?? "")),
+      projects: before.projects.filter((p) => p.deviceId && away.has(p.deviceId)),
+    };
     set({
       devices,
       runningAgents: Object.fromEntries(allLive.flatMap((l) => l.running.map((r) => [r.agentId, true as const]))),
       pendingApprovals: Object.fromEntries(allLive.flatMap((l) => l.waiting.map((w) => [w.conversationId, true as const]))),
-      agents: [...agents, ...remote.flatMap((r) => r.agents)],
-      conversations: [...conversations, ...remote.flatMap((r) => r.conversations)],
-      projects: [...projects, ...remote.flatMap((r) => r.projects)],
+      agents: [...agents, ...remote.flatMap((r) => r.agents), ...remembered.agents],
+      conversations: [...conversations, ...remote.flatMap((r) => r.conversations), ...remembered.conversations],
+      projects: [...projects, ...remote.flatMap((r) => r.projects), ...remembered.projects],
       settings,
       models,
       loaded: true,
       error: null,
+      reachable: true,
+      cachedAt: null,
     });
+    clearDropTimer();
+    scheduleSave();
     // What changed while the app wasn't listening (launch, coming back, a reconnect): notify what's new.
     void catchUp({
       at,
@@ -130,9 +153,76 @@ export async function loadAll(): Promise<void> {
       agentName,
     }).catch(() => {});
   } catch (error) {
-    set({ loaded: true, error: errorMessage(error) });
+    // Unreachable: keep what's shown (the cache, or the last load) under the banner; the event stream keeps trying.
+    const unreachable = error instanceof ApiError && error.status === 0;
+    set({ loaded: true, error: errorMessage(error), ...(unreachable ? { reachable: false } : {}) });
   }
 }
+
+// ---------------------------------------------------------------------------
+// The offline cache (lib/cache.ts)
+// ---------------------------------------------------------------------------
+
+/** Chats whose messages were loaded, newest first: the ones the cache keeps. */
+let recentChats: string[] = [];
+let hydrating = 0;
+
+/** Shows the last lists saved from this TOT, before (or instead of, while it's unreachable) loading it. */
+export async function hydrate(url: string): Promise<void> {
+  const id = ++hydrating;
+  const snapshot = await readSnapshot(url);
+  // Switched TOT meanwhile, or the TOT answered first: the live lists win.
+  if (!snapshot || id !== hydrating || useConnection.getState().url !== url || get().loaded) return;
+  restoreOwners(snapshot.owners);
+  recentChats = Object.keys(snapshot.messages);
+  set({
+    devices: snapshot.devices,
+    agents: snapshot.agents,
+    conversations: snapshot.conversations,
+    projects: snapshot.projects,
+    settings: snapshot.settings,
+    models: snapshot.models,
+    deviceModels: snapshot.deviceModels,
+    messages: snapshot.messages,
+    loaded: true,
+    cachedAt: snapshot.savedAt,
+  });
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Saves what's shown a moment after it changes (a burst of events gives one write). */
+function scheduleSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const url = useConnection.getState().url;
+    const s = get();
+    // Only what came from the TOT this session: a cache is never re-saved as if it were new.
+    if (!url || !s.loaded || s.cachedAt !== null) return;
+    const messages: Record<string, Message[]> = {};
+    for (const id of recentChats.slice(0, CACHED_CHATS)) if (s.messages[id]) messages[id] = s.messages[id].slice(-CACHED_MESSAGES);
+    const snapshot: Snapshot = {
+      savedAt: Date.now(),
+      devices: s.devices,
+      agents: s.agents,
+      conversations: s.conversations,
+      projects: s.projects,
+      settings: s.settings,
+      models: s.models,
+      deviceModels: s.deviceModels,
+      messages,
+      owners: ownedIds(),
+    };
+    void writeSnapshot(url, snapshot);
+  }, 1500);
+}
+
+useStore.subscribe((now, before) => {
+  if (now.agents !== before.agents || now.conversations !== before.conversations || now.projects !== before.projects || now.messages !== before.messages || now.devices !== before.devices) {
+    scheduleSave();
+  }
+});
 
 /** A paired device's agents, chats and projects, through the signed-in TOT; empty when it can't be reached. */
 async function loadRemote(deviceId: string): Promise<{ agents: Agent[]; conversations: Conversation[]; projects: Project[]; live: LiveRuns }> {
@@ -175,6 +265,7 @@ async function refreshDevice(deviceId: string) {
 /** One chat's messages; follows its running turn when there is one. */
 export async function loadConversation(id: string, { attach = true } = {}): Promise<void> {
   const detail = await api.getConversation(id);
+  recentChats = [id, ...recentChats.filter((c) => c !== id)].slice(0, CACHED_CHATS * 2);
   set((s) => ({
     conversations: upsert(s.conversations, detail.conversation),
     messages: { ...s.messages, [id]: detail.messages },
@@ -190,18 +281,39 @@ const hasPendingApproval = (messages: Message[]) =>
 // Live app events
 // ---------------------------------------------------------------------------
 
-let closeEvents: (() => void) | null = null;
+let closeEvents: SseHandle | null = null;
+let dropTimer: ReturnType<typeof setTimeout> | null = null;
+/** A blip (the phone switching networks) shouldn't flash the banner: the stream must stay down this long first. */
+const DROP_GRACE_MS = 2500;
+
+function clearDropTimer() {
+  if (dropTimer) clearTimeout(dropTimer);
+  dropTimer = null;
+}
 
 /** Opens the app-wide event stream (one per app); every reconnect reloads the lists, since there's no replay. */
 export function startLive() {
   if (closeEvents) return;
+  const url = useConnection.getState().url;
   closeEvents = openSse({
     url: () => apiUrl("/events", null),
     headers: authHeaders,
     onOpen: (again) => {
+      clearDropTimer();
       set({ live: true });
-      // No replay: reload the lists, and the board if a screen shows it.
-      if (again) void loadAll().then(() => (missionWatchers ? loadMission().catch(() => {}) : undefined));
+      // No replay: reload the lists (and the board, if a screen shows it), and the open chats, whose turns may have
+      // ended, or started, while the stream was down.
+      if (again || !get().reachable || get().cachedAt !== null) {
+        void loadAll().then(() => (missionWatchers ? loadMission().catch(() => {}) : undefined));
+        for (const id of openChats) void loadConversation(id).catch(() => {});
+      }
+    },
+    onDrop: () => {
+      set({ live: false });
+      dropTimer ??= setTimeout(() => {
+        dropTimer = null;
+        if (!get().live) set({ reachable: false });
+      }, DROP_GRACE_MS);
     },
     onMessage: (data) => {
       let event: AppEvent;
@@ -217,14 +329,24 @@ export function startLive() {
     onEnd: (status) => {
       set({ live: false });
       closeEvents = null;
-      if (status === 401) void tokenRefused();
+      if (status === 401) void tokenRefused(url);
     },
   });
+}
+
+/** Tries the TOT again now instead of after the backoff (the banner's Retry, the app coming back). */
+export function retryNow() {
+  closeEvents?.retryNow();
+  for (const stream of Object.values(runStreams)) stream.close.retryNow();
+  void loadAll();
 }
 
 export function stopLive() {
   closeEvents?.();
   closeEvents = null;
+  clearDropTimer();
+  recentChats = [];
+  hydrating++;
   for (const id of Object.keys(runStreams)) detachRun(id);
   forgetDevices();
   set(initial);
@@ -381,7 +503,7 @@ export function watchChat(id: string): () => void {
 // Runs
 // ---------------------------------------------------------------------------
 
-const runStreams: Record<string, { runId: string; close: () => void }> = {};
+const runStreams: Record<string, { runId: string; close: SseHandle }> = {};
 
 function attachRun(conversationId: string, runId: string) {
   const existing = runStreams[conversationId];

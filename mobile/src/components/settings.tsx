@@ -2,6 +2,7 @@ import { Children, Fragment, isValidElement, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, type TextInputProps, useColorScheme, View, type ViewStyle } from "react-native";
 import { font, type as typeScale, useColors } from "../theme";
 import { Dot, Icon, type IconName } from "./ui";
+import { ConnectionBanner } from "./ConnectionBanner";
 
 /**
  * The settings screens' building blocks, as iOS grouped lists in DESIGN.md's greys: a group (rounded, a shade off
@@ -12,15 +13,18 @@ import { Dot, Icon, type IconName } from "./ui";
 export function SettingsScroll({ children }: { children: ReactNode }) {
   const colors = useColors();
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.canvas }}
-      contentInsetAdjustmentBehavior="automatic"
-      keyboardDismissMode="interactive"
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={styles.scroll}
-    >
-      {children}
-    </ScrollView>
+    <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <ConnectionBanner />
+      <ScrollView
+        style={{ backgroundColor: colors.canvas }}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scroll}
+      >
+        {children}
+      </ScrollView>
+    </View>
   );
 }
 
