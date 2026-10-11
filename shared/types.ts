@@ -1316,6 +1316,9 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // POST   /api/access/sign-in-link            SignInLinkRequest -> SignInLink  (one-time, 5 minutes; a new one replaces the last; 400 while remote access is off)
 // POST   /api/access/check                   -> DevicesStatus  (looks at the network again now, e.g. after starting Tailscale)
 // POST   /login                              form: password | token (legacy) | code (from a sign-in link) -> 302 with a session cookie
+// POST   /login                              JSON AppSignInRequest -> AppSignInResponse  (the phone app, module 14: a session as a token,
+//                                             sent as `Authorization: Bearer tots_…`; errors are { error } with 401 / 409 / 429)
+// POST   /logout                              with that Bearer token -> { ok: true }  (signs the app out)
 // GET    /api/sessions/current                -> { id: string | null }  (null for an access-token caller or with sign-in off)
 // DELETE /api/sessions/:id                    -> DevicesStatus  (signs that browser out: its next request gets 401 and its event streams close)
 // POST   /api/sessions/sign-out-others        -> DevicesStatus
@@ -2477,4 +2480,25 @@ export interface T3ImportCandidate {
   binaryPath: string | null;
   /** An account with this folder exists already. */
   alreadyAdded: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Mobile app (roadmap module 14): a native client of one TOT; it signs in like a phone browser, with a token
+// ---------------------------------------------------------------------------
+
+export interface AppSignInRequest {
+  client: "mobile";
+  /** The one-time code from Settings → Devices → Add a phone (the `#code=` of its link)… */
+  code?: string;
+  /** …or the password set there. */
+  password?: string;
+  /** The phone's name, for the sign-in list ("TOT app on <deviceName>"). */
+  deviceName?: string;
+}
+
+export interface AppSignInResponse {
+  /** "tots_<session>": send it as `Authorization: Bearer <token>`. Signed out in Settings → Devices like a browser. */
+  token: string;
+  /** The TOT device it signed in to, e.g. "Mac mini". */
+  deviceName: string;
 }

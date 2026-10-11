@@ -24,6 +24,14 @@ export { ACCESS_TOKEN };
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 
 /**
+ * The phone app's sign-in (roadmap module 14): it can't keep a browser cookie well, so /login gives it the same
+ * session as a token instead, "tots_<id>.<secret>", sent as `Authorization: Bearer`. It's listed and signed out in
+ * Settings → Devices like any browser. Nothing sends a Bearer header on its own, so these requests can't be forged
+ * cross-site the way a cookie can (and the Origin check in routes.ts still applies).
+ */
+export const SESSION_TOKEN_PREFIX = "tots_";
+
+/**
  * Who a request is from: this computer, a script with the access token, a signed-in browser (its
  * session), or a paired device (module 07; its own token, never the access token).
  */
@@ -68,6 +76,12 @@ function decide(c: Context): AuthResult {
     const token = header.slice(7).trim();
     const device = peers.byToken(token);
     if (device) return { caller: { kind: "device", id: device }, local: false };
+    if (token.startsWith(SESSION_TOKEN_PREFIX)) {
+      const session = checkSession(token.slice(SESSION_TOKEN_PREFIX.length));
+      if (session) return { caller: { kind: "session", id: session }, local };
+      recordFailure();
+      return "wrong-token";
+    }
     if (ACCESS_TOKEN && !token.startsWith(DEVICE_TOKEN_PREFIX) && tokenMatches(token, ACCESS_TOKEN)) return { caller: { kind: "token" }, local };
     recordFailure();
     return "wrong-token";
@@ -141,7 +155,38 @@ authRoutes.get("/login", (c) => {
   return loginPage(c, { deviceName: deviceName(), next });
 });
 
+/** What the phone app sends to /login (module 14), as JSON: a one-time code from the QR code, or the password. */
+interface AppSignIn {
+  client?: unknown;
+  code?: unknown;
+  password?: unknown;
+  /** The phone's name ("Dhruval's iPhone"), for Settings → Devices. */
+  deviceName?: unknown;
+}
+
+/** The phone app's sign-in: JSON in, `{ token, deviceName }` out (errors as `{ error }` with the same statuses). */
+async function appSignIn(c: Context) {
+  const input = (await c.req.json().catch(() => null)) as AppSignIn | null;
+  if (!input || input.client !== "mobile") return c.json({ error: 'Expected { client: "mobile", code | password }.' }, 400);
+  const name = deviceName();
+  if (!signInReady()) return c.json({ error: `${name} doesn't take sign-ins yet. On it, open Settings → Devices and turn on remote access.` }, 409);
+  if (typeof input.code === "string") {
+    if (!redeemSignInCode(input.code)) {
+      return c.json({ error: `This sign-in code has expired or was already used. Show a new one on ${name}: Settings → Devices → Add a phone.` }, 401);
+    }
+  } else {
+    const guess = await checkGuess(input.password);
+    if (guess === "locked") return c.json({ error: "Too many wrong tries. Wait a minute, then try again." }, 429);
+    if (guess === "wrong") return c.json({ error: "That password didn't match." }, 401);
+  }
+  const phone = typeof input.deviceName === "string" ? input.deviceName.replace(/\s+/g, " ").trim().slice(0, 60) : "";
+  const token = SESSION_TOKEN_PREFIX + createSession(`TOT app on ${phone || "a phone"}`);
+  return c.json({ token, deviceName: name });
+}
+
 authRoutes.post("/login", async (c) => {
+  // The phone app (module 14). A browser form never sends JSON, and a cross-site page can't send it without CORS.
+  if ((c.req.header("content-type") ?? "").includes("application/json")) return appSignIn(c);
   if (!signInReady()) return c.redirect("/", 302);
   const form = await c.req.parseBody();
   const next = safeNext(typeof form.next === "string" ? form.next : undefined);
@@ -172,6 +217,8 @@ authRoutes.post("/login", async (c) => {
 authRoutes.post("/logout", (c) => {
   const session = currentSessionId(c);
   if (session) endSession(session);
+  // The phone app signs out with its token and wants an answer, not the sign-in page.
+  if (c.req.header("authorization")?.startsWith("Bearer ")) return c.json({ ok: true });
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
   return c.redirect("/login", 302);
 });
