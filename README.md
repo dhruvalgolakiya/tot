@@ -46,7 +46,7 @@ npm run app:build    # release/TOT-0.1.0-arm64.dmg and .zip (and release/mac-arm
 npm run app:dev      # from this checkout: opens a running dev TOT, or starts the bundled server (run npm run build once first)
 ```
 
-The build is signed ad hoc, so it runs on the Mac that built it; on another Mac, right-click → Open the first time (a signed and notarized build needs an Apple Developer account). The menu bar menu has **Open at login**, so TOT is always reachable, and **Show log** (`~/Library/Logs/TOT/server.log`). Apps opened from Finder don't see your shell's PATH, so TOT reads it from your login shell and adds `node`, `npm` and `npx` of its own after yours. Details in [08 · Mac app](docs/roadmap/08-mac-app.md).
+`npm run app:build` signs ad hoc, so that build runs on the Mac that built it. `npm run app:release` signs with the Developer ID and has Apple notarize the app and the .dmg, so a downloaded `release/TOT-*.dmg` opens on any Mac with no warning (it needs the signing files in `~/.private_keys`, see `electron/release.sh`). The menu bar menu has **Open at login**, so TOT is always reachable, and **Show log** (`~/Library/Logs/TOT/server.log`). Apps opened from Finder don't see your shell's PATH, so TOT reads it from your login shell and adds `node`, `npm` and `npx` of its own after yours. Details in [08 · Mac app](docs/roadmap/08-mac-app.md).
 
 ## Landing page
 

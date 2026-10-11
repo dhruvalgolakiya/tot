@@ -8,8 +8,9 @@ import { checkPeers } from "./peer-deps.ts";
  * - No asar: the server runs from real files (dist/ as its working directory, codex and Claude Code spawned
  *   from node_modules), at the cost of a bigger app.
  * - Signed ad hoc unless a Developer ID is given through CSC_LINK or CSC_NAME, which also turns on the
- *   hardened runtime (notarizing comes later). Codex's and Claude Code's own binaries keep their vendors'
- *   signatures.
+ *   hardened runtime. `npm run app:release` (electron/release.sh) gives one and notarizes with an App Store
+ *   Connect API key (APPLE_API_KEY…), so the downloaded .dmg opens with no Gatekeeper warning. Codex's and
+ *   Claude Code's own binaries keep their vendors' signatures.
  * - Nothing is published: there are no releases or auto-update yet.
  * - The packaged node_modules are checked before signing: every required peer of a dependency must be there,
  *   in a version it accepts (peer-deps.ts), or the build fails.
@@ -41,8 +42,11 @@ const config: Configuration = {
     // "-" signs ad hoc; undefined lets electron-builder find the Developer ID.
     identity: developerId ? undefined : "-",
     hardenedRuntime: developerId,
+    notarize: developerId && Boolean(process.env.APPLE_API_KEY),
     signIgnore: ["/node_modules/@openai/codex-darwin-arm64/", "/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/"],
   },
+  // A signed .dmg passes Gatekeeper on its own; release.sh then notarizes and staples it.
+  dmg: { sign: developerId },
 };
 
 export default config;

@@ -33,7 +33,7 @@ Click the two rings in the menu bar:
 
 ## Limits
 
-- **Not signed or notarized** by Apple, and there's no public download yet. On a Mac other than the one that built it, right-click → **Open** the first time.
+- **Signed and notarized** with a Developer ID, so the .dmg opens on any Mac with no security warning. There's no public download yet.
 - **No auto-update.** It needs signing and public releases first.
 - **Apple silicon only.** No Intel build yet.
 - **No dictation.** The mic button is hidden in the app.

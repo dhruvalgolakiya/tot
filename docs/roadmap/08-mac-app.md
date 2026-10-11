@@ -67,7 +67,7 @@ window.totDesktop = { platform: "darwin", version: string, getOpenAtLogin(): Pro
 
 - Apple silicon only; a `.dmg` and a `.zip` in `release/`; app id `com.golakiya.tot`.
 - No asar: the server's working directory, `dist/` and the binaries it spawns need real paths. It costs size (below).
-- Signed ad hoc by default. With `CSC_LINK`/`CSC_NAME` set it signs with that Developer ID and turns on the hardened runtime. Codex's and Claude Code's own binaries keep their vendors' signatures (`signIgnore`).
+- Signed ad hoc by default. With `CSC_LINK`/`CSC_NAME` set it signs with that Developer ID and turns on the hardened runtime. `npm run app:release` (`electron/release.sh`) does that with the Developer ID Application certificate in `~/.private_keys` (its password in the keychain item `tot-devid-p12`), notarizes the app through electron-builder with an App Store Connect API key, then notarizes and staples the signed .dmg and checks both with `spctl`. Done 2026-10-11. Codex's and Claude Code's own binaries keep their vendors' signatures (`signIgnore`).
 - Nothing is published.
 
 **The icon.** The two rings from `public/tot.svg` on a dark plate, on Apple's 1024 px grid (an 824 px superellipse, n = 5, the continuous corner of macOS icons), with a soft shadow, a faint glow under the rings, a hairline highlight that holds the edge on a dark Dock, and a faint grain so the plate's gradient doesn't band. `electron/icons.ts` draws the SVGs and renders the PNGs with headless Chrome.
