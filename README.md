@@ -82,7 +82,7 @@ How it's kept safe:
 
 ## Mobile app
 
-`mobile/` is TOT's iPhone app (in development; Expo, React Native): every agent on this TOT and its paired devices, their chats, live replies and approvals, tasks (mission control, steer, pause, land) and projects, the model picker, agent settings, and Settings (models and accounts, tasks, memory, devices). It's a client of your TOT, not a copy: nothing is synced and no TOT runs on the phone. It signs in like a phone browser, with the QR code from **Settings → Devices → Add a phone** (or the address and password), and shows up in the sign-in list there. Details in [14 · Mobile app](docs/roadmap/14-mobile.md).
+`mobile/` is TOT's iPhone app (in development; Expo, React Native): every agent on this TOT and its paired devices, their chats, live replies and approvals, tasks (mission control, steer, pause, land) and projects, the model picker, agent settings, Settings (models and accounts, tasks, memory, devices), notifications while it's open or just closed (with a catch-up when it comes back), and a read-only Knowledge viewer. It's a client of your TOT, not a copy: nothing is synced and no TOT runs on the phone. It signs in like a phone browser, with the QR code from **Settings → Devices → Add a phone** (or the address and password), and shows up in the sign-in list there. Details in [14 · Mobile app](docs/roadmap/14-mobile.md).
 
 ```bash
 cd mobile && npm install

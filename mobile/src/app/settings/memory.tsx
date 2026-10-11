@@ -19,7 +19,7 @@ const day = (time: number) =>
 /**
  * Settings → Memory, as the web's (module 10) for the "you" repo: what every agent knows about you (add one and
  * press return, tap one to delete it), Dreaming (on/off, when, Dream now, undo the last one), and the history with
- * Undo. A project's facts are on its Knowledge page, on the computer.
+ * Undo. A project's facts are on its Knowledge page (the project's "…").
  */
 export default function MemorySettings() {
   const colors = useColors();
