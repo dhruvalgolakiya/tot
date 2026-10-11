@@ -1,13 +1,15 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ChatWorkspaceMode, Message } from "@shared/types";
 import { MessageView } from "../../components/MessageView";
 import { LandCard, PROJECT_ICONS, TaskEmptyState, TaskNotices, TaskStatusIcon, taskActions } from "../../components/tasks";
 import { Icon, type IconName, IconButton, Mascot, showMenu } from "../../components/ui";
+import { AUTO_MODEL_ID, modelLabel } from "../../lib/models";
+import { openModelPicker } from "../../lib/picker";
 import { errorMessage } from "../../lib/api";
-import { loadConversation, sendMessage, steerTask, stopRun, useStore, watchChat } from "../../lib/store";
+import { loadConversation, loadModels, sendMessage, setConversationModel, steerTask, stopRun, useStore, watchChat } from "../../lib/store";
 import { canPickWorkspace, isSteerable, isTask, isTaskEndingMessage, repoLabel, roleLine, TASK_STATUS_LABELS } from "../../lib/tasks";
 import { font, type as typeScale, useColors } from "../../theme";
 
@@ -48,6 +50,15 @@ export default function Chat() {
   // A new chat's project (none, or one on the agent's device) and, in a code project, where it works.
   const [draftProjectId, setDraftProjectId] = useState<string | null>(params.projectId ?? null);
   const [workspace, setWorkspace] = useState<ChatWorkspaceMode>("checkout");
+  // A new chat's model, as the web's draft model: the agent's default until picked.
+  const [draftModelId, setDraftModelId] = useState<string | null>(null);
+  const models = useStore((s) => (agent?.deviceId ? (s.deviceModels[agent.deviceId] ?? s.models) : s.models));
+
+  // A paired device's agent: its model names come from that device (once), for the header's label.
+  const hasDeviceModels = useStore((s) => Boolean(agent?.deviceId && s.deviceModels[agent.deviceId]));
+  useEffect(() => {
+    if (agent?.deviceId && !hasDeviceModels) void loadModels(agent.deviceId).catch(() => {});
+  }, [agent?.deviceId, hasDeviceModels]);
 
   const task = isTask(conversation) ? conversation : null;
   const steering = Boolean(task && isSteerable(task.task));
@@ -89,7 +100,12 @@ export default function Chat() {
       } else {
         const target = conversationId
           ? { conversationId }
-          : { agentId, projectId: draftProject?.id ?? null, workspace: draftProject && canPickWorkspace(draftProject) ? workspace : undefined };
+          : {
+              agentId,
+              projectId: draftProject?.id ?? null,
+              workspace: draftProject && canPickWorkspace(draftProject) ? workspace : undefined,
+              modelId: draftModelId ?? undefined,
+            };
         const id = await sendMessage(body, target);
         if (!conversationId) {
           setConversationId(id);
@@ -119,17 +135,41 @@ export default function Chat() {
   const pickWorkspace = () => showMenu("Work in", WORKSPACES.map((w) => ({ label: w.label, onPress: () => setWorkspace(w.mode) })));
   const picked = WORKSPACES.find((w) => w.mode === workspace)!;
 
+  // The model menu (module 13): a chat's own model, or a new chat's draft. Tasks pick theirs by role and tier.
+  const modelId = conversation?.modelId ?? draftModelId ?? agent?.modelId ?? AUTO_MODEL_ID;
+  const canPickModel = Boolean(agent) && !task;
+  const pickModel = () =>
+    openModelPicker({
+      title: "Model",
+      deviceId: agent?.deviceId ?? null,
+      current: modelId,
+      onPick: (id) => (conversation ? void setConversationModel(conversation, id) : setDraftModelId(id)),
+    });
+
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.canvas }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}>
       <Stack.Screen
         options={{
           headerTitle: () => (
-            <View style={{ alignItems: "center", maxWidth: 240 }}>
+            <Pressable
+              accessibilityRole={canPickModel ? "button" : undefined}
+              accessibilityLabel={canPickModel ? `Model: ${modelLabel(models, modelId)}. Change model` : undefined}
+              disabled={!canPickModel}
+              onPress={pickModel}
+              style={({ pressed }) => [{ alignItems: "center", maxWidth: 240 }, pressed && { opacity: 0.6 }]}
+            >
               <Text numberOfLines={1} style={{ fontFamily: font.semibold, fontSize: 16, color: colors.fg }}>
                 {title}
               </Text>
-              {agent ? <Text style={[typeScale.xs, { color: colors.fgSubtle }]}>{task ? `Task · ${agent.name}` : agent.name}</Text> : null}
-            </View>
+              {agent ? (
+                <View style={styles.subtitle}>
+                  <Text numberOfLines={1} style={[typeScale.xs, { color: colors.fgSubtle, flexShrink: 1 }]}>
+                    {task ? `Task · ${agent.name}` : `${agent.name} · ${modelLabel(models, modelId)}`}
+                  </Text>
+                  {canPickModel ? <Icon name="chevron-down" size={12} color={colors.fgSubtle} /> : null}
+                </View>
+              ) : null}
+            </Pressable>
           ),
           headerRight: () => (menu.length ? <IconButton name="more-horizontal" label="Task actions" onPress={() => showMenu(task?.title || "Task", menu)} /> : null),
         }}
@@ -191,11 +231,14 @@ export default function Chat() {
         />
       )}
       {error ? <Text style={[typeScale.sm, { color: colors.danger, paddingHorizontal: 20, paddingBottom: 6 }]}>{error}</Text> : null}
-      {!conversationId && (pickable.length > 0 || draftProject) ? (
-        <View style={styles.pickers}>
-          <Picker icon={draftProject ? PROJECT_ICONS[draftProject.kind] : "message-circle"} label={draftProject?.name ?? "No project"} onPress={pickProject} />
+      {!conversationId && agent ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.pickers} style={{ flexGrow: 0 }}>
+          <Picker icon="cpu" label={modelLabel(models, modelId)} onPress={pickModel} />
+          {pickable.length > 0 || draftProject ? (
+            <Picker icon={draftProject ? PROJECT_ICONS[draftProject.kind] : "message-circle"} label={draftProject?.name ?? "No project"} onPress={pickProject} />
+          ) : null}
           {draftProject && canPickWorkspace(draftProject) ? <Picker icon={picked.icon} label={picked.label} onPress={pickWorkspace} /> : null}
-        </View>
+        </ScrollView>
       ) : null}
       <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <View style={[styles.composer, { backgroundColor: colors.elevated, borderColor: colors.edge }]}>
@@ -254,6 +297,7 @@ const styles = StyleSheet.create({
   taskStrip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   branch: { fontFamily: font.mono, fontSize: 11, flexShrink: 1 },
   pickers: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 4 },
+  subtitle: { flexDirection: "row", alignItems: "center", gap: 3, maxWidth: 240 },
   picker: { flexDirection: "row", alignItems: "center", gap: 6, height: 32, borderRadius: 16, paddingHorizontal: 12 },
   composerWrap: { paddingHorizontal: 12, paddingTop: 6 },
   composer: { flexDirection: "row", alignItems: "flex-end", borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, paddingLeft: 18, paddingRight: 6, paddingVertical: 6, minHeight: 52 },

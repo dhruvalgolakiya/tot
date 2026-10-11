@@ -3,7 +3,8 @@ import { useMemo } from "react";
 import { ActionSheetIOS, Alert, Platform, Pressable, SectionList, StyleSheet, Text, View } from "react-native";
 import type { Conversation, Project } from "@shared/types";
 import { PROJECT_ICONS, TaskStatusIcon } from "../../components/tasks";
-import { Dot, Icon, IconButton, Mascot, Row, SectionTitle, Separator } from "../../components/ui";
+import { confirmDeleteAgent, useCanDelete } from "../../components/agentProfile";
+import { Dot, Icon, IconButton, Mascot, Row, SectionTitle, Separator, showMenu } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 import { ago } from "../../lib/format";
 import { deleteConversation, setPinned, useStore } from "../../lib/store";
@@ -27,6 +28,7 @@ export default function AgentChats() {
   const activeRuns = useStore((s) => s.activeRuns);
   const pendingApprovals = useStore((s) => s.pendingApprovals);
   const device = useStore((s) => (agent?.deviceId ? s.devices?.devices.find((d) => d.id === agent.deviceId) : null));
+  const canDelete = useCanDelete(agent);
 
   const sections = useMemo(() => {
     const mine = conversations.filter((c) => c.agentId === id && !c.parentId).sort((a, b) => b.updatedAt - a.updatedAt);
@@ -92,7 +94,23 @@ export default function AgentChats() {
         options={{
           // The name is in the big header below; the bar stays quiet.
           title: "",
-          headerRight: () => (offline ? null : <IconButton name="edit" label="New chat" onPress={newChat} />),
+          headerRight: () => (
+            <View style={{ flexDirection: "row", gap: 4 }}>
+              {offline ? null : <IconButton name="edit" label="New chat" onPress={newChat} />}
+              {offline ? null : (
+                <IconButton
+                  name="more-horizontal"
+                  label="Agent options"
+                  onPress={() =>
+                    showMenu(agent.name, [
+                      { label: "Agent settings", onPress: () => router.push({ pathname: "/agent-settings/[id]", params: { id: agent.id } }) },
+                      ...(canDelete ? [{ label: "Delete agent…", destructive: true, onPress: () => void confirmDeleteAgent(agent) }] : []),
+                    ])
+                  }
+                />
+              )}
+            </View>
+          ),
         }}
       />
       <SectionList<Conversation | Project, Section>

@@ -1,4 +1,5 @@
 import type { Conversation, MessagePart, Message, Project, Role, TaskChecks, TaskDiffStats, TaskInfo, TaskLanding, TaskStatus, Tier } from "@shared/types";
+import { ROLE_LABELS } from "./models";
 
 /**
  * Tasks, mission control and projects, ported from the web app's src/lib/tasks.ts, mission.ts, orchestration.ts,
@@ -68,16 +69,6 @@ export function repoLabel(source: string): string {
   if (github) return github[1]!;
   return source.replace(/\/+$/, "").split("/").pop() ?? source;
 }
-
-const ROLE_LABELS: Record<Role, string> = {
-  explorer: "Explorer",
-  planner: "Planner",
-  implementer: "Implementer",
-  tester: "Tester",
-  reviewer: "Reviewer",
-  researcher: "Researcher",
-  writer: "Writer",
-};
 
 /** "Researcher · standard" for a task's role and tier, when it has a role. */
 export function roleLine(role: Role | null, tier: Tier | null): string | null {

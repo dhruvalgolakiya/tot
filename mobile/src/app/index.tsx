@@ -74,11 +74,21 @@ export default function Agents() {
             ) : null
           }
           renderSectionFooter={({ section }) =>
-            section.device && !section.device.online && !section.data.length ? (
-              <Text style={[typeScale.ui, { color: colors.fgSubtle, paddingHorizontal: 16, paddingBottom: 8 }]}>
-                {section.device.name} is offline. Its chats are safe on it.
-              </Text>
-            ) : null
+            section.device && !section.device.online ? (
+              section.data.length ? null : (
+                <Text style={[typeScale.ui, { color: colors.fgSubtle, paddingHorizontal: 16, paddingBottom: 8 }]}>
+                  {section.device.name} is offline. Its chats are safe on it.
+                </Text>
+              )
+            ) : (
+              // A quiet last row: a new agent lives on the device whose list it's under.
+              <Row onPress={() => router.push({ pathname: "/new-agent", params: section.device ? { deviceId: section.device.id } : {} })}>
+                <View style={[styles.add, { borderColor: colors.edge }]}>
+                  <Icon name="plus" size={18} color={colors.fgMuted} />
+                </View>
+                <Text style={[typeScale.body, { color: colors.fgMuted, flex: 1 }]}>New agent</Text>
+              </Row>
+            )
           }
           ItemSeparatorComponent={() => <Separator inset={68} />}
           stickySectionHeadersEnabled={false}
@@ -112,7 +122,7 @@ export default function Agents() {
               </Row>
             );
           }}
-          ListEmptyComponent={<Text style={[typeScale.body, styles.none, { color: colors.fgSubtle }]}>No agents yet. Make one in TOT on your computer.</Text>}
+          
         />
       )}
     </View>
@@ -123,4 +133,5 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 32 },
   badge: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3 },
   none: { textAlign: "center", padding: 32 },
+  add: { width: 36, height: 36, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth * 2, borderStyle: "dashed", alignItems: "center", justifyContent: "center" },
 });

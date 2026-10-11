@@ -1,4 +1,5 @@
-import type { Agent, AppEvent, ChatWorkspaceMode, Conversation, DevicesStatus, LandTaskRequest, LiveRuns, Message, MessagePart, Project, RunEvent } from "@shared/types";
+import { Alert } from "react-native";
+import type { Agent, AgentInput, AppEvent, ChatWorkspaceMode, Conversation, DevicesStatus, LandTaskRequest, LiveRuns, Message, MessagePart, ModelOption, Project, RunEvent, Settings, SettingsPatch } from "@shared/types";
 import { create } from "zustand";
 import { api, apiUrl, authHeaders, errorMessage } from "./api";
 import { setDeviceName, tokenRefused } from "./connection";
@@ -38,6 +39,13 @@ interface State {
   live: boolean;
   /** Mission control's board (module 09) across this TOT and its online paired devices; null until the Tasks screen loads it. */
   mission: { taskIds: string[]; landOrder: string[]; error: string | null } | null;
+  /** The signed-in TOT's settings (M3); null until loaded. Saved one field at a time. */
+  settings: Settings | null;
+  /** The model menu: this TOT's, and each paired device's (its agents' chats run there), loaded when a picker needs them. */
+  models: ModelOption[];
+  deviceModels: Record<string, ModelOption[]>;
+  /** Bumped by `memory` events about "you", so an open Memory screen reloads. */
+  memoryVersion: number;
 }
 
 const initial: State = {
@@ -53,6 +61,10 @@ const initial: State = {
   error: null,
   live: false,
   mission: null,
+  settings: null,
+  models: [],
+  deviceModels: {},
+  memoryVersion: 0,
 };
 
 export const useStore = create<State>()(() => initial);
@@ -80,12 +92,14 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
 /** The signed-in TOT's agents, chats and projects, then every online paired device's. */
 export async function loadAll(): Promise<void> {
   try {
-    const [devices, agents, conversations, projects, live] = await Promise.all([
+    const [devices, agents, conversations, projects, live, settings, models] = await Promise.all([
       api.getDevices().catch(() => null),
       api.listAgents(),
       api.listConversations(),
       api.listProjects().catch(() => [] as Project[]),
       api.liveRuns().catch(() => NOTHING_LIVE),
+      api.getSettings().catch(() => null),
+      api.listModels().catch(() => [] as ModelOption[]),
     ]);
     if (devices) setDeviceName(devices.self.name);
     const remote = await Promise.all((devices?.devices ?? []).filter((d) => d.online).map((d) => loadRemote(d.id)));
@@ -97,6 +111,8 @@ export async function loadAll(): Promise<void> {
       agents: [...agents, ...remote.flatMap((r) => r.agents)],
       conversations: [...conversations, ...remote.flatMap((r) => r.conversations)],
       projects: [...projects, ...remote.flatMap((r) => r.projects)],
+      settings,
+      models,
       loaded: true,
       error: null,
     });
@@ -200,11 +216,20 @@ export function stopLive() {
 
 function handleEvent(event: AppEvent, deviceId: string | null) {
   switch (event.type) {
-    case "agent":
-      set((s) => ({ agents: upsert(s.agents, deviceId ? { ...event.agent, deviceId } : event.agent) }));
+    case "agent": {
+      const agent = deviceId ? { ...event.agent, deviceId } : event.agent;
+      // A new agent goes last, in creation order like the web's rail; a changed one stays where it is.
+      set((s) => ({ agents: s.agents.some((a) => a.id === agent.id) ? upsert(s.agents, agent) : [...s.agents, agent] }));
       break;
+    }
     case "agent-deleted":
       set((s) => ({ agents: s.agents.filter((a) => a.id !== event.agentId) }));
+      break;
+    case "computer":
+      set((s) => ({ agents: s.agents.map((a) => (a.id === event.agentId ? { ...a, computer: event.computer } : a)) }));
+      break;
+    case "memory":
+      if (!deviceId && event.repo === "you") set((s) => ({ memoryVersion: s.memoryVersion + 1 }));
       break;
     case "conversation":
       set((s) => ({ conversations: upsert(s.conversations, event.conversation) }));
@@ -426,6 +451,8 @@ export interface NewChatTarget {
   agentId: string;
   projectId?: string | null;
   workspace?: ChatWorkspaceMode;
+  /** The model picked before the first message; the agent's default otherwise. */
+  modelId?: string;
 }
 
 /** Sends a message; with no chat yet, starts one with the agent first. Resolves with the chat's id. */
@@ -440,6 +467,7 @@ export async function sendMessage(text: string, target: { conversationId: string
         agentId: target.agentId,
         ...(target.projectId ? { projectId: target.projectId } : {}),
         ...(target.projectId && target.workspace ? { workspace: target.workspace } : {}),
+        ...(target.modelId ? { modelId: target.modelId } : {}),
       }),
     );
     conversationId = conversation.id;
@@ -517,4 +545,89 @@ export async function setPinned(conversation: Conversation, pinned: boolean) {
 export async function deleteConversation(id: string) {
   await api.deleteConversation(id);
   set((s) => ({ conversations: s.conversations.filter((c) => c.id !== id), messages: without(s.messages, id) }));
+}
+
+// ---------------------------------------------------------------------------
+// Settings and the top bar (M3)
+// ---------------------------------------------------------------------------
+
+/** The model menu for an agent's device: this TOT's, or (loaded once) the paired device's own list. */
+export async function loadModels(deviceId?: string | null): Promise<void> {
+  if (!deviceId) {
+    const models = await api.listModels();
+    set({ models });
+    return;
+  }
+  const models = await onDevice(deviceId, () => api.listModels());
+  set((s) => ({ deviceModels: { ...s.deviceModels, [deviceId]: models } }));
+}
+
+/** A chat's model: shown at once, put back (with the reason) when the TOT refuses it. */
+export async function setConversationModel(conversation: Conversation, modelId: string) {
+  if (conversation.modelId === modelId) return;
+  set((s) => ({ conversations: upsert(s.conversations, { ...conversation, modelId }) }));
+  try {
+    const updated = await api.updateConversation(conversation.id, { modelId });
+    set((s) => ({ conversations: upsert(s.conversations, updated) }));
+  } catch (error) {
+    set((s) => ({ conversations: upsert(s.conversations, { ...(s.conversations.find((c) => c.id === conversation.id) ?? conversation), modelId: conversation.modelId }) }));
+    Alert.alert("Couldn't change the model", errorMessage(error));
+  }
+}
+
+type Plain = Record<string, unknown>;
+const isPlain = (value: unknown): value is Plain => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+/** `base` with `patch` laid over it, nested objects merged (a settings patch names only the field it changes). */
+function merged<T>(base: T, patch: unknown): T {
+  if (!isPlain(base) || !isPlain(patch)) return patch as T;
+  const out: Plain = { ...base };
+  for (const [key, value] of Object.entries(patch)) out[key] = isPlain(value) && isPlain(out[key]) ? merged(out[key], value) : value;
+  return out as T;
+}
+
+/**
+ * Saves one settings change right away (the phone has no Save bar): shown at once, then the TOT's answer; on an
+ * error the old value comes back and an alert says why. Resolves true when saved.
+ */
+export async function saveSettings(patch: SettingsPatch): Promise<boolean> {
+  const before = get().settings;
+  if (before) set({ settings: merged(before, patch) });
+  try {
+    set({ settings: await api.patchSettings(patch) });
+    return true;
+  } catch (error) {
+    set({ settings: before });
+    Alert.alert("Couldn't save that", errorMessage(error));
+    return false;
+  }
+}
+
+/** An agent's change, saved right away like settings; the agent event that follows keeps every screen in step. */
+export async function updateAgent(agent: Agent, patch: Partial<AgentInput>): Promise<boolean> {
+  set((s) => ({ agents: upsert(s.agents, { ...agent, ...patch, island: patch.island ?? agent.island } as Agent) }));
+  try {
+    const updated = await api.updateAgent(agent.id, patch);
+    set((s) => ({ agents: upsert(s.agents, agent.deviceId ? { ...updated, deviceId: agent.deviceId } : updated) }));
+    return true;
+  } catch (error) {
+    set((s) => ({ agents: upsert(s.agents, agent) }));
+    Alert.alert("Couldn't save that", errorMessage(error));
+    return false;
+  }
+}
+
+/** A new agent on this TOT, or on a paired device (where its computer, files and logins will be). */
+export async function createAgent(input: AgentInput, deviceId: string | null): Promise<Agent> {
+  const agent = await onDevice(deviceId, () => api.createAgent(input));
+  const placed = deviceId ? { ...agent, deviceId } : agent;
+  // The agent event may have added it already; keep creation order (new ones go last, like the web's rail).
+  set((s) => ({ agents: s.agents.some((a) => a.id === agent.id) ? upsert(s.agents, placed) : [...s.agents, placed] }));
+  return placed;
+}
+
+/** Deletes the agent with its chats (the TOT refuses a device's last agent). */
+export async function deleteAgent(agent: Agent) {
+  await api.deleteAgent(agent.id);
+  set((s) => ({ agents: s.agents.filter((a) => a.id !== agent.id), conversations: s.conversations.filter((c) => c.agentId !== agent.id) }));
 }

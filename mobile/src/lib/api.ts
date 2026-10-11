@@ -1,17 +1,34 @@
 import type {
+  AccountPatch,
+  AccountStatus,
   Agent,
+  AgentInput,
+  AppsStatus,
   ApprovalAnswer,
   Conversation,
   ConversationDetail,
   CreateConversationRequest,
   DevicesStatus,
+  GitHubStatus,
   LandTaskRequest,
   LiveRuns,
+  Memory,
+  MemoryCommit,
+  MemoryFile,
+  MemoryRepoSummary,
   Message,
   MissionOverview,
+  ModelOption,
+  Persona,
+  Plugin,
   Project,
+  ProviderAccount,
+  ProviderStatus,
   SendMessageRequest,
   SendMessageResponse,
+  Settings,
+  SettingsPatch,
+  SlackStatus,
   TaskLandOptions,
   UpdateConversationRequest,
 } from "@shared/types";
@@ -128,4 +145,37 @@ export const api = {
   openLead: (projectId: string, agentId?: string | null) => request<Conversation>("POST", `/projects/${seg(projectId)}/lead`, agentId ? { agentId } : {}),
   archiveProject: (id: string) => request<Project>("DELETE", `/projects/${seg(id)}`),
   getDevices: () => request<DevicesStatus>("GET", "/devices"),
+  /** Signs that browser or phone out: its next request gets 401 and its event streams close. */
+  signOutSession: (id: string) => request<DevicesStatus>("DELETE", `/sessions/${seg(id)}`),
+  signOutOtherSessions: () => request<DevicesStatus>("POST", "/sessions/sign-out-others", {}),
+
+  // The top bar and settings (M3). A device's settings are its own: these go to the signed-in TOT.
+  listModels: () => request<ModelOption[]>("GET", "/models"),
+  listProviders: () => request<ProviderStatus[]>("GET", "/providers"),
+  createAgent: (input: AgentInput) => request<Agent>("POST", "/agents", input),
+  updateAgent: (id: string, input: Partial<AgentInput>) => request<Agent>("PATCH", `/agents/${seg(id)}`, input),
+  /** Deletes its chats and computer too; 400 for a device's last agent. */
+  deleteAgent: (id: string) => request<Ok>("DELETE", `/agents/${seg(id)}`),
+  getSettings: () => request<Settings>("GET", "/settings"),
+  patchSettings: (patch: SettingsPatch) => request<Settings>("PATCH", "/settings", patch),
+  /** Every Claude and ChatGPT sign-in; `refresh` checks them again. Env values never leave the server. */
+  listAccounts: ({ refresh = false } = {}) => request<AccountStatus[]>("GET", refresh ? "/accounts?refresh=1" : "/accounts"),
+  updateAccount: (id: string, patch: AccountPatch) => request<ProviderAccount>("PATCH", `/accounts/${seg(id)}`, patch),
+  cleanUpWorktrees: (days?: number) => request<{ removed: number }>("POST", "/worktrees/cleanup", days === undefined ? {} : { days }),
+
+  // Memory (module 10): the "you" repo, as in Settings → Memory.
+  memoryRepos: () => request<MemoryRepoSummary[]>("GET", "/memory/repos"),
+  memoryFiles: (repo: string) => request<MemoryFile[]>("GET", `/memory/${seg(repo)}/files`),
+  createMemory: (content: string, repo?: string) => request<Memory>("POST", "/memories", repo ? { content, repo } : { content }),
+  deleteMemory: (id: string, repo?: string) => request<Ok>("DELETE", `/memories/${seg(id)}${repo ? `?repo=${seg(repo)}` : ""}`),
+  memoryHistory: (repo: string, limit: number) => request<MemoryCommit[]>("GET", `/memory/${seg(repo)}/history?limit=${limit}&skip=0`),
+  revertMemory: (repo: string, sha: string) => request<MemoryCommit>("POST", `/memory/${seg(repo)}/revert`, { sha }),
+  dreamMemory: (repo?: string) => request<Ok>("POST", "/memory/dream", repo ? { repo } : {}),
+
+  // Set up on the computer; the phone only shows where they stand.
+  getGithub: () => request<GitHubStatus>("GET", "/github"),
+  getSlack: () => request<SlackStatus>("GET", "/slack"),
+  getApps: () => request<AppsStatus>("GET", "/apps"),
+  listPersonas: () => request<Persona[]>("GET", "/personas"),
+  listPlugins: () => request<Plugin[]>("GET", "/plugins"),
 };

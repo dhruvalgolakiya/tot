@@ -7,3 +7,9 @@ export function ago(timestamp: number, now = Date.now()): string {
   if (seconds < 7 * 86_400) return `${Math.floor(seconds / 86_400)}d`;
   return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
+
+/** "just now", "5m ago": `ago` in a sentence. */
+export function agoText(timestamp: number, now = Date.now()): string {
+  const short = ago(timestamp, now);
+  return short === "now" ? "just now" : /\d$|[mhd]$/.test(short) && !short.includes(" ") ? `${short} ago` : short;
+}

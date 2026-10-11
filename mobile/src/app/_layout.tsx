@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 import { AppState, useColorScheme, View } from "react-native";
+import { loadAppearance } from "../lib/appearance";
 import { loadConnection, useConnection } from "../lib/connection";
 import { loadAll, startLive, stopLive } from "../lib/store";
 import { font, useColors } from "../theme";
@@ -18,6 +19,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     void loadConnection();
+    void loadAppearance();
   }, []);
 
   useEffect(() => {
@@ -77,7 +79,15 @@ export default function RootLayout() {
         <Stack.Screen name="chat/[id]" options={{ title: "" }} />
         <Stack.Screen name="tasks" options={{ title: "Tasks" }} />
         <Stack.Screen name="project/[id]" options={{ title: "" }} />
-        <Stack.Screen name="settings" options={{ presentation: "formSheet", title: "Settings", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }} />
+        <Stack.Screen name="settings/index" options={{ title: "Settings" }} />
+        <Stack.Screen name="settings/general" options={{ title: "General" }} />
+        <Stack.Screen name="settings/models" options={{ title: "Models & accounts" }} />
+        <Stack.Screen name="settings/tasks" options={{ title: "Tasks" }} />
+        <Stack.Screen name="settings/memory" options={{ title: "Memory" }} />
+        <Stack.Screen name="settings/devices" options={{ title: "Devices" }} />
+        <Stack.Screen name="agent-settings/[id]" options={{ title: "Agent settings" }} />
+        <Stack.Screen name="new-agent" options={{ presentation: "modal", title: "New agent" }} />
+        <Stack.Screen name="models" options={{ presentation: "formSheet", title: "Model", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }} />
       </Stack>
     </>
   );
