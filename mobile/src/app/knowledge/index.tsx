@@ -197,7 +197,7 @@ export default function Knowledge() {
               title={hit.title || "Untitled"}
               subtitle={
                 <Text numberOfLines={3} style={[typeScale.ui, { color: colors.fgSubtle }]}>
-                  {splitSnippet(hit.snippet).map((part, i) => (
+                  {splitSnippet(hit.snippet.replace(/\s+/g, " ")).map((part, i) => (
                     <Text key={i} style={part.marked ? { fontFamily: font.semibold, color: colors.fg } : undefined}>
                       {part.text}
                     </Text>

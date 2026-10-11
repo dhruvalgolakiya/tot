@@ -156,11 +156,35 @@ function taskNote(task: Conversation): Note | null {
 /** A chat whose finished reply is worth telling: your own chats, not tasks, routines or Slack/email threads (those reply there). */
 const repliesNotify = (chat: Conversation | undefined): chat is Conversation => Boolean(chat && chat.kind === "chat" && !chat.routineId && !chat.origin);
 
-function deliver(note: Note | null) {
-  if (!note || !claim(note.key)) return;
+/** Shows notes that are new to this phone, skipping kinds turned off and the chat on screen; a burst becomes one summary. */
+function post(notes: Note[]) {
+  const prefs = useNotify.getState().prefs;
+  const fresh = notes.filter((note) => claim(note.key) && prefs[note.kind] && !looking("conversationId" in note.target ? note.target.conversationId : ""));
   save();
-  if (!useNotify.getState().prefs[note.kind] || looking("conversationId" in note.target ? note.target.conversationId : "")) return;
-  void show(note.title, note.body, note.target);
+  if (fresh.length > BURST) {
+    void show(`${fresh.length} things happened in TOT`, summarize(fresh), { screen: "tasks" });
+    return;
+  }
+  for (const note of fresh) void show(note.title, note.body, note.target);
+}
+
+// Live events come in bursts (six tasks started together finish together), and the event stream hands them over a
+// few at a time: gather them until it's quiet for a second (three at most), so a burst is one summary.
+let pending: Note[] = [];
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingSince = 0;
+
+function deliver(note: Note | null) {
+  if (!note) return;
+  if (!pending.length) pendingSince = Date.now();
+  pending.push(note);
+  if (pendingTimer) clearTimeout(pendingTimer);
+  pendingTimer = setTimeout(() => {
+    const batch = pending;
+    pending = [];
+    pendingTimer = null;
+    post(batch);
+  }, Math.max(0, Math.min(1000, pendingSince + 3000 - Date.now())));
 }
 
 // ---------------------------------------------------------------------------
@@ -179,9 +203,7 @@ export function onApproval(chat: Conversation | undefined, agentName: string, me
   }
   if (waiting) return;
   memory.waiting.push(chat.id);
-  save();
-  if (!useNotify.getState().prefs.approvals || looking(chat.id)) return;
-  void show(`${agentName} needs your OK`, message || chat.title || "A request is waiting in TOT.", { conversationId: chat.id });
+  deliver({ kind: "approvals", key: `waiting:${chat.id}:${Date.now()}`, title: `${agentName} needs your OK`, body: message || chat.title || "A request is waiting in TOT.", target: { conversationId: chat.id } });
 }
 
 export function onTask(task: Conversation, previous: Conversation | undefined) {
@@ -259,14 +281,7 @@ export async function catchUp(snapshot: Snapshot) {
   }
   memory.seenAt = snapshot.at;
 
-  const prefs = useNotify.getState().prefs;
-  const fresh = notes.filter((note) => claim(note.key) && prefs[note.kind] && !looking("conversationId" in note.target ? note.target.conversationId : ""));
-  save();
-  if (fresh.length > BURST) {
-    void show(`${fresh.length} things happened in TOT`, summarize(fresh), { screen: "tasks" });
-    return;
-  }
-  for (const note of fresh) void show(note.title, note.body, note.target);
+  post(notes);
 }
 
 function summarize(notes: Note[]): string {
