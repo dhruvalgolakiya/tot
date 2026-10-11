@@ -2,6 +2,7 @@ import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, useFonts } from "
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 import { AppState, useColorScheme, View } from "react-native";
@@ -10,6 +11,10 @@ import { loadConnection, useConnection } from "../lib/connection";
 import { loadNotifyPrefs, notifyFor, type NotifyTarget, refreshPermission, targetOf } from "../lib/notify";
 import { hydrate, loadAll, retryNow, startLive, stopLive } from "../lib/store";
 import { font, useColors } from "../theme";
+
+// The splash (TOT's rings on the system's light or dark canvas, app.json) stays until the Keychain and the fonts are
+// read, so the first frame is a real screen, not a blank one.
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const colors = useColors();
@@ -91,6 +96,10 @@ export default function RootLayout() {
       router.replace("/");
     }
   }, [loaded, url, onConnect, adding, router]);
+
+  useEffect(() => {
+    if (loaded && fontsLoaded) void SplashScreen.hideAsync().catch(() => {});
+  }, [loaded, fontsLoaded]);
 
   if (!loaded || !fontsLoaded) return <View style={{ flex: 1, backgroundColor: colors.canvas }} />;
 

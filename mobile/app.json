@@ -21,7 +21,7 @@
     "android": {
       "package": "dev.tot.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#212121",
+        "backgroundColor": "#1b1b1f",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -35,9 +35,30 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "TOT uses the camera to scan the sign-in QR code from Settings \u2192 Devices on your computer.",
+          "cameraPermission": "TOT uses the camera to scan the sign-in QR code from Settings → Devices on your computer.",
           "microphonePermission": false,
           "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#212121"
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TOT lets you attach photos to a message for your agent.",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ]
     ],
