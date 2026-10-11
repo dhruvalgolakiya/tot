@@ -123,6 +123,7 @@ export default function RootLayout() {
         <Stack.Screen name="chat/[id]" options={{ title: "" }} />
         <Stack.Screen name="tasks" options={{ title: "Tasks" }} />
         <Stack.Screen name="project/[id]" options={{ title: "" }} />
+        <Stack.Screen name="task-detail/[id]" options={{ title: "" }} />
         <Stack.Screen name="settings/index" options={{ title: "Settings" }} />
         <Stack.Screen name="settings/general" options={{ title: "General" }} />
         <Stack.Screen name="settings/models" options={{ title: "Models & accounts" }} />

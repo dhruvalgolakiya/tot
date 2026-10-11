@@ -33,7 +33,9 @@ import type {
   Settings,
   SettingsPatch,
   SlackStatus,
+  TaskChanges,
   TaskLandOptions,
+  TaskPlan,
   UpdateConversationRequest,
   WikiPage,
   WikiPageSummary,
@@ -184,6 +186,10 @@ export const api = {
   landTask: (id: string, body: LandTaskRequest) => request<Conversation>("POST", `/tasks/${seg(id)}/land`, body),
   /** Stops it, removes its worktree, and deletes its branch unless it was pushed. */
   discardTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/discard`, {}),
+  /** The task's branch against its base: files and the unified diff (cut short on huge changes). */
+  taskChanges: (id: string) => request<TaskChanges>("GET", `/tasks/${seg(id)}/changes`),
+  /** Its PLAN.md on the agent's computer; content null when there's none yet or the computer is off. */
+  taskPlan: (id: string) => request<TaskPlan>("GET", `/tasks/${seg(id)}/plan`),
   /** Mission control: open tasks, finished ones still to land (with their land order), and the last day's landed ones. */
   getMission: () => request<MissionOverview>("GET", "/mission"),
 

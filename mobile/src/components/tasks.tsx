@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { router, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Message, Project, TaskChecks, TaskLandOptions, TaskStatus } from "@shared/types";
@@ -73,6 +73,9 @@ export function taskActions(task: TaskConversation): MenuItem[] {
   if (canResume(status)) items.push({ label: "Resume", onPress: run(resumeTask) });
   if (canPause(status)) items.push({ label: "Pause", onPress: run(pauseTask) });
   if (isOpenTask(status)) items.push({ label: "Stop", destructive: true, onPress: run(stopTask) });
+  // Read-only views of what it's doing: its plan, and for a coding task its branch's changes.
+  items.push({ label: "Plan", onPress: () => router.push({ pathname: "/task-detail/[id]", params: { id: task.id, view: "plan" } }) });
+  if (task.task.repo) items.push({ label: "Changes", onPress: () => router.push({ pathname: "/task-detail/[id]", params: { id: task.id, view: "changes" } }) });
   return items;
 }
 
