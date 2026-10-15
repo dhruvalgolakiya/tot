@@ -323,5 +323,118 @@ check("on a reconnect Last-Event-ID wins over a smaller ?after=", both.length ==
 res = await send(`/runs/${run.id}/events?after=6`);
 check("a finished run already delivered past ?after= is a 204", res.status === 204);
 
+// --- 5. Streaming saves: rarer as the reply grows, only after changes, the final one always ---
+
+const { ReplySaver, SAVE_INTERVAL_MS } = await import("./agent/reply-saver.ts");
+{
+  let clock = 0;
+  let pending: { run: () => void; at: number } | null = null;
+  const sizes: number[] = [];
+  let size = 1000;
+  const saver = new ReplySaver(
+    () => {
+      sizes.push(size);
+      return size;
+    },
+    () => clock,
+    (run, ms) => {
+      pending = { run, at: clock + ms };
+      return () => (pending = null);
+    },
+  );
+  const tick = (ms: number) => {
+    clock += ms;
+    if (pending && pending.at <= clock) {
+      const due = pending;
+      pending = null;
+      due.run();
+    }
+  };
+  saver.changed();
+  check("the first change is saved at once", sizes.length === 1);
+  for (let i = 0; i < 50; i++) {
+    tick(10);
+    saver.changed();
+  }
+  check("changes within the interval aren't saved one by one", sizes.length === 1 && pending !== null, String(sizes.length));
+  tick(SAVE_INTERVAL_MS);
+  check("…but once the wait is up (a trailing save)", sizes.length === 2);
+  tick(5000);
+  check("no change, no save", sizes.length === 2);
+  size = 1_000_000;
+  saver.changed();
+  check("a change after a quiet spell is saved at once", sizes.length === 3);
+  check("a 1 MB reply waits 4 s between saves", saver.interval === 4000, String(saver.interval));
+  tick(1500);
+  saver.changed();
+  tick(1500);
+  check("…so a change 1.5 s later waits", sizes.length === 3);
+  tick(1000);
+  check("…and is saved 4 s after the last save", sizes.length === 4);
+  saver.saveNow();
+  check("saveNow saves at once, whatever the wait", sizes.length === 5);
+  saver.changed();
+  saver.stop();
+  tick(10_000);
+  saver.changed();
+  saver.saveNow();
+  check("after stop nothing is saved (the turn's final save follows)", sizes.length === 5 && pending === null);
+}
+
+// A real turn through a fake provider: many quick events, a pause with a tool running, then the end.
+{
+  const { settings } = await import("./data/settings.ts");
+  const { providers } = await import("./agent/providers/index.ts");
+  const { sendMessage } = await import("./agent/orchestrator.ts");
+  const { runEnd } = await import("./tasks/run-loop.ts");
+  settings.patch({ computer: { mode: "local" }, memory: { enabled: false } });
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  let midTurn: Message | null = null;
+  let replyId = "";
+  providers.claude = {
+    id: "claude",
+    label: "Claude",
+    status: async () => ({ id: "claude", label: "Claude", installed: true, loggedIn: true, models: [{ id: "claude:claude-opus-5-5", provider: "claude", model: "claude-opus-5-5", label: "Opus", available: true }] }),
+    async *runTurn(input) {
+      yield { type: "session", sessionId: input.sessionId ?? "s-1" };
+      for (let i = 0; i < 200; i++) yield { type: "text-delta", blockId: "b1", delta: `word${i} ` };
+      yield { type: "tool-start", toolCallId: "c1", name: "computer_exec", input: { command: "npm test" } };
+      // A long-running tool: the trailing save lands while nothing else happens.
+      await sleep(SAVE_INTERVAL_MS + 400);
+      midTurn = messages.get(replyId);
+      yield { type: "tool-end", toolCallId: "c1", output: "ok" };
+      yield { type: "text-delta", blockId: "b2", delta: "Done." };
+    },
+    complete: async () => "A title",
+  } as typeof providers.claude;
+  const turnChat = conversations.create({ agentId: agent.id, modelId: "auto" });
+  const realSave = messages.save;
+  let saves = 0;
+  messages.save = (message: Message) => {
+    if (message.conversationId === turnChat.id) saves++;
+    return realSave(message);
+  };
+  const started = await sendMessage(turnChat.id, { text: "Go" });
+  replyId = runRegistry.get(started.runId)!.messageId;
+  const ended = await runEnd(started.runId);
+  messages.save = realSave;
+  const saved = messages.get(replyId)!;
+  const mid = midTurn as Message | null;
+  check(
+    "a turn of 200+ quick events is saved a handful of times",
+    saves >= 3 && saves <= 6 && ended?.status === "complete",
+    `${saves} saves, ${ended?.status}`,
+  );
+  check(
+    "the quiet spell's changes were saved before the turn ended (trailing save)",
+    mid?.parts.some((p) => p.type === "tool" && p.status === "running") === true && mid.parts.some((p) => p.type === "text" && p.text.includes("word199")),
+    JSON.stringify(mid?.parts.map((p) => p.type)),
+  );
+  check(
+    "the final save always runs, whole",
+    saved.status === "complete" && saved.parts.some((p) => p.type === "text" && p.text === "Done.") && saved.parts.some((p) => p.type === "tool" && p.status === "done" && p.output === "ok"),
+  );
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nALL PASS");
 process.exit(failures ? 1 : 0);

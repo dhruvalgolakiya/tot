@@ -134,12 +134,13 @@ export const messages = {
     return parseJson<{ session: string; ref: string } | null>(row?.provider_ref, null);
   },
 
-  /** Overwrites the mutable fields of an assistant message as it streams. */
-  save(message: Message): void {
+  /** Overwrites the mutable fields of an assistant message as it streams; returns the size of its parts' JSON. */
+  save(message: Message): number {
+    const parts = JSON.stringify(message.parts);
     const { changes } = db.prepare(
       `UPDATE messages SET parts = ?, status = ?, provider = ?, account = ?, model = ?, route_reason = ?, error = ?, usage = ? WHERE id = ?`,
     ).run(
-      JSON.stringify(message.parts),
+      parts,
       message.status,
       message.provider ?? null,
       message.account ?? null,
@@ -152,6 +153,7 @@ export const messages = {
     bump(message.conversationId);
     // The chat may have been deleted meanwhile; don't leave a search entry behind.
     if (changes > 0) index(message);
+    return parts.length;
   },
 };
 

@@ -39,6 +39,7 @@ import {
 } from "./prompts.ts";
 import { providerFor, providerStatuses, providers, routingStatuses } from "./providers/index.ts";
 import type { McpServerSpec, TurnInput } from "./providers/types.ts";
+import { ReplySaver } from "./reply-saver.ts";
 import { CLAUDE_SONNET, parseModelId, resolveRoute, type Complexity, type Route } from "./router.ts";
 import { runRegistry, type Run } from "./runs.ts";
 import { intake } from "../projects/intake.ts";
@@ -69,7 +70,6 @@ class TurnError extends Error {
   }
 }
 
-const SAVE_INTERVAL_MS = 1000;
 const MAX_ATTACHMENTS = 10;
 
 /** Chats with a turn being set up: past the "already replying?" check, before the run exists. */
@@ -279,14 +279,17 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
     unattended: Boolean(conversation.routineId) || conversation.kind === "task",
   });
   const signal = run.controller.signal;
+  // Saves as it streams, rarer as the reply grows and only after changes; the final save below always runs. Never
+  // after the run ended (a turn that crashed is saved as failed by sendMessage's catch).
+  const saver = new ReplySaver(() => (run.done ? 0 : messages.save(builder.message)));
   run.reply = () => builder.message;
   run.addPart = (part) => {
     builder.add(part);
-    messages.save(builder.message);
+    saver.saveNow();
   };
   run.replacePart = (part) => {
     builder.replace(part);
-    messages.save(builder.message);
+    saver.saveNow();
   };
 
   run.push({
@@ -357,7 +360,6 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
       };
     };
 
-    let lastSave = 0;
     const attempt = async (route: Route, input: TurnInput): Promise<void> => {
       for await (const event of providerFor(route.account).runTurn(input)) {
         if (event.type === "session") {
@@ -373,10 +375,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         }
         if (event.type === "error") throw new TurnError(event.message, event.kind);
         builder.apply(event);
-        if (Date.now() - lastSave > SAVE_INTERVAL_MS) {
-          messages.save(builder.message);
-          lastSave = Date.now();
-        }
+        saver.changed();
       }
     };
 
@@ -433,6 +432,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   if (status !== "complete" && heardSignals.length && !builder.hasContent) leadSignals.markUnread(heardSignals);
   unsubscribe();
   run.steer = undefined;
+  saver.stop();
   const final = builder.finish(status, error);
   messages.save(final);
   if (place.session && place.ref) messages.setProviderRef(final.id, { session: place.session, ref: place.ref });
