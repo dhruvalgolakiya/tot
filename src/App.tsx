@@ -156,7 +156,8 @@ export default function App() {
               ) : page === "crew" ? (
                 <CrewPage key={viewKey} />
               ) : (
-                <ChatView key={viewKey} />
+                // Not keyed by the route: it keeps recent chats mounted across switches (see ChatView).
+                <ChatView />
               )}
             </>
           )}
