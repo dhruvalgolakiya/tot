@@ -1007,9 +1007,11 @@ export async function loadConversation(id: string, { attach = true, useCache = f
   try {
     // Opened by URL before the paired devices' chats loaded: it may be one of theirs (module 07).
     if (!deviceOf(id) && !get().conversations.some((c) => c.id === id)) await whenDevicesLoaded();
-    // Only a settled copy can be "unchanged": not while a reply streams into it.
+    // Only a settled copy can be "unchanged": not while a reply streams into it, nor one holding a reply that was still
+    // being written (prefetched, or its stream lost), whose run a 304 wouldn't say how to follow.
     const before = get();
-    const settled = before.messages[id] && !streams.has(id) && !before.activeRuns[id];
+    const cached = before.messages[id];
+    const settled = cached && !streams.has(id) && !before.activeRuns[id] && !cached.some((m) => m.status === "streaming");
     const result = await api.getConversation(id, settled ? (loadedChats.get(id)?.etag ?? null) : null);
     if (!result) {
       const entry = loadedChats.get(id);
