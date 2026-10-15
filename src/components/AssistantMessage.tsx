@@ -1,7 +1,6 @@
 import { memo } from "react";
 import clsx from "clsx";
-import type { Message, MessagePart } from "@shared/types";
-import { selectActiveAgent, useStore } from "../store";
+import type { Message, MessagePart, ModelOption } from "@shared/types";
 import { MessageMeta } from "./MessageMeta";
 import { MessagePartView } from "./MessagePartView";
 import { TaskGroupCard } from "./orchestration/TaskGroupCard";
@@ -18,6 +17,12 @@ type AssistantMessageProps = {
   isLatest: boolean;
   /** The user's steering notes handed to this reply mid-turn, shown after the part each arrived after. */
   notes?: Message[];
+  /** The active agent's name, for the "thinking" line. */
+  agentName: string;
+  /** Every model, to name the one that answered. Read once by the list, not by each message. */
+  models: ModelOption[];
+  /** The message is in a chat (they fork; tasks and TOT's own notices don't). */
+  inChat: boolean;
 };
 
 const PILL_TOOLS = new Set(["memory_save", "wiki_write", "wiki_edit"]);
@@ -53,11 +58,9 @@ function isIdleTail(part: MessagePart | undefined) {
   return part.type === "notice";
 }
 
-export const AssistantMessage = memo(function AssistantMessage({ message, live, isLatest, notes }: AssistantMessageProps) {
+export const AssistantMessage = memo(function AssistantMessage({ message, live, isLatest, notes, agentName, models, inChat }: AssistantMessageProps) {
   const streaming = live && message.status === "streaming";
   const { parts } = message;
-  const agent = useStore(selectActiveAgent);
-  const name = agent?.name ?? "TOT";
   const partIds = new Set(parts.map((part) => part.id));
   const notesAfter = (partId: string | null) => (notes ?? []).filter((note) => (note.steeredInto?.afterPartId ?? null) === partId);
   // Notes that arrived before the first part, or after a part that's gone, go at the start or the end.
@@ -98,10 +101,10 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
       ))}
       {streaming && isIdleTail(parts.at(-1)) && (
         <div className={clsx(parts.length > 0 && "mt-3")}>
-          <ThinkingIndicator agentName={name} message={message} live={streaming} />
+          <ThinkingIndicator agentName={agentName} message={message} live={streaming} />
         </div>
       )}
-      {!streaming && <MessageMeta message={message} isLatest={isLatest} />}
+      {!streaming && <MessageMeta message={message} isLatest={isLatest} models={models} inChat={inChat} />}
     </div>
   );
 });
