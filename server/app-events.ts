@@ -9,21 +9,27 @@ import { personas } from "./data/personas.ts";
 const emitter = new EventEmitter();
 emitter.setMaxListeners(0);
 
+/** An event and its JSON, made once however many tabs and phones it goes to (on the first one's ask). */
+function send(event: AppEvent): void {
+  let text: string | undefined;
+  emitter.emit("event", event, () => (text ??= JSON.stringify(event)));
+}
+
 export const appEvents = {
   publish(event: AppEvent): void {
-    emitter.emit("event", event);
+    send(event);
   },
 
   /** Re-sends an agent after what's in its workspace (chats, memories, routines) changed. */
   agentChanged(agentId: string | null | undefined): void {
     const agent = agentId ? agents.get(agentId) : null;
-    if (agent) emitter.emit("event", { type: "agent", agent } satisfies AppEvent);
+    if (agent) send({ type: "agent", agent });
   },
 
   /** Re-sends a persona after something shown with it changed (mailbox state, unread count, its agents). */
   personaChanged(personaId: string | null | undefined): void {
     const persona = personaId ? personas.get(personaId) : null;
-    if (persona) emitter.emit("event", { type: "persona", persona } satisfies AppEvent);
+    if (persona) send({ type: "persona", persona });
   },
 
   /**
@@ -31,17 +37,18 @@ export const appEvents = {
    * changed too, so the brain list and every agent's page counts are re-sent.
    */
   brainChanged(brainId: string, { structure = false, conversationId }: { structure?: boolean; conversationId?: string } = {}): void {
-    emitter.emit("event", { type: "wiki", brainId, ...(conversationId ? { conversationId } : {}) } satisfies AppEvent);
+    send({ type: "wiki", brainId, ...(conversationId ? { conversationId } : {}) });
     if (structure) appEvents.brainsChanged();
   },
 
   /** Re-sends the brain list (and agents, whose page counts depend on it). */
   brainsChanged(): void {
-    emitter.emit("event", { type: "brains", brains: brains.list() } satisfies AppEvent);
-    for (const agent of agents.list()) emitter.emit("event", { type: "agent", agent } satisfies AppEvent);
+    send({ type: "brains", brains: brains.list() });
+    for (const agent of agents.list()) send({ type: "agent", agent });
   },
 
-  subscribe(listener: (event: AppEvent) => void): () => void {
+  /** `json()` is the event as JSON, shared by every subscriber that sends it on. */
+  subscribe(listener: (event: AppEvent, json: () => string) => void): () => void {
     emitter.on("event", listener);
     return () => emitter.off("event", listener);
   },

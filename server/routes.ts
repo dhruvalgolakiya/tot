@@ -498,8 +498,10 @@ api.get("/events", (c) =>
     let finish!: () => void;
     const finished = new Promise<void>((resolve) => (finish = resolve));
     let writes: Promise<unknown> = stream.writeSSE({ data: "", event: "ready", retry: RECONNECT_MS });
-    const unsubscribe = appEvents.subscribe((event) => {
-      writes = writes.then(() => stream.writeSSE({ data: JSON.stringify(event) }));
+    const unsubscribe = appEvents.subscribe((_event, json) => {
+      // Serialized as it's published, once for every open stream.
+      const data = json();
+      writes = writes.then(() => stream.writeSSE({ data }));
     });
     const heartbeat = setInterval(() => {
       writes = writes.then(() => stream.write(": ping\n\n"));

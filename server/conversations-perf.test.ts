@@ -518,5 +518,35 @@ rmSync(site, { recursive: true, force: true });
   check("the apps status reads the installed version once (until setup installs again)", first.version === "1.2.3" && second.version === "1.2.3", `${first.version} ${second.version}`);
 }
 
+// --- 9. App events: serialized once, however many streams ---
+
+{
+  const { appEvents } = await import("./app-events.ts");
+  /** One /api/events stream: resolves with the first data line that mentions `marker`. */
+  const listen = async (marker: string) => {
+    const response = await send("/events");
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    return async () => {
+      let text = "";
+      while (!text.includes(marker)) text += decoder.decode((await reader.read()).value, { stream: true });
+      await reader.cancel().catch(() => {});
+      return /data: (.*title.*)/.exec(text)?.[1] ?? "";
+    };
+  };
+  const tabs = await Promise.all([listen("Marker chat"), listen("Marker chat"), listen("Marker chat")]);
+  const event = { type: "conversation" as const, conversation: { ...toPublicConversation(conversations.get(chat.id)!), title: "Marker chat" } };
+  const stringify = JSON.stringify;
+  let serialized = 0;
+  JSON.stringify = ((...args: Parameters<typeof JSON.stringify>) => {
+    if (args[0] === event) serialized++;
+    return stringify(...args);
+  }) as typeof JSON.stringify;
+  appEvents.publish(event);
+  JSON.stringify = stringify;
+  const received = await Promise.all(tabs.map((read) => read()));
+  check("three open streams get the event, serialized once", serialized === 1 && received.every((data) => data === stringify(event)), `${serialized} serializations`);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nALL PASS");
 process.exit(failures ? 1 : 0);
