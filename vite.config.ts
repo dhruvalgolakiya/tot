@@ -74,12 +74,48 @@ function requireSignIn(): Plugin {
   };
 }
 
+/**
+ * An open chat waits for the markdown renderer, which is its own chunk (src/lib/markdownLoader.ts). Have the page
+ * download it, its chunks and its CSS alongside the main bundle, instead of once the main bundle has run.
+ */
+function preloadMarkdown(): Plugin {
+  return {
+    name: "tot-preload-markdown",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(_html, { bundle, chunk: entry }) {
+        const markdown = Object.values(bundle ?? {}).find(
+          (output) => output.type === "chunk" && output.facadeModuleId?.endsWith("/src/components/Markdown.tsx"),
+        );
+        if (markdown?.type !== "chunk" || !bundle) return [];
+        /** A chunk's file and every chunk it imports statically, however deep. */
+        const withImports = (file: string, files = new Set<string>()) => {
+          const output = bundle[file];
+          if (files.has(file) || output?.type !== "chunk") return files;
+          files.add(file);
+          for (const imported of output.imports) withImports(imported, files);
+          return files;
+        };
+        // The entry's own chunks are preloaded already (by Vite).
+        const loaded = entry ? withImports(entry.fileName) : new Set<string>();
+        const scripts = [...withImports(markdown.fileName)].filter((file) => !loaded.has(file));
+        const styles = [...(markdown.viteMetadata?.importedCss ?? [])];
+        return [
+          ...scripts.map((file) => ({ tag: "link", attrs: { rel: "modulepreload", crossorigin: true, href: `/${file}` }, injectTo: "head" as const })),
+          ...styles.map((file) => ({ tag: "link", attrs: { rel: "preload", as: "style", href: `/${file}` }, injectTo: "head" as const })),
+        ];
+      },
+    },
+  };
+}
+
 // xfwd: the API learns which device the browser is on (X-Forwarded-For), e.g. to allow
 // app sign-ins only from this machine.
 const api = { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false, xfwd: true };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), requireSignIn()],
+  plugins: [react(), tailwindcss(), requireSignIn(), preloadMarkdown()],
   resolve: {
     alias: { "@shared": fileURLToPath(new URL("./shared", import.meta.url)) },
   },

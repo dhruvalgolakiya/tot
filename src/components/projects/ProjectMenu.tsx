@@ -1,16 +1,22 @@
-import { useRef, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Archive, Bell, Brain, Compass, Ellipsis, FolderGit2, GraduationCap, ScrollText, SlidersHorizontal, SquarePen, Wrench } from "lucide-react";
 import type { Agent, Project } from "@shared/types";
 import { api } from "../../lib/api";
+import { lazyComponent } from "../../lib/lazyComponent";
 import { archiveProject, isCodeProject } from "../../lib/projects";
 import { navigateToAgentHome, navigateToConversation, navigateToWiki, newChatInProject, notifyError, selectActiveAgentId, useStore } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { IconButton } from "../ui/IconButton";
 import { Modal, ModalBody } from "../ui/Modal";
-import { InstructionsDialog, ProjectSettingsDialog, WorktreeSetupDialog } from "./ProjectDialogs";
-import { ProjectRepos } from "./ProjectRepos";
-import { ProjectSubscriptionsDialog } from "./ProjectSubscriptionsDialog";
+
+// The dialogs are a chunk of their own (this menu is in the header, so in the main bundle); they load with the
+// first one opened.
+const ProjectRepos = lazyComponent(() => import("./ProjectRepos"), "ProjectRepos");
+const InstructionsDialog = lazyComponent(() => import("./ProjectDialogs"), "InstructionsDialog");
+const ProjectSettingsDialog = lazyComponent(() => import("./ProjectDialogs"), "ProjectSettingsDialog");
+const WorktreeSetupDialog = lazyComponent(() => import("./ProjectDialogs"), "WorktreeSetupDialog");
+const ProjectSubscriptionsDialog = lazyComponent(() => import("./ProjectSubscriptionsDialog"), "ProjectSubscriptionsDialog");
 
 type Dialog = "repos" | "instructions" | "subscriptions" | "settings" | "worktree" | "archive";
 
@@ -20,6 +26,9 @@ type Dialog = "repos" | "instructions" | "subscriptions" | "settings" | "worktre
  */
 export function ProjectMenu({ project, agent }: { project: Project; agent: Agent | undefined }) {
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  // Mounted from the first dialog on (and kept, so they animate closed).
+  const [dialogsMounted, setDialogsMounted] = useState(false);
+  if (dialog && dialog !== "archive" && !dialogsMounted) setDialogsMounted(true);
   const [learning, setLearning] = useState(false);
   const activeAgentId = useStore(selectActiveAgentId);
   const knowledgeAgentId = agent?.id ?? activeAgentId;
@@ -131,15 +140,19 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
 
-      <Modal open={dialog === "repos"} onOpenChange={close} title="Repos" description={`The code ${project.name}'s tasks work in.`} className="max-w-2xl">
-        <ModalBody>
-          <ProjectRepos project={project} />
-        </ModalBody>
-      </Modal>
-      <InstructionsDialog project={project} open={dialog === "instructions"} onOpenChange={close} />
-      <ProjectSubscriptionsDialog project={project} open={dialog === "subscriptions"} onOpenChange={close} />
-      <ProjectSettingsDialog project={project} open={dialog === "settings"} onOpenChange={close} />
-      {isCodeProject(project) && <WorktreeSetupDialog project={project} open={dialog === "worktree"} onOpenChange={close} />}
+      {dialogsMounted && (
+        <Suspense fallback={null}>
+          <Modal open={dialog === "repos"} onOpenChange={close} title="Repos" description={`The code ${project.name}'s tasks work in.`} className="max-w-2xl">
+            <ModalBody>
+              <ProjectRepos project={project} />
+            </ModalBody>
+          </Modal>
+          <InstructionsDialog project={project} open={dialog === "instructions"} onOpenChange={close} />
+          <ProjectSubscriptionsDialog project={project} open={dialog === "subscriptions"} onOpenChange={close} />
+          <ProjectSettingsDialog project={project} open={dialog === "settings"} onOpenChange={close} />
+          {isCodeProject(project) && <WorktreeSetupDialog project={project} open={dialog === "worktree"} onOpenChange={close} />}
+        </Suspense>
+      )}
       <ConfirmDialog
         open={dialog === "archive"}
         onOpenChange={close}
