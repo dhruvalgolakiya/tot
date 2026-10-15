@@ -14,7 +14,9 @@ export function ConversationList({ query }: { query: string }) {
   const conversations = useStore((s) => s.conversations);
   const state = useStore((s) => s.conversationsState);
   const currentId = useStore((s) => s.currentId);
-  const activeRuns = useStore((s) => s.activeRuns);
+  // The chats with a run streaming, as one string: runs' other changes (a message id, stopping) don't re-render the list.
+  const streamingIds = useStore((s) => Object.keys(s.activeRuns).join(" "));
+  const streaming = useMemo(() => new Set(streamingIds.split(" ")), [streamingIds]);
   const activeAgentId = useStore(selectActiveAgentId);
   const projects = useProjects((s) => s.projects);
   const projectsState = useProjects((s) => s.state);
@@ -90,7 +92,7 @@ export function ConversationList({ query }: { query: string }) {
                 <ConversationItem
                   conversation={conversation}
                   active={conversation.id === currentId}
-                  streaming={Boolean(activeRuns[conversation.id])}
+                  streaming={streaming.has(conversation.id)}
                   workingTasks={workingTasks.get(conversation.id) ?? 0}
                 />
               </li>

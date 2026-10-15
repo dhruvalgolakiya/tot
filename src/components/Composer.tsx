@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import { ArrowUp, Columns2, LoaderCircle, MessageSquare, Plus, Square } from "lucide-react";
+import type { Conversation } from "@shared/types";
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
 import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, slashQuery, type SlashCommandName } from "../lib/mission";
@@ -28,6 +29,8 @@ const MAX_HEIGHT_PX = 240;
 const touchOnly = () => window.matchMedia("(pointer: coarse)").matches;
 
 const SLASH_ICONS: Record<SlashCommandName, typeof Columns2> = { "best-of": Columns2 };
+
+const NO_CONVERSATIONS: Conversation[] = [];
 
 /**
  * `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page.
@@ -75,7 +78,6 @@ export function Composer({
   }, [draft]);
 
   // Other chats attached as reference: picked by typing @, or dragged in from the sidebar.
-  const conversations = useStore((s) => s.conversations);
   const [contextChats, setContextChats] = useState<string[]>([]);
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
@@ -93,6 +95,8 @@ export function Composer({
   const sendsBestOf = !task && command !== null;
   const canAttachChats = !task && !sendsBestOf;
   const mention = canAttachChats && contextChats.length < MAX_ATTACHED_CHATS ? mentionAt(text, caret) : null;
+  // The chats to pick from, read only while an @ is being typed (not a re-render on every change to the list).
+  const conversations = useStore((s) => (mention ? s.conversations : NO_CONVERSATIONS));
   const matches =
     mention && mention.start !== dismissedAt
       ? chatMatches(conversations, { agentId, exclude: [...contextChats, ...(currentId ? [currentId] : [])], query: mention.query })
