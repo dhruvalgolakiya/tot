@@ -450,5 +450,59 @@ const plan = (db.prepare(`EXPLAIN QUERY PLAN SELECT * FROM conversations ORDER B
 check("the chat list reads an index on updated_at, not a sort", plan.includes("conversations_by_updated") && !plan.includes("TEMP B-TREE"), plan);
 check("a hot statement is prepared once", statement("SELECT * FROM messages WHERE id = ?") === statement("SELECT * FROM messages WHERE id = ?"));
 
+// --- 7. Compression and caching ---
+
+const { gunzipSync } = await import("node:zlib");
+const gz = { "accept-encoding": "gzip, deflate, br" };
+res = await send(`/conversations/${chat.id}?clip=1`, gz, "192.168.1.70");
+const zipped = Buffer.from(await res.arrayBuffer());
+const unzipped = gunzipSync(zipped).toString();
+console.log(`      detail with clip=1 over the network: ${kb(unzipped.length)} → ${kb(zipped.length)} gzipped`);
+check(
+  "another device gets a chat gzipped, with a weak ETag that still matches",
+  res.headers.get("content-encoding") === "gzip" && (JSON.parse(unzipped) as ConversationDetail).conversation.id === chat.id &&
+    res.headers.get("etag")!.startsWith("W/") && (res.headers.get("vary") ?? "").includes("Accept-Encoding"),
+);
+res = await send(`/conversations/${chat.id}?clip=1`, { ...gz, "if-none-match": res.headers.get("etag")! }, "192.168.1.70");
+check("…and a 304 for it next time", res.status === 304);
+res = await send(`/conversations/${chat.id}?clip=1`, gz);
+await res.arrayBuffer();
+check("this computer (the Mac app, localhost) gets it plain", !res.headers.has("content-encoding"));
+res = await send(`/conversations/${chat.id}?clip=1`, { ...gz, "x-forwarded-for": "192.168.1.70" });
+await res.arrayBuffer();
+check("a phone through the local dev proxy gets it gzipped", res.headers.get("content-encoding") === "gzip");
+res = await send("/health", gz, "192.168.1.70");
+check("small JSON isn't compressed", !res.headers.has("content-encoding") && ((await res.json()) as { ok: boolean }).ok === true);
+const runForGzip = runRegistry.create(other.id, randomUUID());
+const sse = send(`/runs/${runForGzip.id}/events`, gz, "192.168.1.70");
+runForGzip.push({ type: "run-end", status: "complete", message: { ...live, id: runForGzip.messageId, conversationId: other.id, status: "complete" } });
+runRegistry.finish(runForGzip);
+res = await sse;
+check("event streams are never compressed", !res.headers.has("content-encoding") && (res.headers.get("content-type") ?? "").startsWith("text/event-stream"));
+await res.body?.cancel();
+
+const { Hono } = await import("hono");
+const { serveStatic } = await import("@hono/node-server/serve-static");
+const { cacheBuilt } = await import("./app.ts");
+const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+const { join } = await import("node:path");
+const site = mkdtempSync(join(process.env.TOT_DATA_DIR!, "dist-"));
+mkdirSync(join(site, "assets"));
+writeFileSync(join(site, "index.html"), "<!doctype html>");
+writeFileSync(join(site, "assets", "index-abc123.js"), "console.log(1)");
+// As createApp mounts it in production (the built dist/ folder).
+const staticApp = new Hono();
+staticApp.use("/*", cacheBuilt);
+staticApp.use("/*", serveStatic({ root: site }));
+staticApp.get("*", serveStatic({ path: join(site, "index.html") }));
+const asset = await staticApp.request("/assets/index-abc123.js");
+check("hashed assets are cached for good", asset.headers.get("cache-control") === "public, max-age=31536000, immutable", String(asset.headers.get("cache-control")));
+const page = await staticApp.request("/");
+const deepLink = await staticApp.request("/chat/123");
+check("index.html is checked every time (also at a deep link)", page.headers.get("cache-control") === "no-cache" && deepLink.headers.get("cache-control") === "no-cache");
+const missing = await staticApp.request("/assets/gone-999.js");
+check("the page answering for a missing asset isn't cached as one", missing.headers.get("cache-control") === "no-cache");
+rmSync(site, { recursive: true, force: true });
+
 console.log(failures ? `\n${failures} FAILED` : "\nALL PASS");
 process.exit(failures ? 1 : 0);
