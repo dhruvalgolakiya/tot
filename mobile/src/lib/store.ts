@@ -274,6 +274,35 @@ export async function loadConversation(id: string, { attach = true } = {}): Prom
   if (detail.activeRunId && attach) attachRun(id, detail.activeRunId);
 }
 
+/** Clipped tool steps being fetched whole, by message and part id. */
+const partLoads = new Map<string, Promise<MessagePart>>();
+
+/**
+ * A clipped tool step, whole: a chat loads with the start of each finished step's output, and opening one fetches
+ * the rest, which then stays in its message.
+ */
+export function loadFullPart(conversationId: string, messageId: string, partId: string): Promise<MessagePart> {
+  const key = `${messageId}/${partId}`;
+  const pending = partLoads.get(key);
+  if (pending) return pending;
+  const load = api
+    .getConversationPart(conversationId, messageId, partId)
+    .then((full) => {
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [conversationId]: (s.messages[conversationId] ?? []).map((m) =>
+            m.id === messageId ? { ...m, parts: m.parts.map((p) => (p.id === full.id ? full : p)) } : m,
+          ),
+        },
+      }));
+      return full;
+    })
+    .finally(() => partLoads.delete(key));
+  partLoads.set(key, load);
+  return load;
+}
+
 const hasPendingApproval = (messages: Message[]) =>
   messages.some((m) => m.parts.some((p) => p.type === "approval" && p.status === "pending"));
 

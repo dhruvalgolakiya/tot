@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronRight, ExternalLink, LoaderCircle } from "lucide-react";
 import {
   clipOutput,
   firstUrl,
   toolDisplayStatus,
+  toolHasDetails,
   toolIcon,
   toolInputText,
   toolTitle,
   type ToolPart as ToolPartType,
 } from "../lib/tools";
+import { errorMessage } from "../lib/api";
+import { loadFullPart } from "../store";
 import { TickText } from "./ui/TickText";
 import { ToolOutput } from "./ToolOutput";
 import { ToolStatusIcon } from "./ToolStatusIcon";
@@ -23,12 +26,28 @@ type ToolPartProps = {
 /** Muted, expandable line for one tool call — ChatGPT style, not a boxed card. */
 export function ToolPart({ part, live }: ToolPartProps) {
   const [open, setOpen] = useState(false);
+  // A clipped call (the chat loaded the start of its output) fetches the rest once it's opened.
+  const [full, setFull] = useState<{ state: "loading" } | { state: "error"; message: string } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const Icon = toolIcon(part.name);
   const status = toolDisplayStatus(part, live);
-  const input = toolInputText(part);
-  const hasDetails = Boolean(input || part.output);
+  const hasDetails = toolHasDetails(part);
+  const input = open ? toolInputText(part) : "";
   const exposedUrl = part.name === "computer_expose_port" ? firstUrl(part.output) : null;
   const screenshotUrl = part.name === "computer_screenshot" ? firstUrl(part.output) : null;
+
+  useEffect(() => {
+    if (!open || !part.clipped) return;
+    let current = true;
+    setFull({ state: "loading" });
+    loadFullPart(part).then(
+      () => current && setFull(null),
+      (error: unknown) => current && setFull({ state: "error", message: errorMessage(error) }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [open, part, attempt]);
 
   return (
     <div>
@@ -76,6 +95,20 @@ export function ToolPart({ part, live }: ToolPartProps) {
           {input && <ToolOutput label={part.name === "computer_exec" ? "Command" : "Input"} text={clipOutput(input)} />}
           {part.output && (
             <ToolOutput label={part.isError ? "Error" : "Output"} text={clipOutput(part.output)} error={part.isError} />
+          )}
+          {part.clipped && full?.state === "loading" && (
+            <p className="flex items-center gap-1.5 text-xs text-fg-subtle">
+              <LoaderCircle className="size-3.5 animate-spin" />
+              Loading the rest…
+            </p>
+          )}
+          {part.clipped && full?.state === "error" && (
+            <p className="text-xs text-danger">
+              Couldn't load the rest: {full.message}{" "}
+              <button type="button" onClick={() => setAttempt((n) => n + 1)} className="link-muted">
+                Try again
+              </button>
+            </p>
           )}
         </div>
       )}

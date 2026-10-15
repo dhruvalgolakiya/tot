@@ -55,6 +55,7 @@ import type {
   MemoryRepoSummary,
   MemorySyncStatus,
   Message,
+  MessagePart,
   MissionOverview,
   ModelOption,
   MailboxConnectRequest,
@@ -205,7 +206,10 @@ export const api = {
     request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}` : "/conversations"),
   createConversation: (body: CreateConversationRequest) =>
     request<Conversation>("POST", "/conversations", body),
-  getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${seg(id)}`),
+  /** Finished tool calls come clipped (`clipped`); getConversationPart has one whole. */
+  getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${seg(id)}?clip=1`),
+  getConversationPart: (conversationId: string, messageId: string, partId: string) =>
+    request<MessagePart>("GET", `/conversations/${seg(conversationId)}/messages/${seg(messageId)}/parts/${seg(partId)}`),
   updateConversation: (id: string, body: UpdateConversationRequest) =>
     request<Conversation>("PATCH", `/conversations/${seg(id)}`, body),
   /** Tasks: `deleteBranch` also deletes the task's branch, if it was never pushed. */

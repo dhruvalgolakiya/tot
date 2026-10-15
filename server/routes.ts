@@ -59,6 +59,7 @@ import { BrainError, brains } from "./data/brains.ts";
 import { chatWorkspaces } from "./chats/workspace.ts";
 import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { mail, toMailMessage, toSummary } from "./data/mail.ts";
+import { clipMessages } from "./data/clip.ts";
 import { messages } from "./data/messages.ts";
 import { personas, validatePersona } from "./data/personas.ts";
 import { plugins, validatePlugin } from "./data/plugins.ts";
@@ -297,12 +298,24 @@ api.post("/conversations", async (c) => {
 api.get("/conversations/:id", (c) => {
   const id = c.req.param("id");
   const conversation = found(conversations.get(id), "Chat not found.");
+  // Clients that can open a clipped tool call ask for clip=1; others (older phones, paired devices) get every part whole.
+  const clip = c.req.query("clip") === "1";
+  const list = messages.listByConversation(id);
   const detail: ConversationDetail = {
     conversation: toPublicConversation(conversation),
-    messages: messages.listByConversation(id),
+    messages: clip ? clipMessages(list) : list,
     activeRunId: runRegistry.activeFor(id)?.id ?? null,
   };
   return c.json(detail);
+});
+
+// One part of a message, whole: a clipped chat's tool call when it's opened. A reply still being written is read live.
+api.get("/conversations/:id/messages/:messageId/parts/:partId", (c) => {
+  const { id, messageId, partId } = c.req.param();
+  found(conversations.get(id), "Chat not found.");
+  const run = runRegistry.activeFor(id);
+  const live = run?.messageId === messageId ? run.reply?.().parts.find((part) => part.id === partId) : undefined;
+  return c.json(found(live ?? messages.part(id, messageId, partId), "That step isn't in this chat."));
 });
 
 api.patch("/conversations/:id", async (c) => {

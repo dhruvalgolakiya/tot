@@ -353,6 +353,16 @@ export function toolInputText(part: ToolPart): string {
   }
 }
 
+/** Whether an expanded tool card has anything to show (toolInputText or output), without building the input text. */
+export function toolHasDetails(part: ToolPart): boolean {
+  if (part.output) return true;
+  const { input } = part;
+  if (input === undefined || input === null) return false;
+  if (typeof input === "string") return input.length > 0;
+  if (typeof input === "object") return Object.keys(input).length > 0;
+  return true;
+}
+
 export type ToolDisplayStatus = "running" | "done" | "error" | "interrupted";
 
 /** A tool still "running" in a message that is no longer streaming was cut off. */

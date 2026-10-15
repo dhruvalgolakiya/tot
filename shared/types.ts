@@ -301,6 +301,15 @@ export type MessagePart =
       output?: string;
       isError?: boolean;
       status: ToolStatus;
+      /**
+       * Set when the chat was loaded clipped (GET /api/conversations/:id?clip=1) and this call's output, or a long
+       * string in its input, was cut to its start: GET /api/conversations/:id/messages/:messageId/parts/:partId has it whole.
+       */
+      clipped?: boolean;
+      /** With `clipped`: the whole output's length in characters, when it was cut. */
+      outputChars?: number;
+      /** With `clipped`: the whole input's length in characters (as JSON unless it's a string), when it was cut. */
+      inputChars?: number;
     }
   | {
       type: "notice";
@@ -1085,7 +1094,9 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //
 // GET    /api/conversations[?agentId=]        -> Conversation[]  (updatedAt desc)
 // POST   /api/conversations                   CreateConversationRequest -> Conversation
-// GET    /api/conversations/:id               -> ConversationDetail
+// GET    /api/conversations/:id[?clip=1]      -> ConversationDetail  (clip=1: finished messages' tool parts carry the start of
+//                                              their output and long input strings, marked `clipped`)
+// GET    /api/conversations/:id/messages/:messageId/parts/:partId -> MessagePart  (the whole part, e.g. a clipped tool call)
 // PATCH  /api/conversations/:id               UpdateConversationRequest -> Conversation  (projectId moves it and its tasks)
 // DELETE /api/conversations/:id               -> { ok: true }
 // POST   /api/conversations/:id/messages      SendMessageRequest -> SendMessageResponse

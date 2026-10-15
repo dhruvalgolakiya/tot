@@ -21,6 +21,7 @@ import type {
   MemoryFile,
   MemoryRepoSummary,
   Message,
+  MessagePart,
   MissionOverview,
   ModelOption,
   Persona,
@@ -164,7 +165,10 @@ export const api = {
   listAgents: () => request<Agent[]>("GET", "/agents"),
   listConversations: (agentId?: string) => request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}` : "/conversations"),
   createConversation: (body: CreateConversationRequest) => request<Conversation>("POST", "/conversations", body),
-  getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${seg(id)}`),
+  /** Finished tool steps come clipped (`clipped`); getConversationPart has one whole. An older TOT ignores clip and sends them whole. */
+  getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${seg(id)}?clip=1`),
+  getConversationPart: (conversationId: string, messageId: string, partId: string) =>
+    request<MessagePart>("GET", `/conversations/${seg(conversationId)}/messages/${seg(messageId)}/parts/${seg(partId)}`),
   updateConversation: (id: string, body: UpdateConversationRequest) => request<Conversation>("PATCH", `/conversations/${seg(id)}`, body),
   deleteConversation: (id: string) => request<Ok>("DELETE", `/conversations/${seg(id)}`),
   sendMessage: (id: string, body: SendMessageRequest) => request<SendMessageResponse>("POST", `/conversations/${seg(id)}/messages`, body),

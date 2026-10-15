@@ -93,6 +93,17 @@ export const messages = {
     return row ? toMessage(row) : null;
   },
 
+  /** One part of a chat's message, whole (a clipped chat's tool call, opened); null when there's no such part. */
+  part(conversationId: string, messageId: string, partId: string): MessagePart | null {
+    const row = db
+      .prepare(
+        `SELECT part.value AS value FROM messages, json_each(messages.parts) AS part
+         WHERE messages.id = ? AND messages.conversation_id = ? AND json_extract(part.value, '$.id') = ?`,
+      )
+      .get(messageId, conversationId, partId) as Row | undefined;
+    return parseJson<MessagePart | null>(row?.value, null);
+  },
+
   /** A reply's place in its provider session (the session, and the provider's ref for the turn), for forks. */
   setProviderRef(id: string, ref: { session: string; ref: string }): void {
     db.prepare(`UPDATE messages SET provider_ref = ? WHERE id = ?`).run(JSON.stringify(ref), id);

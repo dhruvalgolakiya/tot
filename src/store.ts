@@ -14,6 +14,7 @@ import type {
   GitHubStatus,
   MailSummary,
   Message,
+  MessagePart,
   ModelOption,
   Persona,
   ProviderId,
@@ -916,6 +917,51 @@ export async function loadConversation(id: string, { attach = true } = {}) {
 
 export function retryConversation(id: string) {
   void loadConversation(id);
+}
+
+type ToolPartData = Extract<MessagePart, { type: "tool" }>;
+
+/** Clipped tool calls being fetched whole, by message and part id. */
+const partLoads = new Map<string, Promise<ToolPartData>>();
+
+/** The chat and message a part is in: the message holding this very object, else one with its id (the open chat first). */
+function partOwner(part: MessagePart): { conversationId: string; messageId: string } | null {
+  const { messages, currentId } = get();
+  const chats = Object.entries(messages);
+  for (const [conversationId, list] of chats) {
+    const message = list.find((m) => m.parts.includes(part));
+    if (message) return { conversationId, messageId: message.id };
+  }
+  chats.sort(([a], [b]) => Number(b === currentId) - Number(a === currentId));
+  for (const [conversationId, list] of chats) {
+    const message = list.find((m) => m.parts.some((p) => p.id === part.id && p.type === part.type));
+    if (message) return { conversationId, messageId: message.id };
+  }
+  return null;
+}
+
+/**
+ * A clipped tool call, whole. A chat loads with the start of each finished call's output (the UI shows one line per
+ * call until it's opened); opening one fetches the rest, which then stays in its message.
+ */
+export function loadFullPart(part: ToolPartData): Promise<ToolPartData> {
+  const owner = partOwner(part);
+  if (!owner) return Promise.reject(new Error("This step isn't loaded anymore."));
+  const key = `${owner.messageId}/${part.id}`;
+  const pending = partLoads.get(key);
+  if (pending) return pending;
+  const load = api
+    .getConversationPart(owner.conversationId, owner.messageId, part.id)
+    .then((full) => {
+      if (full.type !== "tool") throw new Error("This step isn't a tool call anymore.");
+      setMessages(owner.conversationId, (list) =>
+        list.map((m) => (m.id === owner.messageId ? { ...m, parts: m.parts.map((p) => (p.id === full.id ? full : p)) } : m)),
+      );
+      return full;
+    })
+    .finally(() => partLoads.delete(key));
+  partLoads.set(key, load);
+  return load;
 }
 
 function forgetConversation(id: string) {

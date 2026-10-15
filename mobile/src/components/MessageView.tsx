@@ -1,9 +1,9 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Attachment, Message, MessagePart } from "@shared/types";
 import { authHeaders, errorMessage } from "../lib/api";
 import { useConnection } from "../lib/connection";
-import { answerApproval } from "../lib/store";
+import { answerApproval, loadFullPart } from "../lib/store";
 import { font, type as typeScale, useColors } from "../theme";
 import { Markdown } from "./Markdown";
 import { TaskGroupCard } from "./tasks";
@@ -50,7 +50,7 @@ function MessageViewBase({ message, streaming }: { message: Message; streaming: 
         const run = taskRun(message.parts, index);
         if (run === null) return null;
         if (run.length) return <TaskGroupCard key={part.id} taskIds={run} />;
-        return <PartView key={part.id} part={part} conversationId={message.conversationId} />;
+        return <PartView key={part.id} part={part} conversationId={message.conversationId} messageId={message.id} />;
       })}
       {streaming && empty ? <Thinking label="Thinking" /> : null}
       {message.error && message.status === "error" ? (
@@ -88,26 +88,22 @@ function taskRun(parts: MessagePart[], index: number): string[] | null {
   return ids;
 }
 
-function PartView({ part, conversationId }: { part: MessagePart; conversationId: string }) {
+function PartView({ part, conversationId, messageId }: { part: MessagePart; conversationId: string; messageId: string }) {
   const colors = useColors();
   switch (part.type) {
     case "text":
       return part.text ? <Markdown text={part.text} /> : null;
     case "reasoning":
       return (
-        <Expandable title={part.durationMs ? `Thought for ${Math.max(1, Math.round(part.durationMs / 1000))}s` : "Thinking"} icon="clock" body={part.text} />
-      );
-    case "tool":
-      return (
         <Expandable
-          title={part.title || part.name}
-          icon={part.status === "error" || part.isError ? "alert-circle" : part.status === "running" ? undefined : "check"}
-          running={part.status === "running"}
-          danger={part.status === "error" || part.isError}
-          body={[part.input !== undefined ? formatInput(part.input) : "", part.output ?? ""].filter(Boolean).join("\n\n")}
-          mono
+          title={part.durationMs ? `Thought for ${Math.max(1, Math.round(part.durationMs / 1000))}s` : "Thinking"}
+          icon="clock"
+          hasBody={Boolean(part.text)}
+          body={() => part.text}
         />
       );
+    case "tool":
+      return <ToolStep part={part} conversationId={conversationId} messageId={messageId} />;
     case "notice":
       return (
         <Text style={[typeScale.ui, { color: part.kind === "warning" ? colors.warning : colors.fgSubtle }]}>{part.text}</Text>
@@ -126,6 +122,48 @@ function PartView({ part, conversationId }: { part: MessagePart; conversationId:
   }
 }
 
+/** A tool step: its body (input and output) is only built once it's opened, and a clipped one fetches the rest then. */
+function ToolStep({ part, conversationId, messageId }: { part: Extract<MessagePart, { type: "tool" }>; conversationId: string; messageId: string }) {
+  const colors = useColors();
+  const [open, setOpen] = useState(false);
+  const [full, setFull] = useState<{ state: "loading" } | { state: "error"; message: string } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!open || !part.clipped) return;
+    let current = true;
+    setFull({ state: "loading" });
+    loadFullPart(conversationId, messageId, part.id).then(
+      () => current && setFull(null),
+      (e: unknown) => current && setFull({ state: "error", message: errorMessage(e) }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [open, part, conversationId, messageId, attempt]);
+  const hasInput = part.input !== undefined && part.input !== null && (typeof part.input !== "object" || Object.keys(part.input).length > 0);
+  return (
+    <Expandable
+      title={part.title || part.name}
+      icon={part.status === "error" || part.isError ? "alert-circle" : part.status === "running" ? undefined : "check"}
+      running={part.status === "running"}
+      danger={part.status === "error" || part.isError}
+      hasBody={hasInput || Boolean(part.output)}
+      body={() => [hasInput ? formatInput(part.input) : "", part.output ?? ""].filter(Boolean).join("\n\n")}
+      onOpenChange={setOpen}
+      footer={
+        part.clipped && full?.state === "loading" ? (
+          <Thinking label="Loading the rest" />
+        ) : part.clipped && full?.state === "error" ? (
+          <Pressable onPress={() => setAttempt((n) => n + 1)} hitSlop={6}>
+            <Text style={[typeScale.xs, { color: colors.danger }]}>Couldn't load the rest: {full.message} Tap to try again.</Text>
+          </Pressable>
+        ) : null
+      }
+      mono
+    />
+  );
+}
+
 function formatInput(input: unknown): string {
   if (typeof input === "string") return input;
   try {
@@ -135,25 +173,52 @@ function formatInput(input: unknown): string {
   }
 }
 
-/** A tool step or the agent's thinking: one muted line, opened with a tap. */
-function Expandable({ title, body, icon, running, danger, mono }: { title: string; body: string; icon?: Parameters<typeof Icon>[0]["name"]; running?: boolean; danger?: boolean; mono?: boolean }) {
+/** A tool step or the agent's thinking: one muted line, opened with a tap. `body` is only built while it's open. */
+function Expandable({
+  title,
+  hasBody,
+  body,
+  icon,
+  running,
+  danger,
+  mono,
+  onOpenChange,
+  footer,
+}: {
+  title: string;
+  hasBody: boolean;
+  body: () => string;
+  icon?: Parameters<typeof Icon>[0]["name"];
+  running?: boolean;
+  danger?: boolean;
+  mono?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  footer?: ReactNode;
+}) {
   const colors = useColors();
   const [open, setOpen] = useState(false);
   const color = danger ? colors.danger : colors.fgSubtle;
+  const text = open ? body() : "";
+  const toggle = () => {
+    if (!hasBody) return;
+    setOpen(!open);
+    onOpenChange?.(!open);
+  };
   return (
     <View>
-      <Pressable onPress={() => body && setOpen(!open)} hitSlop={6} style={styles.line}>
+      <Pressable onPress={toggle} hitSlop={6} style={styles.line}>
         {running ? <ActivityIndicator size="small" color={colors.fgSubtle} style={{ transform: [{ scale: 0.7 }] }} /> : icon ? <Icon name={icon} size={13} color={color} /> : null}
         <Text numberOfLines={1} style={[typeScale.ui, { color, flex: 1 }]}>
           {title}
         </Text>
-        {body ? <Icon name={open ? "chevron-up" : "chevron-down"} size={13} color={colors.fgFaint} /> : null}
+        {hasBody ? <Icon name={open ? "chevron-up" : "chevron-down"} size={13} color={colors.fgFaint} /> : null}
       </Pressable>
       {open ? (
         <Text selectable numberOfLines={40} style={[mono ? { fontFamily: font.mono, fontSize: 12, lineHeight: 18 } : typeScale.ui, { color: colors.fgMuted, marginTop: 6, marginLeft: 21 }]}>
-          {body.length > 4000 ? `${body.slice(0, 4000)}…` : body}
+          {text.length > 4000 ? `${text.slice(0, 4000)}…` : text}
         </Text>
       ) : null}
+      {open && footer ? <View style={{ marginTop: 6, marginLeft: 21 }}>{footer}</View> : null}
     </View>
   );
 }
