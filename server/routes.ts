@@ -272,7 +272,8 @@ api.get("/agents/:id/computer/screens/:file", (c) => {
 // Conversations
 // ---------------------------------------------------------------------------
 
-api.get("/conversations", (c) => c.json(conversations.list(c.req.query("agentId") || undefined)));
+// slim=1: tasks come trimmed to what lists show (their chat's own load has them whole); without it, as before.
+api.get("/conversations", (c) => c.json(conversations.list(c.req.query("agentId") || undefined, { slim: c.req.query("slim") === "1" })));
 
 api.post("/conversations", async (c) => {
   const request = await body<CreateConversationRequest>(c).catch(() => ({}) as CreateConversationRequest);

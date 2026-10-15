@@ -163,7 +163,8 @@ export const api = {
   upload,
 
   listAgents: () => request<Agent[]>("GET", "/agents"),
-  listConversations: (agentId?: string) => request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}` : "/conversations"),
+  /** Tasks come trimmed to what lists show (`task.partial`); a task's own load and its events have it whole. */
+  listConversations: (agentId?: string) => request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}&slim=1` : "/conversations?slim=1"),
   createConversation: (body: CreateConversationRequest) => request<Conversation>("POST", "/conversations", body),
   /** Finished tool steps come clipped (`clipped`); getConversationPart has one whole. An older TOT ignores clip and sends them whole. */
   getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${seg(id)}?clip=1`),

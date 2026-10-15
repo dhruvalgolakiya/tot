@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ChatWorkspace, Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "../../shared/types.ts";
+import type { ChatWorkspace, ComputerSummary, Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "../../shared/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 
@@ -20,6 +20,38 @@ export const ORCHESTRATION_DEFAULTS: Pick<TaskInfo, "role" | "tier" | "provider"
 function toTaskInfo(value: unknown): TaskInfo | null {
   const task = parseJson<TaskInfo | null>(value, null);
   return task && { ...ORCHESTRATION_DEFAULTS, ...task };
+}
+
+/**
+ * A task as chat lists show it (the sidebar, task cards, mission rows): its state whole, but of its brief only the
+ * goal, of its result the summary, first findings and sources, and no handoff. Marked `partial`; the chat's own load
+ * and its live events carry it whole.
+ */
+export function slimTask(task: TaskInfo): TaskInfo {
+  return {
+    ...task,
+    brief: task.brief && { goal: task.brief.goal, constraints: [], context: [], done: "" },
+    result: task.result && { ...task.result, findings: task.result.findings.slice(0, 3), filesChanged: [], openQuestions: [] },
+    handoff: null,
+    partial: true,
+  };
+}
+
+/** The columns a chat list reads: not the frozen system prompt, the provider session, or what its next turn is told. */
+const LIST_COLUMNS = "id, agent_id, routine_id, title, model_id, provider, pinned, created_at, updated_at, origin, kind, parent_id, task, forked_from, project_id, lead, workspace";
+
+/** Each agent's computer, read once per call however many of its chats are in the rows. */
+function computersOnce(): (agentId: string) => ComputerSummary | null {
+  const seen = new Map<string, ComputerSummary | null>();
+  return (agentId) => {
+    if (!seen.has(agentId)) seen.set(agentId, getComputerSummary(agentId));
+    return seen.get(agentId)!;
+  };
+}
+
+function toRecords(rows: Row[]): ConversationRecord[] {
+  const computerOf = computersOnce();
+  return rows.map((row) => toRecord(row, computerOf));
 }
 
 /** Server-side view of a conversation, including provider session state. */
@@ -44,7 +76,7 @@ export interface MergeNote {
   at: number;
 }
 
-function toRecord(row: Row): ConversationRecord {
+function toRecord(row: Row, computerOf: (agentId: string) => ComputerSummary | null = getComputerSummary): ConversationRecord {
   const id = String(row.id);
   const agentId = String(row.agent_id);
   return {
@@ -57,7 +89,7 @@ function toRecord(row: Row): ConversationRecord {
     pinned: Boolean(row.pinned),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
-    computer: getComputerSummary(agentId),
+    computer: computerOf(agentId),
     origin: parseJson<ConversationOrigin | null>(row.origin, null),
     kind: (row.kind as ConversationKind | null) ?? "chat",
     parentId: (row.parent_id as string | null) ?? null,
@@ -104,13 +136,18 @@ type ConversationPatch = Partial<{
 }>;
 
 export const conversations = {
-  list(agentId?: string): Conversation[] {
+  /** Newest first. `slim`: tasks come trimmed to what lists show (slimTask), and only the columns a list needs are read. */
+  list(agentId?: string, { slim = false } = {}): Conversation[] {
+    const columns = slim ? LIST_COLUMNS : "*";
     const rows = (
       agentId
-        ? db.prepare(`SELECT * FROM conversations WHERE agent_id = ? ORDER BY updated_at DESC`).all(agentId)
-        : db.prepare(`SELECT * FROM conversations ORDER BY updated_at DESC`).all()
+        ? db.prepare(`SELECT ${columns} FROM conversations WHERE agent_id = ? ORDER BY updated_at DESC`).all(agentId)
+        : db.prepare(`SELECT ${columns} FROM conversations ORDER BY updated_at DESC`).all()
     ) as Row[];
-    return rows.map((row) => toPublicConversation(toRecord(row)));
+    return toRecords(rows).map((record) => {
+      const conversation = toPublicConversation(record);
+      return slim && conversation.task ? { ...conversation, task: slimTask(conversation.task) } : conversation;
+    });
   },
 
   /** Tasks, newest first; optionally one agent's, or those started from one chat. */
@@ -126,12 +163,12 @@ export const conversations = {
       args.push(filter.parentId);
     }
     const rows = db.prepare(`SELECT * FROM conversations WHERE ${where.join(" AND ")} ORDER BY created_at DESC, rowid DESC`).all(...args) as Row[];
-    return rows.map(toRecord);
+    return toRecords(rows);
   },
 
   /** Every chat and task in a project, any agent's, newest first. */
   inProject(projectId: string): ConversationRecord[] {
-    return (db.prepare(`SELECT * FROM conversations WHERE project_id = ? ORDER BY updated_at DESC`).all(projectId) as Row[]).map(toRecord);
+    return toRecords(db.prepare(`SELECT * FROM conversations WHERE project_id = ? ORDER BY updated_at DESC`).all(projectId) as Row[]);
   },
 
   /** Module 11: the id of the project's Lead chat, or null (server/lead/). */
@@ -142,12 +179,12 @@ export const conversations = {
 
   /** Chats forked from this one. */
   forksOf(id: string): ConversationRecord[] {
-    return (db.prepare(`SELECT * FROM conversations WHERE json_extract(forked_from, '$.conversationId') = ?`).all(id) as Row[]).map(toRecord);
+    return toRecords(db.prepare(`SELECT * FROM conversations WHERE json_extract(forked_from, '$.conversationId') = ?`).all(id) as Row[]);
   },
 
   /** Chats with results they haven't been woken about yet. */
   wakePending(): ConversationRecord[] {
-    return (db.prepare(`SELECT * FROM conversations WHERE wake_pending = 1`).all() as Row[]).map(toRecord);
+    return toRecords(db.prepare(`SELECT * FROM conversations WHERE wake_pending = 1`).all() as Row[]);
   },
 
   get(id: string): ConversationRecord | null {

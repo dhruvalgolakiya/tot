@@ -135,5 +135,82 @@ const evil = { host: "tot.evil.example" };
 const refused = [(await send(`/conversations/${chat.id}?clip=1`, evil)).status, (await send(`/conversations/${chat.id}/messages/${reply.id}/parts/tool-0`, evil)).status];
 check("the whole-part route is guarded like the chat (a foreign Host is refused by both)", refused.every((status) => status === 403), refused.join());
 
+// --- 2. The slim chat list ---
+
+const { ORCHESTRATION_DEFAULTS } = await import("./data/conversations.ts");
+const { computers } = await import("./data/computers.ts");
+computers.create({ agentId: agent.id, kind: "local", state: "running", label: "This Mac" });
+const findings = Array.from({ length: 12 }, (_, i) => `Finding ${i}: ${big("detail", 300)}`);
+const task = conversations.create({
+  agentId: agent.id,
+  modelId: "auto",
+  title: "Research task",
+  kind: "task",
+  parentId: chat.id,
+  task: {
+    ...ORCHESTRATION_DEFAULTS,
+    goal: "Find out",
+    status: "done",
+    progress: "Wrapping up",
+    plan: [{ text: "Look", done: true }],
+    question: null,
+    repo: null,
+    queuePosition: null,
+    startedAt: 1,
+    finishedAt: 2,
+    summary: big("summary", 3000),
+    turns: 3,
+    usage: { inputTokens: 10, outputTokens: 20 },
+    brief: { goal: "Find out what's slow", constraints: [big("constraint", 800)], context: [big("context", 800)], done: big("done", 400) },
+    result: { summary: big("result", 2000), findings, filesChanged: ["a.ts", "b.ts"], openQuestions: [big("question", 600)], confidence: "high", sources: ["https://a.example", "https://b.example"] },
+    handoff: {
+      goal: "Find out",
+      doneSoFar: [big("did", 1500)],
+      decisions: [],
+      plan: [],
+      files: [],
+      tests: [],
+      openQuestions: [],
+      nextStep: "Ship",
+      from: { provider: "claude", model: "claude-opus-5-5" },
+      createdAt: 3,
+    },
+  },
+});
+conversations.update(chat.id, { systemPrompt: big("prompt", 20_000), childResults: [big("child", 4000)], mergeNotes: [{ forkId: "f", note: big("note", 4000), at: 1 }] });
+
+res = await send("/conversations");
+const fullListText = await res.text();
+const fullList = JSON.parse(fullListText) as Conversation[];
+res = await send("/conversations?slim=1");
+const slimText = await res.text();
+const slimList = JSON.parse(slimText) as Conversation[];
+console.log(`      list: ${kb(fullListText.length)} whole, ${kb(slimText.length)} with slim=1`);
+check(
+  "without slim=1 the list comes exactly as before",
+  fullListText === JSON.stringify(conversations.list().map((c) => c)) && fullList.find((c) => c.id === task.id)!.task!.handoff !== null,
+);
+const slimTask = slimList.find((c) => c.id === task.id)!.task!;
+const wholeTask = fullList.find((c) => c.id === task.id)!.task!;
+check("slim=1 marks tasks partial", slimTask.partial === true && wholeTask.partial === undefined);
+check(
+  "a slim task keeps its state, brief goal, result summary, first three findings and sources",
+  slimTask.status === "done" && slimTask.goal === "Find out" && slimTask.progress === "Wrapping up" && slimTask.plan.length === 1 &&
+    slimTask.summary === wholeTask.summary && slimTask.brief?.goal === "Find out what's slow" &&
+    slimTask.result?.summary === wholeTask.result?.summary && slimTask.result?.findings.length === 3 &&
+    slimTask.result?.findings[0] === findings[0] && slimTask.result?.sources.length === 2 && slimTask.result.confidence === "high",
+);
+check(
+  "…and drops the rest of the brief, the result and the handoff",
+  slimTask.brief?.constraints.length === 0 && slimTask.brief.context.length === 0 && slimTask.result?.openQuestions.length === 0 &&
+    slimTask.result.filesChanged.length === 0 && slimTask.handoff === null,
+);
+check("a chat that isn't a task comes the same either way", JSON.stringify(slimList.find((c) => c.id === chat.id)) === JSON.stringify(fullList.find((c) => c.id === chat.id)));
+check("every chat in the list has its agent's computer", slimList.every((c) => c.computer?.label === "This Mac") && fullList.every((c) => c.computer?.label === "This Mac"));
+check("slim=1 keeps the order and the agent filter", JSON.stringify(slimList.map((c) => c.id)) === JSON.stringify(fullList.map((c) => c.id)) &&
+  ((await (await send(`/conversations?slim=1&agentId=${agent.id}`)).json()) as Conversation[]).length === slimList.length);
+check("slim=1 cuts the list", slimText.length < fullListText.length * 0.6, `${slimText.length} vs ${fullListText.length}`);
+check("the server's own record still has the prompt and notes (only the list skips them)", conversations.get(chat.id)!.systemPrompt!.length === 20_000);
+
 console.log(failures ? `\n${failures} FAILED` : "\nALL PASS");
 process.exit(failures ? 1 : 0);

@@ -1092,7 +1092,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // DELETE /api/routines/:id                    -> { ok: true }
 // POST   /api/routines/:id/run                -> { conversationId, runId }   (run now)
 //
-// GET    /api/conversations[?agentId=]        -> Conversation[]  (updatedAt desc)
+// GET    /api/conversations[?agentId=&slim=1] -> Conversation[]  (updatedAt desc; slim=1: tasks trimmed to what lists show, `partial`)
 // POST   /api/conversations                   CreateConversationRequest -> Conversation
 // GET    /api/conversations/:id[?clip=1]      -> ConversationDetail  (clip=1: finished messages' tool parts carry the start of
 //                                              their output and long input strings, marked `clipped`)
@@ -1466,6 +1466,11 @@ export interface TaskInfo {
   ports?: TaskPorts | null;
   /** Its running preview (a dev server TOT manages). */
   preview?: TaskPreview | null;
+  /**
+   * Set on tasks in a slim chat list (GET /api/conversations?slim=1): of `brief` only the goal, of `result` the summary,
+   * first three findings and sources, and no `handoff`. The task's own load and its live events carry it whole.
+   */
+  partial?: boolean;
 }
 
 export interface TaskRepo {

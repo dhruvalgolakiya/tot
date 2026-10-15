@@ -327,8 +327,53 @@ function sortConversations(list: Conversation[]): Conversation[] {
   return [...list].sort((a, b) => toMs(b.updatedAt) - toMs(a.updatedAt));
 }
 
+/** Plain-data equality (JSON-like values), for keeping unchanged objects as they are. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object" || Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    const other = b as unknown[];
+    return a.length === other.length && a.every((item, index) => sameValue(item, other[index]));
+  }
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every((key) => key in right && sameValue(left[key], right[key]));
+}
+
+/**
+ * A chat as it arrives from the server, against the copy in the store. A slim list's task (`partial`) keeps the whole
+ * task the chat's own load or a live event brought, as long as what the list carries still matches it. When nothing
+ * changed, the stored object itself comes back, so whatever shows it doesn't re-render.
+ */
+function shareConversation(existing: Conversation | undefined, incoming: Conversation): Conversation {
+  let next = incoming;
+  const whole = existing?.task;
+  const partial = incoming.task;
+  if (whole && !whole.partial && partial?.partial && partial.brief?.goal === whole.brief?.goal && partial.result?.summary === whole.result?.summary) {
+    const { partial: _partial, ...rest } = partial;
+    next = { ...incoming, task: { ...rest, brief: whole.brief, result: whole.result, handoff: whole.handoff } };
+  }
+  return existing && sameValue(existing, next) ? existing : next;
+}
+
+/** Whether two lists hold the same objects in the same order. */
+function sameItems<T>(a: T[], b: T[]): boolean {
+  return a.length === b.length && a.every((item, index) => item === b[index]);
+}
+
+/** A list of chats from the server, sharing every unchanged chat (and the list itself, when nothing changed) with `current`. */
+function shareConversations(current: Conversation[], incoming: Conversation[]): Conversation[] {
+  const byId = new Map(current.map((c) => [c.id, c]));
+  const next = sortConversations(incoming.map((c) => shareConversation(byId.get(c.id), c)));
+  return sameItems(next, current) ? current : next;
+}
+
 function upsertConversation(list: Conversation[], conversation: Conversation): Conversation[] {
-  return sortConversations([conversation, ...list.filter((c) => c.id !== conversation.id)]);
+  const existing = list.find((c) => c.id === conversation.id);
+  const next = shareConversation(existing, conversation);
+  if (next === existing) return list;
+  return sortConversations([next, ...list.filter((c) => c.id !== conversation.id)]);
 }
 
 function patchConversation(id: string, patch: Partial<Conversation>) {
@@ -397,8 +442,9 @@ export async function loadAgents() {
 export async function loadConversations({ quiet = false } = {}) {
   try {
     const conversations = await api.listConversations();
+    // Unchanged chats keep their objects, and the list itself when nothing changed, so the sidebar doesn't re-render.
     set((s) => ({
-      conversations: sortConversations([...conversations, ...s.conversations.filter((c) => deviceOf(c.agentId))]),
+      conversations: shareConversations(s.conversations, [...conversations, ...s.conversations.filter((c) => deviceOf(c.agentId))]),
       conversationsState: "ready",
     }));
   } catch (error) {
@@ -1707,7 +1753,7 @@ export function mergeRemote(deviceId: string, agents: Agent[], conversations: Co
   set((s) => ({
     agents: [...s.agents.filter((a) => a.deviceId !== deviceId), ...agents],
     conversations: conversations
-      ? sortConversations([...s.conversations.filter((c) => deviceOf(c.agentId) !== deviceId), ...conversations])
+      ? shareConversations(s.conversations, [...s.conversations.filter((c) => deviceOf(c.agentId) !== deviceId), ...conversations])
       : s.conversations,
   }));
 }

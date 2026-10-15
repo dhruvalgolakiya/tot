@@ -99,6 +99,26 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return copy;
 }
 
+/**
+ * A chat from the TOT, against the copy here: a slim list's task (`partial`, GET /conversations?slim=1) keeps the whole
+ * task the chat's own load or an event brought, as long as what the list carries still matches it.
+ */
+function withWholeTask(existing: Conversation | undefined, incoming: Conversation): Conversation {
+  const whole = existing?.task;
+  const partial = incoming.task;
+  if (!whole || whole.partial || !partial?.partial || partial.brief?.goal !== whole.brief?.goal || partial.result?.summary !== whole.result?.summary) return incoming;
+  const { partial: _partial, ...rest } = partial;
+  return { ...incoming, task: { ...rest, brief: whole.brief, result: whole.result, handoff: whole.handoff } };
+}
+
+const upsertChat = (list: Conversation[], chat: Conversation) => upsert(list, withWholeTask(list.find((c) => c.id === chat.id), chat));
+
+/** A list of chats from the TOT, merged with what's here the same way. */
+function mergeChats(current: Conversation[], incoming: Conversation[]): Conversation[] {
+  const byId = new Map(current.map((c) => [c.id, c]));
+  return incoming.map((c) => withWholeTask(byId.get(c.id), c));
+}
+
 // ---------------------------------------------------------------------------
 // Loading
 // ---------------------------------------------------------------------------
@@ -133,7 +153,7 @@ export async function loadAll(): Promise<void> {
       runningAgents: Object.fromEntries(allLive.flatMap((l) => l.running.map((r) => [r.agentId, true as const]))),
       pendingApprovals: Object.fromEntries(allLive.flatMap((l) => l.waiting.map((w) => [w.conversationId, true as const]))),
       agents: [...agents, ...remote.flatMap((r) => r.agents), ...remembered.agents],
-      conversations: [...conversations, ...remote.flatMap((r) => r.conversations), ...remembered.conversations],
+      conversations: mergeChats(before.conversations, [...conversations, ...remote.flatMap((r) => r.conversations), ...remembered.conversations]),
       projects: [...projects, ...remote.flatMap((r) => r.projects), ...remembered.projects],
       settings,
       models,
@@ -257,7 +277,7 @@ async function refreshDevice(deviceId: string) {
   const mine = (id: string) => deviceOf(id) === deviceId;
   set((s) => ({
     agents: [...s.agents.filter((a) => a.deviceId !== deviceId), ...remote.agents],
-    conversations: [...s.conversations.filter((c) => !mine(c.id)), ...remote.conversations],
+    conversations: mergeChats(s.conversations, [...s.conversations.filter((c) => !mine(c.id)), ...remote.conversations]),
     projects: [...s.projects.filter((p) => p.deviceId !== deviceId), ...remote.projects],
   }));
 }
@@ -267,7 +287,7 @@ export async function loadConversation(id: string, { attach = true } = {}): Prom
   const detail = await api.getConversation(id);
   recentChats = [id, ...recentChats.filter((c) => c !== id)].slice(0, CACHED_CHATS * 2);
   set((s) => ({
-    conversations: upsert(s.conversations, detail.conversation),
+    conversations: upsertChat(s.conversations, detail.conversation),
     messages: { ...s.messages, [id]: detail.messages },
     pendingApprovals: hasPendingApproval(detail.messages) ? { ...s.pendingApprovals, [id]: true } : without(s.pendingApprovals, id),
   }));
@@ -403,11 +423,11 @@ function handleEvent(event: AppEvent, deviceId: string | null) {
       set((s) => ({ knowledgeVersion: s.knowledgeVersion + 1 }));
       break;
     case "conversation":
-      set((s) => ({ conversations: upsert(s.conversations, event.conversation) }));
+      set((s) => ({ conversations: upsertChat(s.conversations, event.conversation) }));
       break;
     case "task": {
       const previous = chatOf(event.conversation.id);
-      set((s) => ({ conversations: upsert(s.conversations, event.conversation) }));
+      set((s) => ({ conversations: upsertChat(s.conversations, event.conversation) }));
       onTask(event.conversation, previous);
       scheduleMission();
       break;
@@ -488,7 +508,7 @@ export async function loadMission(): Promise<void> {
   const failed = results[0]!.status === "rejected" ? errorMessage((results[0] as PromiseRejectedResult).reason) : null;
   set((s) => {
     let conversations = s.conversations;
-    for (const overview of ok) for (const task of overview.tasks) conversations = upsert(conversations, task.conversation);
+    for (const overview of ok) for (const task of overview.tasks) conversations = upsertChat(conversations, task.conversation);
     return {
       conversations,
       mission: {
@@ -597,7 +617,7 @@ function flush() {
         messages = { ...messages, [conversationId]: upsertMessage(list, createAssistantMessage(event)) };
         break;
       case "conversation":
-        conversations = upsert(conversations, event.conversation);
+        conversations = upsertChat(conversations, event.conversation);
         break;
       case "run-end":
         messages = { ...messages, [conversationId]: upsertMessage(list, event.message) };
@@ -649,11 +669,11 @@ export async function sendMessage(text: string, target: { conversationId: string
       }),
     );
     conversationId = conversation.id;
-    set((s) => ({ conversations: upsert(s.conversations, conversation), messages: { ...s.messages, [conversation.id]: [] } }));
+    set((s) => ({ conversations: upsertChat(s.conversations, conversation), messages: { ...s.messages, [conversation.id]: [] } }));
   }
   const response = await api.sendMessage(conversationId, { text, ...(attachments.length ? { attachments } : {}) });
   set((s) => ({
-    conversations: upsert(s.conversations, response.conversation),
+    conversations: upsertChat(s.conversations, response.conversation),
     messages: { ...s.messages, [conversationId]: upsertMessage(s.messages[conversationId] ?? [], response.userMessage) },
   }));
   // A task that was already working took the message as a note: there's no new run to follow.
@@ -670,7 +690,7 @@ export async function steerTask(conversationId: string, text: string) {
 /** A task action's answer is the task itself, shown at once (its `task` event follows). */
 async function taskAction(action: () => Promise<Conversation>): Promise<Conversation> {
   const task = await action();
-  set((s) => ({ conversations: upsert(s.conversations, task) }));
+  set((s) => ({ conversations: upsertChat(s.conversations, task) }));
   scheduleMission();
   return task;
 }
@@ -685,7 +705,7 @@ export const discardTask = (id: string) => taskAction(() => api.discardTask(id))
 /** The project's Lead chat, started the first time (with this agent). Resolves with its id. */
 export async function openLead(projectId: string, agentId?: string | null): Promise<string> {
   const lead = await api.openLead(projectId, agentId);
-  set((s) => ({ conversations: upsert(s.conversations, lead) }));
+  set((s) => ({ conversations: upsertChat(s.conversations, lead) }));
   return lead.id;
 }
 
@@ -717,7 +737,7 @@ export async function answerApproval(conversationId: string, part: ApprovalPart,
 
 export async function setPinned(conversation: Conversation, pinned: boolean) {
   const updated = await api.updateConversation(conversation.id, { pinned });
-  set((s) => ({ conversations: upsert(s.conversations, updated) }));
+  set((s) => ({ conversations: upsertChat(s.conversations, updated) }));
 }
 
 export async function deleteConversation(id: string) {
@@ -743,12 +763,12 @@ export async function loadModels(deviceId?: string | null): Promise<void> {
 /** A chat's model: shown at once, put back (with the reason) when the TOT refuses it. */
 export async function setConversationModel(conversation: Conversation, modelId: string) {
   if (conversation.modelId === modelId) return;
-  set((s) => ({ conversations: upsert(s.conversations, { ...conversation, modelId }) }));
+  set((s) => ({ conversations: upsertChat(s.conversations, { ...conversation, modelId }) }));
   try {
     const updated = await api.updateConversation(conversation.id, { modelId });
-    set((s) => ({ conversations: upsert(s.conversations, updated) }));
+    set((s) => ({ conversations: upsertChat(s.conversations, updated) }));
   } catch (error) {
-    set((s) => ({ conversations: upsert(s.conversations, { ...(s.conversations.find((c) => c.id === conversation.id) ?? conversation), modelId: conversation.modelId }) }));
+    set((s) => ({ conversations: upsertChat(s.conversations, { ...(s.conversations.find((c) => c.id === conversation.id) ?? conversation), modelId: conversation.modelId }) }));
     Alert.alert("Couldn't change the model", errorMessage(error));
   }
 }

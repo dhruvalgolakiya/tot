@@ -202,8 +202,9 @@ export const api = {
   /** Opens (302s) to a fresh desktop-stream URL; call this to get a same-origin link to open in a new tab. */
   agentDesktopUrl: (id: string) => apiUrl(`/agents/${seg(id)}/computer/desktop`, deviceOf(id)),
 
+  /** Tasks come trimmed to what lists show (`task.partial`); a task's own load and its live events have it whole. */
   listConversations: (agentId?: string) =>
-    request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}` : "/conversations"),
+    request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}&slim=1` : "/conversations?slim=1"),
   createConversation: (body: CreateConversationRequest) =>
     request<Conversation>("POST", "/conversations", body),
   /** Finished tool calls come clipped (`clipped`); getConversationPart has one whole. */
