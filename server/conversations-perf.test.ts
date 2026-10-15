@@ -436,5 +436,19 @@ const { ReplySaver, SAVE_INTERVAL_MS } = await import("./agent/reply-saver.ts");
   );
 }
 
+// --- 6. SQLite settings ---
+
+const { db, statement } = await import("./db.ts");
+const pragma = (name: string) => Object.values(db.prepare(`PRAGMA ${name}`).get() as Record<string, unknown>)[0];
+check(
+  "WAL with synchronous NORMAL, a 32 MB cache, a memory map, temp in memory, a capped WAL",
+  pragma("journal_mode") === "wal" && pragma("synchronous") === 1 && pragma("cache_size") === -32000 && pragma("mmap_size") === 268435456 &&
+    pragma("temp_store") === 2 && pragma("journal_size_limit") === 67108864,
+  JSON.stringify(["journal_mode", "synchronous", "cache_size", "mmap_size", "temp_store", "journal_size_limit"].map(pragma)),
+);
+const plan = (db.prepare(`EXPLAIN QUERY PLAN SELECT * FROM conversations ORDER BY updated_at DESC`).all() as { detail: string }[]).map((r) => r.detail).join(" ");
+check("the chat list reads an index on updated_at, not a sort", plan.includes("conversations_by_updated") && !plan.includes("TEMP B-TREE"), plan);
+check("a hot statement is prepared once", statement("SELECT * FROM messages WHERE id = ?") === statement("SELECT * FROM messages WHERE id = ?"));
+
 console.log(failures ? `\n${failures} FAILED` : "\nALL PASS");
 process.exit(failures ? 1 : 0);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ComputerKind, ComputerState, ComputerSummary } from "../../shared/types.ts";
-import { db, parseJson, type Row } from "../db.ts";
+import { db, parseJson, statement, type Row } from "../db.ts";
 
 /** Each agent owns at most one computer, shared by all of its chats. */
 export interface ComputerRecord extends ComputerSummary {
@@ -37,7 +37,7 @@ type ComputerPatch = Partial<Omit<ComputerRecord, "id" | "agentId" | "createdAt"
 
 export const computers = {
   getByAgent(agentId: string): ComputerRecord | null {
-    const row = db.prepare(`SELECT * FROM computers WHERE agent_id = ?`).get(agentId) as Row | undefined;
+    const row = statement(`SELECT * FROM computers WHERE agent_id = ?`).get(agentId) as Row | undefined;
     return row ? toRecord(row) : null;
   },
 

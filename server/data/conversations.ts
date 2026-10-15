@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ChatWorkspace, ComputerSummary, Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "../../shared/types.ts";
-import { db, parseJson, type Row } from "../db.ts";
+import { db, parseJson, statement, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 
 /** Module 02's task fields, for tasks saved before they existed. */
@@ -141,8 +141,8 @@ export const conversations = {
     const columns = slim ? LIST_COLUMNS : "*";
     const rows = (
       agentId
-        ? db.prepare(`SELECT ${columns} FROM conversations WHERE agent_id = ? ORDER BY updated_at DESC`).all(agentId)
-        : db.prepare(`SELECT ${columns} FROM conversations ORDER BY updated_at DESC`).all()
+        ? statement(`SELECT ${columns} FROM conversations WHERE agent_id = ? ORDER BY updated_at DESC`).all(agentId)
+        : statement(`SELECT ${columns} FROM conversations ORDER BY updated_at DESC`).all()
     ) as Row[];
     return toRecords(rows).map((record) => {
       const conversation = toPublicConversation(record);
@@ -188,7 +188,7 @@ export const conversations = {
   },
 
   get(id: string): ConversationRecord | null {
-    const row = db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(id) as Row | undefined;
+    const row = statement(`SELECT * FROM conversations WHERE id = ?`).get(id) as Row | undefined;
     return row ? toRecord(row) : null;
   },
 

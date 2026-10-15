@@ -7,6 +7,7 @@ import { createApp } from "./app.ts";
 import { apps } from "./apps.ts";
 import { computerManager } from "./computer/manager.ts";
 import { effectiveMode, signInReady } from "./access.ts";
+import { optimizeDb } from "./db.ts";
 import { ACCESS_TOKEN, DATA_DIR, ENV_REMOTE, HOST, PORT, RAW_HOST_EXPOSED, VERSION } from "./config.ts";
 import { mailboxes } from "./mail/mailbox.ts";
 import { emailTasks } from "./mail/tasks.ts";
@@ -125,6 +126,7 @@ async function shutdown(signal: string) {
     mailboxes.stopAll(),
   ]);
   server.close();
+  optimizeDb();
   process.exit(0);
 }
 process.on("SIGINT", () => void shutdown("SIGINT"));

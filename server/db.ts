@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { paths } from "./config.ts";
 
 export const db = new DatabaseSync(paths.db);
@@ -8,6 +8,14 @@ db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA foreign_keys = ON;
   PRAGMA busy_timeout = 5000;
+  -- With WAL, NORMAL syncs at checkpoints rather than on every commit (a streaming reply saves often); still safe
+  -- against corruption, and only the last commits can be lost if the machine itself loses power.
+  PRAGMA synchronous = NORMAL;
+  -- A 32 MB page cache, reads through a 256 MB memory map, temp tables in memory, and a WAL file kept under 64 MB.
+  PRAGMA cache_size = -32000;
+  PRAGMA mmap_size = 268435456;
+  PRAGMA temp_store = MEMORY;
+  PRAGMA journal_size_limit = 67108864;
 
   CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
@@ -367,6 +375,8 @@ db.exec(`
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS conversations_by_agent ON conversations(agent_id, updated_at);
+  -- The chat list, every agent's, newest first.
+  CREATE INDEX IF NOT EXISTS conversations_by_updated ON conversations(updated_at);
 
   CREATE TABLE IF NOT EXISTS computers (
     id TEXT PRIMARY KEY,
@@ -805,6 +815,24 @@ if (!hasColumn("conversations", "provider_account")) db.exec(`ALTER TABLE conver
 if (!hasColumn("messages", "account")) db.exec(`ALTER TABLE messages ADD COLUMN account TEXT`);
 
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
+
+/** Statements prepared once and reused, for the hot paths: a chat's load, a streaming reply's saves. */
+const prepared = new Map<string, StatementSync>();
+
+export function statement(sql: string): StatementSync {
+  let found = prepared.get(sql);
+  if (!found) prepared.set(sql, (found = db.prepare(sql)));
+  return found;
+}
+
+/** On shutdown: lets SQLite refresh the query planner's statistics where they've drifted. */
+export function optimizeDb(): void {
+  try {
+    db.exec("PRAGMA optimize");
+  } catch (err) {
+    console.warn("[tot] PRAGMA optimize failed:", err instanceof Error ? err.message : err);
+  }
+}
 
 export function parseJson<T>(value: unknown, fallback: T): T {
   if (typeof value !== "string" || !value) return fallback;

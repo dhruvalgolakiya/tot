@@ -1,5 +1,5 @@
 import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, Usage } from "../../shared/types.ts";
-import { db, parseJson, type Row } from "../db.ts";
+import { db, parseJson, statement, type Row } from "../db.ts";
 
 /** Extras kept in the meta column: how a user message was sent (module 01) and the chats attached to it (module 05). */
 type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "contextChats">;
@@ -46,10 +46,10 @@ function toMessage(row: Row): Message {
 /** Keeps a finished message's text in the chat search index. */
 function index(message: Message): void {
   if (message.status === "streaming") return;
-  db.prepare(`DELETE FROM message_search WHERE message_id = ?`).run(message.id);
+  statement(`DELETE FROM message_search WHERE message_id = ?`).run(message.id);
   const text = messageText(message);
   if (text) {
-    db.prepare(`INSERT INTO message_search (text, message_id, conversation_id) VALUES (?, ?, ?)`).run(
+    statement(`INSERT INTO message_search (text, message_id, conversation_id) VALUES (?, ?, ?)`).run(
       text,
       message.id,
       message.conversationId,
@@ -67,9 +67,7 @@ const bump = (conversationId: string) => versions.set(conversationId, (versions.
 
 export const messages = {
   listByConversation(conversationId: string): Message[] {
-    const rows = db
-      .prepare(`SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at, rowid`)
-      .all(conversationId) as Row[];
+    const rows = statement(`SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at, rowid`).all(conversationId) as Row[];
     return rows.map(toMessage);
   },
 
@@ -98,7 +96,7 @@ export const messages = {
 
   /** Records how TOT handled a user message (its dispatch decision), once that's known. */
   get(id: string): Message | null {
-    const row = db.prepare(`SELECT * FROM messages WHERE id = ?`).get(id) as Row | undefined;
+    const row = statement(`SELECT * FROM messages WHERE id = ?`).get(id) as Row | undefined;
     return row ? toMessage(row) : null;
   },
 
@@ -107,20 +105,18 @@ export const messages = {
    * they were written in this server's run. Equal stamps mean an unchanged chat (its ETag).
    */
   stamp(conversationId: string): string {
-    const row = db
-      .prepare(`SELECT count(*) AS n, coalesce(max(rowid), 0) AS last, coalesce(sum(length(parts)), 0) AS bytes FROM messages WHERE conversation_id = ?`)
-      .get(conversationId) as Row;
+    const row = statement(
+      `SELECT count(*) AS n, coalesce(max(rowid), 0) AS last, coalesce(sum(length(parts)), 0) AS bytes FROM messages WHERE conversation_id = ?`,
+    ).get(conversationId) as Row;
     return `${row.n}:${row.last}:${row.bytes}:${versions.get(conversationId) ?? 0}`;
   },
 
   /** One part of a chat's message, whole (a clipped chat's tool call, opened); null when there's no such part. */
   part(conversationId: string, messageId: string, partId: string): MessagePart | null {
-    const row = db
-      .prepare(
-        `SELECT part.value AS value FROM messages, json_each(messages.parts) AS part
-         WHERE messages.id = ? AND messages.conversation_id = ? AND json_extract(part.value, '$.id') = ?`,
-      )
-      .get(messageId, conversationId, partId) as Row | undefined;
+    const row = statement(
+      `SELECT part.value AS value FROM messages, json_each(messages.parts) AS part
+       WHERE messages.id = ? AND messages.conversation_id = ? AND json_extract(part.value, '$.id') = ?`,
+    ).get(messageId, conversationId, partId) as Row | undefined;
     return parseJson<MessagePart | null>(row?.value, null);
   },
 
@@ -137,7 +133,7 @@ export const messages = {
   /** Overwrites the mutable fields of an assistant message as it streams; returns the size of its parts' JSON. */
   save(message: Message): number {
     const parts = JSON.stringify(message.parts);
-    const { changes } = db.prepare(
+    const { changes } = statement(
       `UPDATE messages SET parts = ?, status = ?, provider = ?, account = ?, model = ?, route_reason = ?, error = ?, usage = ? WHERE id = ?`,
     ).run(
       parts,
