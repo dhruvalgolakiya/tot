@@ -18,8 +18,11 @@ const run = promisify(execFile);
 const BASE = `http://127.0.0.1:${EXECUTOR_PORT}`;
 const SCOPE_DIR = join(paths.executorData, "scope");
 const START_TIMEOUT_MS = 20_000;
-/** Short, so an app just added in Executor shows up when Settings is reopened. */
-const LIST_CACHE_MS = 3_000;
+/**
+ * Settings and every screen ask for the status often. Connecting or removing an app from TOT drops the cache at once
+ * (appsChanged, with the `apps` event); one added in Executor's own page shows up within this long.
+ */
+const LIST_CACHE_MS = 30_000;
 
 let state: AppsStatus["state"] = "not-installed";
 let error: string | null = null;
@@ -29,6 +32,8 @@ let attachedPid: number | null = null;
 let stopping = false;
 let lastRestart = 0;
 let listCache: { at: number; apps: AppConnection[] } | null = null;
+/** The installed Executor's version, read once until setup installs it again. */
+let versionCache: { version: string | null } | null = null;
 const log: string[] = [];
 
 function enabled(): boolean {
@@ -54,11 +59,15 @@ function binary(): string | null {
 }
 
 function installedVersion(): string | null {
+  if (versionCache) return versionCache.version;
+  let version: string | null = null;
   try {
-    return JSON.parse(readFileSync(join(paths.executorRuntime, "node_modules", "executor", "package.json"), "utf8")).version ?? null;
+    version = JSON.parse(readFileSync(join(paths.executorRuntime, "node_modules", "executor", "package.json"), "utf8")).version ?? null;
   } catch {
-    return null;
+    // Not installed (yet).
   }
+  versionCache = { version };
+  return version;
 }
 
 function token(): string | null {
@@ -209,11 +218,16 @@ function lastWords(fallback: string): string {
 async function install(): Promise<void> {
   mkdirSync(paths.executorRuntime, { recursive: true });
   // A pinned version, without install scripts (the package needs none).
-  await run(
-    "npm",
-    ["install", "--prefix", paths.executorRuntime, `executor@${EXECUTOR_VERSION}`, "--ignore-scripts", "--no-audit", "--no-fund"],
-    { env: { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR }, timeout: 10 * 60_000 },
-  );
+  try {
+    await run(
+      "npm",
+      ["install", "--prefix", paths.executorRuntime, `executor@${EXECUTOR_VERSION}`, "--ignore-scripts", "--no-audit", "--no-fund"],
+      { env: { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR }, timeout: 10 * 60_000 },
+    );
+  } finally {
+    // Read the version again, whether or not the install got all the way.
+    versionCache = null;
+  }
   if (!binary()) throw new Error("Executor installed, but its program for this computer wasn't found.");
 }
 

@@ -504,5 +504,19 @@ const missing = await staticApp.request("/assets/gone-999.js");
 check("the page answering for a missing asset isn't cached as one", missing.headers.get("cache-control") === "no-cache");
 rmSync(site, { recursive: true, force: true });
 
+// --- 8. Apps: the installed Executor's version is read once ---
+
+{
+  const { apps } = await import("./apps.ts");
+  const { paths } = await import("./config.ts");
+  const manifest = join(paths.executorRuntime, "node_modules", "executor", "package.json");
+  mkdirSync(join(paths.executorRuntime, "node_modules", "executor"), { recursive: true });
+  writeFileSync(manifest, JSON.stringify({ version: "1.2.3" }));
+  const first = await apps.status();
+  writeFileSync(manifest, JSON.stringify({ version: "9.9.9" }));
+  const second = await apps.status();
+  check("the apps status reads the installed version once (until setup installs again)", first.version === "1.2.3" && second.version === "1.2.3", `${first.version} ${second.version}`);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nALL PASS");
 process.exit(failures ? 1 : 0);
