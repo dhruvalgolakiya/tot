@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { LucideProvider } from "lucide-react";
+import "./fonts.css";
 import "./index.css";
 import App from "./App";
 import { totDesktop } from "./lib/desktop";
