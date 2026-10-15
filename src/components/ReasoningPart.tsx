@@ -44,7 +44,7 @@ export function ReasoningPart({ part, active }: ReasoningPartProps) {
       )}
       {open && hasText && (
         <div className="mt-1.5 mb-1 border-l-2 border-hairline pl-4">
-          <LazyMarkdown text={part.text} muted />
+          <LazyMarkdown text={part.text} muted live={active} />
         </div>
       )}
     </div>
