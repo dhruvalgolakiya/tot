@@ -1,6 +1,7 @@
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type {
   BrainAccess,
@@ -59,7 +60,7 @@ import { BrainError, brains } from "./data/brains.ts";
 import { chatWorkspaces } from "./chats/workspace.ts";
 import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { mail, toMailMessage, toSummary } from "./data/mail.ts";
-import { clipMessages } from "./data/clip.ts";
+import { clipMessage, clipMessages } from "./data/clip.ts";
 import { messages } from "./data/messages.ts";
 import { personas, validatePersona } from "./data/personas.ts";
 import { plugins, validatePlugin } from "./data/plugins.ts";
@@ -296,18 +297,40 @@ api.post("/conversations", async (c) => {
   return c.json(created, 201);
 });
 
+/** This run of the server: in every chat ETag, since the message write counts behind them start over on a restart. */
+const BOOT = randomUUID();
+
+/** Whether an If-None-Match header names this ETag (weak or strong, alone or in a list). */
+function etagMatches(header: string | undefined, etag: string): boolean {
+  if (!header) return false;
+  return header.trim() === "*" || header.split(",").some((tag) => tag.trim().replace(/^W\//, "") === etag);
+}
+
 api.get("/conversations/:id", (c) => {
   const id = c.req.param("id");
-  const conversation = found(conversations.get(id), "Chat not found.");
+  const record = found(conversations.get(id), "Chat not found.");
   // Clients that can open a clipped tool call ask for clip=1; others (older phones, paired devices) get every part whole.
   const clip = c.req.query("clip") === "1";
+  const conversation = toPublicConversation(record);
+  const run = runRegistry.activeFor(id);
+  // Unchanged since the client's copy: say so before reading (and sending) every message again.
+  const stamp = [BOOT, clip ? "clip" : "whole", messages.stamp(id), run ? `${run.id}:${run.size}` : "", JSON.stringify(conversation)].join("|");
+  const etag = `"${createHash("sha1").update(stamp).digest("base64url")}"`;
+  const headers = { etag, "cache-control": "no-cache" };
+  if (etagMatches(c.req.header("if-none-match"), etag)) return c.body(null, 304, headers);
   const list = messages.listByConversation(id);
+  // A running reply as it is now (not its last save), with how far into its run's events that is: the client follows
+  // on from there instead of replaying the run.
+  const reply = clip && run ? run.reply?.() : undefined;
+  const live = reply && clipMessage(reply, { finishedOnly: true });
+  const stored = clip ? clipMessages(list) : list;
   const detail: ConversationDetail = {
-    conversation: toPublicConversation(conversation),
-    messages: clip ? clipMessages(list) : list,
-    activeRunId: runRegistry.activeFor(id)?.id ?? null,
+    conversation,
+    messages: live ? (stored.some((m) => m.id === live.id) ? stored.map((m) => (m.id === live.id ? live : m)) : [...stored, live]) : stored,
+    activeRunId: run?.id ?? null,
+    ...(live ? { activeMessageId: live.id, activeRunSeq: run!.size } : {}),
   };
-  return c.json(detail);
+  return c.json(detail, 200, headers);
 });
 
 // One part of a message, whole: a clipped chat's tool call when it's opened. A reply still being written is read live.
@@ -496,7 +519,8 @@ api.get("/events", (c) =>
 
 api.get("/runs/:runId/events", (c) => {
   const run = runRegistry.get(c.req.param("runId"));
-  const afterSeq = Number(c.req.header("last-event-id") ?? 0) || 0;
+  // Last-Event-ID on a reconnect; ?after= the first time, which EventSource can't send a header for (a chat's snapshot).
+  const afterSeq = Math.max(Number(c.req.header("last-event-id") ?? 0) || 0, Number(c.req.query("after") ?? 0) || 0);
   // 204 tells EventSource to stop reconnecting: the run is gone or fully delivered.
   if (!run || (run.done && afterSeq >= run.size)) return c.body(null, 204);
 

@@ -57,6 +57,14 @@ function index(message: Message): void {
   }
 }
 
+/**
+ * Bumped whenever a chat's messages are written, for its ETag (GET /api/conversations/:id): a part's status can change
+ * without its length changing (an approval going from pending to expired). Kept in memory: the ETag also names this
+ * run of the server, so a restart changes every ETag anyway.
+ */
+const versions = new Map<string, number>();
+const bump = (conversationId: string) => versions.set(conversationId, (versions.get(conversationId) ?? 0) + 1);
+
 export const messages = {
   listByConversation(conversationId: string): Message[] {
     const rows = db
@@ -84,6 +92,7 @@ export const messages = {
       metaOf(message),
       message.createdAt,
     );
+    bump(message.conversationId);
     index(message);
   },
 
@@ -91,6 +100,17 @@ export const messages = {
   get(id: string): Message | null {
     const row = db.prepare(`SELECT * FROM messages WHERE id = ?`).get(id) as Row | undefined;
     return row ? toMessage(row) : null;
+  },
+
+  /**
+   * What a chat's messages are right now, without reading them: how many, the newest row, their size, and how often
+   * they were written in this server's run. Equal stamps mean an unchanged chat (its ETag).
+   */
+  stamp(conversationId: string): string {
+    const row = db
+      .prepare(`SELECT count(*) AS n, coalesce(max(rowid), 0) AS last, coalesce(sum(length(parts)), 0) AS bytes FROM messages WHERE conversation_id = ?`)
+      .get(conversationId) as Row;
+    return `${row.n}:${row.last}:${row.bytes}:${versions.get(conversationId) ?? 0}`;
   },
 
   /** One part of a chat's message, whole (a clipped chat's tool call, opened); null when there's no such part. */
@@ -129,6 +149,7 @@ export const messages = {
       message.usage ? JSON.stringify(message.usage) : null,
       message.id,
     );
+    bump(message.conversationId);
     // The chat may have been deleted meanwhile; don't leave a search entry behind.
     if (changes > 0) index(message);
   },

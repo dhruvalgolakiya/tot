@@ -1095,7 +1095,8 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/conversations[?agentId=&slim=1] -> Conversation[]  (updatedAt desc; slim=1: tasks trimmed to what lists show, `partial`)
 // POST   /api/conversations                   CreateConversationRequest -> Conversation
 // GET    /api/conversations/:id[?clip=1]      -> ConversationDetail  (clip=1: finished messages' tool parts carry the start of
-//                                              their output and long input strings, marked `clipped`)
+//                                              their output and long input strings, marked `clipped`; a running reply comes
+//                                              as it is now, with activeMessageId + activeRunSeq. ETag; If-None-Match -> 304)
 // GET    /api/conversations/:id/messages/:messageId/parts/:partId -> MessagePart  (the whole part, e.g. a clipped tool call)
 // PATCH  /api/conversations/:id               UpdateConversationRequest -> Conversation  (projectId moves it and its tasks)
 // DELETE /api/conversations/:id               -> { ok: true }
@@ -1153,7 +1154,8 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //
 // GET    /api/events                          -> text/event-stream of AppEvent (app-wide)
 // GET    /api/runs/live                       -> LiveRuns  (what runs and waits for the user right now; the phone app, module 14)
-// GET    /api/runs/:runId/events              -> text/event-stream of RunEvent
+// GET    /api/runs/:runId/events[?after=]     -> text/event-stream of RunEvent  (after: skip events up to that seq, as
+//                                              Last-Event-ID does; ConversationDetail.activeRunSeq says where a snapshot is)
 // POST   /api/runs/:runId/stop                -> { ok: true }
 // POST   /api/runs/:runId/approvals/:partId   ApprovalAnswer -> { ok: true }  (404 when it's no longer pending)
 //
@@ -1360,6 +1362,13 @@ export interface ConversationDetail {
   messages: Message[];
   /** Set while a turn is still running; attach to /api/runs/:id/events to follow it. */
   activeRunId: string | null;
+  /**
+   * With clip=1, while a turn runs: the reply's id, and the number of the run's last event its copy in `messages`
+   * includes (that copy is the reply as it is now, not its last save). Follow the run from there
+   * (/api/runs/:id/events?after=<activeRunSeq>) instead of replaying it from the start.
+   */
+  activeMessageId?: string;
+  activeRunSeq?: number;
 }
 
 export interface SendMessageRequest {

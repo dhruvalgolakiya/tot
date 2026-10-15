@@ -291,7 +291,9 @@ export async function loadConversation(id: string, { attach = true } = {}): Prom
     messages: { ...s.messages, [id]: detail.messages },
     pendingApprovals: hasPendingApproval(detail.messages) ? { ...s.pendingApprovals, [id]: true } : without(s.pendingApprovals, id),
   }));
-  if (detail.activeRunId && attach) attachRun(id, detail.activeRunId);
+  // A newer TOT sends the running reply as it is now and how far into the run that is: follow on from there.
+  const from = detail.activeMessageId && detail.activeRunSeq !== undefined ? { messageId: detail.activeMessageId, after: detail.activeRunSeq } : null;
+  if (detail.activeRunId && attach) attachRun(id, detail.activeRunId, from);
 }
 
 /** Clipped tool steps being fetched whole, by message and part id. */
@@ -554,13 +556,15 @@ export function watchChat(id: string): () => void {
 
 const runStreams: Record<string, { runId: string; close: SseHandle }> = {};
 
-function attachRun(conversationId: string, runId: string) {
+/** `from`: the chat's load already has the reply up to that event of the run (skip replaying it). */
+function attachRun(conversationId: string, runId: string, from: { messageId: string; after: number } | null = null) {
   const existing = runStreams[conversationId];
   if (existing?.runId === runId) return;
   if (existing) detachRun(conversationId);
-  set((s) => ({ activeRuns: { ...s.activeRuns, [conversationId]: { runId, messageId: null, stopping: false } } }));
+  set((s) => ({ activeRuns: { ...s.activeRuns, [conversationId]: { runId, messageId: from?.messageId ?? null, stopping: false } } }));
+  const after = from && from.after > 0 ? `?after=${from.after}` : "";
   const close = openSse({
-    url: () => apiUrl(`/runs/${encodeURIComponent(runId)}/events`, deviceOf(runId)),
+    url: () => apiUrl(`/runs/${encodeURIComponent(runId)}/events${after}`, deviceOf(runId)),
     headers: authHeaders,
     onMessage: (data) => {
       let event: RunEvent;

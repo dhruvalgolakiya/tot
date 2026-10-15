@@ -18,29 +18,32 @@ interface Channel {
 /** One EventSource per run, shared by every listener of that run. */
 const channels = new Map<string, Channel>();
 
-export function runEventsUrl(runId: string): string {
-  return apiUrl(`/runs/${encodeURIComponent(runId)}/events`, deviceOf(runId));
+/** `after`: start past that event (a chat's load already has the reply up to there). */
+export function runEventsUrl(runId: string, after = 0): string {
+  return apiUrl(`/runs/${encodeURIComponent(runId)}/events${after > 0 ? `?after=${after}` : ""}`, deviceOf(runId));
 }
 
 /**
  * Follow a run's events. Transient network drops are handled by EventSource's
  * native reconnect (the server replays everything after Last-Event-ID). The
  * stream closes itself after `run-end`. Returns an unsubscribe function.
+ * `after` starts past that event: listeners from a different point don't share a stream.
  */
-export function subscribeToRun(runId: string, listener: RunListener): () => void {
-  const channel = channels.get(runId) ?? openChannel(runId);
+export function subscribeToRun(runId: string, listener: RunListener, after = 0): () => void {
+  const key = after > 0 ? `${runId}@${after}` : runId;
+  const channel = channels.get(key) ?? openChannel(runId, key, after);
   channel.listeners.add(listener);
 
   return () => {
     if (!channel.listeners.delete(listener)) return;
-    if (channel.listeners.size === 0) closeChannel(runId, channel);
+    if (channel.listeners.size === 0) closeChannel(key, channel);
   };
 }
 
-function openChannel(runId: string): Channel {
-  const source = new EventSource(runEventsUrl(runId));
+function openChannel(runId: string, key: string, after: number): Channel {
+  const source = new EventSource(runEventsUrl(runId, after));
   const channel: Channel = { source, listeners: new Set() };
-  channels.set(runId, channel);
+  channels.set(key, channel);
 
   source.onmessage = (message: MessageEvent<string>) => {
     let event: RunEvent;
@@ -52,21 +55,21 @@ function openChannel(runId: string): Channel {
     // Another device's run (module 07): its ids and file URLs belong to it.
     const device = deviceOf(runId);
     if (device) adopt(device, event);
-    if (event.type === "run-end") closeChannel(runId, channel);
+    if (event.type === "run-end") closeChannel(key, channel);
     for (const listener of [...channel.listeners]) listener.onEvent(event);
   };
 
   source.onerror = () => {
     // CONNECTING means the browser is already retrying with Last-Event-ID.
     if (source.readyState !== EventSource.CLOSED) return;
-    closeChannel(runId, channel);
+    closeChannel(key, channel);
     for (const listener of [...channel.listeners]) listener.onLost?.();
   };
 
   return channel;
 }
 
-function closeChannel(runId: string, channel: Channel) {
+function closeChannel(key: string, channel: Channel) {
   channel.source.close();
-  if (channels.get(runId) === channel) channels.delete(runId);
+  if (channels.get(key) === channel) channels.delete(key);
 }

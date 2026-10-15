@@ -146,6 +146,26 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   return (device ? adopt(device, data) : data) as T;
 }
 
+/**
+ * A GET that names the copy the caller already has (its ETag): null when the server answers 304 (unchanged), else the
+ * data and its new ETag. The browser's own cache stays out of it, so the 304 arrives here instead of a stored copy
+ * this would have to parse again.
+ */
+async function requestIfChanged<T>(path: string, etag: string | null): Promise<{ data: T; etag: string | null } | null> {
+  const device = deviceFor(path);
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path, device), { cache: "no-store", headers: etag ? { "If-None-Match": etag } : undefined });
+  } catch {
+    throw new ApiError(UNREACHABLE, 0);
+  }
+  if (response.status === 304 && etag) return null;
+  if (response.status === 401) redirectToSignIn();
+  const data = parseBody(await response.text());
+  if (!response.ok) throw new ApiError(serverError(data, response.status), response.status);
+  return { data: (device ? adopt(device, data) : data) as T, etag: response.headers.get("etag") };
+}
+
 function parseBody(text: string): unknown {
   if (!text) return null;
   try {
@@ -207,8 +227,12 @@ export const api = {
     request<Conversation[]>("GET", agentId ? `/conversations?agentId=${seg(agentId)}&slim=1` : "/conversations?slim=1"),
   createConversation: (body: CreateConversationRequest) =>
     request<Conversation>("POST", "/conversations", body),
-  /** Finished tool calls come clipped (`clipped`); getConversationPart has one whole. */
-  getConversation: (id: string) => request<ConversationDetail>("GET", `/conversations/${seg(id)}?clip=1`),
+  /**
+   * Finished tool calls come clipped (`clipped`; getConversationPart has one whole), a running reply as it is now.
+   * With the ETag of the copy already loaded: null when the chat hasn't changed since.
+   */
+  getConversation: (id: string, etag: string | null = null) =>
+    requestIfChanged<ConversationDetail>(`/conversations/${seg(id)}?clip=1`, etag),
   getConversationPart: (conversationId: string, messageId: string, partId: string) =>
     request<MessagePart>("GET", `/conversations/${seg(conversationId)}/messages/${seg(messageId)}/parts/${seg(partId)}`),
   updateConversation: (id: string, body: UpdateConversationRequest) =>

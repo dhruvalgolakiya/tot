@@ -909,19 +909,117 @@ async function openConversation(id: string) {
   if (get().currentId !== id) set({ currentId: id, computerPanelOpen: false, taskPanelOpen: false });
   // While we follow a live run, the in-memory messages are the freshest copy.
   if (streams.has(id)) return;
-  await loadConversation(id);
+  await loadConversation(id, { useCache: true });
+}
+
+/** What's known about each loaded chat's copy: its ETag, the updatedAt it had, and when it was last checked. */
+const loadedChats = new Map<string, { etag: string | null; updatedAt: number; checkedAt: number }>();
+/** Loaded chats, most recently opened first; past MAX_CACHED_CHATS the oldest ones' messages are dropped. */
+let cachedChats: string[] = [];
+const MAX_CACHED_CHATS = 12;
+/** A cached chat checked this recently, whose updatedAt hasn't moved since, opens without asking the server. */
+const FRESH_MS = 30_000;
+/** Loads under way, per chat. */
+const loadsInFlight = new Map<string, number>();
+
+function rememberChat(id: string) {
+  cachedChats = [id, ...cachedChats.filter((c) => c !== id)];
+  if (cachedChats.length <= MAX_CACHED_CHATS) return;
+  const s = get();
+  // Never the open chat, or one whose turn is being followed.
+  const keep = (c: string) => c === s.currentId || streams.has(c) || Boolean(s.activeRuns[c]);
+  const drop = cachedChats.slice(MAX_CACHED_CHATS).filter((c) => !keep(c));
+  if (!drop.length) return;
+  cachedChats = cachedChats.filter((c) => !drop.includes(c));
+  for (const c of drop) loadedChats.delete(c);
+  set((s2) => ({
+    messages: drop.reduce((all, c) => without(all, c), s2.messages),
+    detailState: drop.reduce((all, c) => without(all, c), s2.detailState),
+  }));
+}
+
+/** Something happened in a chat that its copy may not show yet (a turn, an answered approval): check it next time. */
+function staleChat(id: string) {
+  const entry = loadedChats.get(id);
+  if (entry) loadedChats.set(id, { ...entry, checkedAt: 0 });
+}
+
+/** A loaded copy that can be shown without asking the server: checked recently, unchanged in the list, nothing running. */
+function cachedCopyIsFresh(id: string): boolean {
+  const s = get();
+  const entry = loadedChats.get(id);
+  const listed = s.conversations.find((c) => c.id === id);
+  const cached = s.messages[id];
+  return Boolean(
+    entry && listed && cached && listed.updatedAt === entry.updatedAt && !listed.task?.partial &&
+      Date.now() - entry.checkedAt < FRESH_MS && !s.activeRuns[id] && !streams.has(id) &&
+      !cached.some((m) => m.status === "streaming"),
+  );
+}
+
+/** The same message as the stored one? A clipped tool call matches the whole one it was cut from (opened earlier). */
+function sameMessage(stored: Message, next: Message): boolean {
+  const { parts: a, ...restA } = stored;
+  const { parts: b, ...restB } = next;
+  return a.length === b.length && sameValue(restA, restB) && a.every((part, i) => samePart(part, b[i]));
+}
+
+function samePart(stored: MessagePart, next: MessagePart): boolean {
+  if (stored.type !== "tool" || next.type !== "tool" || (!stored.clipped && !next.clipped)) return sameValue(stored, next);
+  const { input: inA, output: outA, clipped: _a, outputChars: _b, inputChars: _c, ...restA } = stored;
+  const { input: inB, output: outB, clipped: _d, outputChars: _e, inputChars: _f, ...restB } = next;
+  const outputSize = (p: ToolPartData) => p.outputChars ?? p.output?.length ?? 0;
+  const inputSize = (p: ToolPartData) => p.inputChars ?? (typeof p.input === "string" ? p.input.length : JSON.stringify(p.input ?? null).length);
+  return (
+    sameValue(restA, restB) && outputSize(stored) === outputSize(next) && (outA ?? "").slice(0, 200) === (outB ?? "").slice(0, 200) &&
+    (stored.inputChars === undefined && next.inputChars === undefined ? sameValue(inA, inB) : inputSize(stored) === inputSize(next))
+  );
 }
 
 /**
- * Fetch a conversation and its messages. If a run is still active, drop the
- * partial assistant message and rebuild it from the replayed event stream.
+ * Messages from the server, against the stored copy: an unchanged finished message keeps its stored object (and any
+ * tool call opened whole in it), so its row doesn't re-render; the list itself stays when nothing changed.
  */
-export async function loadConversation(id: string, { attach = true } = {}) {
+function shareMessages(stored: Message[] | undefined, incoming: Message[]): Message[] {
+  if (!stored?.length) return incoming;
+  const byId = new Map(stored.map((m) => [m.id, m]));
+  const next = incoming.map((m) => {
+    const old = byId.get(m.id);
+    return old && old.status !== "streaming" && m.status !== "streaming" && sameMessage(old, m) ? old : m;
+  });
+  return sameItems(next, stored) ? stored : next;
+}
+
+/**
+ * Fetch a conversation and its messages. If a run is still active, follow it from the reply as the server has it now
+ * (or, from an older server, drop the partial reply and rebuild it from the run's events). `useCache`: a copy checked
+ * in the last few seconds will do (opening a chat, prefetching one); any other load at least asks whether the copy is
+ * still current, which costs a 304 when it is.
+ */
+export async function loadConversation(id: string, { attach = true, useCache = false, quiet = false } = {}) {
+  if (useCache && cachedCopyIsFresh(id)) {
+    rememberChat(id);
+    if (get().detailState[id] !== "ready") set((s) => ({ detailState: { ...s.detailState, [id]: "ready" } }));
+    return;
+  }
   set((s) => ({ detailState: { ...s.detailState, [id]: s.messages[id] ? "ready" : "loading" } }));
+  loadsInFlight.set(id, (loadsInFlight.get(id) ?? 0) + 1);
   try {
     // Opened by URL before the paired devices' chats loaded: it may be one of theirs (module 07).
     if (!deviceOf(id) && !get().conversations.some((c) => c.id === id)) await whenDevicesLoaded();
-    const detail = await api.getConversation(id);
+    // Only a settled copy can be "unchanged": not while a reply streams into it.
+    const before = get();
+    const settled = before.messages[id] && !streams.has(id) && !before.activeRuns[id];
+    const result = await api.getConversation(id, settled ? (loadedChats.get(id)?.etag ?? null) : null);
+    if (!result) {
+      const entry = loadedChats.get(id);
+      if (entry) loadedChats.set(id, { ...entry, checkedAt: Date.now() });
+      rememberChat(id);
+      set((s) => ({ detailState: { ...s.detailState, [id]: "ready" } }));
+      return;
+    }
+    const { data: detail, etag } = result;
+    loadedChats.set(id, { etag, updatedAt: detail.conversation.updatedAt, checkedAt: Date.now() });
     if (streams.has(id)) {
       // A message was sent while we were loading: keep the live messages and
       // put the fetched history in front of them.
@@ -931,22 +1029,26 @@ export async function loadConversation(id: string, { attach = true } = {}) {
         const history = detail.messages.filter((m) => !liveIds.has(m.id) && m.status !== "streaming");
         return {
           conversations: upsertConversation(s.conversations, detail.conversation),
-          messages: { ...s.messages, [id]: [...history, ...live] },
+          messages: { ...s.messages, [id]: [...shareMessages(s.messages[id], history), ...live] },
           detailState: { ...s.detailState, [id]: "ready" },
         };
       });
+      rememberChat(id);
       return;
     }
     const runId = attach ? detail.activeRunId : null;
-    const messages = runId
+    // The server sent the running reply as it is now, and how far into the run that is: follow on from there.
+    const snapshot = runId && detail.activeMessageId && detail.activeRunSeq !== undefined ? { messageId: detail.activeMessageId, after: detail.activeRunSeq } : null;
+    const messages = runId && !snapshot
       ? detail.messages.filter((m) => !(m.role === "assistant" && m.status === "streaming"))
       : detail.messages;
     set((s) => ({
       conversations: upsertConversation(s.conversations, detail.conversation),
-      messages: { ...s.messages, [id]: messages },
+      messages: { ...s.messages, [id]: shareMessages(s.messages[id], messages) },
       detailState: { ...s.detailState, [id]: "ready" },
     }));
-    if (runId) attachRun(id, runId);
+    if (runId) attachRun(id, runId, snapshot);
+    rememberChat(id);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       forgetConversation(id);
@@ -957,8 +1059,21 @@ export async function loadConversation(id: string, { attach = true } = {}) {
       return;
     }
     set((s) => ({ detailState: { ...s.detailState, [id]: s.messages[id] ? "ready" : "error" } }));
-    notifyError(error);
+    if (!quiet) notifyError(error);
+  } finally {
+    const left = (loadsInFlight.get(id) ?? 1) - 1;
+    if (left > 0) loadsInFlight.set(id, left);
+    else loadsInFlight.delete(id);
   }
+}
+
+/**
+ * Loads a chat ahead of opening it (the sidebar calls this on hover), so opening it shows it at once. A cached copy
+ * that's still fresh is left as it is; a running turn is followed only once the chat is opened.
+ */
+export function prefetchConversation(id: string) {
+  if (get().currentId === id || streams.has(id) || loadsInFlight.has(id)) return;
+  void loadConversation(id, { attach: false, useCache: true, quiet: true });
 }
 
 export function retryConversation(id: string) {
@@ -1013,6 +1128,8 @@ export function loadFullPart(part: ToolPartData): Promise<ToolPartData> {
 function forgetConversation(id: string) {
   const stream = streams.get(id);
   if (stream) detachRun(id, stream.runId);
+  loadedChats.delete(id);
+  cachedChats = cachedChats.filter((c) => c !== id);
   set((s) => ({
     conversations: s.conversations.filter((c) => c.id !== id),
     messages: without(s.messages, id),
@@ -1029,19 +1146,24 @@ const streams = new Map<string, { runId: string; unsubscribe: () => void }>();
 const lostCounts = new Map<string, number>();
 const justFinishedTimers = new Map<string, number>();
 
-function attachRun(conversationId: string, runId: string) {
+/** `from`: the chat's load already has the reply up to that event of the run (skip replaying it). */
+function attachRun(conversationId: string, runId: string, from: { messageId: string; after: number } | null = null) {
   const existing = streams.get(conversationId);
   if (existing?.runId === runId) return;
   if (existing) detachRun(conversationId, existing.runId);
 
   set((s) => ({
-    activeRuns: { ...s.activeRuns, [conversationId]: { runId, messageId: null, stopping: false } },
+    activeRuns: { ...s.activeRuns, [conversationId]: { runId, messageId: from?.messageId ?? null, stopping: false } },
     justFinished: without(s.justFinished, conversationId),
   }));
-  const unsubscribe = subscribeToRun(runId, {
-    onEvent: (event) => enqueue(conversationId, runId, event),
-    onLost: () => handleLostRun(conversationId, runId),
-  });
+  const unsubscribe = subscribeToRun(
+    runId,
+    {
+      onEvent: (event) => enqueue(conversationId, runId, event),
+      onLost: () => handleLostRun(conversationId, runId),
+    },
+    from?.after ?? 0,
+  );
   streams.set(conversationId, { runId, unsubscribe });
 }
 
@@ -1489,6 +1611,7 @@ function handleMailEvent(personaId: string, mail: MailSummary) {
  * conversation isn't the one currently open.
  */
 function handleApprovalEvent(event: Extract<AppEvent, { type: "approval" }>) {
+  staleChat(event.conversationId);
   set((s) => {
     if (s.pendingApprovals.has(event.conversationId) === event.pending) return {};
     const next = new Set(s.pendingApprovals);
@@ -1575,6 +1698,8 @@ export function handleAppEvent(event: AppEvent, deviceId: string | null = null) 
       memoryChanged(event.repo);
       break;
     case "run":
+      // A cached copy of the chat may miss this turn: check it when it's next opened.
+      staleChat(event.conversationId);
       // Running agents are tracked by useRunningAgents() + setRunningAgents; here, follow turns
       // TOT started on its own (a task's next turn, a study step) in the chat that's open.
       if (event.status === "running") followServerRun(event.conversationId);

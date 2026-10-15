@@ -212,5 +212,116 @@ check("slim=1 keeps the order and the agent filter", JSON.stringify(slimList.map
 check("slim=1 cuts the list", slimText.length < fullListText.length * 0.6, `${slimText.length} vs ${fullListText.length}`);
 check("the server's own record still has the prompt and notes (only the list skips them)", conversations.get(chat.id)!.systemPrompt!.length === 20_000);
 
+// --- 3. ETags: an unchanged chat is a 304 ---
+
+res = await send(`/conversations/${chat.id}?clip=1`);
+const etag = res.headers.get("etag")!;
+await res.arrayBuffer();
+check("a chat comes with an ETag and no-cache", Boolean(etag) && res.headers.get("cache-control") === "no-cache", String(etag));
+res = await send(`/conversations/${chat.id}?clip=1`, { "if-none-match": etag });
+check("If-None-Match with it: 304, no body", res.status === 304 && (await res.text()) === "" && res.headers.get("etag") === etag);
+res = await send(`/conversations/${chat.id}?clip=1`, { "if-none-match": `W/${etag}, "other"` });
+check("a weak copy of it in a list matches too", res.status === 304);
+res = await send(`/conversations/${chat.id}`, { "if-none-match": etag });
+check("the whole (unclipped) chat has its own ETag", res.status === 200 && res.headers.get("etag") !== etag);
+await res.arrayBuffer();
+
+// An approval going from pending to expired keeps every length the same: the write itself must change the ETag.
+const ask: Message = {
+  id: randomUUID(),
+  conversationId: chat.id,
+  role: "assistant",
+  parts: [{ type: "approval", id: "ask", source: "Apps", message: "Send it?", kind: "confirm", status: "pending", expiresAt: 1 }],
+  status: "complete",
+  createdAt: Date.now(),
+};
+messages.insert(ask);
+res = await send(`/conversations/${chat.id}?clip=1`);
+const withAsk = res.headers.get("etag")!;
+await res.arrayBuffer();
+check("a new message changes the ETag", withAsk !== etag);
+messages.save({ ...ask, parts: [{ ...(ask.parts[0] as Extract<MessagePart, { type: "approval" }>), status: "expired" }] });
+res = await send(`/conversations/${chat.id}?clip=1`, { "if-none-match": withAsk });
+const afterExpiry = (await res.json()) as ConversationDetail;
+check(
+  "a same-length edit still changes it (200 with the edit)",
+  res.status === 200 && res.headers.get("etag") !== withAsk && afterExpiry.messages.at(-1)!.parts[0].type === "approval" &&
+    (afterExpiry.messages.at(-1)!.parts[0] as { status: string }).status === "expired",
+);
+const beforeRename = res.headers.get("etag")!;
+conversations.update(chat.id, { title: "Renamed" });
+res = await send(`/conversations/${chat.id}?clip=1`, { "if-none-match": beforeRename });
+check("a change to the chat itself (its title) changes it too", res.status === 200 && ((await res.json()) as ConversationDetail).conversation.title === "Renamed");
+
+// --- 4. A running chat: its reply as it is now, and its events from there ---
+
+const { runRegistry } = await import("./agent/runs.ts");
+const live: Message = {
+  id: randomUUID(),
+  conversationId: chat.id,
+  role: "assistant",
+  parts: [],
+  status: "streaming",
+  provider: "claude",
+  model: "claude-opus-5-5",
+  createdAt: Date.now() + 1000,
+};
+messages.insert(live);
+const run = runRegistry.create(chat.id, live.id);
+run.reply = () => live;
+run.push({ type: "run-start", runId: run.id, conversationId: chat.id, messageId: live.id, provider: "claude", model: "claude-opus-5-5" });
+const doneTool: MessagePart = { type: "tool", id: "live-tool", name: "computer_exec", input: { command: "ls" }, output: big("listing", 9000), status: "done" };
+const runningTool: MessagePart = { type: "tool", id: "live-run", name: "computer_exec", input: { command: "npm test" }, output: big("partial", 5000), status: "running" };
+live.parts.push({ type: "text", id: "live-text", text: "Looking" });
+run.push({ type: "part-start", part: { type: "text", id: "live-text", text: "Looking" } });
+live.parts.push(doneTool, runningTool);
+run.push({ type: "part-start", part: doneTool });
+run.push({ type: "part-start", part: runningTool });
+// The last save is behind: the snapshot must be the reply as it is now.
+res = await send(`/conversations/${chat.id}?clip=1`);
+const running = (await res.json()) as ConversationDetail;
+const snapshot = running.messages.find((m) => m.id === live.id)!;
+check("a running chat names its run, its reply and how far the reply got", running.activeRunId === run.id && running.activeMessageId === live.id && running.activeRunSeq === 4, JSON.stringify({ seq: running.activeRunSeq }));
+check("the reply comes as it is now, once", snapshot.parts.length === 3 && running.messages.filter((m) => m.id === live.id).length === 1);
+const snapTools = snapshot.parts.filter((p): p is Extract<MessagePart, { type: "tool" }> => p.type === "tool");
+check("its finished tool calls are clipped, the running one isn't", snapTools[0].clipped === true && !snapTools[1].clipped && snapTools[1].output!.length === 5000);
+res = await send(`/conversations/${chat.id}/messages/${live.id}/parts/live-tool`);
+check("a clipped call of the running reply is read whole from the run", ((await res.json()) as { output: string }).output.length === 9000);
+res = await send(`/conversations/${chat.id}`);
+const plainRunning = (await res.json()) as ConversationDetail;
+check("without clip=1 a running chat comes as before (no snapshot fields, the stored copy)", plainRunning.activeRunId === run.id && plainRunning.activeRunSeq === undefined && plainRunning.activeMessageId === undefined && plainRunning.messages.find((m) => m.id === live.id)!.parts.length === 0);
+
+/** The events of a run stream: ids and types, until run-end. */
+async function readEvents(response: Response): Promise<{ id: number; type: string }[]> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (!text.includes('"run-end"')) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  await reader.cancel().catch(() => {});
+  return text
+    .split("\n\n")
+    .map((block) => ({ id: Number(/^id: (\d+)/m.exec(block)?.[1] ?? 0), data: /^data: (.+)$/m.exec(block)?.[1] }))
+    .filter((e) => e.id && e.data)
+    .map((e) => ({ id: e.id, type: (JSON.parse(e.data!) as { type: string }).type }));
+}
+const streamed = send(`/runs/${run.id}/events?after=${running.activeRunSeq}`);
+const delta = { type: "part-delta" as const, partId: "live-text", delta: " around" };
+run.push(delta);
+const final = { ...live, status: "complete" as const };
+run.push({ type: "run-end", status: "complete", message: final });
+runRegistry.finish(run);
+const after = await readEvents(await streamed);
+check("?after= starts past the snapshot", after.length === 2 && after[0].id === 5 && after[0].type === "part-delta" && after[1].type === "run-end", JSON.stringify(after));
+const replay = await readEvents(await send(`/runs/${run.id}/events`));
+check("without it the run replays from the start, as before", replay.length === 6 && replay[0].type === "run-start");
+const both = await readEvents(await send(`/runs/${run.id}/events?after=2`, { "last-event-id": "5" }));
+check("on a reconnect Last-Event-ID wins over a smaller ?after=", both.length === 1 && both[0].id === 6);
+res = await send(`/runs/${run.id}/events?after=6`);
+check("a finished run already delivered past ?after= is a 204", res.status === 204);
+
 console.log(failures ? `\n${failures} FAILED` : "\nALL PASS");
 process.exit(failures ? 1 : 0);
