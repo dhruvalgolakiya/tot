@@ -1,6 +1,6 @@
 {
   "name": "tot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "TOT — an agent that runs on your own ChatGPT and Claude subscriptions, with a cloud computer per agent, long-term memory, and plugins.",
