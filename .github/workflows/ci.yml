@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Nothing here packages the Mac app, so the Electron binary isn't needed.
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+jobs:
+  check:
+    name: Typecheck and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Build the web app
+        run: npm run build
+      - name: Build the landing page
+        run: npm run site:build
+
+  test:
+    name: Test
+    # The suites exercise what TOT does on a Mac: the agents' local sandbox (macOS Seatbelt), worktrees and the
+    # Mac app's helpers, so they run on macOS.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Test
+        # Every suite also makes its own temporary data folder; none of them touches ~/.tot.
+        run: TOT_DATA_DIR="$(mktemp -d)" npm test
