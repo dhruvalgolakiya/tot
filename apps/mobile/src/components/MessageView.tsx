@@ -23,6 +23,10 @@ function MessageViewBase({ message, streaming }: { message: Message; streaming: 
       .join("\n")
       .trim();
     if (message.auto) return <Text style={[typeScale.xs, { color: colors.fgSubtle, textAlign: "center", paddingVertical: 4 }]}>{text}</Text>;
+    // A skill the message ran with ("/dh-stack …") shows as a chip, so its "/name" doesn't repeat in the bubble.
+    const skill = message.skill;
+    const prefix = skill ? `/${skill.toLowerCase()}` : "";
+    const shown = skill && text.toLowerCase().startsWith(prefix) && !/\S/.test(text.charAt(prefix.length)) ? text.slice(prefix.length).trim() : text;
     return (
       <View style={[styles.userRow, { gap: 6 }]}>
         {images.length ? (
@@ -32,10 +36,17 @@ function MessageViewBase({ message, streaming }: { message: Message; streaming: 
             ))}
           </View>
         ) : null}
-        {text ? (
+        {skill ? (
+          <View style={[styles.chip, { borderColor: colors.hairline, backgroundColor: colors.fill }]}>
+            <Text numberOfLines={1} style={[typeScale.xs, { color: colors.fgMuted }]}>
+              {skill}
+            </Text>
+          </View>
+        ) : null}
+        {shown ? (
           <View style={[styles.bubble, { backgroundColor: colors.bubble }]}>
             <Text selectable style={[typeScale.chat, { color: colors.fg }]}>
-              {text}
+              {shown}
             </Text>
           </View>
         ) : null}
@@ -277,6 +288,7 @@ const styles = StyleSheet.create({
   photo: { width: 120, height: 120, borderRadius: 14 },
   userRow: { alignItems: "flex-end" },
   bubble: { maxWidth: "85%", borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10 },
+  chip: { maxWidth: "85%", borderWidth: StyleSheet.hairlineWidth * 2, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
   assistant: { gap: 12 },
   line: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 22 },
   card: { borderWidth: StyleSheet.hairlineWidth * 2, borderRadius: 16, padding: 14, gap: 8 },
