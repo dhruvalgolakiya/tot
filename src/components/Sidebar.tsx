@@ -17,6 +17,7 @@ import { IconButton } from "./ui/IconButton";
 import { Kbd } from "./ui/Kbd";
 import { listRowClass } from "./ui/ListRow";
 import { Tip } from "./ui/Tip";
+import { UpdatePrompt } from "./UpdatePrompt";
 
 const PANEL_WIDTH = 260;
 /**
@@ -50,6 +51,7 @@ export function Sidebar() {
           )}
         >
           {onSettings ? <SettingsNav /> : panel}
+          <UpdatePrompt />
         </aside>
       </>
     );
@@ -75,6 +77,7 @@ export function Sidebar() {
         <AgentRail />
         <aside aria-label="Chats" style={{ width: PANEL_WIDTH }} className="flex h-full shrink-0 flex-col">
           {panel}
+          <UpdatePrompt />
         </aside>
       </div>
     </>
