@@ -102,6 +102,8 @@ export function toolTitle(name: string, input: unknown): string {
       return "Memory updated";
     case "memory_read":
       return "Read memory";
+    case "skill_read":
+      return args.path ? `Read ${clip(args.path, 60)} · ${clip(args.skill, 32)}` : `Looked in the ${clip(args.skill, 40)} skill`;
     default:
       return name.includes("/") ? `Used ${name}` : name;
   }

@@ -302,6 +302,12 @@ export function toolTitle(part: ToolPart): string {
     }
     case "chat_read":
       return verb("Reading an earlier chat", "Read an earlier chat");
+    case "skill_read": {
+      const skill = pick(input, "skill");
+      const path = pick(input, "path");
+      if (path) return `${verb("Reading", "Read")} \`${truncateStart(path, 48)}\`${skill ? ` · ${truncate(skill, 32)}` : ""}`;
+      return skill ? `${verb("Looking in", "Looked in")} the ${truncate(skill, 40)} skill` : verb("Reading a skill", "Read a skill");
+    }
     case "wiki_search": {
       const query = pick(input, "query", "q");
       return query
