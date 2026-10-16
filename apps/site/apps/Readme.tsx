@@ -1,4 +1,4 @@
-import { Mascot } from "../../src/components/mascot";
+import { Mascot } from "../../web/src/components/mascot";
 import { crew } from "../crew";
 import { useOs } from "../os/context";
 import { pillClass } from "../ui";

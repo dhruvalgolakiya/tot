@@ -1,8 +1,8 @@
 /* The landing page uses TOT's own tokens, base styles and components, plus the "OS" bits below. */
-@import "../src/index.css";
+@import "../web/src/index.css";
 @source "./";
-@source "../src/components/ui";
-@source "../src/components/mascot";
+@source "../web/src/components/ui";
+@source "../web/src/components/mascot";
 
 @theme {
   --font-hand: Caveat, "Bradley Hand", "Comic Sans MS", cursive;

@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { LoaderCircle, Lock } from "lucide-react";
-import { Mascot } from "../../src/components/mascot";
-import { StatusDot } from "../../src/components/ui/StatusDot";
-import { useResolvedTheme } from "../../src/lib/theme";
+import { Mascot } from "../../web/src/components/mascot";
+import { StatusDot } from "../../web/src/components/ui/StatusDot";
+import { useResolvedTheme } from "../../web/src/lib/theme";
 import { crew, type CrewMember } from "../crew";
 import { ClaudeMark, OpenAIMark } from "../os/BrandMarks";
 import { WORKING } from "./DemoLedger";

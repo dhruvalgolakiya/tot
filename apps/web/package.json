@@ -6,7 +6,7 @@
   "description": "TOT's web app (React, Vite). npm run build writes it to dist/ at the repository root, where npm start and the Mac app serve it.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --emptyOutDir",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

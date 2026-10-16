@@ -1,4 +1,4 @@
-import { HeroArt } from "../../src/components/home/HeroArt";
+import { HeroArt } from "../../web/src/components/home/HeroArt";
 import { ClaudeMark, OpenAIMark } from "../os/BrandMarks";
 import { pillClass, ThemeToggle } from "../ui";
 import { Crew } from "./Crew";

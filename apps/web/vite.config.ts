@@ -2,12 +2,14 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
-import { isThisMachine, isTrustedLocalHost } from "./server/net.ts";
-import { SESSION_COOKIE, readCookie } from "./server/session.ts";
+import { isThisMachine, isTrustedLocalHost } from "@tot/server/net";
+import { SESSION_COOKIE, readCookie } from "@tot/server/session";
 
-// The same .env the server reads (real environment variables win).
+const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
+
+// The same .env the server reads, at the repository root (real environment variables win).
 try {
-  process.loadEnvFile(".env");
+  process.loadEnvFile(here("../../.env"));
 } catch {
   // no .env — that's fine
 }
@@ -49,7 +51,7 @@ async function signedIn(cookie: string | undefined): Promise<boolean> {
 
 /**
  * The dev server only listens on this computer (localhost), and other devices reach the app through TOT's
- * own remote-access listeners (server/dev-web.ts). Anything else reaching Vite (a tunnel pointed straight
+ * own remote-access listeners (apps/server/dev-web.ts). Anything else reaching Vite (a tunnel pointed straight
  * at it) must have signed in, so nothing Vite serves reaches a visitor who hasn't. This computer itself
  * never signs in. The icon, the web app manifest, /.well-known/tot and the pairing page are open.
  */
@@ -114,10 +116,8 @@ function preloadMarkdown(): Plugin {
 const api = { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false, xfwd: true };
 
 export default defineConfig({
+  root: here("."),
   plugins: [react(), tailwindcss(), requireSignIn(), preloadMarkdown()],
-  resolve: {
-    alias: { "@shared": fileURLToPath(new URL("./shared", import.meta.url)) },
-  },
   server: {
     port: webPort,
     strictPort: true,
@@ -133,5 +133,7 @@ export default defineConfig({
       "^/pair(\\?|$)": api,
     },
   },
-  build: { outDir: "dist" },
+  // dist/ at the repository root: `npm start` and the Mac app serve the web app from there (the server serves the
+  // dist/ in its working directory). `npm run build` empties it first (--emptyOutDir); another --outDir isn't.
+  build: { outDir: here("../../dist") },
 });

@@ -20,8 +20,8 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import type { MascotState } from "@shared/types";
-import { Mascot } from "../../src/components/mascot";
+import type { MascotState } from "@tot/shared/types";
+import { Mascot } from "../../web/src/components/mascot";
 import { crew, type CrewMember } from "../crew";
 import { useOs } from "../os/context";
 import { createJump, scrollToChild } from "../os/jump";

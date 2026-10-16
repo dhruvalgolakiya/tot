@@ -38,14 +38,11 @@ function siteOrigin(): Plugin {
 }
 
 // The public landing page and its docs: a static site with no API and no sign-in, built from TOT's own design
-// tokens and mascots. `npm run site` to work on it, `npm run site:build` for site/dist.
+// tokens and mascots (the web app's, apps/web). `npm run site` to work on it, `npm run site:build` for apps/site/dist.
 export default defineConfig({
   root: here("."),
-  publicDir: here("../public"),
+  publicDir: here("../web/public"),
   plugins: [siteOrigin(), docsFallback(), react(), tailwindcss()],
-  resolve: {
-    alias: { "@shared": here("../shared") },
-  },
   server: { port: 5190, strictPort: true },
   preview: { port: 5190, strictPort: true },
   build: {

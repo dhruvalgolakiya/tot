@@ -82,7 +82,7 @@ The Mac app is built from the same code:
 npm run app:build
 ```
 
-It makes a `.dmg` and a `.zip` in the `release` folder. The build is signed "ad hoc", so it runs on the Mac that built it. On another Mac, right-click the app and choose **Open** the first time. See [The Mac app](/docs/mac-app) for what it does.
+It makes a `.dmg` and a `.zip` in the `apps/desktop/release` folder. The build is signed "ad hoc", so it runs on the Mac that built it. On another Mac, right-click the app and choose **Open** the first time. See [The Mac app](/docs/mac-app) for what it does.
 
 ## Your first five minutes
 

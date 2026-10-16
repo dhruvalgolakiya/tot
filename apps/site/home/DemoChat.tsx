@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { ArrowUp, LoaderCircle, Repeat } from "lucide-react";
-import { Mascot } from "../../src/components/mascot";
+import { Mascot } from "../../web/src/components/mascot";
 import { crew, type CrewMember } from "../crew";
 import { useReducedMotion } from "../ui";
 

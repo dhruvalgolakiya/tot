@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Mascot } from "../../src/components/mascot";
+import { Mascot } from "../../web/src/components/mascot";
 import { crew } from "../crew";
 
 const RULES = [

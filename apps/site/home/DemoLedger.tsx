@@ -1,7 +1,7 @@
 import { CircleCheck, Clock, FolderGit2, GitBranch, LoaderCircle } from "lucide-react";
-import { Ledger, LedgerRow, LedgerSection } from "../../src/components/home/Ledger";
-import { Mascot } from "../../src/components/mascot";
-import { StatusDot } from "../../src/components/ui/StatusDot";
+import { Ledger, LedgerRow, LedgerSection } from "../../web/src/components/home/Ledger";
+import { Mascot } from "../../web/src/components/mascot";
+import { StatusDot } from "../../web/src/components/ui/StatusDot";
 import { crew, type CrewMember } from "../crew";
 import { elapsed, useTicker } from "./ticker";
 

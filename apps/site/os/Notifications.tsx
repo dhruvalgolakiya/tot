@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { X } from "lucide-react";
-import { Mascot } from "../../src/components/mascot";
+import { Mascot } from "../../web/src/components/mascot";
 import { crew, type CrewMember } from "../crew";
 import { useOs } from "./context";
 import type { AppId } from "./ids";

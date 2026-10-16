@@ -1,5 +1,5 @@
-import type { MascotSpec } from "@shared/types";
-import { defaultMascot } from "../src/components/mascot";
+import type { MascotSpec } from "@tot/shared/types";
+import { defaultMascot } from "../web/src/components/mascot";
 
 /** The cast of the landing page: a handful of agents who show up in several sections. */
 export const crew = {

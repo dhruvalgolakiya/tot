@@ -1,5 +1,5 @@
-import type { MascotState } from "@shared/types";
-import { Mascot } from "../../src/components/mascot";
+import type { MascotState } from "@tot/shared/types";
+import { Mascot } from "../../web/src/components/mascot";
 import { crew, type CrewMember } from "../crew";
 
 const DAY: { time: string; who: CrewMember; state: MascotState; title: string; text: string }[] = [

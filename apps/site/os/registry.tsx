@@ -1,7 +1,7 @@
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { Activity, Map, MessageCircleQuestion, PackageOpen, StickyNote, Trash2, type LucideIcon } from "lucide-react";
-import { Mascot } from "../../src/components/mascot";
-import { Logo } from "../../src/components/ui/Logo";
+import { Mascot } from "../../web/src/components/mascot";
+import { Logo } from "../../web/src/components/ui/Logo";
 import { Brains } from "../apps/Brains";
 import { Calendar } from "../apps/Calendar";
 import { Help } from "../apps/Help";

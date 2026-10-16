@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import clsx from "clsx";
 import { ArrowUp } from "lucide-react";
-import { Mascot } from "../../src/components/mascot";
+import { Mascot } from "../../web/src/components/mascot";
 import { crew } from "../crew";
 import { createJump, scrollToChild } from "../os/jump";
 

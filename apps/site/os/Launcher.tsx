@@ -2,8 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import clsx from "clsx";
 import { Dialog } from "radix-ui";
 import { BookOpen, CornerDownLeft, LayoutGrid, MessageCircleQuestion, Monitor, Moon, Search, Sun, X, type LucideIcon } from "lucide-react";
-import { Kbd } from "../../src/components/ui/Kbd";
-import { setThemePreference, useResolvedTheme, useThemePreference } from "../../src/lib/theme";
+import { Kbd } from "../../web/src/components/ui/Kbd";
+import { setThemePreference, useResolvedTheme, useThemePreference } from "../../web/src/lib/theme";
 import { FAQ, questionJump } from "../apps/Help";
 import { FEATURES, featureJump } from "../apps/WhatsInside";
 import type { AppId } from "./ids";

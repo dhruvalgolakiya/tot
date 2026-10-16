@@ -1,4 +1,4 @@
-import type { MascotState } from "@shared/types";
+import type { MascotState } from "@tot/shared/types";
 import type { CrewMember } from "../crew";
 
 /**

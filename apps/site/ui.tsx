@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Moon, Sun } from "lucide-react";
-import { setThemePreference, useResolvedTheme } from "../src/lib/theme";
+import { setThemePreference, useResolvedTheme } from "../web/src/lib/theme";
 
 export function ThemeToggle({ className }: { className?: string }) {
   const theme = useResolvedTheme();

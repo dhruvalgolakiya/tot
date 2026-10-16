@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { ArrowUp, CalendarClock, ChevronDown, GitBranch, Lightbulb, Monitor, Plus, Search, SquarePen } from "lucide-react";
-import type { MascotState } from "@shared/types";
-import { Mascot } from "../../src/components/mascot";
-import { Badge } from "../../src/components/ui/Badge";
-import { StatusDot } from "../../src/components/ui/StatusDot";
+import type { MascotState } from "@tot/shared/types";
+import { Mascot } from "../../web/src/components/mascot";
+import { Badge } from "../../web/src/components/ui/Badge";
+import { StatusDot } from "../../web/src/components/ui/StatusDot";
 import { crew, type CrewMember } from "../crew";
 import { useReducedMotion } from "../ui";
 
@@ -112,7 +112,7 @@ export function TotApp() {
   );
 }
 
-/** A copy of TOT's task card (src/components/tasks/TaskCard.tsx), without the store. */
+/** A copy of TOT's task card (apps/web/src/components/tasks/TaskCard.tsx), without the store. */
 export function MockTaskCard({ task, status }: { task: MockTask; status: MockStatus }) {
   const done = status === "done";
   return (
