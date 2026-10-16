@@ -1,8 +1,11 @@
 import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, Usage } from "@tot/shared/types";
 import { db, parseJson, statement, type Row } from "../db.ts";
 
-/** Extras kept in the meta column: how a user message was sent (module 01) and the chats attached to it (module 05). */
-type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "contextChats">;
+/**
+ * Extras kept in the meta column: how a user message was sent (module 01), the chats attached to it (module 05) and the
+ * skill it invoked.
+ */
+type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "contextChats" | "skill">;
 
 function metaOf(message: Message): string | null {
   const meta: MessageMeta = {
@@ -10,18 +13,20 @@ function metaOf(message: Message): string | null {
     ...(message.steeredInto ? { steeredInto: message.steeredInto } : {}),
     ...(message.auto ? { auto: true } : {}),
     ...(message.contextChats?.length ? { contextChats: message.contextChats } : {}),
+    ...(message.skill ? { skill: message.skill } : {}),
   };
   return Object.keys(meta).length ? JSON.stringify(meta) : null;
 }
 
 /** The meta column's known extras (older rows can hold others, e.g. a dispatch decision from before it was removed). */
 function metaFrom(value: unknown): MessageMeta {
-  const { steered, steeredInto, auto, contextChats } = parseJson<MessageMeta>(value, {});
+  const { steered, steeredInto, auto, contextChats, skill } = parseJson<MessageMeta>(value, {});
   return {
     ...(steered ? { steered } : {}),
     ...(steeredInto ? { steeredInto } : {}),
     ...(auto ? { auto } : {}),
     ...(contextChats?.length ? { contextChats } : {}),
+    ...(typeof skill === "string" && skill ? { skill } : {}),
   };
 }
 
@@ -92,6 +97,16 @@ export const messages = {
     );
     bump(message.conversationId);
     index(message);
+  },
+
+  /** The skills a chat's messages invoked, oldest first (their folders are the ones its agent may read). */
+  skillsUsed(conversationId: string): string[] {
+    const rows = statement(
+      `SELECT json_extract(meta, '$.skill') AS skill FROM messages
+       WHERE conversation_id = ? AND role = 'user' AND json_valid(meta) AND json_extract(meta, '$.skill') IS NOT NULL
+       GROUP BY skill ORDER BY min(created_at)`,
+    ).all(conversationId) as Row[];
+    return rows.map((row) => String(row.skill));
   },
 
   /** Records how TOT handled a user message (its dispatch decision), once that's known. */

@@ -414,6 +414,8 @@ export interface Message {
   auto?: boolean;
   /** User messages: chats attached as reference (module 05). */
   contextChats?: string[];
+  /** User messages: the skill invoked with it ("/dh-stack …"), shown as a chip; its SKILL.md went to the model, not here. */
+  skill?: string;
   createdAt: number;
 }
 
@@ -1070,6 +1072,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/health                          -> { ok: true, version: string }
 // GET    /api/providers                       -> ProviderStatus[]
 // GET    /api/models                          -> ModelOption[]   ("auto" first; then each enabled account's models)
+// GET    /api/skills                          -> SkillInfo[]  (skills on this computer a message can invoke with "/name", by name)
 // GET    /api/accounts                        -> AccountStatus[] (?refresh=1 re-checks sign-ins; never env values)
 // POST   /api/accounts                        AccountInput -> ProviderAccount
 // PATCH  /api/accounts/:id                    AccountPatch -> ProviderAccount
@@ -1381,12 +1384,30 @@ export interface SendMessageRequest {
   thinkHarder?: boolean;
   /** Other chats of the same agent attached as reference (module 05; at most 3). */
   contextChats?: string[];
+  /**
+   * A skill (GET /api/skills) to run this message with; the text may still start with "/name". Without it, a text
+   * starting with "/name" of a known skill invokes it too, so any client can.
+   */
+  skill?: string;
 }
 
 export interface SendMessageResponse {
   runId: string;
   userMessage: Message;
   conversation: Conversation;
+}
+
+/** Where a skill was found: a Claude config folder's skills/, ~/.agents/skills, a Codex home's, or an enabled Claude plugin. */
+export type SkillSource = "claude" | "codex" | "agents" | "plugin";
+
+/** A skill a message can invoke ("/dh-stack fix the cart"): from its SKILL.md frontmatter only. */
+export interface SkillInfo {
+  /** What follows the slash; a plugin's skills are "plugin:skill", e.g. "voyager:make-image". */
+  name: string;
+  /** One line, at most about 200 characters. */
+  description: string;
+  source: SkillSource;
+  pluginName?: string;
 }
 
 export interface PluginInput {

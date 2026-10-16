@@ -77,6 +77,7 @@ import { landingRoutes } from "./landing/routes.ts";
 import { missionRoutes } from "./mission/routes.ts";
 import { worktreeRoutes } from "./worktrees/routes.ts";
 import { chatRoutes } from "./chats/routes.ts";
+import { skillRoutes } from "./skills/routes.ts";
 import { projectRoutes } from "./projects/routes.ts";
 import { projectRepoRoutes } from "./projects/repos-routes.ts";
 import { knowledgeRoutes } from "./knowledge/routes.ts";
@@ -417,6 +418,7 @@ api.route("/", landingRoutes);
 api.route("/", missionRoutes);
 api.route("/", worktreeRoutes);
 api.route("/", chatRoutes);
+api.route("/", skillRoutes);
 api.route("/", projectRoutes);
 // Module 11: workspaces (lanes A–D).
 api.route("/", projectRepoRoutes);
