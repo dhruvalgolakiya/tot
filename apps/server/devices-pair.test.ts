@@ -2,7 +2,7 @@
 // real turn ever runs), "Mac mini" as a child process with its own data dir and port. Pairing both ways,
 // what a paired device may do, chatting with the other device's agent through this one, live events,
 // offline and back, renaming, a one-way pairing, and unpairing.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/devices-pair.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/devices-pair.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -10,7 +10,7 @@ import { mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve, type ServerType } from "@hono/node-server";
-import type { AppEvent, Conversation, DevicesStatus, RunEvent } from "../shared/types.ts";
+import type { AppEvent, Conversation, DevicesStatus, RunEvent } from "@tot/shared/types";
 
 const MINI_PORT = 18_000 + Math.floor(Math.random() * 1000) * 2;
 const BOOK_PORT = MINI_PORT + 1;
@@ -76,12 +76,13 @@ let mini: ChildProcess | null = null;
 function startMini() {
   const env: NodeJS.ProcessEnv = { ...process.env, TOT_DATA_DIR: miniData, TOT_PORT: String(MINI_PORT), TOT_EXECUTOR_PORT: String(MINI_PORT + 3000), TOT_ACCESS_TOKEN: MINI_TOKEN, TOT_PUBLIC_URL: MINI };
   for (const name of ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CONFIG_DIR", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT"]) delete env[name];
-  // Set empty, not removed: the server also reads a .env next to package.json (a developer's own checkout may have
-  // one), and only variables already set are kept from it. A legacy TOT_LAN there would put the Mac mini on the network.
+  // Set empty, not removed: the server also reads a .env in its working directory (a developer's own checkout may
+  // have one), and only variables already set are kept from it. A legacy TOT_LAN there would put the Mac mini on the
+  // network.
   env.TOT_LAN = "";
   env.TOT_HOST = "";
   const log = openSync(miniLog, "a");
-  mini = spawn(process.execPath, ["--import", "tsx", "server/index.ts"], { env, stdio: ["ignore", log, log] });
+  mini = spawn(process.execPath, ["--import", "tsx", join(import.meta.dirname, "index.ts")], { env, stdio: ["ignore", log, log] });
 }
 async function stopMini() {
   if (!mini) return;

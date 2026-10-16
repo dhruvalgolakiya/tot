@@ -12,11 +12,11 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Conversation, Project, SendMessageRequest, TaskPorts } from "../shared/types.ts";
+import type { Conversation, Project, SendMessageRequest, TaskPorts } from "@tot/shared/types";
 
 // A temp home inside the repo's git-ignored .scratch (folder projects must be in the home folder, and the
 // sandbox lets commands write any temp folder, so the system one wouldn't show what stays unwritable).
-const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", ".scratch");
+const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".scratch");
 mkdirSync(SCRATCH, { recursive: true });
 const HOME = realpathSync.native(mkdtempSync(join(SCRATCH, "home-")));
 process.env.HOME = HOME;

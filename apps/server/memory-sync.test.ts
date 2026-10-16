@@ -3,14 +3,14 @@
 // entry and both converge; the same line edited on both keeps both versions, each editable on its own; an entry
 // forgotten on one while the other adds one stays forgotten; a sync can't be undone; only a paired device may
 // fetch the sync bundle, never through the device proxy; and a paired device can't use the other's memory routes.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/memory-sync.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/memory-sync.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve, type ServerType } from "@hono/node-server";
-import type { Memory, MemoryRepoSummary } from "../shared/types.ts";
+import type { Memory, MemoryRepoSummary } from "@tot/shared/types";
 
 const MINI_PORT = 20_000 + Math.floor(Math.random() * 1000) * 2;
 const BOOK_PORT = MINI_PORT + 1;
@@ -49,7 +49,7 @@ let mini: ChildProcess | null = null;
   const env: NodeJS.ProcessEnv = { ...process.env, TOT_DATA_DIR: miniData, TOT_PORT: String(MINI_PORT), TOT_EXECUTOR_PORT: String(MINI_PORT + 3000), TOT_ACCESS_TOKEN: MINI_TOKEN, TOT_PUBLIC_URL: MINI };
   for (const name of ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CONFIG_DIR", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "ELECTRON_RUN_AS_NODE", "TOT_LAN", "TOT_HOST"]) delete env[name];
   const log = openSync(miniLog, "a");
-  mini = spawn(process.execPath, ["--import", "tsx", "server/index.ts"], { env, stdio: ["ignore", log, log] });
+  mini = spawn(process.execPath, ["--import", "tsx", join(import.meta.dirname, "index.ts")], { env, stdio: ["ignore", log, log] });
 }
 process.on("exit", () => mini?.kill("SIGKILL"));
 

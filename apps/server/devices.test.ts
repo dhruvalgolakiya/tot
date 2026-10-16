@@ -1,8 +1,9 @@
 // Devices M1 (roadmap module 07): this device's identity, and per-browser sign-in sessions.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/devices.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/devices.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { sessionValue } from "./session.ts";
 
 process.env.TOT_ACCESS_TOKEN = "Test-Token-1234";
@@ -47,7 +48,7 @@ async function signIn(userAgent: string, from: string): Promise<string> {
 }
 
 const json = async <T>(res: Response) => (await res.json()) as T;
-type Status = import("../shared/types.ts").DevicesStatus;
+type Status = import("@tot/shared/types").DevicesStatus;
 const devices = async (cookie: string) => json<Status>(await send("/api/devices", { headers: { cookie } }));
 
 // --- This device ---
@@ -133,10 +134,12 @@ status = await json<Status>(res);
 check("sign out all others keeps only this browser", status.sessions.length === 1 && status.sessions[0].current, String(status.sessions.length));
 
 // --- Phone install ---
-const manifest = JSON.parse(readFileSync("public/manifest.webmanifest", "utf8")) as { display: string; icons: { src: string; sizes: string }[] };
+// The web app's public files (apps/web/public), which the built app serves.
+const WEB_PUBLIC = join(import.meta.dirname, "..", "web", "public");
+const manifest = JSON.parse(readFileSync(join(WEB_PUBLIC, "manifest.webmanifest"), "utf8")) as { display: string; icons: { src: string; sizes: string }[] };
 check(
   "the web app manifest opens full screen and its icons exist",
-  manifest.display === "standalone" && manifest.icons.every((icon) => existsSync(`public${icon.src}`)) && manifest.icons.some((icon) => icon.sizes === "512x512"),
+  manifest.display === "standalone" && manifest.icons.every((icon) => existsSync(join(WEB_PUBLIC, icon.src))) && manifest.icons.some((icon) => icon.sizes === "512x512"),
 );
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL PASS");

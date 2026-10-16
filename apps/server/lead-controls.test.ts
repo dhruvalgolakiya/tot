@@ -5,7 +5,7 @@
 // task_land on a draft PR's task with new commits asks on a card to push them, pushing exactly the reviewed head on
 // yes (a local bare repo as GitHub's git, a fake GitHub API). leadInbox.post (lane A) is replaced by a spy; real git
 // and the macOS sandbox under a temp HOME; fake model turns.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/lead-controls.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/lead-controls.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -16,10 +16,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import type { Conversation, LeadSignal, Message, MessagePart, Project, Routine, SendMessageRequest } from "../shared/types.ts";
+import type { Conversation, LeadSignal, Message, MessagePart, Project, Routine, SendMessageRequest } from "@tot/shared/types";
 
 // A temp home, set before anything reads it: folder projects must be inside it (as in landing.test.ts).
-const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", ".scratch");
+const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".scratch");
 mkdirSync(SCRATCH, { recursive: true });
 const HOME = realpathSync.native(mkdtempSync(join(SCRATCH, "controls-home-")));
 const OUTSIDE = realpathSync.native(mkdtempSync(join(SCRATCH, "controls-outside-")));

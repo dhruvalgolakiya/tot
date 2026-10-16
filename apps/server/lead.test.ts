@@ -4,7 +4,7 @@
 // after the turn), landing only the head the card showed; wakes for
 // any task in the project; Home's counts; and the Lead's limits counting only work in flight. Real git and the macOS
 // sandbox under a temp HOME (folder projects), fake model turns.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/lead.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/lead.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -14,10 +14,10 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { serve } from "@hono/node-server";
-import type { Conversation, HomeProject, Message, MessagePart, Project, SendMessageRequest } from "../shared/types.ts";
+import type { Conversation, HomeProject, Message, MessagePart, Project, SendMessageRequest } from "@tot/shared/types";
 
 // A temp home, set before anything reads it: folder projects must be inside it (as in landing.test.ts).
-const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", ".scratch");
+const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".scratch");
 mkdirSync(SCRATCH, { recursive: true });
 const HOME = realpathSync.native(mkdtempSync(join(SCRATCH, "lead-home-")));
 const OUTSIDE = realpathSync.native(mkdtempSync(join(SCRATCH, "lead-outside-")));

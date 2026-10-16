@@ -3,17 +3,17 @@
 // in that repo (a GitHub repo cloned at ~/projects/<slug>.<name>, a folder on this Mac in place), landing into the
 // right folder, overlaps only within a repo, and a folder grant per repo (checked against the real macOS sandbox).
 // Real git under a temp HOME; no network (GitHub URLs lead to local bare repos); no model turns, no ports.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/project-repos.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/project-repos.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Conversation, Project, TaskLandOptions } from "../shared/types.ts";
+import type { Conversation, Project, TaskLandOptions } from "@tot/shared/types";
 
 // A temp home, set before anything reads it: folders on this Mac must be inside it. Like landing.test.ts, it lives
 // in the repo's git-ignored .scratch (sandboxed commands may write anywhere in the system temp folder).
-const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", ".scratch");
+const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".scratch");
 mkdirSync(SCRATCH, { recursive: true });
 const HOME = realpathSync.native(mkdtempSync(join(SCRATCH, "repos-home-")));
 const OUTSIDE = realpathSync.native(mkdtempSync(join(SCRATCH, "repos-outside-")));

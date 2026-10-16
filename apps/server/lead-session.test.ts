@@ -3,7 +3,7 @@
 // last few messages), built by a pure preamble builder; it never waits on tasks (`wait` is refused with a reason);
 // and its prompt says what to do with each signal, the control tools, cards for landing and pushing, schedules and
 // knowledge. Real turns through the orchestrator with fake providers, a real MCP client for the tools.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/lead-session.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/lead-session.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -12,10 +12,10 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { LeadSignal, Message, MessagePart, SendMessageRequest } from "../shared/types.ts";
+import type { LeadSignal, Message, MessagePart, SendMessageRequest } from "@tot/shared/types";
 
 // A temp home, set before anything reads it (a project's shared files live under ~/projects).
-const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", ".scratch");
+const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".scratch");
 mkdirSync(SCRATCH, { recursive: true });
 const HOME = realpathSync.native(mkdtempSync(join(SCRATCH, "lead-session-home-")));
 process.env.HOME = HOME;

@@ -10,7 +10,7 @@
     "app:build": "npm run build -w @tot/web && tsx build.ts && electron-builder --config builder.config.ts --publish never",
     "app:release": "./release.sh",
     "app:publish": "./publish.sh",
-    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx desktop.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx updates.test.ts'",
+    "test": "cd ../.. && NODE_OPTIONS=--disable-warning=ExperimentalWarning sh -c 'TOT_DATA_DIR=$(mktemp -d) tsx apps/desktop/desktop.test.ts && TOT_DATA_DIR=$(mktemp -d) tsx apps/desktop/updates.test.ts'",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

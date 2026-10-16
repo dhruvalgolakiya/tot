@@ -1,13 +1,15 @@
 // Coordination (roadmap module 05): chats woken when their tasks finish, with fake model turns,
 // fake Slack/email threads and a real MCP client for the agent's tools.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/coordination.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/coordination.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { ConversationOrigin, Message, SendMessageRequest, TurnErrorKind } from "../shared/types.ts";
+import type { ConversationOrigin, Message, SendMessageRequest, TurnErrorKind } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 const PORT = 8791;
@@ -624,7 +626,7 @@ const afterRestart = execFileSync(
     "tsx",
     "--disable-warning=ExperimentalWarning",
     "-e",
-    `const { taskRequests } = await import("./server/tasks/requests.ts");
+    `const { taskRequests } = await import(${JSON.stringify(pathToFileURL(join(import.meta.dirname, "tasks", "requests.ts")).href)});
      const { tasks } = taskRequests.once(${JSON.stringify(retries.id)}, "req-deploy", () => { throw new Error("started again"); });
      console.log("TASKS " + tasks.map((t) => t.id).join(","));`,
   ],
@@ -755,7 +757,7 @@ seed(cutReply.id, 1, () => "Write me a long report");
 const streaming: Message = { id: randomUUID(), conversationId: cutReply.id, role: "assistant", parts: [{ type: "text", id: randomUUID(), text: "Here's the first half of the rep" }], status: "streaming", createdAt: Date.now() };
 messages.insert(streaming);
 // Opening the database again is what a restart does to a reply that was still streaming.
-execFileSync(process.execPath, ["--import", "tsx", "--disable-warning=ExperimentalWarning", "-e", `await import("./server/db.ts");`], { env: process.env });
+execFileSync(process.execPath, ["--import", "tsx", "--disable-warning=ExperimentalWarning", "-e", `await import(${JSON.stringify(pathToFileURL(join(import.meta.dirname, "db.ts")).href)});`], { env: process.env });
 const marked = messages.get(streaming.id)!;
 check("startup marks a cut-off reply, saying why", marked.status === "stopped" && marked.error === CUT_OFF_BY_RESTART, `${marked.status} ${marked.error}`);
 input = await realTurn(cutReply.id, { text: "where were we?" });

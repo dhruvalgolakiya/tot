@@ -2,7 +2,7 @@
 // project on this Mac (done by TOT itself), a draft PR (a fake GitHub API, a local bare repo as the remote),
 // updating a branch from its base, and discarding (also after cleanup removed a worktree). Real git and the macOS sandbox under a temp HOME; fake
 // model turns, so a task "given a turn" never reaches a model.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/landing.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/landing.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -11,11 +11,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import type { AppEvent, Conversation, Message, Project, SendMessageRequest, TaskLandOptions } from "../shared/types.ts";
+import type { AppEvent, Conversation, Message, Project, SendMessageRequest, TaskLandOptions } from "@tot/shared/types";
 
 // A temp home, set before anything reads it: folder projects must be inside it. Like projects-folders.test.ts,
 // it lives in the repo's git-ignored .scratch (sandboxed commands may write anywhere in the system temp folder).
-const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", ".scratch");
+const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".scratch");
 mkdirSync(SCRATCH, { recursive: true });
 const HOME = realpathSync.native(mkdtempSync(join(SCRATCH, "land-home-")));
 const OUTSIDE = realpathSync.native(mkdtempSync(join(SCRATCH, "land-outside-")));

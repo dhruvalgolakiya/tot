@@ -11,12 +11,12 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Project, RecentFolder, SendMessageRequest } from "../shared/types.ts";
+import type { Project, RecentFolder, SendMessageRequest } from "@tot/shared/types";
 
 // A temp home, set before anything reads it (local.ts reads homedir() as it loads). It lives in the
 // repo's git-ignored .scratch rather than the system temp folder: sandboxed commands may write to any
 // temp folder, so a home there couldn't show that the user's files stay unwritable.
-const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", ".scratch");
+const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".scratch");
 mkdirSync(SCRATCH, { recursive: true });
 const HOME = realpathSync.native(mkdtempSync(join(SCRATCH, "home-")));
 const OUTSIDE = realpathSync.native(mkdtempSync(join(SCRATCH, "outside-")));

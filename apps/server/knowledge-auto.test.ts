@@ -4,18 +4,18 @@
 // branch moves for a folder repo on this Mac and for a GitHub-style repo (a local bare remote, fetched on the agent's
 // computer), TOT's own landed tasks left out of a move, failures that back off, Dreaming's page summaries and
 // fact_to_page, and the routes. Real git in temp folders; never the real ~/.tot, GitHub or a model.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/knowledge-auto.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/knowledge-auto.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { KnowledgeRefreshResult, KnowledgeUpdate, Message, TaskRepo } from "../shared/types.ts";
+import type { KnowledgeRefreshResult, KnowledgeUpdate, Message, TaskRepo } from "@tot/shared/types";
 
 // A temp home, set before anything reads it: folder projects must be inside it (as in landing.test.ts, in the
 // repo's git-ignored .scratch, which the macOS sandbox lets a local computer use).
-const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", ".scratch");
+const SCRATCH = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".scratch");
 mkdirSync(SCRATCH, { recursive: true });
 const HOME = realpathSync.native(mkdtempSync(join(SCRATCH, "kauto-home-")));
 const OUTSIDE = realpathSync.native(mkdtempSync(join(SCRATCH, "kauto-outside-")));
