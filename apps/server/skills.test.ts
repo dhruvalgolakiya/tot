@@ -132,10 +132,10 @@ check("files without frontmatter, folders without SKILL.md and dot folders are s
 check("an unreadable SKILL.md is skipped", process.getuid?.() === 0 || !byName.locked);
 
 // Settings → Models picks another default Claude account: its folder comes first.
-settings.patch({ models: { accounts: { claude: "claude-work" } } });
+settings.patch({ models: { accounts: { claude: "claude-work", chatgpt: "chatgpt" } } });
 skills.refresh();
 check("the active Claude account's folder comes first", skills.find("quoted")?.description === "work account copy");
-settings.patch({ models: { accounts: { claude: "claude" } } });
+settings.patch({ models: { accounts: { claude: "claude", chatgpt: "chatgpt" } } });
 skills.refresh();
 
 // Cache: a scan within 30 s is reused; after it, a changed SKILL.md is read again.
