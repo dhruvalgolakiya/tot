@@ -17,7 +17,8 @@ const shared: BuildOptions = { bundle: true, platform: "node", target: "node24",
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 await Promise.all([
-  build({ ...shared, entryPoints: ["electron/main.ts"], outfile: "dist-app/main.cjs", format: "cjs", external: ["electron"] }),
+  // electron-updater ships in node_modules, as electron-builder expects, rather than inside main.cjs.
+  build({ ...shared, entryPoints: ["electron/main.ts"], outfile: "dist-app/main.cjs", format: "cjs", external: ["electron", "electron-updater"] }),
   build({ ...shared, entryPoints: ["electron/preload.ts"], outfile: "dist-app/preload.cjs", format: "cjs", external: ["electron"] }),
   build({ ...shared, entryPoints: ["electron/server-entry.ts"], outfile: "dist-app/server.mjs", format: "esm", packages: "external" }),
 ]);

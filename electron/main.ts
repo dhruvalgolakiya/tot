@@ -31,12 +31,14 @@ import {
 import { accessLabel, accessMode, planLaunch, probeTot } from "./probe.ts";
 import { logLine, ServerProcess, trimLog, type ServerExit } from "./server-process.ts";
 import { mergePath, readLoginShellPath, writeShims } from "./shell-env.ts";
+import type { UpdateState } from "./update-state.ts";
+import { Updates } from "./updates.ts";
 import { isAppUrl, isExternalUrl, MIN_SIZE, placeWindow, type SavedWindow } from "./window-rules.ts";
 
 /**
  * TOT for macOS (roadmap module 08): a window onto the TOT server, which the app starts with its own Node and
  * stops on Quit, or simply opens when a TOT already runs on the port. Closing the window keeps TOT running in
- * the menu bar, so phones and paired devices keep working.
+ * the menu bar, so phones and paired devices keep working. The installed app updates itself (updates.ts).
  */
 
 app.setName("TOT");
@@ -69,6 +71,19 @@ const server = new ServerProcess(
   { execPath: process.execPath, entry: join(__dirname, "server.mjs"), cwd: APP_DIR, port: PORT, logFile: LOG_FILE },
   (exit) => void serverStopped(exit),
 );
+
+const updates = new Updates({
+  log: (line) => logLine(LOG_FILE, line),
+  onChange: sendUpdateState,
+  // Restart to update quits for real: the window closes instead of hiding, and before-quit stops the server.
+  beforeInstall: () => {
+    quitting = true;
+  },
+  installFailed: () => {
+    quitting = false;
+    void showWindow();
+  },
+});
 
 // ---------------------------------------------------------------------------
 // What the app remembers: the window's place, and whether it explained closing
@@ -165,6 +180,12 @@ function loadApp() {
 
 function showPage(html: string) {
   if (win && !win.isDestroyed()) win.loadURL(pageUrl(html)).catch(() => {});
+}
+
+/** To TOT's own page in the window, which shows "Restart to update" once an update is ready. */
+function sendUpdateState(state: UpdateState) {
+  const contents = win && !win.isDestroyed() ? win.webContents : null;
+  if (contents && isAppUrl(contents.getURL(), PORT)) contents.send("tot:update-state", state);
 }
 
 function act(action: PageAction) {
@@ -316,7 +337,20 @@ function appMenu(): Menu {
     { type: "separator" },
     { role: "togglefullscreen" },
   ];
-  return Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { label: "View", submenu: view }, { role: "windowMenu" }]);
+  // macOS's standard app menu, plus Check for Updates… under About.
+  const about: MenuItemConstructorOptions[] = [
+    { role: "about" },
+    { label: "Check for Updates…", enabled: updates.enabled, click: () => void updates.checkByUser(win) },
+    { type: "separator" },
+    { role: "services" },
+    { type: "separator" },
+    { role: "hide" },
+    { role: "hideOthers" },
+    { role: "unhide" },
+    { type: "separator" },
+    { role: "quit" },
+  ];
+  return Menu.buildFromTemplate([{ label: app.name, submenu: about }, { role: "editMenu" }, { label: "View", submenu: view }, { role: "windowMenu" }]);
 }
 
 // ---------------------------------------------------------------------------
@@ -349,6 +383,7 @@ async function openTrayMenu() {
         enabled: app.isPackaged,
         click: (item) => setOpenAtLogin(item.checked),
       },
+      { label: "Check for Updates…", enabled: updates.enabled, click: () => void updates.checkByUser(win) },
       { label: "Show log", click: () => void shell.openPath(LOG_FILE) },
       { type: "separator" },
       { label: "Quit TOT", click: () => app.quit() },
@@ -397,6 +432,19 @@ ipcMain.handle("tot:pick-folder", async (event) => {
   const { canceled, filePaths } = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
   return canceled ? null : (filePaths[0] ?? null);
 });
+/** The web app's update prompt: the state (then every change, through tot:update-state), Restart to update, dismiss. */
+ipcMain.handle("tot:get-update-state", (event) => {
+  fromApp(event);
+  return updates.current;
+});
+ipcMain.handle("tot:install-update", (event) => {
+  fromApp(event);
+  updates.install();
+});
+ipcMain.handle("tot:dismiss-update", (event) => {
+  fromApp(event);
+  updates.dismiss();
+});
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -435,6 +483,7 @@ if (!app.requestSingleInstanceLock()) {
     );
     session.defaultSession.setPermissionCheckHandler((_contents, permission, origin) => PERMISSIONS.has(permission) && isAppUrl(origin, PORT));
     nativeTheme.on("updated", () => win?.setBackgroundColor(background()));
+    updates.start();
     Menu.setApplicationMenu(appMenu());
     win = createWindow(!(app.isPackaged && app.getLoginItemSettings().wasOpenedAtLogin));
     tray = createTray();

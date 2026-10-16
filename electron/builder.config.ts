@@ -11,7 +11,11 @@ import { checkPeers } from "./peer-deps.ts";
  *   hardened runtime. `npm run app:release` (electron/release.sh) gives one and notarizes with an App Store
  *   Connect API key (APPLE_API_KEY…), so the downloaded .dmg opens with no Gatekeeper warning. Codex's and
  *   Claude Code's own binaries keep their vendors' signatures.
- * - Nothing is published: there are no releases or auto-update yet.
+ * - Updates come from the GitHub releases of dhruvalgolakiya/tot (`publish`): the build writes app-update.yml
+ *   into the app, for electron-updater (updates.ts), and latest-mac.yml plus the zip's .blockmap into release/.
+ *   The build never uploads anything itself (`--publish never`); `npm run app:publish` (electron/publish.sh)
+ *   makes the release. macOS updates from the .zip; the .dmg is for first installs, left out of latest-mac.yml
+ *   because release.sh staples it after the build, which changes its checksum.
  * - The packaged node_modules are checked before signing: every required peer of a dependency must be there,
  *   in a version it accepts (peer-deps.ts), or the build fails.
  */
@@ -26,7 +30,7 @@ const config: Configuration = {
   files: ["package.json", "dist/**/*", "dist-app/**/*"],
   asar: false,
   npmRebuild: false,
-  publish: null,
+  publish: { provider: "github", owner: "dhruvalgolakiya", repo: "tot" },
   afterPack: async ({ appOutDir, packager }) => {
     const appDir = join(appOutDir, `${packager.appInfo.productFilename}.app`, "Contents", "Resources", "app");
     const problems = checkPeers(appDir);
@@ -46,7 +50,7 @@ const config: Configuration = {
     signIgnore: ["/node_modules/@openai/codex-darwin-arm64/", "/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/"],
   },
   // A signed .dmg passes Gatekeeper on its own; release.sh then notarizes and staples it.
-  dmg: { sign: developerId },
+  dmg: { sign: developerId, writeUpdateInfo: false },
 };
 
 export default config;
