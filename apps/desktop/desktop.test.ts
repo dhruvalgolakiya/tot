@@ -1,8 +1,8 @@
 // The Mac app's helpers (roadmap module 08): the PATH it runs TOT with, the node/npm/npx shims, whether to open
 // a TOT already on the port or start one, where the window opens, which links stay in it, the log's size cap, and
 // the check that the packaged node_modules hold every peer dependency in a version it accepts.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx electron/desktop.test.ts
-import "../server/test-data-dir.ts"; // first: refuses to run against the real ~/.tot
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/desktop/desktop.test.ts
+import "@tot/server/test-data-dir"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";

@@ -1,7 +1,7 @@
 // The Mac app's updates (roadmap module 08), without Electron: how electron-updater's events move the web app's
 // update prompt along, the one-line log of a failure, and what Check for Updates… answers.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx electron/updates.test.ts
-import "../server/test-data-dir.ts"; // first: refuses to run against the real ~/.tot
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/desktop/updates.test.ts
+import "@tot/server/test-data-dir"; // first: refuses to run against the real ~/.tot
 import { checkReply, failureDetail, failureLine, IDLE, nextUpdateState, type UpdateEvent, type UpdateState } from "./update-state.ts";
 
 let failures = 0;

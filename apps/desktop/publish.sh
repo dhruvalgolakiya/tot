@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Publishes the build in release/ as the GitHub release v<version> on dhruvalgolakiya/tot, which is where the
-# installed apps look for updates (electron/updates.ts): npm run app:publish, after npm run app:release and
+# Publishes the build in apps/desktop/release/ as the GitHub release v<version> on dhruvalgolakiya/tot, which is
+# where the installed apps look for updates (updates.ts): npm run app:publish, after npm run app:release and
 # after trying that build. Uploads the .dmg (first installs), the .zip and its .blockmap (updates), and
 # latest-mac.yml (what tells the apps there's a new version).
 #   --list               only check the files and print them; uploads nothing (release.sh ends with this)
@@ -8,7 +8,6 @@
 #   --draft              a draft release, which the apps don't see until it's published on GitHub
 # Uses the dhruvalgolakiya account's gh login (gh auth login once), never a token in the repo or the app.
 set -euo pipefail
-cd "${0:A:h}/.."
 
 repo=dhruvalgolakiya/tot
 list_only=0
@@ -23,6 +22,9 @@ while (( $# )); do
   esac
   shift
 done
+# A notes file is named from where the command ran (the repository root, for npm run app:publish).
+[[ -n $notes_file ]] && notes_file=${notes_file:A}
+cd "${0:A:h}"
 
 fail() { echo "app:publish: $1" >&2; exit 1; }
 
@@ -64,7 +66,7 @@ fi
 
 token=$(gh auth token --user dhruvalgolakiya) || fail "gh isn't logged in as dhruvalgolakiya: gh auth login, then try again."
 export GH_TOKEN=$token
-if gh release view $tag -R $repo >/dev/null 2>&1; then fail "$repo already has a release $tag. Bump the version in package.json and server/config.ts."; fi
+if gh release view $tag -R $repo >/dev/null 2>&1; then fail "$repo already has a release $tag. Bump the version in apps/desktop/package.json and apps/server/config.ts."; fi
 
 notes=()
 if [[ -n $notes_file ]]; then

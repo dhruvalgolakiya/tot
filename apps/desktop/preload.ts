@@ -3,7 +3,7 @@ import type { UpdateState } from "./update-state.ts";
 
 /**
  * What TOT's web app can ask of the Mac app (roadmap module 08), as `window.totDesktop`. This is the whole
- * contract, and the web app (src/lib/desktop.ts) is built against it: keep the two in step. The page runs
+ * contract, and the web app (apps/web/src/lib/desktop.ts) is built against it: keep the two in step. The page runs
  * sandboxed and isolated; the main process answers only TOT's own origin.
  */
 

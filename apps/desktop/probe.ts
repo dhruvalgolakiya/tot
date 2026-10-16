@@ -9,7 +9,7 @@ import { request } from "node:http";
 
 export type Probe = { kind: "tot"; id: string; name: string } | { kind: "free" } | { kind: "other"; detail: string };
 
-/** TOT answers /.well-known/tot with its device id, name and protocol version (server/devices/routes.ts). */
+/** TOT answers /.well-known/tot with its device id, name and protocol version (apps/server/devices/routes.ts). */
 export function classifyAnswer(status: number, body: string): Probe {
   if (status !== 200) return { kind: "other", detail: `It answered ${status}.` };
   try {

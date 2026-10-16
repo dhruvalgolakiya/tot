@@ -1,4 +1,4 @@
-import "../server/index.ts";
+import "@tot/server";
 
 /**
  * The TOT server as the Mac app runs it (roadmap module 08), bundled into dist-app/server.mjs: the same server

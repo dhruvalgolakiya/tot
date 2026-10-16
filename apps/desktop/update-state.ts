@@ -1,7 +1,7 @@
 /**
  * Updates for the Mac app (roadmap module 08), the parts without Electron: what the web app's update prompt
  * is told, how electron-updater's events move it along, and what a check the user asked for answers. updates.ts
- * feeds the events in; the web app (src/lib/desktop.ts) is built against `UpdateState`: keep the two in step.
+ * feeds the events in; the web app (apps/web/src/lib/desktop.ts) is built against `UpdateState`: keep the two in step.
  */
 
 /** Sent to the web app on every change. Only `ready` and not `dismissed` shows the prompt. */

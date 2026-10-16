@@ -47,8 +47,11 @@ app.setPath("userData", join(app.getPath("appData"), "TOT"));
 const PORT = Number(process.env.TOT_PORT ?? 8787);
 /** A loopback name: this computer never signs in. */
 const ORIGIN = `http://localhost:${PORT}`;
-/** Holds dist/ (the built web app, served from the server's cwd) and node_modules/. */
-const APP_DIR = app.getAppPath();
+/**
+ * Holds dist/ (the built web app, served from the server's cwd) and node_modules/: the packaged app's own folder, or
+ * in development (npm run app:dev, from apps/desktop) the repository root, as for npm start.
+ */
+const APP_DIR = app.isPackaged ? app.getAppPath() : join(app.getAppPath(), "..", "..");
 const LOG_FILE = join(homedir(), "Library", "Logs", "TOT", "server.log");
 const STATE_FILE = join(app.getPath("userData"), "state.json");
 const SHIM_DIR = join(app.getPath("userData"), "bin");
@@ -477,7 +480,7 @@ if (!app.requestSingleInstanceLock()) {
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());
 
   void app.whenReady().then(() => {
-    if (!app.isPackaged) app.dock?.setIcon(join(APP_DIR, "electron", "resources", "icon.png"));
+    if (!app.isPackaged) app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) =>
       callback(PERMISSIONS.has(permission) && isAppUrl(details.requestingUrl, PORT)),
     );

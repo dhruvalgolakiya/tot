@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 /**
- * Draws the Mac app's icons (roadmap module 08) and renders them with headless Chrome into electron/resources/:
+ * Draws the Mac app's icons (roadmap module 08) and renders them with headless Chrome into apps/desktop/resources/:
  * the app icon (the two TOT rings on a dark plate, on Apple's 1024 px icon grid) and the menu bar icon (the
  * rings alone, black on transparent, a template image macOS tints for light and dark menu bars). The SVGs are
- * written next to the PNGs. Run: npx tsx electron/icons.ts
+ * written next to the PNGs. Run: npx tsx apps/desktop/icons.ts
  */
 
 const OUT = join(import.meta.dirname, "resources");
@@ -33,7 +33,7 @@ function plate(size = 824, center = 512, n = 5, steps = 360): string {
 }
 
 /**
- * The rings as in public/tot.svg: stroke ≈ a fifth of their width, a sliver of space between them. A gradient
+ * The rings as in apps/web/public/tot.svg: stroke ≈ a fifth of their width, a sliver of space between them. A gradient
  * paint spans each ring on its own (objectBoundingBox units), violet at the top left to cyan at the bottom right.
  */
 function rings(cx: number, cy: number, outer: number, gap: number, paint: string): string {
@@ -131,7 +131,7 @@ async function render(svg: string, width: number, height: number, scale: number,
     copyFileSync(shot, join(OUT, file));
     const size = execFileSync("sips", ["-g", "pixelWidth", "-g", "pixelHeight", join(OUT, file)], { encoding: "utf8" });
     if (!size.includes(`pixelWidth: ${width * scale}`) || !size.includes(`pixelHeight: ${height * scale}`)) throw new Error(`${file} came out the wrong size:\n${size}`);
-    console.log(`wrote electron/resources/${file} (${width * scale}×${height * scale})`);
+    console.log(`wrote apps/desktop/resources/${file} (${width * scale}×${height * scale})`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

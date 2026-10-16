@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { Configuration } from "electron-builder";
 import { checkPeers } from "./peer-deps.ts";
@@ -8,12 +9,12 @@ import { checkPeers } from "./peer-deps.ts";
  * - No asar: the server runs from real files (dist/ as its working directory, codex and Claude Code spawned
  *   from node_modules), at the cost of a bigger app.
  * - Signed ad hoc unless a Developer ID is given through CSC_LINK or CSC_NAME, which also turns on the
- *   hardened runtime. `npm run app:release` (electron/release.sh) gives one and notarizes with an App Store
+ *   hardened runtime. `npm run app:release` (release.sh) gives one and notarizes with an App Store
  *   Connect API key (APPLE_API_KEY…), so the downloaded .dmg opens with no Gatekeeper warning. Codex's and
  *   Claude Code's own binaries keep their vendors' signatures.
  * - Updates come from the GitHub releases of dhruvalgolakiya/tot (`publish`): the build writes app-update.yml
  *   into the app, for electron-updater (updates.ts), and latest-mac.yml plus the zip's .blockmap into release/.
- *   The build never uploads anything itself (`--publish never`); `npm run app:publish` (electron/publish.sh)
+ *   The build never uploads anything itself (`--publish never`); `npm run app:publish` (publish.sh)
  *   makes the release. macOS updates from the .zip; the .dmg is for first installs, left out of latest-mac.yml
  *   because release.sh staples it after the build, which changes its checksum.
  * - The packaged node_modules are checked before signing: every required peer of a dependency must be there,
@@ -21,13 +22,17 @@ import { checkPeers } from "./peer-deps.ts";
  */
 
 const developerId = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
+/** The Electron installed for this app: npm hoists it to the repository root, where electron-builder doesn't look. */
+const electronVersion: string = createRequire(import.meta.url)("electron/package.json").version;
 
 const config: Configuration = {
   appId: "com.golakiya.tot",
   productName: "TOT",
-  directories: { output: "release", buildResources: "electron/resources" },
-  // Production dependencies come along from node_modules by themselves.
-  files: ["package.json", "dist/**/*", "dist-app/**/*"],
+  electronVersion,
+  directories: { output: "release", buildResources: "resources" },
+  // Production dependencies come along from node_modules by themselves. The web app is built into the repository
+  // root's dist/ (npm run build), which the server serves from its working directory: the app's folder.
+  files: ["package.json", "dist-app/**/*", { from: "../../dist", to: "dist", filter: ["**/*"] }],
   asar: false,
   npmRebuild: false,
   publish: { provider: "github", owner: "dhruvalgolakiya", repo: "tot" },
@@ -42,7 +47,7 @@ const config: Configuration = {
       { target: "zip", arch: ["arm64"] },
     ],
     category: "public.app-category.productivity",
-    icon: "electron/resources/icon.png",
+    icon: "resources/icon.png",
     // "-" signs ad hoc; undefined lets electron-builder find the Developer ID.
     identity: developerId ? undefined : "-",
     hardenedRuntime: developerId,
