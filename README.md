@@ -14,6 +14,7 @@ TOT is your own always-on AI agents, in the spirit of ChatGPT Dots and Grok Bot,
 - **Routines.** Agents run recurring tasks on their own ("every weekday at 9, brief me on AI news"): ask in chat and the agent schedules it, or set one up in the agent's settings. Each run starts a new chat.
 - **Attachments.** Drop in images (the model sees them), text, code and CSV files (read inline), or anything else (copied to the agent's computer under `~/uploads`).
 - **Memory.** Agents save durable facts about you across chats, kept as git repos of markdown that you can browse, edit and sync between your computers.
+- **Skills.** Start a message with `/` and a skill's name, like `/dh-stack fix the cart`, to run it with that skill's `SKILL.md` (from your Claude and Codex skill folders and enabled Claude Code plugins). The `/` menu in the message box lists them; only the named skill goes to the model, for that one message.
 - **Plugins.** Any MCP server. ChatGPT turns can also use the apps connected to your ChatGPT account; Claude turns can use your claude.ai connectors.
 - **Everywhere you are.** A Mac app that lives in the menu bar, an iPhone app, sign-in from your phone over Tailscale or your Wi‑Fi, and paired computers that show each other's agents.
 - **Light and dark.** Follows your device by default; switch in Settings → General or with the sun/moon button in the sidebar.
@@ -134,6 +135,10 @@ TOT server (Hono on Node)  ── SQLite (~/.tot/tot.db: chats, memory index, pl
 - Each agent's computer is created on its first tool call, stopped after `idleStopMinutes` (default 10) and resumed on the next call; files and installed packages persist, running servers don't.
 - Each chat keeps its provider session (Claude session / Codex thread), so follow-ups resume with full context. Switching providers mid-chat carries the transcript over.
 - Replies stream token by token. Runs are decoupled from the HTTP request: reload the page mid-reply and it reattaches.
+
+### Skills
+
+Skills are folders with a `SKILL.md` (YAML frontmatter `name` and `description`, then instructions), as Claude Code and Codex use them. TOT runs both providers without your personal config, so neither loads skills by itself. Instead `GET /api/skills` lists what's on this computer, reading frontmatter only, from (first wins a name): the default Claude account's `skills/`, the other accounts' folders, `~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, the Codex accounts' homes, and the `skills/` of enabled Claude Code plugins (as `plugin:skill`). A message that starts with `/<name>` of a known skill (or that the composer sent with `skill`) gets the skill's `SKILL.md` body and folder path before the user's text, for that turn only; the message keeps the skill in its meta for the chip. Chats that invoked a skill also get a read-only `skill_read` tool for the skill's other files, since the agents have no file access to this Mac. Code: `apps/server/skills/`.
 
 ## Repository layout
 

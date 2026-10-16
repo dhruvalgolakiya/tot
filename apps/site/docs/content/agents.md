@@ -36,6 +36,17 @@ Want to chase an idea without derailing a chat? Choose **Fork chat** in the chat
 
 Type `@` in the message box to attach up to 3 of this agent's other chats as reference, or drag a chat from the sidebar onto the box. The agent reads them as background, not as new instructions: "what did we decide there?" just works.
 
+### Run a skill
+
+Skills are the folders of instructions you already use with Claude Code and Codex: a `SKILL.md` and sometimes references and scripts next to it. Start a message with `/` and the skill's name to run that message with it, like `/dh-stack fix the cart total`.
+
+- **Pick one.** Type `/` at the start of the message box: the menu lists your skills under **/best-of**, filtered as you type by name, then by description. Use the arrow keys and Enter or Tab, or click.
+- **Where they come from.** The `skills` folder of your Claude account (and of any other account you added), `~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, and the skills of the Claude Code plugins you turned on, named like `voyager:make-image`. When two have the same name, the first in that order wins.
+- **Just that message.** The skill's instructions go to the model with that one message, on Claude or ChatGPT. It can read the skill's other files, but only for skills used in that chat, and never change them. The message shows a small chip with the skill's name.
+- **From your phone or Slack.** A message that starts with `/name` of a skill works the same way; there's no menu there, so type the name. In Slack, mention TOT first (`@TOT /dh-stack …`), since Slack takes a message that starts with `/` as one of its own commands.
+
+TOT doesn't load your skills on its own, the way Claude Code can: only the one you name, so other chats don't pay for them.
+
 ## Models
 
 Pick a model from the menu at the top of the chat.
@@ -82,4 +93,5 @@ Each run starts a new chat, marked with a clock, so you can read it whenever you
 - Mascots show working, idle and asleep. They don't act out thinking or talking in the app yet.
 - **Search chats** matches titles only.
 - You can attach chats of the same agent only, and you can't fork a task (only a chat).
+- Skills come from this computer's folders; a chat on a paired computer runs the skills that computer has. A skill's scripts aren't run for the agent: it can read them and copy them to its computer.
 - No voice input in the Mac app or in Firefox.
