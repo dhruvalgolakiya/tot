@@ -8,7 +8,7 @@ TOT.app is TOT as a normal Mac app. Double-click it and TOT opens in its own win
 
 - **Starts TOT for you**, with its own copy of Node built in, and opens it in a window. This computer never asks you to sign in.
 - **Lives in the menu bar.** Close the window and TOT keeps running, so your phone and paired devices keep working. The first time, a notification says "TOT is still running in the menu bar."
-- **Uses the same TOT** as `npm start`: port 8787 and the data folder `~/.tot`. `npm run dev` keeps its own (port 8790, `~/.tot-dev`), so you can work on TOT while the installed app keeps running.
+- **Uses the same TOT** as running it from a terminal: the same port (8787) and the same data folder (`~/.tot`). If a TOT is already running, the app opens that one instead of starting a second.
 - **Cleans up when you quit.** Quit stops TOT and everything it started.
 - **Gets back up.** If TOT's server stops by itself, the app restarts it once. If it stops again within five minutes, the window says "TOT stopped", with **Restart** and **Show log**.
 - **Follows your Mac's look**, light or dark, with no white flash.

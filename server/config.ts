@@ -12,14 +12,10 @@ try {
   // no .env — that's fine
 }
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.1.1";
 
+export const PORT = Number(process.env.TOT_PORT ?? 8787);
 export const IS_PROD = process.env.NODE_ENV === "production";
-/**
- * The API's port. `npm run dev` gets its own (8790), as it gets its own data (DATA_DIR): it runs beside the installed
- * TOT.app (and `npm start`, both on 8787 with ~/.tot) without either one taking the other's port or database.
- */
-export const PORT = Number(process.env.TOT_PORT ?? (IS_PROD ? 8787 : 8790));
 
 /**
  * Legacy sign-in token (see auth.ts, access.ts). Sign-in is normally a password set in the app
@@ -51,8 +47,8 @@ export const HOST = (!TAILSCALE && process.env.TOT_HOST?.trim()) || "127.0.0.1";
 /** TOT_HOST put the main listener itself on the network. */
 export const RAW_HOST_EXPOSED = !isLoopbackBind(HOST);
 
-/** Everything TOT persists lives here: the SQLite db, secrets, local computer workspaces. `npm run dev` keeps its own. */
-export const DATA_DIR = process.env.TOT_DATA_DIR ?? join(homedir(), IS_PROD ? ".tot" : ".tot-dev");
+/** Everything TOT persists lives here: the SQLite db, secrets, local computer workspaces. */
+export const DATA_DIR = process.env.TOT_DATA_DIR ?? join(homedir(), ".tot");
 
 export const paths = {
   db: join(DATA_DIR, "tot.db"),

@@ -65,7 +65,7 @@ npm install
 npm run dev
 ```
 
-Then open [http://localhost:5173](http://localhost:5173) in your browser. TOT's server runs on port 8790 behind it, with its own data in `~/.tot-dev`, apart from the Mac app's.
+Then open [http://localhost:5173](http://localhost:5173) in your browser. TOT's server runs on port 8787 behind it.
 
 For an everyday setup that serves the built app from one port (8787), run:
 

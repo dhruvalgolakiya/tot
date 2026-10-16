@@ -12,8 +12,7 @@ try {
   // no .env — that's fine
 }
 
-// The dev API (server/config.ts): its own port, apart from the installed TOT.app's 8787.
-const apiPort = Number(process.env.TOT_PORT ?? 8790);
+const apiPort = Number(process.env.TOT_PORT ?? 8787);
 /** Must match the server's WEB_PORT: remote access, paired devices and the agents' sandbox all assume it. */
 const webPort = Number(process.env.TOT_WEB_PORT ?? 5173);
 
