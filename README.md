@@ -182,7 +182,7 @@ The design standard is [docs/DESIGN.md](docs/DESIGN.md). See [CONTRIBUTING.md](C
 
 ## Landing page
 
-The public page for TOT lives in `apps/site/`, built from the web app's design tokens and mascots. It's a static site with no API and no sign-in. Vercel deploys it from the root `vercel.json` (`npm run site:build`, output `apps/site/dist`).
+The public page for TOT lives in `apps/site/`, built from the web app's design tokens and mascots. It's a static site with no API and no sign-in. Vercel deploys it from the root `vercel.json` (`npm run site:build`, output `apps/site/dist`, rebuilt when `apps/site`, `apps/web/public`, `packages/shared` or the package files change).
 
 ## Subscriptions, and "everyone can use it"
 
