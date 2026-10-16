@@ -31,6 +31,8 @@ The plan has eight modules. Each has its own doc, written so an agent can pick i
 
 01, 02, 03 (M1–M4), 05 and 06 (M1–M4) are merged into `main`. 07 (M1–M4) is built on `feat/devices`. 08 (M1) is built on `feat/mac-app`. 04 is next.
 
+**Paths.** The module docs name files as they were when each module was built, before the repository became a monorepo: `server/` is now `apps/server/`, `src/` is `apps/web/src/`, `shared/` is `packages/shared/`, `electron/` is `apps/desktop/`, `site/` is `apps/site/` and `mobile/` is `apps/mobile/`. This page uses today's paths.
+
 ## Parallel plan: two worktrees
 
 Module 01 is the foundation, because everything else hangs off "a session can be a task with a branch". Module 03 is the only big piece that can be built in parallel without it: profiles, gates, the reviewer and playbooks are standalone services until their final milestone. That gives two lanes:
@@ -76,18 +78,18 @@ Don't copy `.env` either: without `TOT_ACCESS_TOKEN` the app stays local-only, w
 # Worktree A (use 8802 / 5182 / 4802 for worktree B, 8803 / 5183 / 4803 and ~/.tot-dev-c for worktree C,
 # 8804 / 5184 / 4804 and ~/.tot-dev-d for worktree D, 8805 / 5185 / 4805 and ~/.tot-dev-e for worktree E)
 TOT_DATA_DIR=$HOME/.tot-dev-a TOT_PORT=8801 TOT_WEB_PORT=5181 TOT_EXECUTOR_PORT=4801 npm run dev:server
-TOT_PORT=8801 TOT_WEB_PORT=5181 npx vite
+TOT_PORT=8801 TOT_WEB_PORT=5181 npm run dev:web
 ```
 
 ## Avoiding merge conflicts
 
-Both lanes will touch some shared files: `shared/types.ts`, `server/db.ts`, `server/routes.ts`, `src/store.ts`, `src/lib/api.ts`, the sidebar and the settings sections. Keep those touches small:
+Both lanes will touch some shared files: `packages/shared/types.ts`, `apps/server/db.ts`, `apps/server/routes.ts`, `apps/web/src/store.ts`, `apps/web/src/lib/api.ts`, the sidebar and the settings sections. Keep those touches small:
 
-- **New code goes in new files and folders.** 01 owns `server/tasks/` and `src/components/tasks/`; 03 owns `server/trust/` and `src/components/trust/`.
-- **Routes:** each module adds its routes in its own file (e.g. `server/tasks/routes.ts`) exporting a Hono router. `server/routes.ts` gets one `api.route(...)` line.
-- **Types:** add a new section at the **end** of `shared/types.ts` with a banner comment, plus the route docs in the existing route-docs block. Only 01 may change the existing `Conversation` / `MessagePart` / `AppEvent` types; 03 adds new types only.
-- **Database:** add one schema block at the end of `server/db.ts`. Use the idempotent style already used there (`CREATE TABLE IF NOT EXISTS`, `hasColumn` checks), with a comment naming the module.
-- **Frontend state:** put it in its own store file where possible (e.g. `src/lib/tasks.ts`), and keep `src/store.ts` edits to wiring.
+- **New code goes in new files and folders.** 01 owns `apps/server/tasks/` and `apps/web/src/components/tasks/`; 03 owns `apps/server/trust/` and `apps/web/src/components/trust/`.
+- **Routes:** each module adds its routes in its own file (e.g. `apps/server/tasks/routes.ts`) exporting a Hono router. `apps/server/routes.ts` gets one `api.route(...)` line.
+- **Types:** add a new section at the **end** of `packages/shared/types.ts` with a banner comment, plus the route docs in the existing route-docs block. Only 01 may change the existing `Conversation` / `MessagePart` / `AppEvent` types; 03 adds new types only.
+- **Database:** add one schema block at the end of `apps/server/db.ts`. Use the idempotent style already used there (`CREATE TABLE IF NOT EXISTS`, `hasColumn` checks), with a comment naming the module.
+- **Frontend state:** put it in its own store file where possible (e.g. `apps/web/src/lib/tasks.ts`), and keep `apps/web/src/store.ts` edits to wiring.
 
 ## Rules for every agent (non-negotiable)
 
@@ -100,39 +102,39 @@ These come from the user's standing rules.
 - **Never send, edit or delete anything in Slack or Linear** for real without the user's explicit OK. Don't send real email either.
 - **Tests:**
   - Every test suite's first import is `import "./test-data-dir.ts";` (adjust the path). It refuses to run against `~/.tot`.
-  - Add each new suite to the `npm test` script with `TOT_DATA_DIR=$(mktemp -d)`.
-  - Use fakes for providers, GitHub, Slack and mail. `server/slack.test.ts`, `server/github.test.ts` and `server/personas.test.ts` show the patterns, e.g. `useSender(...)` to fake turns and the fake GitHub server.
+  - Add each new suite to its package's `test` script (e.g. `apps/server/package.json`) with `TOT_DATA_DIR=$(mktemp -d)`.
+  - Use fakes for providers, GitHub, Slack and mail. `apps/server/slack.test.ts`, `apps/server/github.test.ts` and `apps/server/personas.test.ts` show the patterns, e.g. `useSender(...)` to fake turns and the fake GitHub server.
 - **Secrets:** never print secrets or `.env` values, and never put tokens in tool output, logs or errors. Use `redactGitHubTokens` and the existing scrubbers.
 - **Design:**
-  - Follow `DESIGN.md`. TOT looks like the ChatGPT / Codex desktop app: neutral greys, flat rows, pill buttons, design tokens only, and it must work in light and dark.
+  - Follow [`docs/DESIGN.md`](../DESIGN.md). TOT looks like the ChatGPT / Codex desktop app: neutral greys, flat rows, pill buttons, design tokens only, and it must work in light and dark.
   - Keep few visible actions; group secondary ones into one "…" menu.
-  - Use the existing primitives (`src/components/ui/*`, including `Select`) and lucide icons. No emojis as icons.
+  - Use the existing primitives (`apps/web/src/components/ui/*`, including `Select`) and lucide icons. No emojis as icons.
   - For any visible change, check with real screenshots in both themes before calling it done.
-- **Models:** use Claude Sonnet 5.5 for light work (classification, summaries) and Opus 5.5 for hard work. `server/agent/router.ts` already encodes this; extend it rather than hard-coding model ids elsewhere.
+- **Models:** use Claude Sonnet 5.5 for light work (classification, summaries) and Opus 5.5 for hard work. `apps/server/agent/router.ts` already encodes this; extend it rather than hard-coding model ids elsewhere.
 - **Code style:** match the surrounding code (comment density, naming, idioms). Keep functions readable; no speculative abstractions.
 
 ## Definition of done for every milestone
 
 - `npm test` passes: every suite prints `ALL PASS`, including the new ones.
-- `npx tsc -p tsconfig.server.json --noEmit` and `npx tsc -p . --noEmit` are clean.
-- `npx vite build --outDir /tmp/<anything>` succeeds.
+- `npm run typecheck` is clean.
+- `npx vite build --config apps/web/vite.config.ts --outDir /tmp/<anything>` succeeds.
 - UI changes have been checked with screenshots in light and dark, and on a phone-width viewport if the screen is reachable on mobile.
-- The route docs in `shared/types.ts` are updated, and the milestone is ticked in its module doc with a one-line note of what shipped.
+- The route docs in `packages/shared/types.ts` are updated, and the milestone is ticked in its module doc with a one-line note of what shipped.
 - Work is committed on the feature branch with a clear message, and is not pushed.
 
 ## Map of today's code (where things live)
 
 | Area | Files |
 |------|-------|
-| Turn pipeline (model routing, system prompt, MCP servers per turn, approvals) | `server/agent/orchestrator.ts` (`sendMessage`, `TurnOptions`: `preamble`, `heavy`, `freshSession`, `maxSteps`), `router.ts`, `prompts.ts`, `approvals.ts` |
-| Providers | `server/agent/providers/claude.ts` (Agent SDK `query()`), `chatgpt.ts` (Codex app-server JSON-RPC: `thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`); one per provider account (`server/accounts/`, `providerFor(accountId)`) |
-| Live runs | `server/agent/runs.ts`: in memory only (`Run` keeps events, `runRegistry.activeFor(conversationId)`); **nothing survives a restart** |
-| Usage limits / cooldowns | `server/agent/limits.ts` (persisted cooldown per provider; Auto avoids a limited provider) |
-| Multi-step jobs (precedent) | `server/agent/learn-repo.ts`: steps sent one after another with `freshSession`, state kept in a brain checklist, stall detection |
-| Scheduled runs | `server/agent/scheduler.ts` (routines run unattended) |
-| Computers | `server/computer/manager.ts` (`ensure`, `act`, exec via the `computer_exec` tool with `cwd`), `local.ts` (macOS Seatbelt sandbox), `boat.ts` (cloud VMs). Repos live in `~/repos/<name>` on the agent's computer (Learn a repo) |
-| Agent tools (TOT's MCP server) | `server/mcp/server.ts` (+ `wiki-tools.ts`, `mail-tools.ts`); served per conversation at `/mcp/<conversationId>` |
-| Brains / wiki | `server/data/brains.ts`, `server/data/wiki.ts`, `server/agent/brain-hints.ts`; repo brains come from Learn a repo |
-| GitHub | `server/github.ts`, `server/persona-github.ts` (`githubAccessFor(agentId)` is the single decision point), `server/computer/github-login.ts` |
-| External triggers | `server/slack.ts` (thread → chat, status line, approval buttons), `server/mail/tasks.ts` (emailed tasks) |
-| Frontend | `src/store.ts` (zustand), `src/lib/api.ts`, `src/components/Sidebar.tsx`, `ChatView.tsx`, `MessagePartView.tsx`, `Header.tsx`, `Composer.tsx`, `settings/*` |
+| Turn pipeline (model routing, system prompt, MCP servers per turn, approvals) | `apps/server/agent/orchestrator.ts` (`sendMessage`, `TurnOptions`: `preamble`, `heavy`, `freshSession`, `maxSteps`), `router.ts`, `prompts.ts`, `approvals.ts` |
+| Providers | `apps/server/agent/providers/claude.ts` (Agent SDK `query()`), `chatgpt.ts` (Codex app-server JSON-RPC: `thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`); one per provider account (`apps/server/accounts/`, `providerFor(accountId)`) |
+| Live runs | `apps/server/agent/runs.ts`: in memory only (`Run` keeps events, `runRegistry.activeFor(conversationId)`); **nothing survives a restart** |
+| Usage limits / cooldowns | `apps/server/agent/limits.ts` (persisted cooldown per provider; Auto avoids a limited provider) |
+| Multi-step jobs (precedent) | `apps/server/agent/learn-repo.ts`: steps sent one after another with `freshSession`, state kept in a brain checklist, stall detection |
+| Scheduled runs | `apps/server/agent/scheduler.ts` (routines run unattended) |
+| Computers | `apps/server/computer/manager.ts` (`ensure`, `act`, exec via the `computer_exec` tool with `cwd`), `local.ts` (macOS Seatbelt sandbox), `boat.ts` (cloud VMs). Repos live in `~/repos/<name>` on the agent's computer (Learn a repo) |
+| Agent tools (TOT's MCP server) | `apps/server/mcp/server.ts` (+ `wiki-tools.ts`, `mail-tools.ts`); served per conversation at `/mcp/<conversationId>` |
+| Brains / wiki | `apps/server/data/brains.ts`, `apps/server/data/wiki.ts`, `apps/server/agent/brain-hints.ts`; repo brains come from Learn a repo |
+| GitHub | `apps/server/github.ts`, `apps/server/persona-github.ts` (`githubAccessFor(agentId)` is the single decision point), `apps/server/computer/github-login.ts` |
+| External triggers | `apps/server/slack.ts` (thread → chat, status line, approval buttons), `apps/server/mail/tasks.ts` (emailed tasks) |
+| Frontend | `apps/web/src/store.ts` (zustand), `apps/web/src/lib/api.ts`, `apps/web/src/components/Sidebar.tsx`, `ChatView.tsx`, `MessagePartView.tsx`, `Header.tsx`, `Composer.tsx`, `settings/*` |

@@ -3,7 +3,7 @@
 Calm, consistent, crisp — Linear / Vercel / ChatGPT-desktop craft on Grok's minimal dark look, with the
 mascots as the only playful element. Dark-first; light mode must look equally deliberate.
 
-Tokens live in `src/index.css`; primitives in `src/components/ui/`. **New and migrated code uses semantic
+Tokens live in `apps/web/src/index.css`; primitives in `apps/web/src/components/ui/`. **New and migrated code uses semantic
 tokens only** — no `white/[0.0x]`, no `text-zinc-*`, no `text-[13px]`. (Exceptions: mascot art, code-block
 chrome, and the `.dark` islands' internals.)
 
@@ -127,7 +127,7 @@ Hover: `transition-colors` (150ms). Reveal: `transition-opacity`. Enter: `animat
 `hover:-translate-y-*`, no scale). Busy: `LoaderCircle animate-spin` in `text-fg-subtle` (or `text-accent` for agent work).
 Reduced motion is handled globally.
 
-## 8. Primitives (`src/components/ui`)
+## 8. Primitives (`apps/web/src/components/ui`)
 
 | Primitive | API | Notes |
 |---|---|---|
@@ -140,7 +140,7 @@ Reduced motion is handled globally.
 | `Switch`, `RadioCards`, `SecretInput` | unchanged APIs | |
 | `Card`, `cardClass()` | `padding` none · sm · md, `interactive` | sections: `border-t border-hairline` |
 | `PageHeader`, `SectionHeader` | `title`, `description`, `action`; section `as` h2/h3 | page title is the landing's: 24px tight semibold + one muted lede line |
-| `Ledger`, `LedgerPanel`, `LedgerHeader`, `LedgerSection`, `LedgerRow`, `ledgerRowClass()`, `LedgerMore`, `LedgerField`, `LedgerGroup` | panel `header`, `body` rows · fields; section `label`, `count`, `tone`, `layout` margin · stacked, `description`, `action`, `collapsed`/`onToggle`; row `leading`, `title`, `detail`, `mono`, `layout` inline · stacked, `trailing`, `href`/`onClick`; field `title`, `description`, `control`, `stacked`; group `title`, `action` | the landing's ledger: one bordered `rounded-2xl` panel, labelled sections with counts, dense rows. `src/components/home/Ledger.tsx` re-exports it |
+| `Ledger`, `LedgerPanel`, `LedgerHeader`, `LedgerSection`, `LedgerRow`, `ledgerRowClass()`, `LedgerMore`, `LedgerField`, `LedgerGroup` | panel `header`, `body` rows · fields; section `label`, `count`, `tone`, `layout` margin · stacked, `description`, `action`, `collapsed`/`onToggle`; row `leading`, `title`, `detail`, `mono`, `layout` inline · stacked, `trailing`, `href`/`onClick`; field `title`, `description`, `control`, `stacked`; group `title`, `action` | the landing's ledger: one bordered `rounded-2xl` panel, labelled sections with counts, dense rows. `apps/web/src/components/home/Ledger.tsx` re-exports it |
 | `Chip` | `icon`, `tone` neutral · success · warning · danger | outlined 20px pill for tags; `Badge` for statuses that must stand out |
 | `ListRow`, `listRowClass()` | `selected`, `size` sm (32) · md (36), `icon`, `trailing` | class helper for rows with custom children |
 | `Badge` | `tone` neutral · accent · success · warning · danger, `dot` | 20px, `text-2xs` |
