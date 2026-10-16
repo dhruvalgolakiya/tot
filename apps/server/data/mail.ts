@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { MailAddress, MailMessage, MailSummary } from "../../shared/types.ts";
+import type { MailAddress, MailMessage, MailSummary } from "@tot/shared/types";
 import { db, parseJson, type Row } from "../db.ts";
 
 /** Personas' stored mail (recent INBOX and Sent), searchable by sender, subject and text. */

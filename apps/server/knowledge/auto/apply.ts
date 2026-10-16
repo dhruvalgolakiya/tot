@@ -1,4 +1,4 @@
-import type { KnowledgeUpdate, Project, WikiPage } from "../../../shared/types.ts";
+import type { KnowledgeUpdate, Project, WikiPage } from "@tot/shared/types";
 import { appEvents } from "../../app-events.ts";
 import { memories } from "../../data/memories.ts";
 import { wiki, WikiError } from "../../data/wiki.ts";

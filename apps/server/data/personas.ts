@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Persona, PersonaGitHub, PersonaInput, PersonaMailbox, PersonaPatch } from "../../shared/types.ts";
+import type { Persona, PersonaGitHub, PersonaInput, PersonaMailbox, PersonaPatch } from "@tot/shared/types";
 import { db, parseJson, type Row } from "../db.ts";
 import { mail } from "./mail.ts";
 import { uploads } from "./uploads.ts";

@@ -30,7 +30,7 @@ import type {
   UpdateConversationRequest,
   WikiPageInput,
   WikiPagePatch,
-} from "../shared/types.ts";
+} from "@tot/shared/types";
 import { HttpError, sendMessage } from "./agent/orchestrator.ts";
 import { appEvents } from "./app-events.ts";
 import { apps, ExecutorError } from "./apps.ts";
@@ -588,7 +588,7 @@ api.post("/runs/:runId/stop", (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Memory repo (module 10): /api/memories and /api/memory/* (server/memory/routes.ts)
+// Memory repo (module 10): /api/memories and /api/memory/* (apps/server/memory/routes.ts)
 // ---------------------------------------------------------------------------
 
 api.route("/", memoryRoutes);

@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { WikiPage } from "../../shared/types.ts";
+import type { WikiPage } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { brains, type AgentBrain } from "../data/brains.ts";
 import { wiki, WikiError } from "../data/wiki.ts";

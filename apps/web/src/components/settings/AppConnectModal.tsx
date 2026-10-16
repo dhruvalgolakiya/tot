@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, Copy, ExternalLink, LoaderCircle } from "lucide-react";
-import type { AppKeyField } from "@shared/types";
+import type { AppKeyField } from "@tot/shared/types";
 import type { ConnectFlowState } from "../../hooks/useAppConnect";
 import { useCopy } from "../../hooks/useCopy";
 import { Button } from "../ui/Button";

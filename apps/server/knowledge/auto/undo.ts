@@ -1,4 +1,4 @@
-import type { KnowledgeUpdate } from "../../../shared/types.ts";
+import type { KnowledgeUpdate } from "@tot/shared/types";
 import { HttpError } from "../../agent/orchestrator.ts";
 import { appEvents } from "../../app-events.ts";
 import { wiki, WikiError } from "../../data/wiki.ts";

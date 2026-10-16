@@ -1,9 +1,9 @@
 // The Slack bot against a fake Slack (Web API + Socket Mode) and a fake model turn.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/slack.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/slack.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import type { Message, SendMessageRequest, SendMessageResponse } from "../shared/types.ts";
+import type { Message, SendMessageRequest, SendMessageResponse } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = "";
 

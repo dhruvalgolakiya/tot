@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BestOfRequest, ProviderId } from "../../shared/types.ts";
+import type { BestOfRequest, ProviderId } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";

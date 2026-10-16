@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { ComputerSummary } from "../shared/types.ts";
+import type { ComputerSummary } from "@tot/shared/types";
 
 /**
  * Side-channel events raised outside the provider stream (e.g. by MCP tool

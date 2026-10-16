@@ -1,5 +1,5 @@
 import { setImmediate as tick, setTimeout as sleep } from "node:timers/promises";
-import type { Message, MessageStatus, ProviderId, RunEvent, SendMessageRequest } from "../../shared/types.ts";
+import type { Message, MessageStatus, ProviderId, RunEvent, SendMessageRequest } from "@tot/shared/types";
 import { HANDOFF_TAIL_BUDGET, lastExchange } from "../agent/context-select.ts";
 import { limits } from "../agent/limits.ts";
 import { HttpError, sendMessage, type TurnOptions } from "../agent/orchestrator.ts";

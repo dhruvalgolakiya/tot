@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react";
 import clsx from "clsx";
 import { ArrowUpRight, ChevronRight, GitBranch, Laptop } from "lucide-react";
-import type { Conversation } from "@shared/types";
+import type { Conversation } from "@tot/shared/types";
 import { conversationTitle } from "../../lib/conversations";
 import { useProjects } from "../../lib/projects";
 import { projectPath } from "../../lib/router";

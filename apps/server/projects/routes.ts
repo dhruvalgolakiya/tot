@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import type { CreateProjectRequest, UpdateProjectRequest } from "../../shared/types.ts";
+import type { CreateProjectRequest, UpdateProjectRequest } from "@tot/shared/types";
 import { learnRepo } from "../agent/learn-repo.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { straightFromThisMachine } from "../auth.ts";
@@ -12,7 +12,7 @@ import { pickFolderOnThisMac, recentGitFolders } from "./folders.ts";
 import { projects } from "./projects.ts";
 import { projectRepos } from "./repos.ts";
 
-/** Projects (roadmap module 06). Route docs: shared/types.ts. */
+/** Projects (roadmap module 06). Route docs: packages/shared/types.ts. */
 export const projectRoutes = new Hono();
 
 async function body<T>(c: Context): Promise<T> {

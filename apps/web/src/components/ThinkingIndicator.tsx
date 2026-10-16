@@ -1,4 +1,4 @@
-import type { Message } from "@shared/types";
+import type { Message } from "@tot/shared/types";
 import { statusLabel } from "../lib/mascotState";
 
 interface ThinkingIndicatorProps {

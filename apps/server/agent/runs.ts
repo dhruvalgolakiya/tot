@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Message, MessagePart, RunEvent } from "../../shared/types.ts";
+import type { Message, MessagePart, RunEvent } from "@tot/shared/types";
 
 type Listener = (seq: number, event: RunEvent) => void;
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import type { Settings } from "@shared/types";
+import type { Settings } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { CLEANUP_DAYS, TASK_LIMITS, isValidCleanupDays, isValidTaskLimit, type SettingsSectionProps } from "../../lib/settings";
 import { notifyError, useStore } from "../../store";

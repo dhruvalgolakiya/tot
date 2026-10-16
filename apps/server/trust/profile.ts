@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Brain, CommandRun, RepoCommandName, RepoLimits, RepoProfile, RepoProfileInput } from "../../shared/types.ts";
+import type { Brain, CommandRun, RepoCommandName, RepoLimits, RepoProfile, RepoProfileInput } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import type { FolderGrant } from "../computer/types.ts";
 import { appEvents } from "../app-events.ts";

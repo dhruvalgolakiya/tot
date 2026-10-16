@@ -1,10 +1,10 @@
 // Orchestration (roadmap module 02): tiers, spawning limits, handoffs, failover and fan-in,
 // with fake model turns, a fake classifier, a fake handoff writer and fixture provider statuses.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/orchestration.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/orchestration.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
-import type { Message, ModelOption, ProviderStatus, SendMessageRequest } from "../shared/types.ts";
+import type { Message, ModelOption, ProviderStatus, SendMessageRequest } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 const PORT = 8792;

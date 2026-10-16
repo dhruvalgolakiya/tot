@@ -1,4 +1,4 @@
-// The color math from the web app's src/components/mascot/utils.ts (copied: Metro bundles only mobile/): each
+// The color math from apps/web/src/components/mascot/utils.ts (copied: Metro bundles only apps/mobile/): each
 // mascot's shaded palette derived from its one base color, so the phone draws the same toy as the computer.
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));

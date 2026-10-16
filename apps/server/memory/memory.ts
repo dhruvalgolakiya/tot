@@ -1,4 +1,4 @@
-import type { Memory, MemoryCommit, MemoryFile, MemoryFileContent, Project } from "../../shared/types.ts";
+import type { Memory, MemoryCommit, MemoryFile, MemoryFileContent, Project } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { memories } from "../data/memories.ts";
 import { projects } from "../projects/projects.ts";

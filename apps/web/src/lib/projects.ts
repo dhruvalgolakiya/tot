@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { Folder, FolderGit, Layers, type LucideIcon } from "lucide-react";
-import type { Conversation, CreateProjectRequest, Project, ProjectKind, UpdateProjectRequest } from "@shared/types";
+import type { Conversation, CreateProjectRequest, Project, ProjectKind, UpdateProjectRequest } from "@tot/shared/types";
 import { api } from "./api";
 import { deviceOf, onDevice } from "./devices";
 import { toMs } from "./format";

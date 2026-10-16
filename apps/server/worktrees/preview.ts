@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { TaskPreview } from "../../shared/types.ts";
+import type { TaskPreview } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { computerManager } from "../computer/manager.ts";
 import type { BackgroundProcess } from "../computer/types.ts";

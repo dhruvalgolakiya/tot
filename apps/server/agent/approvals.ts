@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ApprovalAnswer, ApprovalField, MessagePart } from "../../shared/types.ts";
+import type { ApprovalAnswer, ApprovalField, MessagePart } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { messages } from "../data/messages.ts";
 import type { MessageBuilder } from "./message-builder.ts";

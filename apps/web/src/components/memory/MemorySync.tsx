@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import clsx from "clsx";
 import { Laptop, RefreshCw } from "lucide-react";
-import type { MemoryPeerSync, MemorySyncStatus } from "@shared/types";
+import type { MemoryPeerSync, MemorySyncStatus } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { goToSettings, notifyError, saveSettings, useStore } from "../../store";

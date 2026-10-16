@@ -1,4 +1,4 @@
-import type { Agent, Project } from "../../shared/types.ts";
+import type { Agent, Project } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";

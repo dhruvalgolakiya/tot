@@ -1,4 +1,4 @@
-import type { Agent, Persona, RunEvent } from "../../shared/types.ts";
+import type { Agent, Persona, RunEvent } from "@tot/shared/types";
 import { HttpError, sendMessage } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";

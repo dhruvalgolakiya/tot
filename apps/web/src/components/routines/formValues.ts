@@ -1,4 +1,4 @@
-import type { Routine, RoutineInput, RoutineSchedule } from "@shared/types";
+import type { Routine, RoutineInput, RoutineSchedule } from "@tot/shared/types";
 
 const MIN_INTERVAL_MINUTES = 15;
 const MAX_INTERVAL_MINUTES = 7 * 24 * 60;

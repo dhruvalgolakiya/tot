@@ -3,7 +3,7 @@
 // its task merged); duplicates; a restart repeating nothing; GitHub's rate limit pausing the watcher; watching every
 // open PR (the first look quiet) or none; tickets from intake going to the Lead; the inbox's wakes (batched, read when
 // heard, bounded per hour); the routes. Fake model turns; nothing is written to GitHub.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/signals.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/signals.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import type { LeadSignal, Message, Project, ProjectSubscriptions, SendMessageRequest } from "../shared/types.ts";
+import type { LeadSignal, Message, Project, ProjectSubscriptions, SendMessageRequest } from "@tot/shared/types";
 
 // A temp home and a fake gh first on PATH (GitHub's status asks gh who's logged in), so the real ones are never touched.
 const HOME = realpathSync.native(mkdtempSync(join(tmpdir(), "tot-signals-home-")));

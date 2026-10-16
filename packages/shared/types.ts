@@ -1,4 +1,4 @@
-// Contracts shared by the TOT server (server/) and web client (src/).
+// Contracts shared by the TOT server (apps/server/) and web client (apps/web/src/).
 // Everything that crosses the HTTP boundary is defined here.
 
 export type ProviderId = "claude" | "chatgpt";
@@ -107,7 +107,7 @@ export interface MascotSpec {
  */
 export type MascotState = "idle" | "thinking" | "working" | "speaking" | "happy" | "error" | "sleeping";
 
-/** The islands of the hero scene (public/hero/islands/<id>.webp, plus <id>-dawn.webp for light mode); each agent works from one. */
+/** The islands of the hero scene (apps/web/public/hero/islands/<id>.webp, plus <id>-dawn.webp for light mode); each agent works from one. */
 export type AgentIsland = "workshop" | "observatory" | "tower" | "greenhouse";
 
 export interface Agent {
@@ -1910,7 +1910,7 @@ export interface ContinueOnRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Trust gates & playbooks (module 03, server/trust/). Coding work proves itself
+// Trust gates & playbooks (module 03, apps/server/trust/). Coding work proves itself
 // before anyone sees a PR: each repo brain has a profile saying what "correct"
 // means there (its own commands, conventions, protected paths and limits);
 // gates run those commands and check the diff's scope, with failures that

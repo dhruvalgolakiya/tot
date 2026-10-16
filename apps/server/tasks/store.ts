@@ -1,4 +1,4 @@
-import type { Conversation, TaskInfo, TaskStatus } from "../../shared/types.ts";
+import type { Conversation, TaskInfo, TaskStatus } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { conversations, ORCHESTRATION_DEFAULTS, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";

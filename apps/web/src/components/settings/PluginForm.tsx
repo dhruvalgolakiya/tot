@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { Plugin, ProviderId } from "@shared/types";
+import type { Plugin, ProviderId } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { PROVIDER_LABELS } from "../../lib/models";
 import { EMPTY_PLUGIN_FORM, toPluginInput, type PluginFormValues } from "../../lib/plugins";

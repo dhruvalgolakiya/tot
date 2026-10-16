@@ -1,4 +1,4 @@
-import type { Memory } from "../../shared/types.ts";
+import type { Memory } from "@tot/shared/types";
 import { db, type Row } from "../db.ts";
 import { secretKind } from "../trust/secrets.ts";
 

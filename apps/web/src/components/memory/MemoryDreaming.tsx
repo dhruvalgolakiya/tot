@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle, MoonStar } from "lucide-react";
-import type { MemoryRepoSummary } from "@shared/types";
+import type { MemoryRepoSummary } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { notifyError, saveSettings, useStore } from "../../store";

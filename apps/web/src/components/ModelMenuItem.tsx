@@ -1,6 +1,6 @@
 import { DropdownMenu } from "radix-ui";
 import { Check } from "lucide-react";
-import type { ModelOption } from "@shared/types";
+import type { ModelOption } from "@tot/shared/types";
 import { displayDescription, displayLabel } from "../lib/models";
 
 /** One radio option in the model picker; unavailable models are disabled with their reason. */

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { agentIsland, defaultIsland, islandName } from "@shared/islands";
-import type { Agent, AgentInput, AgentIsland, MascotSpec } from "@shared/types";
+import { agentIsland, defaultIsland, islandName } from "@tot/shared/islands";
+import type { Agent, AgentInput, AgentIsland, MascotSpec } from "@tot/shared/types";
 import { AUTO_MODEL_ID, modelSelectOptions } from "../lib/models";
 import { useDevices } from "../lib/remote";
 import { createAgent, deleteAgent, goToSettings, setNewAgentDialogOpen, updateAgent, useStore } from "../store";

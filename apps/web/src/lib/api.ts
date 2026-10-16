@@ -98,7 +98,7 @@ import type {
   WikiPageSummary,
   WikiRevision,
   WikiSearchHit,
-} from "@shared/types";
+} from "@tot/shared/types";
 import { adopt, apiUrl, deviceFor, deviceOf } from "./devices";
 
 /** A failed API call. `status` is 0 when the server couldn't be reached at all. */

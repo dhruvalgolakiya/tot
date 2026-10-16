@@ -1,4 +1,4 @@
-import type { ProviderId } from "../../shared/types.ts";
+import type { ProviderId } from "@tot/shared/types";
 import { limits } from "../agent/limits.ts";
 import { conversations } from "../data/conversations.ts";
 import { settings } from "../data/settings.ts";

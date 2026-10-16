@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { ImapFlow, type MailboxObject } from "imapflow";
 import nodemailer, { type Transporter } from "nodemailer";
-import type { MailAddress, MailServer } from "../../shared/types.ts";
+import type { MailAddress, MailServer } from "@tot/shared/types";
 import { VERSION } from "../config.ts";
 import type { MailFolder } from "../data/mail.ts";
 

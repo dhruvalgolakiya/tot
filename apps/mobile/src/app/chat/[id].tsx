@@ -3,7 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { Attachment, ChatWorkspaceMode, Message } from "@shared/types";
+import type { Attachment, ChatWorkspaceMode, Message } from "@tot/shared/types";
 import { MessageView } from "../../components/MessageView";
 import { LandCard, PROJECT_ICONS, TaskEmptyState, TaskNotices, TaskStatusIcon, taskActions } from "../../components/tasks";
 import { Icon, type IconName, IconButton, Mascot, showMenu } from "../../components/ui";

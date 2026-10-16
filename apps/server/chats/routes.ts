@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import type { ForkRequest } from "../../shared/types.ts";
+import type { ForkRequest } from "@tot/shared/types";
 import { toPublicConversation } from "../data/conversations.ts";
 import { forks } from "./fork.ts";
 
-/** Chat routes of module 05 (forks), mounted on /api; see the route docs in shared/types.ts. */
+/** Chat routes of module 05 (forks), mounted on /api; see the route docs in packages/shared/types.ts. */
 export const chatRoutes = new Hono();
 
 chatRoutes.post("/conversations/:id/fork", async (c) => {

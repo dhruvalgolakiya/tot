@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import clsx from "clsx";
 import { LoaderCircle, Lock, Plus } from "lucide-react";
-import { agentIsland, agentTagline, islandImage, islandName } from "@shared/islands";
-import type { Agent, Brain, ComputerSummary, Device, ModelOption } from "@shared/types";
+import { agentIsland, agentTagline, islandImage, islandName } from "@tot/shared/islands";
+import type { Agent, Brain, ComputerSummary, Device, ModelOption } from "@tot/shared/types";
 import { brainName, brainsFor } from "../../lib/brains";
 import { computerTone } from "../../lib/computer";
 import { conversationTitle } from "../../lib/conversations";

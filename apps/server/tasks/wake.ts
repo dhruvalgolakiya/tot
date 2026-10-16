@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import type { LeadSignal, TaskStatus } from "../../shared/types.ts";
+import type { LeadSignal, TaskStatus } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
@@ -23,7 +23,7 @@ import { taskStore, type TaskRecord } from "./store.ts";
  * in during one get one follow-up. Groups spawned with then: "synthesize" are fan-in's job.
  *
  * Module 12: a project's Lead is woken the same way by its unread signals (pull requests, tickets, schedules,
- * server/lead/inbox.ts), in the same wake as any task results, and they're marked read when it hears them. At most
+ * apps/server/lead/inbox.ts), in the same wake as any task results, and they're marked read when it hears them. At most
  * SIGNAL_WAKES_PER_HOUR of those per project in an hour: past that, they wait for the next one that fits (or the
  * Lead's next turn, which reads them too).
  */
@@ -253,7 +253,7 @@ export const chatWakes = {
 
   /**
    * Module 11: news for a chat about a task it didn't start (a project's Lead hears about every task in its
-   * project, server/lead/wake.ts), already added to its unread results: wake it the same way, batched.
+   * project, apps/server/lead/wake.ts), already added to its unread results: wake it the same way, batched.
    */
   flagChat(chatId: string): void {
     if (!started || !settings.get().tasks.wakeChats) return;
@@ -262,7 +262,7 @@ export const chatWakes = {
   },
 
   /**
-   * Module 12: a project's Lead has a new signal (server/lead/inbox.ts): wake it, batched like results. Signals
+   * Module 12: a project's Lead has a new signal (apps/server/lead/inbox.ts): wake it, batched like results. Signals
    * wake it whatever "Tell the chat when its tasks finish" says: a project's subscriptions decide what it hears.
    */
   flagSignals(leadId: string): void {

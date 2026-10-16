@@ -1,4 +1,4 @@
-import type { Agent, Brain, BrainAccess } from "@shared/types";
+import type { Agent, Brain, BrainAccess } from "@tot/shared/types";
 
 /** What an agent may do in a brain, or null when the brain isn't its own and isn't attached to it. */
 export function accessOf(brain: Brain, agentId: string): BrainAccess | null {

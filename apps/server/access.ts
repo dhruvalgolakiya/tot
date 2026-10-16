@@ -1,5 +1,5 @@
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual, type ScryptOptions } from "node:crypto";
-import type { RemoteAccessMode } from "../shared/types.ts";
+import type { RemoteAccessMode } from "@tot/shared/types";
 import { ACCESS_TOKEN, ENV_REMOTE, getSecret, HOST, RAW_HOST_EXPOSED, setSecret } from "./config.ts";
 import { db, parseJson, type Row } from "./db.ts";
 import { isTailscaleAddress } from "./net.ts";

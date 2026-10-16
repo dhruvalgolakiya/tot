@@ -1,4 +1,4 @@
-import type { ChatWorkspace, Project, TaskRepo, TaskSetup } from "../../shared/types.ts";
+import type { ChatWorkspace, Project, TaskRepo, TaskSetup } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { quote } from "../computer/github-login.ts";

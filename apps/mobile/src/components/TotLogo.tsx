@@ -1,7 +1,7 @@
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
 
 /**
- * TOT's mark: the two rings of public/tot.svg and the app icon (mobile/scripts/icons.mts), violet to cyan. Its
+ * TOT's mark: the two rings of apps/web/public/tot.svg and the app icon (apps/mobile/scripts/icons.mts), violet to cyan. Its
  * gradient reads on both the light and the dark canvas.
  */
 export function TotLogo({ size = 56 }: { size?: number }) {

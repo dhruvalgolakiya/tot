@@ -11,7 +11,7 @@ import { loadMarkdown } from "./lib/markdownLoader";
 // requests. (index.html's modulepreload already has the browser downloading it; this runs it.)
 loadMarkdown().catch(() => {});
 
-// The Mac app (electron/) draws the window chrome itself (hidden title bar, traffic lights over the
+// The Mac app (apps/desktop/) draws the window chrome itself (hidden title bar, traffic lights over the
 // page). This class is the one thing that tells the rest of the app it's running there — see
 // index.css's drag-region rules and components that read `totDesktop` for layout.
 if (totDesktop) document.documentElement.classList.add("desktop");

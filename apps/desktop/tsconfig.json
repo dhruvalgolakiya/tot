@@ -1,4 +1,9 @@
 {
-  "extends": "./tsconfig.server.json",
-  "include": ["electron"]
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": ["."],
+  "exclude": ["node_modules", "dist-app", "release"]
 }

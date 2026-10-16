@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ProviderAccount, ProviderId, T3ImportCandidate } from "../../shared/types.ts";
+import type { ProviderAccount, ProviderId, T3ImportCandidate } from "@tot/shared/types";
 import { AccountError, accountDir, accounts, accountsHome } from "./accounts.ts";
 
 /**

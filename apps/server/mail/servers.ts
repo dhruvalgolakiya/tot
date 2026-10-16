@@ -1,4 +1,4 @@
-import type { MailboxConnectRequest, MailServer } from "../../shared/types.ts";
+import type { MailboxConnectRequest, MailServer } from "@tot/shared/types";
 
 /** Mail providers whose IMAP/SMTP servers TOT knows, so connecting needs only the address and an app password. */
 

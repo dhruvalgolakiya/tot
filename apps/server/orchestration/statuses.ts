@@ -1,4 +1,4 @@
-import type { ProviderStatus } from "../../shared/types.ts";
+import type { ProviderStatus } from "@tot/shared/types";
 import { providerStatuses } from "../agent/providers/index.ts";
 
 /** Which providers are signed in and with which models, for orchestration's own choices; tests swap in a fixture. */

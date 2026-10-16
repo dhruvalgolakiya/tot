@@ -6,7 +6,7 @@ import { worktreeCleanup } from "./cleanup.ts";
 import { previews } from "./preview.ts";
 import { detectForProject } from "./setup.ts";
 
-/** Module 09 (docs/roadmap/09-mission-control.md). Lane C · worktree lifecycle: previews and cleanup. Route docs: shared/types.ts. */
+/** Module 09 (docs/roadmap/09-mission-control.md). Lane C · worktree lifecycle: previews and cleanup. Route docs: packages/shared/types.ts. */
 export const worktreeRoutes = new Hono();
 
 worktreeRoutes.post("/tasks/:id/preview/stop", async (c) => {

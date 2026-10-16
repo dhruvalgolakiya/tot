@@ -1,4 +1,4 @@
-import type { Message, ModelOption, ProviderId } from "@shared/types";
+import type { Message, ModelOption, ProviderId } from "@tot/shared/types";
 
 export const AUTO_MODEL_ID = "auto";
 export const AUTO_LABEL = "TOT Auto";

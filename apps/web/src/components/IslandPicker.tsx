@@ -1,6 +1,6 @@
 import clsx from "clsx";
-import { AGENT_ISLANDS, islandImage } from "@shared/islands";
-import type { AgentIsland } from "@shared/types";
+import { AGENT_ISLANDS, islandImage } from "@tot/shared/islands";
+import type { AgentIsland } from "@tot/shared/types";
 import { useResolvedTheme } from "../lib/theme";
 
 /** The islands as small thumbnails to pick from; the picked one gets a ring. */

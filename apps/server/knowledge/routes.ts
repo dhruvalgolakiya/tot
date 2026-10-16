@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import type { Project } from "../../shared/types.ts";
+import type { Project } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { callerOf } from "../auth.ts";
 import { projects } from "../projects/projects.ts";
@@ -7,7 +7,7 @@ import { knowledge } from "./index.ts";
 
 /**
  * Module 11 (docs/roadmap/11-workspaces.md), lane B: where a project's knowledge lives, its move to git, and its
- * history (facts and pages) with undo. Route docs: shared/types.ts. The wiki's own routes (routes.ts) work
+ * history (facts and pages) with undo. Route docs: packages/shared/types.ts. The wiki's own routes (routes.ts) work
  * unchanged on top of git.
  */
 export const knowledgeRoutes = new Hono();

@@ -18,7 +18,7 @@ import {
   SquarePen,
   Undo2,
 } from "lucide-react";
-import type { KnowledgeCommit, MemoryCommit, Project } from "@shared/types";
+import type { KnowledgeCommit, MemoryCommit, Project } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { commitActor, describeCommit, projectMemoryRepo, useMemoryUi } from "../../lib/memory";

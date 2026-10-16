@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Message } from "../../shared/types.ts";
+import type { Message } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { runRegistry, type Run } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";

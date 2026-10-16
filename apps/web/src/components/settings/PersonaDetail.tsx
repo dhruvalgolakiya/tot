@@ -1,7 +1,7 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { DropdownMenu } from "radix-ui";
 import { ArrowLeft, Camera, Ellipsis, ImageMinus, Pencil, RefreshCw, Trash, Unplug } from "lucide-react";
-import type { Persona } from "@shared/types";
+import type { Persona } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { mailboxStatus } from "../../lib/personas";
 import { notifyError, removePersona, setPersona, useLocalAgents } from "../../store";

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ComputerKind, ComputerState, ComputerSummary } from "../../shared/types.ts";
+import type { ComputerKind, ComputerState, ComputerSummary } from "@tot/shared/types";
 import { db, parseJson, statement, type Row } from "../db.ts";
 
 /** Each agent owns at most one computer, shared by all of its chats. */

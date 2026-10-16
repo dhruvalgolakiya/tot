@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Persona } from "../shared/types.ts";
+import type { Persona } from "@tot/shared/types";
 import { appEvents } from "./app-events.ts";
 import { getSecret, setSecret } from "./config.ts";
 import { personas } from "./data/personas.ts";

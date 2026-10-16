@@ -1,4 +1,4 @@
-import type { Agent, Settings, WikiPage, WikiPageSummary } from "../../shared/types.ts";
+import type { Agent, Settings, WikiPage, WikiPageSummary } from "@tot/shared/types";
 import type { AgentBrain } from "../data/brains.ts";
 import { cloneFolder, githubFullName } from "../data/brains.ts";
 import { memoryPromptSection, type PromptMemory } from "../memory/prompt.ts";

@@ -1,8 +1,8 @@
-import type { Agent, Brain, BrainAccess, WikiAuthor, WikiPageSummary } from "@shared/types";
+import type { Agent, Brain, BrainAccess, WikiAuthor, WikiPageSummary } from "@tot/shared/types";
 
 /**
- * The Knowledge page's helpers, ported from the web's src/lib/brains.ts and src/lib/wiki.ts (Metro bundles only
- * `mobile/`), so brains, the page tree and search snippets read the same on the phone.
+ * The Knowledge page's helpers, ported from apps/web/src/lib/brains.ts and apps/web/src/lib/wiki.ts (Metro bundles only
+ * `apps/mobile/`), so brains, the page tree and search snippets read the same on the phone.
  */
 
 /** What an agent may do in a brain, or null when the brain isn't its own and isn't attached to it. */

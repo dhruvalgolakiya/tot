@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ProviderAccount } from "../../shared/types.ts";
+import type { ProviderAccount } from "@tot/shared/types";
 import type { McpServerSpec } from "../agent/providers/types.ts";
 import { accountDir, accountsHome, dirExists } from "./accounts.ts";
 

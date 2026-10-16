@@ -1,4 +1,4 @@
-import type { Routine } from "../../shared/types.ts";
+import type { Routine } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { conversations } from "../data/conversations.ts";

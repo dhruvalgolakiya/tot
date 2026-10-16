@@ -1,8 +1,8 @@
 import { Fragment, useMemo } from "react";
 import clsx from "clsx";
 import { Laptop, Moon, Plus, Settings, Sun, UsersRound } from "lucide-react";
-import { agentTagline } from "@shared/islands";
-import type { Agent, Device, MascotState } from "@shared/types";
+import { agentTagline } from "@tot/shared/islands";
+import type { Agent, Device, MascotState } from "@tot/shared/types";
 import { totDesktop } from "../lib/desktop";
 import { relativeTime } from "../lib/format";
 import { useDevices } from "../lib/remote";
@@ -51,7 +51,7 @@ export function AgentRail({ className }: { className?: string }) {
       className={clsx(
         "app-drag-region flex h-full shrink-0 flex-col items-center border-r border-hairline bg-rail pb-3",
         // In the Mac app the window's traffic lights take the logo's place: centered in a wider rail,
-        // level with the 56px header row next to it (electron/main.ts trafficLightPosition).
+        // level with the 56px header row next to it (apps/desktop/main.ts trafficLightPosition).
         totDesktop ? "w-20" : "w-16 pt-3",
         className,
       )}

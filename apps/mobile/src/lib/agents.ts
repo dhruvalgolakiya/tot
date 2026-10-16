@@ -1,9 +1,9 @@
-import type { Agent, AgentIsland, ComputerSummary, MascotAccessory, MascotEyes, MascotShape, MascotSpec, Settings } from "@shared/types";
+import type { Agent, AgentIsland, ComputerSummary, MascotAccessory, MascotEyes, MascotShape, MascotSpec, Settings } from "@tot/shared/types";
 import type { ImageSourcePropType } from "react-native";
 
 /**
- * An agent's profile choices, ported from shared/islands.ts and the web's mascot catalog
- * (src/components/mascot/catalog.ts). Ported, not imported: Metro bundles only mobile/, and shared/ is
+ * An agent's profile choices, ported from packages/shared/islands.ts and the web's mascot catalog
+ * (apps/web/src/components/mascot/catalog.ts). Ported, not imported: Metro bundles only apps/mobile/, and packages/shared/ is
  * reached for types alone.
  */
 
@@ -28,7 +28,7 @@ export function defaultIsland(index: number): AgentIsland {
   return AGENT_ISLANDS[index % AGENT_ISLANDS.length]!.id;
 }
 
-/** The web's public/hero/islands pictures, bundled: at night for dark mode, at dawn for light mode. */
+/** The apps/web/public/hero/islands pictures, bundled: at night for dark mode, at dawn for light mode. */
 export const ISLAND_IMAGES: Record<AgentIsland, { night: ImageSourcePropType; dawn: ImageSourcePropType }> = {
   workshop: { night: require("../../assets/islands/workshop.webp"), dawn: require("../../assets/islands/workshop-dawn.webp") },
   observatory: { night: require("../../assets/islands/observatory.webp"), dawn: require("../../assets/islands/observatory-dawn.webp") },

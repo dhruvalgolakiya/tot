@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import type { AddProjectRepoRequest, UpdateProjectRepoRequest } from "../../shared/types.ts";
+import type { AddProjectRepoRequest, UpdateProjectRepoRequest } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { repoHeads } from "../knowledge/auto/log.ts";
 import { knowledge } from "../knowledge/index.ts";
@@ -8,7 +8,7 @@ import { projectRepos } from "./repos.ts";
 
 /**
  * Module 11 (docs/roadmap/11-workspaces.md), lane A: a project's repos — add, rename, set primary, remove,
- * grant a folder. Each answers with the project, its repos updated. Route docs: shared/types.ts.
+ * grant a folder. Each answers with the project, its repos updated. Route docs: packages/shared/types.ts.
  */
 export const projectRepoRoutes = new Hono();
 

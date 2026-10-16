@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { X } from "lucide-react";
-import type { Agent, Persona } from "@shared/types";
+import type { Agent, Persona } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { isValidEmail } from "../../lib/personas";
 import { notifyError, setPersona } from "../../store";

@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import type { Agent, AgentInput, ModelOption } from "@shared/types";
+import type { Agent, AgentInput, ModelOption } from "@tot/shared/types";
 import { ColorSwatches, confirmDeleteAgent, IslandPicker, useCanDelete, withMascot } from "../../components/agentProfile";
 import { Cell, FieldCell, Footnote, Group, SettingsScroll } from "../../components/settings";
 import { Mascot, showMenu } from "../../components/ui";

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { ChevronRight } from "lucide-react";
-import type { HandoffPacket } from "@shared/types";
+import type { HandoffPacket } from "@tot/shared/types";
 import { relativeTime } from "../../lib/format";
 import { PROVIDER_LABELS } from "../../lib/models";
 

@@ -1,5 +1,5 @@
 // Tiny stdio MCP server used by claude.test.ts: one tool, `echo`, that returns its input.
-// Run with: node --import tsx server/agent/providers/fixtures/echo-mcp.ts
+// Run with: node --import tsx apps/server/agent/providers/fixtures/echo-mcp.ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";

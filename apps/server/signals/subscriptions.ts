@@ -1,4 +1,4 @@
-import type { ProjectSubscriptions, PullRequestWatch, UpdateProjectSubscriptionsRequest } from "../../shared/types.ts";
+import type { ProjectSubscriptions, PullRequestWatch, UpdateProjectSubscriptionsRequest } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { db, parseJson, type Row } from "../db.ts";
 

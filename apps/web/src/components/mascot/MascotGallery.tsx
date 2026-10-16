@@ -1,7 +1,7 @@
 // A dev-only visual index of the whole catalog: every shape, accessory, eye style,
 // state, and size, plus a handful of colors. Exported for the app shell to mount at a
 // route (e.g. /mascots) for quick visual QA — this file only provides the component.
-import type { MascotShape, MascotSpec, MascotState } from "@shared/types";
+import type { MascotShape, MascotSpec, MascotState } from "@tot/shared/types";
 import { MASCOT_ACCESSORIES, MASCOT_COLORS, MASCOT_EYES, MASCOT_SHAPES, defaultMascot, mascotLabel } from "./catalog";
 import { Mascot } from "./Mascot";
 import { MascotStage } from "./MascotStage";

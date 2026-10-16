@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { UpdateProjectSubscriptionsRequest } from "../../shared/types.ts";
+import type { UpdateProjectSubscriptionsRequest } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { leads } from "../lead/lead.ts";
@@ -10,7 +10,7 @@ import { prWatch } from "./watch.ts";
 
 /**
  * Module 12 (docs/roadmap/12-coordinator.md), lane A: a project's signals (what its Lead heard about on its own)
- * and its subscriptions (which pull requests it watches). Route docs: shared/types.ts.
+ * and its subscriptions (which pull requests it watches). Route docs: packages/shared/types.ts.
  */
 export const signalRoutes = new Hono();
 

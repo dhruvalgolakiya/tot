@@ -1,4 +1,4 @@
-import type { Project, ProjectRepo } from "../../../shared/types.ts";
+import type { Project, ProjectRepo } from "@tot/shared/types";
 import { quote } from "../../computer/github-login.ts";
 import { computerManager } from "../../computer/manager.ts";
 import { agents } from "../../data/agents.ts";

@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Alert } from "react-native";
-import type { Memory } from "@shared/types";
+import type { Memory } from "@tot/shared/types";
 import { Cell, FieldCell, Group, LoadState, SettingsScroll } from "../../components/settings";
 import { showMenu } from "../../components/ui";
 import { api, errorMessage } from "../../lib/api";

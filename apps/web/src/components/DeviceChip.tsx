@@ -1,5 +1,5 @@
 import { Laptop } from "lucide-react";
-import type { Agent } from "@shared/types";
+import type { Agent } from "@tot/shared/types";
 import { selectDevice, useDevices } from "../lib/remote";
 import { Tip } from "./ui/Tip";
 

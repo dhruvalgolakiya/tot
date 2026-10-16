@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AppEvent } from "@shared/types";
+import type { AppEvent } from "@tot/shared/types";
 import { adopt } from "../lib/devices";
 
 /**

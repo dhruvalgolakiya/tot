@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MissionOverview } from "@shared/types";
+import type { MissionOverview } from "@tot/shared/types";
 import { useAppEvents } from "../../hooks/useAppEvents";
 import { api, errorMessage } from "../../lib/api";
 

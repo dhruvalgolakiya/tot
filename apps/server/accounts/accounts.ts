@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import type { AccountInput, AccountPatch, ProviderAccount, ProviderId } from "../../shared/types.ts";
+import type { AccountInput, AccountPatch, ProviderAccount, ProviderId } from "@tot/shared/types";
 import { settings } from "../data/settings.ts";
 import { db, parseJson, type Row } from "../db.ts";
 

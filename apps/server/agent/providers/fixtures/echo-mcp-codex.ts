@@ -1,7 +1,7 @@
 // Tiny stdio MCP server used by chatgpt.test.ts.
 //   echo  -> "echo: <text> #<ECHO_NONCE>" (the nonce proves the tool really ran)
 //   fail  -> an isError result, to check error mapping
-// Run with: node --import tsx server/agent/providers/fixtures/echo-mcp-codex.ts
+// Run with: node --import tsx apps/server/agent/providers/fixtures/echo-mcp-codex.ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";

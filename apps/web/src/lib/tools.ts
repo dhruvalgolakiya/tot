@@ -21,7 +21,7 @@ import {
   Terminal,
   Wrench,
 } from "lucide-react";
-import type { Message, MessagePart } from "@shared/types";
+import type { Message, MessagePart } from "@tot/shared/types";
 import { truncate, truncateStart } from "./format";
 
 export type ToolPart = Extract<MessagePart, { type: "tool" }>;

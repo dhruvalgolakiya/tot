@@ -1,6 +1,6 @@
 // Remote access (roadmap module 07): this computer never signs in; other devices need the password set in the
 // app (or a one-time code from a QR code); remote access is a switch that opens and closes listeners.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/access.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/access.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
@@ -25,7 +25,7 @@ const { createApp } = await import("./app.ts");
 const { paths } = await import("./config.ts");
 const { listeners, wantedAddresses } = await import("./listeners.ts");
 const { peers } = await import("./devices/peers.ts");
-type Status = import("../shared/types.ts").DevicesStatus;
+type Status = import("@tot/shared/types").DevicesStatus;
 const app = createApp();
 
 let failures = 0;

@@ -1,4 +1,4 @@
-import type { HandoffPacket, TaskInfo } from "../../shared/types.ts";
+import type { HandoffPacket, TaskInfo } from "@tot/shared/types";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
 import { ROLES } from "../orchestration/roles.ts";
 import { signalsNote } from "../signals/note.ts";

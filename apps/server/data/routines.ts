@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Routine, RoutineInput, RoutineSchedule } from "../../shared/types.ts";
+import type { Routine, RoutineInput, RoutineSchedule } from "@tot/shared/types";
 import { db, parseJson, type Row } from "../db.ts";
 
 const MIN_INTERVAL_MINUTES = 15;

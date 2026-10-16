@@ -1,12 +1,12 @@
 // Tasks (roadmap module 01) with fake model turns, a fake Slack, fake notifiers, and real git on the local computer.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/tasks.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/tasks.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { AppEvent, Conversation, Message, MessagePart, SendMessageRequest, TaskChanges } from "../shared/types.ts";
+import type { AppEvent, Conversation, Message, MessagePart, SendMessageRequest, TaskChanges } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 const PORT = 8793;

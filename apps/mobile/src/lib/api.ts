@@ -41,12 +41,12 @@ import type {
   WikiPage,
   WikiPageSummary,
   WikiSearchHit,
-} from "@shared/types";
+} from "@tot/shared/types";
 import { tokenRefused, useConnection } from "./connection";
 import { adopt, apiPath, deviceFor } from "./devices";
 
 /**
- * The TOT API, ported from the web app's src/lib/api.ts: the same paths and types (shared/types.ts), sent to
+ * The TOT API, ported from apps/web/src/lib/api.ts: the same paths and types (packages/shared/types.ts), sent to
  * the signed-in TOT's address with its token instead of same-origin with a cookie. Another device's things
  * go through /api/d/<id>/… (devices.ts). Only the calls the app uses are ported; later milestones port more.
  */

@@ -1,4 +1,4 @@
-import type { WikiPage } from "../../../shared/types.ts";
+import type { WikiPage } from "@tot/shared/types";
 import { conversations } from "../../data/conversations.ts";
 import { wiki } from "../../data/wiki.ts";
 import { quoted } from "../../memory/memory.ts";

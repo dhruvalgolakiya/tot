@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowUpRight, ChevronRight, CircleCheck, CircleDashed, CircleX, GitBranch, LoaderCircle } from "lucide-react";
-import type { Conversation, TaskChanges, TaskChecks, TaskLandOptions } from "@shared/types";
+import type { Conversation, TaskChanges, TaskChecks, TaskLandOptions } from "@tot/shared/types";
 import { useNow } from "../../hooks/useNow";
 import { api, errorMessage } from "../../lib/api";
 import { bestOfLabel, CHECKS_LABELS, landingLine } from "../../lib/mission";

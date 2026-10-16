@@ -1,4 +1,4 @@
-import type { ProviderId, ProviderStatus } from "../../shared/types.ts";
+import type { ProviderId, ProviderStatus } from "@tot/shared/types";
 import { limits } from "../agent/limits.ts";
 import { providerStatuses, providers } from "../agent/providers/index.ts";
 import { modelForWork } from "../agent/router.ts";

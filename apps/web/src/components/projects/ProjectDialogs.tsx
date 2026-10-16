@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Project, SetupDetection } from "@shared/types";
+import type { Project, SetupDetection } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { isCodeProject, parseList, PROJECT_ICONS, sourceLabel, tildePath, updateProject } from "../../lib/projects";
 import { SettingRow } from "../settings/SettingRow";

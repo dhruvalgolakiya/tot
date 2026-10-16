@@ -2,7 +2,7 @@
 // viewBox) plus anchor points that eyes/mouth/accessories use to sit correctly on
 // each shape. Every silhouette is built from the same primitives — `roundedPolygon`
 // and `radialShape` — so all ten shapes read as one squishy, rounded family.
-import type { MascotShape } from "@shared/types";
+import type { MascotShape } from "@tot/shared/types";
 
 type Pt = { x: number; y: number };
 

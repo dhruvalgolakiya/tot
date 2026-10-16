@@ -1,11 +1,11 @@
 // Agent identity (the crew page): the island each agent works from and its tagline — the migration that adds
 // them to an existing database, the round-robin island default, editing both, and validation.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/agents.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/agents.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { Agent } from "../shared/types.ts";
+import type { Agent } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 

@@ -1,6 +1,6 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import type { ComputerKind } from "../../shared/types.ts";
+import type { ComputerKind } from "@tot/shared/types";
 import { computers } from "../data/computers.ts";
 import type { GitHubIdentity } from "../github.ts";
 import { githubAccessFor, githubFingerprintFor } from "../persona-github.ts";

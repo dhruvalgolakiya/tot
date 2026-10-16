@@ -1,12 +1,12 @@
 // Personas and their mailboxes against a fake IMAP/SMTP server (no real mail is ever sent or read).
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/personas.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/personas.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Agent, AppEvent, MailMessage, MailSummary, Message, MessagePart, Persona, SendMessageRequest, SendMessageResponse } from "../shared/types.ts";
+import type { Agent, AppEvent, MailMessage, MailSummary, Message, MessagePart, Persona, SendMessageRequest, SendMessageResponse } from "@tot/shared/types";
 import type { MailAccount, MailConnection, MailTransport } from "./mail/transport.ts";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test

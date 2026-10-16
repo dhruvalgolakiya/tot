@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { AppConnection, AppsStatus } from "../shared/types.ts";
+import type { AppConnection, AppsStatus } from "@tot/shared/types";
 import { appEvents } from "./app-events.ts";
 import { EXECUTOR_PORT, EXECUTOR_VERSION, paths } from "./config.ts";
 import { db, parseJson, type Row } from "./db.ts";

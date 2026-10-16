@@ -1,10 +1,10 @@
 import { Hono } from "hono";
-import type { ContinueOnRequest } from "../../shared/types.ts";
+import type { ContinueOnRequest } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { toPublic } from "../tasks/store.ts";
 import { continueOn } from "./handoff.ts";
 
-/** Orchestration routes, mounted on /api (see the route docs in shared/types.ts). */
+/** Orchestration routes, mounted on /api (see the route docs in packages/shared/types.ts). */
 export const orchestrationRoutes = new Hono();
 
 orchestrationRoutes.post("/tasks/:id/continue-on", async (c) => {

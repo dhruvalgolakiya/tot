@@ -1,4 +1,4 @@
-import type { Effort, ProviderId, ProviderStatus, TurnErrorKind, Usage } from "../../../shared/types.ts";
+import type { Effort, ProviderId, ProviderStatus, TurnErrorKind, Usage } from "@tot/shared/types";
 
 /** An MCP server attached to a turn. TOT's built-in server is always named "tot". */
 export type McpServerSpec =

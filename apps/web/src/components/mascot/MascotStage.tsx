@@ -3,7 +3,7 @@
 // mounts (e.g. landing on an agent's home screen). Not part of the required public
 // API, but exported as a recommended way to show a mascot "on stage".
 import clsx from "clsx";
-import type { MascotSpec, MascotState } from "@shared/types";
+import type { MascotSpec, MascotState } from "@tot/shared/types";
 import { Mascot } from "./Mascot";
 import { derivePalette, withAlpha } from "./utils";
 

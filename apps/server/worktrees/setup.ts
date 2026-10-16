@@ -16,7 +16,7 @@ import {
   type Stats,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Project, SetupDetection, TaskRepo, TaskSetup } from "../../shared/types.ts";
+import type { Project, SetupDetection, TaskRepo, TaskSetup } from "@tot/shared/types";
 import { computerManager } from "../computer/manager.ts";
 import type { ExecResult, FolderGrant } from "../computer/types.ts";
 import { paths } from "../config.ts";

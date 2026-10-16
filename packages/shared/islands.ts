@@ -31,7 +31,7 @@ export function agentIsland(agent: Pick<Agent, "island">): AgentIsland {
   return isAgentIsland(agent.island) ? agent.island : AGENT_ISLANDS[0]!.id;
 }
 
-/** The island's picture in public/hero/islands/: at night for dark mode, at dawn for light mode. */
+/** The island's picture in apps/web/public/hero/islands/: at night for dark mode, at dawn for light mode. */
 export function islandImage(island: AgentIsland, dawn: boolean): string {
   return `/hero/islands/${island}${dawn ? "-dawn" : ""}.webp`;
 }

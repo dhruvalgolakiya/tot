@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { RadioGroup } from "radix-ui";
-import type { GitHubStatus, Project, ProjectRepoKind } from "@shared/types";
+import type { GitHubStatus, Project, ProjectRepoKind } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { onDevice } from "../../lib/devices";
 import { addProjectRepo } from "../../lib/project-repos";

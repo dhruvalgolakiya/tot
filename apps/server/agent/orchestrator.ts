@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse, Tier, TurnErrorKind } from "../../shared/types.ts";
+import type { Message, MessagePart, MessageStatus, ProviderId, SendMessageRequest, SendMessageResponse, Tier, TurnErrorKind } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { apps } from "../apps.ts";
 import { GITHUB_MCP_URL, INTERNAL_BASE_URL, MCP_TOKEN, paths } from "../config.ts";

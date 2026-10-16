@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { SocketModeClient } from "@slack/socket-mode";
 import { LogLevel, WebClient } from "@slack/web-api";
-import type { Agent, MessagePart, RunEvent, SlackPerson, SlackPatch, SlackStatus, SlackTokens } from "../shared/types.ts";
+import type { Agent, MessagePart, RunEvent, SlackPerson, SlackPatch, SlackStatus, SlackTokens } from "@tot/shared/types";
 import { answerApproval } from "./agent/approvals.ts";
 import { HttpError, sendMessage } from "./agent/orchestrator.ts";
 import { runRegistry } from "./agent/runs.ts";

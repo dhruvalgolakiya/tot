@@ -1,4 +1,4 @@
-import type { ComputerKind, ComputerState } from "@shared/types";
+import type { ComputerKind, ComputerState } from "@tot/shared/types";
 
 export type DotTone = "green" | "gray" | "amber" | "red";
 

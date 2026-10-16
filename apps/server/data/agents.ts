@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { defaultIsland, isAgentIsland } from "../../shared/islands.ts";
-import type { Agent, AgentInput, AgentIsland, MascotSpec } from "../../shared/types.ts";
+import { defaultIsland, isAgentIsland } from "@tot/shared/islands";
+import type { Agent, AgentInput, AgentIsland, MascotSpec } from "@tot/shared/types";
 import { db, parseJson, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 import { brains } from "./brains.ts";

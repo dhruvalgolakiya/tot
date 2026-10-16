@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, Paperclip } from "lucide-react";
-import type { MailAddress, MailMessage } from "@shared/types";
+import type { MailAddress, MailMessage } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { formatBytes, toMs } from "../../lib/format";
 import { markPersonaMailRead, navigateToConversation } from "../../store";

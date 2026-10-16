@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { MessagePart, Project } from "../../shared/types.ts";
+import type { MessagePart, Project } from "@tot/shared/types";
 import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";

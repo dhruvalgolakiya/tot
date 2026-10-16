@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { TaskRepo } from "../../shared/types.ts";
+import type { TaskRepo } from "@tot/shared/types";
 import { quote } from "../computer/github-login.ts";
 import { computerManager } from "../computer/manager.ts";
 import type { ExecResult, FolderGrant } from "../computer/types.ts";

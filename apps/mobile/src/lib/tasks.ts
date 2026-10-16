@@ -1,8 +1,8 @@
-import type { Conversation, MessagePart, Message, Project, Role, TaskChecks, TaskDiffStats, TaskInfo, TaskLanding, TaskStatus, Tier } from "@shared/types";
+import type { Conversation, MessagePart, Message, Project, Role, TaskChecks, TaskDiffStats, TaskInfo, TaskLanding, TaskStatus, Tier } from "@tot/shared/types";
 import { ROLE_LABELS } from "./models";
 
 /**
- * Tasks, mission control and projects, ported from the web app's src/lib/tasks.ts, mission.ts, orchestration.ts,
+ * Tasks, mission control and projects, ported from apps/web/src/lib/tasks.ts, mission.ts, orchestration.ts,
  * projects.ts and TaskNotices.tsx: the same words and the same board, so a task reads the same on the phone.
  */
 
@@ -211,7 +211,7 @@ export function groupSummary(group: TaskConversation[]): string {
 
 type Notice = Extract<MessagePart, { type: "notice" }>;
 
-/** How the server words a task's ending in its chat (server/tasks/tasks.ts endingNotice). */
+/** How the server words a task's ending in its chat (apps/server/tasks/tasks.ts endingNotice). */
 const ENDING = /^“(.+?)” (is done|failed|was stopped|was cut off when TOT restarted)(?:[^:]*?)(?::\s*([\s\S]*))?\.?$/;
 const ENDING_STATUS: Record<string, TaskStatus> = {
   "is done": "done",

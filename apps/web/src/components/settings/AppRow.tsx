@@ -1,4 +1,4 @@
-import type { AppConnection } from "@shared/types";
+import type { AppConnection } from "@tot/shared/types";
 import { ledgerRowClass } from "../ui/Ledger";
 import { StatusDot } from "../ui/StatusDot";
 import { AppIcon } from "./AppIcon";

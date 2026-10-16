@@ -1,4 +1,4 @@
-import type { Project, TaskChangedFile } from "../../../shared/types.ts";
+import type { Project, TaskChangedFile } from "@tot/shared/types";
 import { folderGit } from "../../landing/git.ts";
 import { grantFor } from "../../projects/checkout.ts";
 import type { TaskRecord } from "../../tasks/store.ts";

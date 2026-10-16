@@ -1,8 +1,8 @@
-import type { Memory } from "../../shared/types.ts";
+import type { Memory } from "@tot/shared/types";
 import { db, type Row } from "../db.ts";
 
 /**
- * The memory index (roadmap module 10). Memory itself is git repos of markdown (server/memory/); this table
+ * The memory index (roadmap module 10). Memory itself is git repos of markdown (apps/server/memory/); this table
  * holds their entries, rebuilt from the files after every commit (memory/index.ts), so lookups and full-text
  * search stay fast. Ids are unique within a repo only: lookups name the repos they may see.
  */

@@ -8,7 +8,7 @@ import { EventEmitter } from "node:events";
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Conversation, Message, MessagePart, Project, SendMessageRequest, SendMessageResponse } from "../shared/types.ts";
+import type { Conversation, Message, MessagePart, Project, SendMessageRequest, SendMessageResponse } from "@tot/shared/types";
 import type { MailConnection, MailTransport } from "./mail/transport.ts";
 
 process.env.TOT_ACCESS_TOKEN = "";

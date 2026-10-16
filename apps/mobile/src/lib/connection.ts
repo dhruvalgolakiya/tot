@@ -1,7 +1,7 @@
 import * as Device from "expo-device";
 import * as SecureStore from "expo-secure-store";
 import { create } from "zustand";
-import type { AppSignInResponse } from "@shared/types";
+import type { AppSignInResponse } from "@tot/shared/types";
 import { dropSnapshot } from "./cache";
 
 /**

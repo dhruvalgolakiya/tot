@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Project } from "@shared/types";
+import type { Project } from "@tot/shared/types";
 import { useAttachments } from "../../hooks/useAttachments";
 import { useNow } from "../../hooks/useNow";
 import { conversationTitle } from "../../lib/conversations";

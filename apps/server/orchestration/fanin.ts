@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import type { RunEvent } from "../../shared/types.ts";
+import type { RunEvent } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
 import { conversations } from "../data/conversations.ts";

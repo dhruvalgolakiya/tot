@@ -3,7 +3,7 @@
 // refused and hidden, symlinks refused, project memory, the first-turn prompt, parallel writers, history and
 // undo, copies merging entry by entry, sync bundles, the backup remote (a local bare repo) and Dreaming (a fake
 // model). Device sync, with two TOTs, is in memory-sync.test.ts.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/memory.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/memory.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";

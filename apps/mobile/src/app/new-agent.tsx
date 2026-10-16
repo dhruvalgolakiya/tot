@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import type { MascotSpec } from "@shared/types";
+import type { MascotSpec } from "@tot/shared/types";
 import { ColorSwatches, withMascot } from "../components/agentProfile";
 import { Cell, FieldCell, Group, SettingsScroll } from "../components/settings";
 import { Mascot } from "../components/ui";

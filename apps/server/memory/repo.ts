@@ -17,7 +17,7 @@ import {
   type Stats,
 } from "node:fs";
 import { dirname, join, sep } from "node:path";
-import type { MemoryCommit, MemoryCommitKind } from "../../shared/types.ts";
+import type { MemoryCommit, MemoryCommitKind } from "@tot/shared/types";
 import { DATA_DIR } from "../config.ts";
 import { mergeEntries } from "./merge.ts";
 

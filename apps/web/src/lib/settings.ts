@@ -1,4 +1,4 @@
-import type { Settings, SettingsPatch } from "@shared/types";
+import type { Settings, SettingsPatch } from "@tot/shared/types";
 
 /** Write-only secrets typed in the Settings dialog. Empty = leave the stored key alone. */
 export interface SecretDrafts {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Check, ChevronDown } from "lucide-react";
-import type { AppRule } from "@shared/types";
+import type { AppRule } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { humanizeAppTool, RULE_ACTION_LABELS } from "../../lib/apps";
 import { notifyError } from "../../store";

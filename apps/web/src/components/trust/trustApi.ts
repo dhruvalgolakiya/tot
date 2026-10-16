@@ -11,7 +11,7 @@ import type {
   TrustCheckRequest,
   TrustReviewRequest,
   WorkflowSettings,
-} from "@shared/types";
+} from "@tot/shared/types";
 import { redirectToSignIn } from "../../lib/api";
 
 /**

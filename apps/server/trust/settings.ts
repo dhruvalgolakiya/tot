@@ -1,4 +1,4 @@
-import type { ProviderId, WorkflowSettings } from "../../shared/types.ts";
+import type { ProviderId, WorkflowSettings } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { db, parseJson, type Row } from "../db.ts";
 

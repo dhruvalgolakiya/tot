@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { ChevronRight, Copy, Ellipsis, Pencil, Plus, Trash } from "lucide-react";
-import type { Playbook, PlaybookInput, PlaybookStepKind, WorkflowSettings } from "@shared/types";
+import type { Playbook, PlaybookInput, PlaybookStepKind, WorkflowSettings } from "@tot/shared/types";
 import { errorMessage } from "../../lib/api";
 import { notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";

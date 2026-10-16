@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import type { MemoryDreamRequest, MemoryRepoSummary, SettingsPatch } from "../../shared/types.ts";
+import type { MemoryDreamRequest, MemoryRepoSummary, SettingsPatch } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { callerOf } from "../auth.ts";
 import { memories } from "../data/memories.ts";
@@ -14,7 +14,7 @@ import { listFiles, projectRepoId, repoDir, repoExists, safePath, YOU } from "./
 import { createBundle, memorySync, remoteUrlProblem, syncNow, syncStatus } from "./sync.ts";
 
 /**
- * Memory repo routes (roadmap module 10); docs in shared/types.ts. `/api/memories` keeps working (the "you" repo,
+ * Memory repo routes (roadmap module 10); docs in packages/shared/types.ts. `/api/memories` keeps working (the "you" repo,
  * or `?repo=`; until the one-time import lands, the old memories too, read-only). Paired devices may call none of
  * these (routes.ts) except the sync bundle, which only they may.
  */

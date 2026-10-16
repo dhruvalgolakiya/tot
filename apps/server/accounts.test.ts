@@ -1,12 +1,12 @@
 // Provider accounts: several Claude / ChatGPT sign-ins as config folders, like T3 Code's provider instances. Fake
 // config folders in a temp home (a CCS-style proxy account with dummy env values and MCP servers, a Codex home),
 // fake providers behind the real turn pipeline, and a fake T3 Code settings file. Never the real folders or models.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/accounts.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/accounts.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AccountStatus, Message, ModelOption, ProviderAccount, T3ImportCandidate } from "../shared/types.ts";
+import type { AccountStatus, Message, ModelOption, ProviderAccount, T3ImportCandidate } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 // A home of our own: "~" and the default folders resolve here, so the real ~/.claude, ~/.codex and ~/.t3 are never read.

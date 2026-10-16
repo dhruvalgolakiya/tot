@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Alert } from "react-native";
-import type { TaskSettings } from "@shared/types";
+import type { TaskSettings } from "@tot/shared/types";
 import { Cell, FieldCell, Group, LoadState, SettingsScroll, Stepper, SwitchCell } from "../../components/settings";
 import { api, errorMessage } from "../../lib/api";
 import { loadAll, saveSettings, useStore } from "../../lib/store";
 
-/** The web's limits (src/lib/settings.ts): the server refuses anything outside them. */
+/** The web's limits (apps/web/src/lib/settings.ts): the server refuses anything outside them. */
 const LIMITS = { perAgent: 10, global: 20, children: 20 };
 const CLEANUP_MAX = 365;
 

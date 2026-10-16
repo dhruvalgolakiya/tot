@@ -5,19 +5,19 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 /**
- * Draws the phone app's icons from the Mac app's (electron/icons.ts: the two TOT rings, violet to cyan, on a dark
- * plate) and renders them with headless Chrome into mobile/assets/:
+ * Draws the phone app's icons from the Mac app's (apps/desktop/icons.ts: the two TOT rings, violet to cyan, on a dark
+ * plate) and renders them with headless Chrome into apps/mobile/assets/:
  * - icon.png: iOS wants a full-bleed, opaque square (it rounds the corners itself), so the plate fills the canvas
  *   and the rings grow by the same 1024/824 the Mac plate is inset by.
  * - splash-icon.png: the rings alone on transparent, on a plain light or dark background (app.json's splash).
  * - Android's adaptive icon: the rings inside the 66% safe zone, on the plate's color, and white for monochrome.
- * Run from the repo root: npx tsx mobile/scripts/icons.mts
+ * Run from the repo root: npx tsx apps/mobile/scripts/icons.mts
  */
 
 const OUT = join(import.meta.dirname, "..", "assets");
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-/** As electron/icons.ts: stroke about a fifth of each ring's width, a sliver of space between them. */
+/** As apps/desktop/icons.ts: stroke about a fifth of each ring's width, a sliver of space between them. */
 function rings(cx: number, cy: number, outer: number, gap: number, paint: string): string {
   const stroke = outer * 0.217;
   const r = (outer - stroke) / 2;
@@ -54,7 +54,7 @@ async function render(source: string, size: number, file: string) {
   try {
     const page = join(dir, "icon.html");
     writeFileSync(page, `<!doctype html><html><head><style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}svg{display:block}</style></head><body>${source}</body></html>`);
-    // As electron/icons.ts: Chrome writes the screenshot but doesn't always exit; perl's alarm is the backstop.
+    // As apps/desktop/icons.ts: Chrome writes the screenshot but doesn't always exit; perl's alarm is the backstop.
     const chrome = spawn(
       "perl",
       ["-e", "alarm 30; exec @ARGV", CHROME, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${join(dir, "profile")}`, "--default-background-color=00000000", "--force-color-profile=srgb", "--force-device-scale-factor=1", `--window-size=${size},${size}`, `--screenshot=${shot}`, `file://${page}`],
@@ -74,7 +74,7 @@ async function render(source: string, size: number, file: string) {
     copyFileSync(shot, join(OUT, file));
     const dims = execFileSync("sips", ["-g", "pixelWidth", "-g", "pixelHeight", join(OUT, file)], { encoding: "utf8" });
     if (!dims.includes(`pixelWidth: ${size}`) || !dims.includes(`pixelHeight: ${size}`)) throw new Error(`${file} came out the wrong size:\n${dims}`);
-    console.log(`wrote mobile/assets/${file} (${size}×${size})`);
+    console.log(`wrote apps/mobile/assets/${file} (${size}×${size})`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

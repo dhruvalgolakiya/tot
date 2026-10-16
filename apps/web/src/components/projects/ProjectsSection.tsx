@@ -1,7 +1,7 @@
 import { useMemo, type MouseEvent } from "react";
 import clsx from "clsx";
 import { ChevronRight, Plus, SquarePen } from "lucide-react";
-import type { Conversation, Project } from "@shared/types";
+import type { Conversation, Project } from "@tot/shared/types";
 import { conversationTitle } from "../../lib/conversations";
 import { PROJECT_ICONS, setNewProjectOpen, toggleProjectExpanded, useProjects } from "../../lib/projects";
 import { projectPath } from "../../lib/router";

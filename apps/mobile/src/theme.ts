@@ -1,7 +1,7 @@
 import { useColorScheme } from "react-native";
 
 /**
- * The web app's tokens (DESIGN.md, src/index.css), as plain colors: true neutral greys, light and dark
+ * The web app's tokens (DESIGN.md, apps/web/src/index.css), as plain colors: true neutral greys, light and dark
  * following the system. Status colors carry status only; nothing gets a colored side bar.
  */
 const dark = {

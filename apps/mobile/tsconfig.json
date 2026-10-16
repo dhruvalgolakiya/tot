@@ -3,13 +3,13 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@shared/*": [
-        "./../shared/*"
+      "@tot/shared/*": [
+        "./../../packages/shared/*"
       ]
     }
   },
   "include": [
     "src",
-    "../shared/types.ts"
+    "../../packages/shared/types.ts"
   ]
 }

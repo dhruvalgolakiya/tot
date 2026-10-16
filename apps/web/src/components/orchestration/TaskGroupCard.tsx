@@ -2,7 +2,7 @@ import { useState } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { ChevronRight, CircleStop, Ellipsis, Pause, Play } from "lucide-react";
-import type { TaskStatus } from "@shared/types";
+import type { TaskStatus } from "@tot/shared/types";
 import { useNow } from "../../hooks/useNow";
 import { roleLine } from "../../lib/orchestration";
 import { isOpenTask, isTask, taskElapsed, taskLine, type TaskConversation } from "../../lib/tasks";

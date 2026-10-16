@@ -16,7 +16,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import type { Agent, MissionOverlap, TaskChecks } from "@shared/types";
+import type { Agent, MissionOverlap, TaskChecks } from "@tot/shared/types";
 import { CHECKS_LABELS, taskStatusLine } from "../../lib/mission";
 import { useProjects } from "../../lib/projects";
 import { comparePath, conversationPath } from "../../lib/router";

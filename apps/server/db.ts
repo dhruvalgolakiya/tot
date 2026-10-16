@@ -413,7 +413,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS conversations_by_kind ON conversations(kind, agent_id);
 `);
 
-// Module 03 (trust gates & playbooks, server/trust/): each repo brain's profile, gate results
+// Module 03 (trust gates & playbooks, apps/server/trust/): each repo brain's profile, gate results
 // on base commits (so failures that already exist there don't block), and custom playbooks.
 // Built-in playbooks live in code; whether each is on, and the workflow defaults, live in settings.
 db.exec(`
@@ -451,7 +451,7 @@ db.exec(`
   );
 `);
 
-// Module 05 (coordination, server/tasks/wake.ts): a chat whose tasks finished and that hasn't been
+// Module 05 (coordination, apps/server/tasks/wake.ts): a chat whose tasks finished and that hasn't been
 // woken about them yet (so a restart still wakes it), and the tokens its wake-up turns used.
 if (!hasColumn("conversations", "wake_pending")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_pending INTEGER NOT NULL DEFAULT 0`);
 if (!hasColumn("conversations", "wake_tokens")) db.exec(`ALTER TABLE conversations ADD COLUMN wake_tokens INTEGER NOT NULL DEFAULT 0`);
@@ -461,12 +461,12 @@ db.exec(
    WHERE kind = 'task' AND json_extract(task, '$.status') = 'paused'
      AND (json_extract(task, '$.pausedFor') = 'budget' OR json_extract(task, '$.progress') LIKE '%token budget%')`,
 );
-// Forks (server/chats/fork.ts): where a chat was forked from, notes brought back from its forks for its
+// Forks (apps/server/chats/fork.ts): where a chat was forked from, notes brought back from its forks for its
 // next turn, and each reply's place in its provider session (so a fork can start there natively).
 if (!hasColumn("conversations", "forked_from")) db.exec(`ALTER TABLE conversations ADD COLUMN forked_from TEXT`);
 if (!hasColumn("conversations", "merge_notes")) db.exec(`ALTER TABLE conversations ADD COLUMN merge_notes TEXT NOT NULL DEFAULT '[]'`);
 if (!hasColumn("messages", "provider_ref")) db.exec(`ALTER TABLE messages ADD COLUMN provider_ref TEXT`);
-// Retry-safe starts (server/tasks/requests.ts): the tasks each request id started from a chat, in order.
+// Retry-safe starts (apps/server/tasks/requests.ts): the tasks each request id started from a chat, in order.
 // They go with the chat; a deleted task keeps its row, so a retry still doesn't start it again.
 db.exec(`
   CREATE TABLE IF NOT EXISTS task_requests (
@@ -532,7 +532,7 @@ db.exec(`
   );
 `);
 
-// Memory repo (roadmap module 10, server/memory/): memory lives in git repos of markdown (DATA_DIR/memory), and
+// Memory repo (roadmap module 10, apps/server/memory/): memory lives in git repos of markdown (DATA_DIR/memory), and
 // `memories` becomes an index of their entries, rebuilt from the files after every commit and at startup. An
 // entry's id is unique within its repo only, so the table is rebuilt once without the old primary key; the rows
 // from before move to `memories_legacy`, which memory/migrate.ts imports into the "you" repo once (and keeps).
@@ -597,7 +597,7 @@ if (!hasColumn("memories_legacy", "import_state")) db.exec(`ALTER TABLE memories
 if (!hasColumn("projects", "setup_command")) db.exec(`ALTER TABLE projects ADD COLUMN setup_command TEXT`);
 if (!hasColumn("projects", "copy_files")) db.exec(`ALTER TABLE projects ADD COLUMN copy_files TEXT NOT NULL DEFAULT '[]'`);
 
-// Workspaces (roadmap module 11, lane A; server/projects/repos.ts): a project's repos, any mix of GitHub repos and
+// Workspaces (roadmap module 11, lane A; apps/server/projects/repos.ts): a project's repos, any mix of GitHub repos and
 // folders on this Mac. The primary is the one with the lowest position, and the project's own kind, source,
 // default_branch and folder_granted_at mirror it. checkout: where a GitHub repo is cloned on each agent's computer
 // (~/projects/<slug> for the repo a project had before 11, ~/projects/<slug>.<name> for added ones), fixed when the
@@ -618,7 +618,7 @@ db.exec(`
   );
 `);
 
-// Workspaces (roadmap module 11, lane C, server/knowledge/auto/): a project's knowledge updates itself. One row per
+// Workspaces (roadmap module 11, lane C, apps/server/knowledge/auto/): a project's knowledge updates itself. One row per
 // run (the last 50 per project are kept; `pages` and `undo` are JSON), and the base branch head last seen per
 // project repo (a new head means it moved).
 db.exec(`
@@ -651,10 +651,10 @@ db.exec(`
   );
 `);
 
-// Workspaces (roadmap module 11, lane D; server/lead/): a project's Lead chat, the one it's run from (at most one per project).
+// Workspaces (roadmap module 11, lane D; apps/server/lead/): a project's Lead chat, the one it's run from (at most one per project).
 if (!hasColumn("conversations", "lead")) db.exec(`ALTER TABLE conversations ADD COLUMN lead INTEGER NOT NULL DEFAULT 0`);
 
-// A Lead's land and discard requests (server/lead/asks.ts): a card that waits for the user as long as it takes. On
+// A Lead's land and discard requests (apps/server/lead/asks.ts): a card that waits for the user as long as it takes. On
 // their yes TOT lands exactly head_sha; decision is 'accept', 'decline' or 'expired', set once (answered_at).
 db.exec(`
   CREATE TABLE IF NOT EXISTS lead_asks (
@@ -674,7 +674,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS lead_asks_by_task ON lead_asks(task_id, answered_at);
 `);
 
-// Workspaces (roadmap module 11, lane B, server/knowledge/): every brain's wiki moves into a git repo of markdown (a
+// Workspaces (roadmap module 11, lane B, apps/server/knowledge/): every brain's wiki moves into a git repo of markdown (a
 // project's into its knowledge repo, with its memory), once per brain. `wiki_pages` stays as the index of the pages
 // (now with each page's file and the repo it heads), and `wiki_stores` says which brains moved. Writes reach the files
 // through `wiki_changes`, one row per change until it's committed (so a crash loses nothing). The rows from before
@@ -744,7 +744,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS wiki_revisions_legacy_by_page ON wiki_revisions_legacy(page_id, created_at);
 `);
 
-// Coordinator (roadmap module 12, lane A, server/signals/): what a project's Lead hears about on its own. A project's
+// Coordinator (roadmap module 12, lane A, apps/server/signals/): what a project's Lead hears about on its own. A project's
 // subscriptions (JSON, ProjectSubscriptions; null = the default). `lead_signals` keeps each signal until the Lead's
 // turn has read it (read_at), and after for the Board; dedupe_key (when set) makes posting the same fact twice a no-op.
 // `lead_signal_wakes` counts signal wakes for the hourly bound; `lead_pr_seen` is the pull-request watcher's memory

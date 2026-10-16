@@ -1,9 +1,9 @@
-import type { LeadSignal } from "../../shared/types.ts";
+import type { LeadSignal } from "@tot/shared/types";
 
 /**
  * Module 12 (docs/roadmap/12-coordinator.md), lane A: how a project's Lead hears its signals. A wake's own message
  * (the quiet divider: "Checks failed on draft PR #12 “Fix cart”.") and the note its turn gets with every unread
- * signal, as task results are told (server/tasks/prompt.ts). What to do with each kind is in the Lead's prompt.
+ * signal, as task results are told (apps/server/tasks/prompt.ts). What to do with each kind is in the Lead's prompt.
  */
 
 const sentence = (title: string) => (/[.!?…]$/.test(title) ? title : `${title}.`);

@@ -1,4 +1,4 @@
-import type { Conversation, TaskInfo, TaskStatus } from "@shared/types";
+import type { Conversation, TaskInfo, TaskStatus } from "@tot/shared/types";
 import type { DotTone } from "./computer";
 import { toMs } from "./format";
 

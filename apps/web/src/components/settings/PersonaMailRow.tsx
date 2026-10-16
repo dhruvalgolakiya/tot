@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import type { MailSummary } from "@shared/types";
+import type { MailSummary } from "@tot/shared/types";
 import { relativeTime } from "../../lib/format";
 import { Badge } from "../ui/Badge";
 import { ledgerRowClass } from "../ui/Ledger";

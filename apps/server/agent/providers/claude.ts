@@ -9,7 +9,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { ModelOption, ProviderAccount, ProviderStatus, TurnErrorKind, Usage } from "../../../shared/types.ts";
+import type { ModelOption, ProviderAccount, ProviderStatus, TurnErrorKind, Usage } from "@tot/shared/types";
 import { accountDir, accounts, binaryFor, tildePath } from "../../accounts/accounts.ts";
 import { claudeAuthEnv, claudeMcpServers, claudePlugins, claudeSettingsEnv, mergeMcpServers } from "../../accounts/config.ts";
 import { getSecret, paths } from "../../config.ts";

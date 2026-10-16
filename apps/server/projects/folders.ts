@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
-import type { RecentFolder } from "../../shared/types.ts";
+import type { RecentFolder } from "@tot/shared/types";
 import type { FolderGrant } from "../computer/types.ts";
 import { DATA_DIR } from "../config.ts";
 

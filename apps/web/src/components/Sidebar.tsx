@@ -1,7 +1,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { PanelLeftClose, Search, SquarePen } from "lucide-react";
-import type { Agent } from "@shared/types";
+import type { Agent } from "@tot/shared/types";
 import { DESKTOP_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import {
   navigateToAgentHome,

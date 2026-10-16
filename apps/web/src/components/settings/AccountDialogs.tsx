@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Copy, FolderOpen, LoaderCircle } from "lucide-react";
-import type { AccountStatus, ProviderAccount, ProviderId, T3ImportCandidate } from "@shared/types";
+import type { AccountStatus, ProviderAccount, ProviderId, T3ImportCandidate } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { copyText } from "../../lib/clipboard";
 import { totDesktop } from "../../lib/desktop";

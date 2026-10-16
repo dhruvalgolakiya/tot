@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Ellipsis, Pencil, Plus, Trash } from "lucide-react";
-import type { GitHubStatus, Project, PullRequestWatch, Routine, RoutineInput } from "@shared/types";
+import type { GitHubStatus, Project, PullRequestWatch, Routine, RoutineInput } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { onDevice } from "../../lib/devices";
 import { parseList, updateProject } from "../../lib/projects";

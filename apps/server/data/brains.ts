@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Brain, BrainAccess, BrainInput, BrainKind, BrainPatch } from "../../shared/types.ts";
+import type { Brain, BrainAccess, BrainInput, BrainKind, BrainPatch } from "@tot/shared/types";
 import { NOTEBOOK_DESCRIPTION, NOTEBOOK_NAME, db, parseJson, type Row } from "../db.ts";
 
 /**

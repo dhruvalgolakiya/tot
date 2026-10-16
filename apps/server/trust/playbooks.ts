@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { GateName, Playbook, PlaybookInput, PlaybookMatch, PlaybookPatch, PlaybookStep, PlaybookStepKind } from "../../shared/types.ts";
+import type { GateName, Playbook, PlaybookInput, PlaybookMatch, PlaybookPatch, PlaybookStep, PlaybookStepKind } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { COMMAND_GATES } from "./gates.ts";

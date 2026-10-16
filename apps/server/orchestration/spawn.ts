@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ProviderId, Role, Tier } from "../../shared/types.ts";
+import type { ProviderId, Role, Tier } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { conversations } from "../data/conversations.ts";
 import type { TaskRecord } from "../tasks/store.ts";

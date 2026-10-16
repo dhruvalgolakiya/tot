@@ -1,4 +1,4 @@
-import type { MemoryDreamState, Project, WikiPage } from "../../shared/types.ts";
+import type { MemoryDreamState, Project, WikiPage } from "@tot/shared/types";
 import { defaultComplete, type Complete } from "../agent/wiki-keeper.ts";
 import { appEvents } from "../app-events.ts";
 import { db, parseJson, type Row } from "../db.ts";

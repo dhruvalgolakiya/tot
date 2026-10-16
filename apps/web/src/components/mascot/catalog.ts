@@ -1,7 +1,7 @@
 // Public catalog data: the pickable option lists, the default ("Tot") mascot, the
 // randomizer, and small display helpers (mascotLabel, suggestName). This is the only
 // file in the folder most callers outside mascot/ need beyond Mascot/MascotPicker.
-import type { MascotAccessory, MascotEyes, MascotShape, MascotSpec } from "@shared/types";
+import type { MascotAccessory, MascotEyes, MascotShape, MascotSpec } from "@tot/shared/types";
 import { hashString, hexToHsl, mulberry32, pick, specKey } from "./utils";
 
 export const MASCOT_SHAPES: readonly MascotShape[] = [

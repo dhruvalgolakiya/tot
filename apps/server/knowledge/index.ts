@@ -1,4 +1,4 @@
-import type { KnowledgeCommit, KnowledgeStatus, MemoryCommit, Project, WikiPage, WikiPageSummary } from "../../shared/types.ts";
+import type { KnowledgeCommit, KnowledgeStatus, MemoryCommit, Project, WikiPage, WikiPageSummary } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { memories } from "../data/memories.ts";
 import { wiki, WikiError } from "../data/wiki.ts";

@@ -1,4 +1,4 @@
-import type { MissionOverlap, MissionOverview } from "../../shared/types.ts";
+import type { MissionOverlap, MissionOverview } from "@tot/shared/types";
 import { conversations } from "../data/conversations.ts";
 import { FINISHED, isTask, toPublic, type TaskRecord } from "../tasks/store.ts";
 

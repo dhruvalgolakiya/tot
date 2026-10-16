@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Agent, Device, DevicesStatus } from "@shared/types";
+import type { Agent, Device, DevicesStatus } from "@tot/shared/types";
 import { api } from "./api";
 import { adopt, forgetDevice, onDevice } from "./devices";
 import { mergeRemoteProjects, removeDeviceProjects } from "./projects";

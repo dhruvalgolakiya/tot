@@ -1,10 +1,10 @@
-import type { RoutineSchedule } from "@shared/types";
+import type { RoutineSchedule } from "@tot/shared/types";
 
 const DAY_ABBREVIATIONS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
  * "Every weekday at 09:00" / "Every 2 hours". Mirrors the wording of the
- * server's describeSchedule() (server/data/routines.ts) so the phrasing the
+ * server's describeSchedule() (apps/server/data/routines.ts) so the phrasing the
  * agent might use in chat matches what the UI shows.
  */
 export function formatSchedule(schedule: RoutineSchedule): string {

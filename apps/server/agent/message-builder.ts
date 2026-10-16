@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Message, MessagePart, MessageStatus, RunEvent, Usage } from "../../shared/types.ts";
+import type { Message, MessagePart, MessageStatus, RunEvent, Usage } from "@tot/shared/types";
 import type { ProviderEvent } from "./providers/types.ts";
 
 const MAX_TOOL_OUTPUT_CHARS = 20_000;

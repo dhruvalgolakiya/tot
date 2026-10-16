@@ -1,4 +1,4 @@
-import type { GateReport, Review } from "@shared/types";
+import type { GateReport, Review } from "@tot/shared/types";
 
 /** One of each state a gate can be in, for the Checks lab (/dev/trust). */
 export const SAMPLE_REPORT: GateReport = {

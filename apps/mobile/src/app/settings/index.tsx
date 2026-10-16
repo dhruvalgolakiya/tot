@@ -2,7 +2,7 @@ import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
-import type { AppsStatus, GitHubStatus, Persona, Plugin, SlackStatus } from "@shared/types";
+import type { AppsStatus, GitHubStatus, Persona, Plugin, SlackStatus } from "@tot/shared/types";
 import { Cell, Group, SettingsScroll, Status } from "../../components/settings";
 import { Button } from "../../components/ui";
 import { api } from "../../lib/api";

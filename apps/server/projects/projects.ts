@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
-import type { Brain, CreateProjectRequest, Project, ProjectIntake, ProjectKind, UpdateProjectRequest } from "../../shared/types.ts";
+import type { Brain, CreateProjectRequest, Project, ProjectIntake, ProjectKind, UpdateProjectRequest } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { brains, BrainError, githubFullName } from "../data/brains.ts";
@@ -49,14 +49,14 @@ function toProject(row: Row): Project {
     updatedAt: Number(row.updated_at),
     chats: Number(counts.chats ?? 0),
     running: Number(counts.running ?? 0),
-    // Module 11: its Lead chat, once made (server/lead/).
+    // Module 11: its Lead chat, once made (apps/server/lead/).
     leadChatId: conversations.leadOf(id),
     // Module 09: what every new task worktree gets.
     setupCommand: (row.setup_command as string | null) ?? null,
     copyFiles: parseJson<string[]>(row.copy_files, []),
     // Module 11: its repos, the primary first (kind, source, defaultBranch and folderGranted above mirror it).
     repos: projectRepos.list(id).map(projectRepos.toPublic),
-    // Module 12: what its Lead hears about on its own (server/signals/).
+    // Module 12: what its Lead hears about on its own (apps/server/signals/).
     subscriptions: subscriptionsOf(row.subscriptions),
   };
 }

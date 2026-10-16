@@ -1,11 +1,11 @@
-// The agent's mascot, drawn like the web app's src/components/mascot/Mascot.tsx (shape, color, eyes, accessory)
+// The agent's mascot, drawn like apps/web/src/components/mascot/Mascot.tsx (shape, color, eyes, accessory)
 // with react-native-svg. Still, not animated: on a phone mascots sit in lists, and dozens of looping animations
 // would cost battery for little. The face follows the web's idle look; a sleeping one (an offline device) closes
 // its eyes.
 import { memo, useId, useMemo } from "react";
 import { View } from "react-native";
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
-import type { MascotAccessory, MascotEyes, MascotSpec } from "@shared/types";
+import type { MascotAccessory, MascotEyes, MascotSpec } from "@tot/shared/types";
 import { MASCOT_ACCESSORIES, MASCOT_EYES, MASCOT_SHAPES } from "../../lib/agents";
 import { type BodyPiece, SHAPES, type ShapeAnchors } from "./geometry";
 import { derivePalette, type MascotPalette } from "./palette";

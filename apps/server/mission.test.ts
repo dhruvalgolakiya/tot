@@ -1,10 +1,10 @@
 // Mission control (roadmap module 09, lane B): diff stats after every turn, the board's overlaps and land order,
 // starting tasks from the composer, and best-of runs. Fake model turns and fixture provider statuses, real git on the
-// local computer. Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/mission.test.ts
+// local computer. Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/mission.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
-import type { Conversation, Message, MissionOverview, ModelOption, ProviderStatus, SendMessageRequest, TaskDiffStats } from "../shared/types.ts";
+import type { Conversation, Message, MissionOverview, ModelOption, ProviderStatus, SendMessageRequest, TaskDiffStats } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 const PORT = 8798;

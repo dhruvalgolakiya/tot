@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import type { SignInSession } from "../../shared/types.ts";
+import type { SignInSession } from "@tot/shared/types";
 import { ACCESS_TOKEN } from "../config.ts";
 import { db, type Row } from "../db.ts";
 import { safeEqual, sessionValue } from "../session.ts";

@@ -1,4 +1,4 @@
-import type { Project } from "@shared/types";
+import type { Project } from "@tot/shared/types";
 import { PROJECT_ICONS, sourceLabel } from "../../lib/projects";
 
 /**

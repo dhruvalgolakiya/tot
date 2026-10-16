@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import type { LandTaskRequest } from "../../shared/types.ts";
+import type { LandTaskRequest } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { taskStore, toPublic } from "../tasks/store.ts";
 import { taskChecks } from "./checks.ts";

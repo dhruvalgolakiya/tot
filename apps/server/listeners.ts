@@ -1,7 +1,7 @@
 import { createAdaptorServer, type ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import { networkInterfaces, type NetworkInterfaceInfo } from "node:os";
-import type { RemoteAccessMode } from "../shared/types.ts";
+import type { RemoteAccessMode } from "@tot/shared/types";
 import { effectiveMode, onAccessChange, signInReady } from "./access.ts";
 import { ENV_REMOTE, RAW_HOST_EXPOSED, WEB_PORT } from "./config.ts";
 import { isTailscaleAddress } from "./net.ts";

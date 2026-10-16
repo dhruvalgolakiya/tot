@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { LoaderCircle, Play, ShieldCheck } from "lucide-react";
-import type { Agent, Brain, CommandRun, RepoCommandName, RepoProfile, RepoProfileInput } from "@shared/types";
+import type { Agent, Brain, CommandRun, RepoCommandName, RepoProfile, RepoProfileInput } from "@tot/shared/types";
 import { errorMessage } from "../../lib/api";
 import { formatDuration } from "../../lib/format";
 import { ToolOutput } from "../ToolOutput";

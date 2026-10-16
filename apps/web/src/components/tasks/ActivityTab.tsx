@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Message } from "@shared/types";
+import type { Message } from "@tot/shared/types";
 import { computerActivity } from "../../lib/tools";
 import { useStore } from "../../store";
 import { ComputerActivityItem } from "../ComputerActivityItem";

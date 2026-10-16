@@ -2,7 +2,7 @@ import { useState, type DragEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
 import { Popover } from "radix-ui";
 import { GripVertical } from "lucide-react";
-import type { QueueHold } from "../../../shared/types";
+import type { QueueHold } from "@tot/shared/types";
 import type { TaskConversation } from "../../lib/tasks";
 import { navigateToConversation, patchTask, runTaskNow } from "../../store";
 import { Button } from "../ui/Button";

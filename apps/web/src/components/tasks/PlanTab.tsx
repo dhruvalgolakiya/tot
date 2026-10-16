@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Circle, CircleCheck } from "lucide-react";
-import type { Message, TaskPlan } from "@shared/types";
+import type { Message, TaskPlan } from "@tot/shared/types";
 import { useNow } from "../../hooks/useNow";
 import { api } from "../../lib/api";
 import { relativeTime } from "../../lib/format";

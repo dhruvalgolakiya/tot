@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { Brain, KnowledgeStatus, WikiPageSummary, WikiSearchHit } from "@shared/types";
+import type { Brain, KnowledgeStatus, WikiPageSummary, WikiSearchHit } from "@tot/shared/types";
 import { Cell, FieldCell, Footnote, Group, LoadState, SettingsScroll } from "../../components/settings";
 import { Icon, type MenuItem, showMenu } from "../../components/ui";
 import { api, errorMessage } from "../../lib/api";

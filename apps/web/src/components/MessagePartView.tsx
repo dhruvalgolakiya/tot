@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { MessagePart } from "@shared/types";
+import type { MessagePart } from "@tot/shared/types";
 import { ApprovalCard } from "./ApprovalCard";
 import { LazyMarkdown } from "./LazyMarkdown";
 import { MemoryPill } from "./MemoryPill";

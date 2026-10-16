@@ -5,7 +5,7 @@
 // "Before git"), restore and undo; secrets refused; memory's facts ignore pages/ and repos/; hand edits read back;
 // a repo's docs (head pages, repos/<name>/) and Learn a repo for a project repo; one commit per batch; a brain that
 // joins a project brings its pages; 20 parallel writers beside memory; the knowledge routes.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/knowledge.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/knowledge.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";

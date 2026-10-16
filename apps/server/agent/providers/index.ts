@@ -1,4 +1,4 @@
-import type { AccountStatus, ModelOption, ProviderId, ProviderStatus } from "../../../shared/types.ts";
+import type { AccountStatus, ModelOption, ProviderId, ProviderStatus } from "@tot/shared/types";
 import { accountDir, accounts, dirExists, tildePath } from "../../accounts/accounts.ts";
 import { claudeAuthEnv, claudeMcpServers, claudePlugins, claudeSettingsEnv, codexMcpServerNames } from "../../accounts/config.ts";
 import { limits } from "../limits.ts";

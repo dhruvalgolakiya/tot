@@ -3,7 +3,7 @@
 // crown is the deliberate exception, rendered in a fixed gold (crowns read as gold
 // regardless of the wearer). Positioned using each shape's anchor points so the same
 // accessory code works across all ten silhouettes.
-import type { MascotAccessory } from "@shared/types";
+import type { MascotAccessory } from "@tot/shared/types";
 import type { ShapeAnchors } from "./geometry";
 import type { MascotPalette } from "./utils";
 

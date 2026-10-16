@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Inbox } from "lucide-react";
-import type { MailSummary, Persona } from "@shared/types";
+import type { MailSummary, Persona } from "@tot/shared/types";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { api, errorMessage } from "../../lib/api";
 import { useStore } from "../../store";

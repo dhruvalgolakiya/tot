@@ -1,4 +1,4 @@
-import type { HomeProject, MissionOverlap, Project, TaskChecks } from "../../shared/types.ts";
+import type { HomeProject, MissionOverlap, Project, TaskChecks } from "@tot/shared/types";
 import { conversations } from "../data/conversations.ts";
 import { db, type Row } from "../db.ts";
 import { missionOverview, onBoard } from "../mission/overview.ts";
@@ -9,7 +9,7 @@ import { isTask, type TaskRecord } from "../tasks/store.ts";
  * A project's board in words and numbers (roadmap module 11, lane D): what the Lead's mission_overview
  * tool says (needs you, working, ready to land with checks and overlaps, in the order to land), the
  * project's repos as the Lead is told them, and Home's row for each project. Sections follow mission
- * control's board (src/lib/mission.ts), so the Lead, Home and the board agree.
+ * control's board (apps/web/src/lib/mission.ts), so the Lead, Home and the board agree.
  */
 
 export type BoardSection = "needs-you" | "working" | "ready" | "done" | "landed";

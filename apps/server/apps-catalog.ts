@@ -1,4 +1,4 @@
-import type { AppCatalogItem, AppConnectPoll, AppConnectStep, AppKeyField, AppRule } from "../shared/types.ts";
+import type { AppCatalogItem, AppConnectPoll, AppConnectStep, AppKeyField, AppRule } from "@tot/shared/types";
 import { appMeta, apps, appsChanged, executor, ExecutorError, list, setAppMeta } from "./apps.ts";
 import { EXECUTOR_PORT } from "./config.ts";
 

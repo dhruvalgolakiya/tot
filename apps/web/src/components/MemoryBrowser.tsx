@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
-import type { MemoryRepoSummary } from "@shared/types";
+import type { MemoryRepoSummary } from "@tot/shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { api, errorMessage } from "../lib/api";
 import { useMemoryUi } from "../lib/memory";

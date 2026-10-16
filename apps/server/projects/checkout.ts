@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import type { Project, TaskRepo } from "../../shared/types.ts";
+import type { Project, TaskRepo } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { quote } from "../computer/github-login.ts";
 import { computerManager, type ActiveComputer } from "../computer/manager.ts";

@@ -1,6 +1,6 @@
 import { lstatSync } from "node:fs";
 import { join } from "node:path";
-import type { LandTaskRequest, TaskLanding, TaskLandOptions } from "../../shared/types.ts";
+import type { LandTaskRequest, TaskLanding, TaskLandOptions } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { quote } from "../computer/github-login.ts";
 import type { FolderGrant } from "../computer/types.ts";

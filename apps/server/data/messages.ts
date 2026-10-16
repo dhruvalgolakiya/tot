@@ -1,4 +1,4 @@
-import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, Usage } from "../../shared/types.ts";
+import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, Usage } from "@tot/shared/types";
 import { db, parseJson, statement, type Row } from "../db.ts";
 
 /** Extras kept in the meta column: how a user message was sent (module 01) and the chats attached to it (module 05). */

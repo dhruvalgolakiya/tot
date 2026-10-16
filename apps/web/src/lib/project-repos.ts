@@ -1,4 +1,4 @@
-import type { AddProjectRepoRequest, Project, ProjectRepo, UpdateProjectRepoRequest } from "@shared/types";
+import type { AddProjectRepoRequest, Project, ProjectRepo, UpdateProjectRepoRequest } from "@tot/shared/types";
 import { api } from "./api";
 import { tildePath, upsertProject } from "./projects";
 

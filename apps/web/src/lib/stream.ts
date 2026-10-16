@@ -1,4 +1,4 @@
-import type { RunEvent } from "@shared/types";
+import type { RunEvent } from "@tot/shared/types";
 import { adopt, apiUrl, deviceOf } from "./devices";
 
 export interface RunListener {

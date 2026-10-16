@@ -1,7 +1,7 @@
 // Eyes, mouth, brows, and the small state-only decorations (thinking dots, working
 // glint, sleeping z's). Kept separate from Mascot.tsx because this is where most of
 // the "personality" tuning happens.
-import type { MascotEyes, MascotState } from "@shared/types";
+import type { MascotEyes, MascotState } from "@tot/shared/types";
 import type { ShapeAnchors } from "./geometry";
 import type { MascotPalette } from "./utils";
 

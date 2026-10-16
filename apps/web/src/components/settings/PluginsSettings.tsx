@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
-import type { Plugin } from "@shared/types";
+import type { Plugin } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";

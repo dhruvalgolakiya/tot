@@ -1,4 +1,4 @@
-import type { AppEvent, Device } from "../../shared/types.ts";
+import type { AppEvent, Device } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { networkOf } from "./identity.ts";
 import { peers, type Peer } from "./peers.ts";

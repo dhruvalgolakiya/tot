@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import type { HomeProject } from "@shared/types";
+import type { HomeProject } from "@tot/shared/types";
 import { useAppEvents } from "../../hooks/useAppEvents";
 import { homeCounts, loadHome } from "../../lib/lead";
 import { PROJECT_ICONS, shortTime } from "../../lib/projects";

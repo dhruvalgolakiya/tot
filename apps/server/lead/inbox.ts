@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { LeadSignal, LeadSignalKind } from "../../shared/types.ts";
+import type { LeadSignal, LeadSignalKind } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { messages } from "../data/messages.ts";

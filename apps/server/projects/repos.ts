@@ -1,4 +1,4 @@
-import type { AddProjectRepoRequest, Project, ProjectRepo, ProjectRepoKind, TaskInfo, UpdateProjectRepoRequest } from "../../shared/types.ts";
+import type { AddProjectRepoRequest, Project, ProjectRepo, ProjectRepoKind, TaskInfo, UpdateProjectRepoRequest } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { githubFullName } from "../data/brains.ts";

@@ -5,7 +5,7 @@
 // each other without any JS timers.
 import { useId, useMemo, type CSSProperties } from "react";
 import clsx from "clsx";
-import type { MascotState, MascotSpec } from "@shared/types";
+import type { MascotState, MascotSpec } from "@tot/shared/types";
 import { mascotLabel } from "./catalog";
 import { Accessory } from "./Accessories";
 import { Brows, Eyes, Glint, Mouth, SleepZs, ThinkDots } from "./Faces";

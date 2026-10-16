@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import type { ConvertToTaskRequest, StartTaskRequest, SteerRequest, TaskPatch, TaskStatus } from "../../shared/types.ts";
+import type { ConvertToTaskRequest, StartTaskRequest, SteerRequest, TaskPatch, TaskStatus } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { agents } from "../data/agents.ts";
 import { conversations } from "../data/conversations.ts";
@@ -8,7 +8,7 @@ import { steer } from "./steer.ts";
 import { isTask, taskStore, toPublic, type TaskRecord } from "./store.ts";
 import { tasks } from "./tasks.ts";
 
-/** Task routes, mounted on /api (see the route docs in shared/types.ts). */
+/** Task routes, mounted on /api (see the route docs in packages/shared/types.ts). */
 export const taskRoutes = new Hono();
 
 async function body<T>(c: Context): Promise<T> {

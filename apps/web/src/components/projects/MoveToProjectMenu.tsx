@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Check, ChevronRight, FolderInput, Minus } from "lucide-react";
-import type { Conversation, Project } from "@shared/types";
+import type { Conversation, Project } from "@tot/shared/types";
 import { PROJECT_ICONS, useProjects } from "../../lib/projects";
 import { deviceOf } from "../../lib/devices";
 import { moveToProject } from "../../store";

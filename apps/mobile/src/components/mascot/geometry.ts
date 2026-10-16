@@ -1,7 +1,7 @@
-// Ported verbatim from the web app's src/components/mascot/geometry.ts (Metro bundles only mobile/, so it's a copy;
+// Ported verbatim from apps/web/src/components/mascot/geometry.ts (Metro bundles only apps/mobile/, so it's a copy;
 // keep the two in step). Per-shape SVG geometry: silhouettes in a 100x100 viewBox plus the anchor points eyes,
 // mouth and accessories sit on.
-import type { MascotShape } from "@shared/types";
+import type { MascotShape } from "@tot/shared/types";
 
 type Pt = { x: number; y: number };
 

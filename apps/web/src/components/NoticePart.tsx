@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { BookOpen, Brain, Info, Monitor, Sparkles, TriangleAlert } from "lucide-react";
 import clsx from "clsx";
-import type { MessagePart } from "@shared/types";
+import type { MessagePart } from "@tot/shared/types";
 import { comparePath } from "../lib/router";
 import { navigateToCompare, navigateToWiki, selectActiveAgentId, selectCurrentConversation, useStore } from "../store";
 import { MoveToProjectButton } from "./projects/MoveToProjectMenu";

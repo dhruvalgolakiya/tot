@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { MemoryCommitKind, WikiAuthor, WikiRevision } from "../../shared/types.ts";
+import type { MemoryCommitKind, WikiAuthor, WikiRevision } from "@tot/shared/types";
 import { db, parseJson, type Row } from "../db.ts";
 import {
   brainRepoId,

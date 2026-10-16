@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { AppConnectStep, AppKeyField } from "@shared/types";
+import type { AppConnectStep, AppKeyField } from "@tot/shared/types";
 import { api, errorMessage } from "../lib/api";
 import { loadAppsStatus, setAppsStatus } from "../store";
 

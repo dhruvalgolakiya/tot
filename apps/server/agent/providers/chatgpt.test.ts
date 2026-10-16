@@ -1,8 +1,8 @@
 // Live tests for the ChatGPT provider. They spend a little of the user's ChatGPT plan
 // (tiny prompts, fast model, low effort).
 //
-//   npx tsx server/agent/providers/chatgpt.test.ts            # everything
-//   npx tsx server/agent/providers/chatgpt.test.ts status pong  # a subset
+//   npx tsx apps/server/agent/providers/chatgpt.test.ts            # everything
+//   npx tsx apps/server/agent/providers/chatgpt.test.ts status pong  # a subset
 //
 // Tests: status, complete, pong, resume, bad-resume, mcp, lockdown, abort, hygiene.
 import assert from "node:assert/strict";

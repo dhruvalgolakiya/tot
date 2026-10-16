@@ -1,5 +1,5 @@
 import { connect } from "node:net";
-import type { TaskPorts } from "../../shared/types.ts";
+import type { TaskPorts } from "@tot/shared/types";
 import { EXECUTOR_PORT, PORT, WEB_PORT } from "../config.ts";
 import { conversations } from "../data/conversations.ts";
 import { taskStore } from "../tasks/store.ts";

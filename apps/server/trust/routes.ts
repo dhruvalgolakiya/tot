@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import type { GateName, PlaybookInput, PlaybookPatch, RepoProfileInput, TrustCheckRequest, TrustReviewRequest, WorkflowSettings } from "../../shared/types.ts";
+import type { GateName, PlaybookInput, PlaybookPatch, RepoProfileInput, TrustCheckRequest, TrustReviewRequest, WorkflowSettings } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { IS_PROD } from "../config.ts";
 import { agents } from "../data/agents.ts";

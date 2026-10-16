@@ -25,7 +25,7 @@ import type {
   SlackStatus,
   TaskPatch,
   UpdateConversationRequest,
-} from "@shared/types";
+} from "@tot/shared/types";
 import { api, ApiError, errorMessage } from "./lib/api";
 import { toMs, truncate } from "./lib/format";
 import { AUTO_MODEL_ID, PROVIDER_LABELS } from "./lib/models";

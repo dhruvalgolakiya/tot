@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { ArrowLeft, ChevronRight, PanelLeft } from "lucide-react";
-import type { Settings } from "@shared/types";
+import type { Settings } from "@tot/shared/types";
 import { DESKTOP_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
 import type { SecretDrafts } from "../../lib/settings";
 import {

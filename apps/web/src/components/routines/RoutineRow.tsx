@@ -2,7 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { DropdownMenu } from "radix-ui";
 import { Ellipsis, Pencil, Play, Trash } from "lucide-react";
-import type { Routine } from "@shared/types";
+import type { Routine } from "@tot/shared/types";
 import { notifyError } from "../../store";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";

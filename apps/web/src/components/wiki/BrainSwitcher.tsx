@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { Brain as BrainGlyph, Check, ChevronsUpDown, NotebookPen, Plus, Settings2, ShieldCheck } from "lucide-react";
-import type { Agent, Brain } from "@shared/types";
+import type { Agent, Brain } from "@tot/shared/types";
 import { accessOf, brainName, brainsFor } from "../../lib/brains";
 import { GitHubMark } from "../ui/GitHubMark";
 import { Skeleton } from "../ui/Skeleton";

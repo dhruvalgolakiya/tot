@@ -1,4 +1,4 @@
-import type { KnowledgeRefreshResult, KnowledgeTrigger, KnowledgeUpdate, Project } from "../../../shared/types.ts";
+import type { KnowledgeRefreshResult, KnowledgeTrigger, KnowledgeUpdate, Project } from "@tot/shared/types";
 import { HttpError } from "../../agent/orchestrator.ts";
 import { defaultComplete, type Complete } from "../../agent/wiki-keeper.ts";
 import { appEvents } from "../../app-events.ts";

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { LeadSignal, LeadSignalKind } from "../../shared/types.ts";
+import type { LeadSignal, LeadSignalKind } from "@tot/shared/types";
 import { db, type Row } from "../db.ts";
 import type { NewSignal } from "../lead/inbox.ts";
 

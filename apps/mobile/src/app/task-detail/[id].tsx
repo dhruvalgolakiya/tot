@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { TaskChanges, TaskPlan } from "@shared/types";
+import type { TaskChanges, TaskPlan } from "@tot/shared/types";
 import { Markdown } from "../../components/Markdown";
 import { Segmented } from "../../components/settings";
 import { Icon } from "../../components/ui";

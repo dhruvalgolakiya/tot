@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import type { WikiPage } from "@shared/types";
+import type { WikiPage } from "@tot/shared/types";
 import { Markdown } from "../../components/Markdown";
 import { LoadState } from "../../components/settings";
 import { api, errorMessage } from "../../lib/api";

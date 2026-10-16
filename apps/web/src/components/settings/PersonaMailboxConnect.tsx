@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import clsx from "clsx";
 import { ChevronDown } from "lucide-react";
-import type { MailboxConnectRequest, Persona } from "@shared/types";
+import type { MailboxConnectRequest, Persona } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { isGmailAddress } from "../../lib/personas";
 import { setPersona } from "../../store";

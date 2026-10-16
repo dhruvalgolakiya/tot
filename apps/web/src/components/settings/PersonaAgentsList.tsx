@@ -1,4 +1,4 @@
-import type { Agent, Persona } from "@shared/types";
+import type { Agent, Persona } from "@tot/shared/types";
 import { openAgentSettings } from "../../store";
 import { Mascot } from "../mascot";
 import { EmptyState } from "../ui/EmptyState";

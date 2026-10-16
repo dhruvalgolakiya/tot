@@ -1,7 +1,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { ChevronRight, Lightbulb } from "lucide-react";
-import type { MessagePart } from "@shared/types";
+import type { MessagePart } from "@tot/shared/types";
 import { formatDuration } from "../lib/format";
 import { LazyMarkdown } from "./LazyMarkdown";
 

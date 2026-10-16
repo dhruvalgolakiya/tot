@@ -1,7 +1,7 @@
 import { router, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import type { Message, Project, TaskChecks, TaskLandOptions, TaskStatus } from "@shared/types";
+import type { Message, Project, TaskChecks, TaskLandOptions, TaskStatus } from "@tot/shared/types";
 import { errorMessage, api } from "../lib/api";
 import { discardTask, landTask, pauseTask, resumeTask, runTaskNow, stopTask, useStore } from "../lib/store";
 import {

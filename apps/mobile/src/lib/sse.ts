@@ -27,7 +27,7 @@ const MAX_DELAY_MS = 15_000;
 /** A TOT that's gone (a Mac asleep, off Tailscale) often doesn't refuse: the request just hangs. Give up on it after this. */
 const CONNECT_TIMEOUT_MS = 12_000;
 /**
- * TOT's streams send a heartbeat every 15 s (server/routes.ts). A connection that stays silent much longer than that is
+ * TOT's streams send a heartbeat every 15 s (apps/server/routes.ts). A connection that stays silent much longer than that is
  * dead without having said so (the Mac slept, Wi‑Fi changed): drop it and reconnect.
  */
 const IDLE_TIMEOUT_MS = 40_000;

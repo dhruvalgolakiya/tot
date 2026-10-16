@@ -1,4 +1,4 @@
-import type { Message, MessagePart } from "../../shared/types.ts";
+import type { Message, MessagePart } from "@tot/shared/types";
 
 /**
  * Clipped chats (GET /api/conversations/:id?clip=1): tool calls are 97% of a long chat's bytes, and the UI shows
@@ -12,7 +12,7 @@ export const CLIP_CHARS = 2000;
 
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
 
-/** The same pattern as the web's firstUrl (src/lib/tools.ts): a screenshot's or an exposed port's link. */
+/** The same pattern as the web's firstUrl (apps/web/src/lib/tools.ts): a screenshot's or an exposed port's link. */
 const URL_PATTERN = /https?:\/\/[^\s"'<>)\]}]+/;
 
 /** The start of an output, with its first URL kept whole (the UI shows screenshots and exposed ports from it). */

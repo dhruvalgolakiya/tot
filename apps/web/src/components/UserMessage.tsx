@@ -1,7 +1,7 @@
 import { memo } from "react";
 import clsx from "clsx";
 import { Check, Copy, Download } from "lucide-react";
-import type { Attachment, Message, MessagePart } from "@shared/types";
+import type { Attachment, Message, MessagePart } from "@tot/shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { formatBytes } from "../lib/format";
 import { fileIcon, isImageMime } from "../lib/fileIcon";

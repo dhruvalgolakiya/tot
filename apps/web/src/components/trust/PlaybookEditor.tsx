@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { DropdownMenu } from "radix-ui";
 import { ArrowDown, ArrowUp, Check, Plus, Trash } from "lucide-react";
-import type { GateName, PlaybookInput, PlaybookStep, PlaybookStepKind } from "@shared/types";
+import type { GateName, PlaybookInput, PlaybookStep, PlaybookStepKind } from "@tot/shared/types";
 import { errorMessage } from "../../lib/api";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";

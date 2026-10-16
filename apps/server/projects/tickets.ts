@@ -1,4 +1,4 @@
-import type { ConversationOrigin } from "../../shared/types.ts";
+import type { ConversationOrigin } from "@tot/shared/types";
 import { conversations } from "../data/conversations.ts";
 import { projects } from "./projects.ts";
 

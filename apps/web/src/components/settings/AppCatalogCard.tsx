@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import type { AppCatalogItem } from "@shared/types";
+import type { AppCatalogItem } from "@tot/shared/types";
 import { connectHint } from "../../lib/apps";
 import { cardClass } from "../ui/Card";
 import { AppIcon } from "./AppIcon";

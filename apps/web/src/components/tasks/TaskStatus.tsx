@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { CircleAlert, CircleCheck, CirclePause, CircleStop, CircleX, Clock, LoaderCircle } from "lucide-react";
 import clsx from "clsx";
-import type { TaskStatus } from "@shared/types";
+import type { TaskStatus } from "@tot/shared/types";
 import { TASK_STATUS_LABELS, taskBadgeTone, taskTone } from "../../lib/tasks";
 import { Badge } from "../ui/Badge";
 import { StatusDot } from "../ui/StatusDot";

@@ -1,4 +1,4 @@
-import type { ModelTierSettings, Settings, SettingsPatch } from "../../shared/types.ts";
+import type { ModelTierSettings, Settings, SettingsPatch } from "@tot/shared/types";
 import { getSecret, setSecret } from "../config.ts";
 import { db, parseJson, type Row } from "../db.ts";
 

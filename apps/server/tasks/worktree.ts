@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { TaskChangedFile, TaskChanges, TaskDiffStats, TaskRepo } from "../../shared/types.ts";
+import type { TaskChangedFile, TaskChanges, TaskDiffStats, TaskRepo } from "@tot/shared/types";
 import { quote } from "../computer/github-login.ts";
 import { computerManager } from "../computer/manager.ts";
 import type { FolderGrant } from "../computer/types.ts";

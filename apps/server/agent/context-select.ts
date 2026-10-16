@@ -1,4 +1,4 @@
-import type { Message } from "../../shared/types.ts";
+import type { Message } from "@tot/shared/types";
 import { messageText } from "../data/messages.ts";
 
 /**

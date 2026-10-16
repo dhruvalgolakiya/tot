@@ -1,4 +1,4 @@
-import type { Message, MessagePart, RunEvent } from "@shared/types";
+import type { Message, MessagePart, RunEvent } from "@tot/shared/types";
 
 export type RunStartEvent = Extract<RunEvent, { type: "run-start" }>;
 

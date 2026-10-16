@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Ellipsis, Puzzle, Trash } from "lucide-react";
-import type { Plugin } from "@shared/types";
+import type { Plugin } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { PROVIDER_LABELS } from "../../lib/models";
 import { pluginTarget } from "../../lib/plugins";

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Persona } from "@shared/types";
+import type { Persona } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { isValidEmail } from "../../lib/personas";
 import { setPersona } from "../../store";

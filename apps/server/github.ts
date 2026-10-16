@@ -9,7 +9,7 @@ import type {
   GitHubDeviceStart,
   GitHubRepo,
   GitHubStatus,
-} from "../shared/types.ts";
+} from "@tot/shared/types";
 import { appEvents } from "./app-events.ts";
 import { GITHUB_API_URL, GITHUB_CLIENT_ID, GITHUB_WEB_URL, getSecret, secretValues, setSecret } from "./config.ts";
 import { db, parseJson, type Row } from "./db.ts";

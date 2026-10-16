@@ -1,6 +1,6 @@
 import { DropdownMenu } from "radix-ui";
 import { ArrowUpRight, Ellipsis, GitFork, GitMerge } from "lucide-react";
-import type { Conversation } from "@shared/types";
+import type { Conversation } from "@tot/shared/types";
 import { forkChat, mergeBack, useStore } from "../store";
 import { chatTicket } from "./projects/ChatProjectCrumb";
 import { MoveToProjectSub } from "./projects/MoveToProjectMenu";

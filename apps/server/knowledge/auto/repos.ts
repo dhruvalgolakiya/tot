@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { Project, ProjectRepo, TaskRepo, WikiPageSummary } from "../../../shared/types.ts";
+import type { Project, ProjectRepo, TaskRepo, WikiPageSummary } from "@tot/shared/types";
 import { wiki } from "../../data/wiki.ts";
 import { projectRepoId } from "../../memory/repo.ts";
 

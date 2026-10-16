@@ -1,6 +1,6 @@
 // The phone app's sign-in (roadmap module 14): /login with JSON gives a session token, sent as a Bearer header,
 // listed and signed out in Settings → Devices like a browser. Exercised in-process against the real app.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/mobile-auth.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/mobile-auth.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 
 process.env.TOT_ACCESS_TOKEN = "";
@@ -10,8 +10,8 @@ process.env.TOT_HOST = "";
 const { createApp } = await import("./app.ts");
 const { newSignInCode } = await import("./access.ts");
 const { db } = await import("./db.ts");
-type Status = import("../shared/types.ts").DevicesStatus;
-type LiveRuns = import("../shared/types.ts").LiveRuns;
+type Status = import("@tot/shared/types").DevicesStatus;
+type LiveRuns = import("@tot/shared/types").LiveRuns;
 const app = createApp();
 
 let failures = 0;

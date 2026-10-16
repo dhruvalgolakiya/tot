@@ -1,4 +1,4 @@
-import type { Settings } from "@shared/types";
+import type { Settings } from "@tot/shared/types";
 import { COMPUTER_SIZES } from "../../lib/computer";
 import { IDLE_MINUTES, isValidIdleMinutes, type SettingsSectionProps } from "../../lib/settings";
 import { LedgerField, LedgerGroup } from "../ui/Ledger";

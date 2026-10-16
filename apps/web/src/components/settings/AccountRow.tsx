@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Check, Ellipsis, LogIn, Pencil, Power, Star, Trash } from "lucide-react";
-import type { AccountStatus } from "@shared/types";
+import type { AccountStatus } from "@tot/shared/types";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { IconButton } from "../ui/IconButton";

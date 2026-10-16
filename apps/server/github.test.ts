@@ -1,13 +1,13 @@
 // GitHub connection (app-wide and personas' own accounts) against a fake GitHub (API, device sign-in) and a
 // fake `gh` CLI; agent computers are local.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/github.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/github.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { serve } from "@hono/node-server";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import type { Agent, AppEvent, GitHubStatus, Persona } from "../shared/types.ts";
+import type { Agent, AppEvent, GitHubStatus, Persona } from "@tot/shared/types";
 
 const PORT = 8799;
 const TOT_PORT = 8797; // pretend TOT runs here; agents' computers must not reach it

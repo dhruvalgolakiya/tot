@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { GateName, GateReport, GateResult, RepoProfileInput } from "../../shared/types.ts";
+import type { GateName, GateReport, GateResult, RepoProfileInput } from "@tot/shared/types";
 import type { FolderGrant } from "../computer/types.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { checkScope, type Plan } from "./scope.ts";

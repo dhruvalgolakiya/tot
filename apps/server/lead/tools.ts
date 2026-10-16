@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { TaskLandOptions } from "../../shared/types.ts";
+import type { TaskLandOptions } from "@tot/shared/types";
 import type { ConversationRecord } from "../data/conversations.ts";
 import { landing } from "../landing/land.ts";
 import { guarded, reply } from "../mcp/results.ts";

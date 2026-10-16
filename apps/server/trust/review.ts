@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GateReport, ProviderId, RepoProfileInput, Review, ReviewFinding } from "../../shared/types.ts";
+import type { GateReport, ProviderId, RepoProfileInput, Review, ReviewFinding } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { jsonIn, trustModel, type Answer } from "./model.ts";
 import { repoState, sections, sh } from "./shell.ts";

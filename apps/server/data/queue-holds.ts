@@ -1,4 +1,4 @@
-import type { ProviderId, QueueHold } from "../../shared/types.ts";
+import type { ProviderId, QueueHold } from "@tot/shared/types";
 import { db, type Row } from "../db.ts";
 
 /**

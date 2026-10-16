@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, Copy, ExternalLink, MonitorPlay, Power } from "lucide-react";
-import type { ComputerSummary, MascotSpec } from "@shared/types";
+import type { ComputerSummary, MascotSpec } from "@tot/shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { COMPUTER_KIND_LABELS, computerTone } from "../lib/computer";
 import { relativeTime } from "../lib/format";

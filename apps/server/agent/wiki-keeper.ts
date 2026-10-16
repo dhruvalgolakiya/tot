@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Message, MessagePart, WikiPage } from "../../shared/types.ts";
+import type { Message, MessagePart, WikiPage } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { brains, type AgentBrain } from "../data/brains.ts";

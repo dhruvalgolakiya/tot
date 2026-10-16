@@ -1,4 +1,4 @@
-import type { Routine } from "../../shared/types.ts";
+import type { Routine } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { runRegistry } from "../agent/runs.ts";
 import { messages } from "../data/messages.ts";

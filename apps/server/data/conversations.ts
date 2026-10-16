@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ChatWorkspace, ComputerSummary, Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "../../shared/types.ts";
+import type { ChatWorkspace, ComputerSummary, Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "@tot/shared/types";
 import { db, parseJson, statement, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 
@@ -171,7 +171,7 @@ export const conversations = {
     return toRecords(db.prepare(`SELECT * FROM conversations WHERE project_id = ? ORDER BY updated_at DESC`).all(projectId) as Row[]);
   },
 
-  /** Module 11: the id of the project's Lead chat, or null (server/lead/). */
+  /** Module 11: the id of the project's Lead chat, or null (apps/server/lead/). */
   leadOf(projectId: string): string | null {
     const row = db.prepare(`SELECT id FROM conversations WHERE project_id = ? AND lead = 1 ORDER BY created_at LIMIT 1`).get(projectId) as Row | undefined;
     return row ? String(row.id) : null;

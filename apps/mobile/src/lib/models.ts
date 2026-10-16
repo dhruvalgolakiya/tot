@@ -1,7 +1,7 @@
-import type { ModelOption, ProviderId, Role, Tier } from "@shared/types";
+import type { ModelOption, ProviderId, Role, Tier } from "@tot/shared/types";
 
 /**
- * Model labels and grouping, ported from the web app's src/lib/models.ts and src/lib/orchestration.ts: TOT Auto
+ * Model labels and grouping, ported from apps/web/src/lib/models.ts and apps/web/src/lib/orchestration.ts: TOT Auto
  * first, then each provider account's models under its name ("Claude", "Claude Mix", "ChatGPT").
  */
 

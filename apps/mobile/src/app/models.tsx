@@ -1,7 +1,7 @@
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, SectionList, StyleSheet, Text, View } from "react-native";
-import type { ModelOption } from "@shared/types";
+import type { ModelOption } from "@tot/shared/types";
 import { Icon } from "../components/ui";
 import { errorMessage } from "../lib/api";
 import { displayDescription, displayLabel, groupModels, NO_MODELS } from "../lib/models";

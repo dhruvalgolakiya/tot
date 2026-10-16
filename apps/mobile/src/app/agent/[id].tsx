@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
 import { ActionSheetIOS, Alert, Platform, Pressable, SectionList, StyleSheet, Text, View } from "react-native";
-import type { Conversation, Project } from "@shared/types";
+import type { Conversation, Project } from "@tot/shared/types";
 import { PROJECT_ICONS, TaskStatusIcon } from "../../components/tasks";
 import { confirmDeleteAgent, useCanDelete } from "../../components/agentProfile";
 import { Dot, Icon, IconButton, Mascot, Row, SectionTitle, Separator, showMenu } from "../../components/ui";

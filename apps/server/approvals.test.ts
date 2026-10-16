@@ -1,8 +1,8 @@
 // Approval cards: a tool's elicitation pauses the turn until the user answers over the API.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/approvals.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/approvals.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
-import type { AppEvent, Message, MessagePart, RunEvent } from "../shared/types.ts";
+import type { AppEvent, Message, MessagePart, RunEvent } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 

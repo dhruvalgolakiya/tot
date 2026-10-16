@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { Role } from "../../shared/types.ts";
+import type { Role } from "@tot/shared/types";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
 import { guarded, reply } from "../mcp/results.ts";
 import { handoffs } from "../orchestration/handoff.ts";

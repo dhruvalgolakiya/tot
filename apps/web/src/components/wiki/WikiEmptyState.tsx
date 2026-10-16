@@ -1,4 +1,4 @@
-import type { MascotSpec } from "@shared/types";
+import type { MascotSpec } from "@tot/shared/types";
 import { MascotStage } from "../mascot";
 import { Button } from "../ui/Button";
 

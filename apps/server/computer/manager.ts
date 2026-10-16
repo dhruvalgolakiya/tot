@@ -1,4 +1,4 @@
-import type { ComputerKind, ComputerSummary } from "../../shared/types.ts";
+import type { ComputerKind, ComputerSummary } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { computers, toSummary, type ComputerRecord } from "../data/computers.ts";

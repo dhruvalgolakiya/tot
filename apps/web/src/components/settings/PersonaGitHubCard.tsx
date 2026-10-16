@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Ellipsis, Unplug } from "lucide-react";
-import type { Persona } from "@shared/types";
+import type { Persona } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { notifyError, setPersona } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";

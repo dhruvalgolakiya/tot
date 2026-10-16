@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { ChevronRight, FilePlus, FolderGit2, GitBranch, History, ListChecks, Plus } from "lucide-react";
-import type { WikiPageSummary, WikiSearchHit } from "@shared/types";
+import type { WikiPageSummary, WikiSearchHit } from "@tot/shared/types";
 import { buildWikiTree, splitSnippet, type WikiTreeNode } from "../../lib/wiki";
 import { EmptyState } from "../ui/EmptyState";
 import { IconButton } from "../ui/IconButton";

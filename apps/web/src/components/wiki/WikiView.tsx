@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Laptop, PanelLeft } from "lucide-react";
-import type { KnowledgeStatus, WikiPage, WikiPageSummary, WikiSearchHit } from "@shared/types";
+import type { KnowledgeStatus, WikiPage, WikiPageSummary, WikiSearchHit } from "@tot/shared/types";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { DESKTOP_QUERY, useMediaQuery, XL_QUERY } from "../../hooks/useMediaQuery";
 import { api, errorMessage } from "../../lib/api";

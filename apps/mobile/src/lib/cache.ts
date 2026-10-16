@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Agent, Conversation, DevicesStatus, Message, ModelOption, Project, Settings } from "@shared/types";
+import type { Agent, Conversation, DevicesStatus, Message, ModelOption, Project, Settings } from "@tot/shared/types";
 
 /**
  * The last lists loaded from each TOT, kept on the phone (AsyncStorage, per address) so the app opens with them

@@ -1,5 +1,5 @@
 // In-process smoke test of TOT's MCP server with a real MCP client and the local computer.
-// Run: TOT_DATA_DIR=/tmp/tot-mcp-test npx tsx server/mcp/smoke.test.ts
+// Run: TOT_DATA_DIR=/tmp/tot-mcp-test npx tsx apps/server/mcp/smoke.test.ts
 import "../test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";

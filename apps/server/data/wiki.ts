@@ -7,7 +7,7 @@ import type {
   WikiPageSummary,
   WikiRevision,
   WikiSearchHit,
-} from "../../shared/types.ts";
+} from "@tot/shared/types";
 import { db, type Row } from "../db.ts";
 import { OVERVIEW_PATH } from "../knowledge/files.ts";
 import { atomically, gitRevisions, linked, modeOf, record } from "../knowledge/store.ts";

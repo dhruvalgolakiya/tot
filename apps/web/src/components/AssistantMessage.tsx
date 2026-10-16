@@ -1,6 +1,6 @@
 import { memo } from "react";
 import clsx from "clsx";
-import type { Message, MessagePart, ModelOption } from "@shared/types";
+import type { Message, MessagePart, ModelOption } from "@tot/shared/types";
 import { MessageMeta } from "./MessageMeta";
 import { MessagePartView } from "./MessagePartView";
 import { TaskGroupCard } from "./orchestration/TaskGroupCard";

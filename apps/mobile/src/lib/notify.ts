@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { AppState } from "react-native";
 import { create } from "zustand";
-import type { Conversation, TaskStatus } from "@shared/types";
+import type { Conversation, TaskStatus } from "@tot/shared/types";
 
 /**
  * Local notifications (roadmap module 14, M4): an approval waiting, a task that needs input or finished or failed,
@@ -12,7 +12,7 @@ import type { Conversation, TaskStatus } from "@shared/types";
  * TOT, so coming back never repeats a banner.
  *
  * Which tasks are worth a notification follows the web app's store (handleTaskEvent): done, failed and needs-input,
- * unless you're looking at that task. Like server/tasks/notify.ts, tasks whose results get combined into one answer
+ * unless you're looking at that task. Like apps/server/tasks/notify.ts, tasks whose results get combined into one answer
  * don't each notify: the combined reply does.
  */
 

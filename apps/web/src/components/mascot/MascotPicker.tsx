@@ -5,7 +5,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { Check, Shuffle } from "lucide-react";
-import type { MascotSpec, MascotState } from "@shared/types";
+import type { MascotSpec, MascotState } from "@tot/shared/types";
 import { MASCOT_ACCESSORIES, MASCOT_COLORS, MASCOT_EYES, MASCOT_SHAPES, mascotLabel, randomMascot, suggestName } from "./catalog";
 import { Mascot } from "./Mascot";
 import { derivePalette, relativeLuminance, withAlpha } from "./utils";

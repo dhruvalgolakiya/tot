@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { Attachment } from "@shared/types";
+import type { Attachment } from "@tot/shared/types";
 import { api } from "../lib/api";
 import { onDevice } from "../lib/devices";
 import { notifyError } from "../store";

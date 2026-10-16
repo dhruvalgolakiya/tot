@@ -1,4 +1,4 @@
-import type { Memory } from "../../shared/types.ts";
+import type { Memory } from "@tot/shared/types";
 import { memories } from "../data/memories.ts";
 import { projects } from "../projects/projects.ts";
 import { hideSecrets } from "../trust/secrets.ts";

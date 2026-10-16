@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { Check, Copy, Ellipsis, GitFork } from "lucide-react";
-import type { Message, ModelOption } from "@shared/types";
+import type { Message, ModelOption } from "@tot/shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { formatDuration } from "../lib/format";
 import { answeredByLabel, PROVIDER_LABELS } from "../lib/models";

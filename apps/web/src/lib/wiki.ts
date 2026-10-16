@@ -1,4 +1,4 @@
-import type { WikiPageSummary } from "@shared/types";
+import type { WikiPageSummary } from "@tot/shared/types";
 
 /** A wiki page with its children nested, for the page-tree sidebar. */
 export interface WikiTreeNode extends WikiPageSummary {

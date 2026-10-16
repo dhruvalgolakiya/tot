@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { KnowledgeTrigger, KnowledgeUpdate } from "../../../shared/types.ts";
+import type { KnowledgeTrigger, KnowledgeUpdate } from "@tot/shared/types";
 import { appEvents } from "../../app-events.ts";
 import { db, parseJson, type Row } from "../../db.ts";
 import { projects } from "../../projects/projects.ts";

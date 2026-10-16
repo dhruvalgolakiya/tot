@@ -20,7 +20,7 @@ import type {
   TaskRepo,
   TaskResult,
   Tier,
-} from "../../shared/types.ts";
+} from "@tot/shared/types";
 import { validateRepoSource } from "../agent/learn-repo.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { parseModelId } from "../agent/router.ts";

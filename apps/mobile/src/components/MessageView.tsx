@@ -1,6 +1,6 @@
 import { memo, useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
-import type { Attachment, Message, MessagePart } from "@shared/types";
+import type { Attachment, Message, MessagePart } from "@tot/shared/types";
 import { authHeaders, errorMessage } from "../lib/api";
 import { useConnection } from "../lib/connection";
 import { answerApproval, loadFullPart } from "../lib/store";

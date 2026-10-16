@@ -1,4 +1,4 @@
-import type { TaskLanding } from "../../shared/types.ts";
+import type { TaskLanding } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { quote } from "../computer/github-login.ts";
 import { GITHUB_API_URL } from "../config.ts";

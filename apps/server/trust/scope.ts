@@ -1,4 +1,4 @@
-import type { GateResult, RepoProfileInput } from "../../shared/types.ts";
+import type { GateResult, RepoProfileInput } from "@tot/shared/types";
 import type { FolderGrant } from "../computer/types.ts";
 import { parseJson } from "../db.ts";
 import { sections, sh } from "./shell.ts";

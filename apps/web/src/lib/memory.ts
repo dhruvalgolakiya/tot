@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { MemoryCommit } from "@shared/types";
+import type { MemoryCommit } from "@tot/shared/types";
 
 /**
  * Memory repo (roadmap module 10) on the client: which repo Settings → Memory shows ("you", or

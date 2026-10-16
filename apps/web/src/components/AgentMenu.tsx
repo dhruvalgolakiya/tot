@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Brain, ChevronDown, Clock, Monitor, Settings } from "lucide-react";
-import type { Agent, ComputerSummary } from "@shared/types";
+import type { Agent, ComputerSummary } from "@tot/shared/types";
 import { computerTone } from "../lib/computer";
 import { navigateToWiki, openAgentSettings, setComputerPanelOpen } from "../store";
 import { StatusDot } from "./ui/StatusDot";

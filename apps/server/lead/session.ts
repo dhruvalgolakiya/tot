@@ -1,4 +1,4 @@
-import type { LeadSignal, Message, MessagePart, Project } from "../../shared/types.ts";
+import type { LeadSignal, Message, MessagePart, Project } from "@tot/shared/types";
 import { brains } from "../data/brains.ts";
 import type { ConversationRecord } from "../data/conversations.ts";
 import { messages, messageText } from "../data/messages.ts";
@@ -32,7 +32,7 @@ const LAST_MESSAGES = 6;
 const MESSAGE_MAX = 1500;
 const MESSAGES_MAX = 6000;
 
-/** A card in the Lead's chat still waiting for the user's answer (a land, discard or push request, server/lead/asks.ts). */
+/** A card in the Lead's chat still waiting for the user's answer (a land, discard or push request, apps/server/lead/asks.ts). */
 export interface LeadCard {
   /** What the card asks, its first line, e.g. "Merge “Fix cart” into main? · +14 −1 · checks passing". */
   text: string;

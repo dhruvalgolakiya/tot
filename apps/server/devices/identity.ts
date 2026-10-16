@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { hostname, networkInterfaces } from "node:os";
-import type { Device } from "../../shared/types.ts";
+import type { Device } from "@tot/shared/types";
 import { HOST, IS_PROD, PORT, RAW_HOST_EXPOSED, WEB_PORT } from "../config.ts";
 import { db, parseJson, type Row } from "../db.ts";
 import { listeners } from "../listeners.ts";

@@ -1,4 +1,4 @@
-import type { Project, WikiPage } from "../../../shared/types.ts";
+import type { Project, WikiPage } from "@tot/shared/types";
 import { MAX_PAGE_CHARS, wiki } from "../../data/wiki.ts";
 import { repoEntries } from "../../memory/index.ts";
 import { entryText } from "../../memory/repo.ts";

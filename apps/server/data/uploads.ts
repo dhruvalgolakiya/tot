@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Attachment } from "../../shared/types.ts";
+import type { Attachment } from "@tot/shared/types";
 import { DATA_DIR } from "../config.ts";
 import { db, type Row } from "../db.ts";
 

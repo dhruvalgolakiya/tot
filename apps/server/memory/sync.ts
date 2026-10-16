@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { MemoryPeerSync, MemoryRemoteStatus, MemorySyncStatus } from "../../shared/types.ts";
+import type { MemoryPeerSync, MemoryRemoteStatus, MemorySyncStatus } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { DATA_DIR } from "../config.ts";
 import { db, parseJson, type Row } from "../db.ts";

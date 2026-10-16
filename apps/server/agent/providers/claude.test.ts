@@ -1,5 +1,5 @@
 // Live smoke test for the Claude provider (spends a little subscription quota).
-// Run: TOT_DATA_DIR=/tmp/tot-claude-test npx tsx server/agent/providers/claude.test.ts
+// Run: TOT_DATA_DIR=/tmp/tot-claude-test npx tsx apps/server/agent/providers/claude.test.ts
 import { fileURLToPath } from "node:url";
 import { claudeProvider } from "./claude.ts";
 import type { ProviderEvent, TurnInput } from "./types.ts";

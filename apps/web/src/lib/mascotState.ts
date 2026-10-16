@@ -1,4 +1,4 @@
-import type { Message, MascotState } from "@shared/types";
+import type { Message, MascotState } from "@tot/shared/types";
 
 /**
  * Derive a mascot's animation state from a message that is (or just was)

@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import type { AccountInput, AccountLogin, AccountPatch } from "../../shared/types.ts";
+import type { AccountInput, AccountLogin, AccountPatch } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { loginCommand } from "../agent/providers/claude.ts";
 import { accountStatuses, providerFor } from "../agent/providers/index.ts";
@@ -8,7 +8,7 @@ import { pickFolderOnThisMac } from "../projects/folders.ts";
 import { AccountError, accounts } from "./accounts.ts";
 import { t3Import } from "./t3.ts";
 
-/** Provider accounts. Route docs: shared/types.ts. Answers carry env key names at most, never their values. */
+/** Provider accounts. Route docs: packages/shared/types.ts. Answers carry env key names at most, never their values. */
 export const accountRoutes = new Hono();
 
 accountRoutes.onError((err, c) => {

@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { AppEvent } from "../shared/types.ts";
+import type { AppEvent } from "@tot/shared/types";
 import { agents } from "./data/agents.ts";
 import { brains } from "./data/brains.ts";
 import { personas } from "./data/personas.ts";

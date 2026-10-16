@@ -8,7 +8,7 @@ import type {
   SignInLinkRequest,
   UpdateDeviceRequest,
   UpdateRemoteAccessRequest,
-} from "../../shared/types.ts";
+} from "@tot/shared/types";
 import { AccessError, checkGuess, effectiveMode, newSignInCode, passwordSet, setBy, setMode, setPassword, signInReady } from "../access.ts";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";

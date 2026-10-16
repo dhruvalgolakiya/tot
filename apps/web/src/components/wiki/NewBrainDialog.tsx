@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Agent, Brain } from "@shared/types";
+import type { Agent, Brain } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { upsertBrain } from "../../store";
 import { Button } from "../ui/Button";

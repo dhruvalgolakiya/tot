@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { RadioGroup } from "radix-ui";
 import { toast } from "sonner";
 import { Check, FolderOpen, LoaderCircle, Lock } from "lucide-react";
-import type { GitHubRepo, GitHubStatus, Project, ProjectKind } from "@shared/types";
+import type { GitHubRepo, GitHubStatus, Project, ProjectKind } from "@tot/shared/types";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { api, ApiError, errorMessage } from "../../lib/api";
 import { totDesktop } from "../../lib/desktop";

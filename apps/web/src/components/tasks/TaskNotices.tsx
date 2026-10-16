@@ -1,12 +1,12 @@
 import { memo } from "react";
-import type { Message, MessagePart, TaskStatus } from "@shared/types";
+import type { Message, MessagePart, TaskStatus } from "@tot/shared/types";
 import { isTask } from "../../lib/tasks";
 import { navigateToConversation, useStore } from "../../store";
 import { TaskStatusIcon } from "./TaskStatus";
 
 type Notice = Extract<MessagePart, { type: "notice" }>;
 
-/** How the server words a task's ending in its chat (server/tasks/tasks.ts endingNotice). */
+/** How the server words a task's ending in its chat (apps/server/tasks/tasks.ts endingNotice). */
 const ENDING = /^“(.+?)” (is done|failed|was stopped|was cut off when TOT restarted)(?:[^:]*?)(?::\s*([\s\S]*))?\.?$/;
 const STATUS: Record<string, TaskStatus> = {
   "is done": "done",

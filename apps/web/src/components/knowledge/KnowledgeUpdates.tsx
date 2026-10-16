@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState, type ComponentType } from "react";
 import clsx from "clsx";
 import { GitBranch, GitMerge, LoaderCircle, MessageSquare, MoonStar } from "lucide-react";
-import type { KnowledgeTrigger, KnowledgeUpdate, Project } from "@shared/types";
+import type { KnowledgeTrigger, KnowledgeUpdate, Project } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { projectMemoryRepo, useMemoryUi } from "../../lib/memory";

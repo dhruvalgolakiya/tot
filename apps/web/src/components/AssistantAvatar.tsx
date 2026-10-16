@@ -1,4 +1,4 @@
-import type { MascotSpec, MascotState } from "@shared/types";
+import type { MascotSpec, MascotState } from "@tot/shared/types";
 import { Mascot } from "./mascot";
 
 interface AssistantAvatarProps {

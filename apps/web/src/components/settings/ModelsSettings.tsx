@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { toast } from "sonner";
 import { Download, Ellipsis, Plus, RefreshCw } from "lucide-react";
-import type { AccountPatch, AccountStatus, ProviderId } from "@shared/types";
+import type { AccountPatch, AccountStatus, ProviderId } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { PROVIDER_LABELS } from "../../lib/models";
 import type { SettingsSectionProps } from "../../lib/settings";

@@ -1,4 +1,4 @@
-import type { Effort, ProviderId, ProviderStatus, Role, Tier } from "../../shared/types.ts";
+import type { Effort, ProviderId, ProviderStatus, Role, Tier } from "@tot/shared/types";
 import { settings } from "../data/settings.ts";
 
 /**

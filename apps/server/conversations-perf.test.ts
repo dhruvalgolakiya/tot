@@ -1,9 +1,9 @@
 // Loading and switching chats fast: clipped tool calls (?clip=1) and the whole-part route, the slim chat list
 // (?slim=1), ETags on a chat, a running chat's snapshot and ?after= on its events, and streaming saves.
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/conversations-perf.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/conversations-perf.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
-import type { Conversation, ConversationDetail, Message, MessagePart } from "../shared/types.ts";
+import type { Conversation, ConversationDetail, Message, MessagePart } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
 

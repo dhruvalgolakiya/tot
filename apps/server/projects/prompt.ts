@@ -1,4 +1,4 @@
-import type { ChatWorkspace, Project } from "../../shared/types.ts";
+import type { ChatWorkspace, Project } from "@tot/shared/types";
 import { brains } from "../data/brains.ts";
 import { wiki } from "../data/wiki.ts";
 import { gitState } from "./folders.ts";

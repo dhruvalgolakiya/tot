@@ -1,6 +1,6 @@
-import type { MemoryCommit } from "@shared/types";
+import type { MemoryCommit } from "@tot/shared/types";
 
-/** Memory history lines, ported from the web's src/lib/memory.ts so a change reads the same on the phone. */
+/** Memory history lines, ported from apps/web/src/lib/memory.ts so a change reads the same on the phone. */
 
 const VERBS: Record<string, string> = { remember: "Remembered", edit: "Edited", forget: "Forgot" };
 /** Module 11: a project's wiki pages commit to its repo too ("Kiwi: edit page “Checkout flow”"). */

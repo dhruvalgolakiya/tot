@@ -2,7 +2,7 @@ import { memo, useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { Clock, Ellipsis, Mail, Pencil, Pin, PinOff, Ticket, Trash } from "lucide-react";
-import type { Conversation } from "@shared/types";
+import type { Conversation } from "@tot/shared/types";
 import { conversationTitle } from "../lib/conversations";
 import { conversationPath } from "../lib/router";
 import { deleteConversation, navigateToConversation, renameConversation, togglePinned, useStore } from "../store";

@@ -1,11 +1,11 @@
 import { Hono, type Context } from "hono";
-import type { Routine, RoutineInput } from "../../shared/types.ts";
+import type { Routine, RoutineInput } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { routines, validateRoutine } from "../data/routines.ts";
 import { projects } from "./projects.ts";
 import { projectSchedules } from "./schedules.ts";
 
-/** Module 12 (docs/roadmap/12-coordinator.md), lane B: a project's schedules, which run in its Lead. Route docs: shared/types.ts. */
+/** Module 12 (docs/roadmap/12-coordinator.md), lane B: a project's schedules, which run in its Lead. Route docs: packages/shared/types.ts. */
 export const projectScheduleRoutes = new Hono();
 
 async function body<T>(c: Context): Promise<T> {

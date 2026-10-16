@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Platform, RefreshControl, ScrollView, Text, View } from "react-native";
-import type { AccountPatch, AccountStatus, ProviderId, ProviderStatus, Role, Tier } from "@shared/types";
+import type { AccountPatch, AccountStatus, ProviderId, ProviderStatus, Role, Tier } from "@tot/shared/types";
 import { Cell, Footnote, Group, Status, SwitchCell, Tag } from "../../components/settings";
 import { showMenu } from "../../components/ui";
 import { api, errorMessage } from "../../lib/api";

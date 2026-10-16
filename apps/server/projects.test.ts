@@ -4,7 +4,7 @@
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
-import type { Conversation, Project, SendMessageRequest } from "../shared/types.ts";
+import type { Conversation, Project, SendMessageRequest } from "@tot/shared/types";
 
 const PORT = 8805;
 

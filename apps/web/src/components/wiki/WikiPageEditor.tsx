@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import type { WikiPage } from "@shared/types";
+import type { WikiPage } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";

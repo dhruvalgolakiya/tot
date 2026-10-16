@@ -5,7 +5,7 @@
 //   Set TOT_E2E_ATTACH=<file>[,<file>...] to upload and attach files.
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import type { Attachment, Conversation, RunEvent, SendMessageResponse } from "../shared/types.ts";
+import type { Attachment, Conversation, RunEvent, SendMessageResponse } from "@tot/shared/types";
 
 try {
   process.loadEnvFile(".env");

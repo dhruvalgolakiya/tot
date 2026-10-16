@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { BestOfRequest } from "../../shared/types.ts";
+import type { BestOfRequest } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { toPublic } from "../tasks/store.ts";
 import { startBestOf } from "./best-of.ts";

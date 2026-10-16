@@ -1,4 +1,4 @@
-import type { Conversation } from "@shared/types";
+import type { Conversation } from "@tot/shared/types";
 import { dateGroup, type DateGroup } from "./format";
 
 export type ConversationGroup = { label: "Pinned" | DateGroup; items: Conversation[] };

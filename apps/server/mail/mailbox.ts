@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { MailAddress, MailboxConnectRequest, Persona } from "../../shared/types.ts";
+import type { MailAddress, MailboxConnectRequest, Persona } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { getSecret, setSecret } from "../config.ts";

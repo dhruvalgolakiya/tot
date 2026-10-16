@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { ArrowLeftRight, ArrowUpRight, Check, CircleStop, Copy, Ellipsis, FolderOpen, GitBranch, GitMerge, MessagesSquare, MonitorStop, PanelRight, Pause, Pencil, Play, Trash } from "lucide-react";
-import type { Message, TaskPreview } from "@shared/types";
+import type { Message, TaskPreview } from "@tot/shared/types";
 import { useCopy } from "../../hooks/useCopy";
 import { useNow } from "../../hooks/useNow";
 import { api } from "../../lib/api";

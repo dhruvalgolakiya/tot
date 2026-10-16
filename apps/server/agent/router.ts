@@ -1,4 +1,4 @@
-import type { Effort, ProviderId, ProviderStatus, Tier } from "../../shared/types.ts";
+import type { Effort, ProviderId, ProviderStatus, Tier } from "@tot/shared/types";
 import { accounts } from "../accounts/accounts.ts";
 import { PROVIDERS, pickTier, tierModel } from "../orchestration/tiers.ts";
 

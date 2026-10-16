@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { SquareKanban } from "lucide-react";
-import type { MissionOverview } from "@shared/types";
+import type { MissionOverview } from "@tot/shared/types";
 import { useNow } from "../../hooks/useNow";
 import { boardSections, SECTION_TITLES, type MissionSection } from "../../lib/mission";
 import { useProjects } from "../../lib/projects";

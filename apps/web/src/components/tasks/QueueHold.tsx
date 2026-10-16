@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { CirclePause } from "lucide-react";
-import type { QueueHold } from "../../../shared/types";
+import type { QueueHold } from "@tot/shared/types";
 import { PROVIDER_LABELS } from "../../lib/models";
 import { resumeQueue } from "../../store";
 import { Tip } from "../ui/Tip";

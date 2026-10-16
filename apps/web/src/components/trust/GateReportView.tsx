@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { ChevronRight, CircleAlert, CircleCheck, CircleDashed, CircleMinus, CircleX } from "lucide-react";
 import clsx from "clsx";
-import type { GateName, GateReport, GateResult } from "@shared/types";
+import type { GateName, GateReport, GateResult } from "@tot/shared/types";
 import { formatDuration, relativeTime } from "../../lib/format";
 import { ToolOutput } from "../ToolOutput";
 import { Badge, type BadgeTone } from "../ui/Badge";

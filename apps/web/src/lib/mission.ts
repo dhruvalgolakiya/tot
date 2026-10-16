@@ -1,4 +1,4 @@
-import type { ProviderId, ProviderStatus, TaskChecks, TaskDiffStats, TaskLanding } from "@shared/types";
+import type { ProviderId, ProviderStatus, TaskChecks, TaskDiffStats, TaskLanding } from "@tot/shared/types";
 import { toMs } from "./format";
 import { PROVIDER_LABELS } from "./models";
 import type { TaskConversation } from "./tasks";

@@ -1,7 +1,7 @@
-import type { ProviderId } from "@shared/types";
+import type { ProviderId } from "@tot/shared/types";
 
 // The Claude and OpenAI marks, from Simple Icons (simple-icons@16.34.0, CC0), as on the landing page
-// (site/os/BrandMarks.tsx). The marks themselves are their owners' trademarks; here they say which
+// (apps/site/os/BrandMarks.tsx). The marks themselves are their owners' trademarks; here they say which
 // subscription an agent's model runs on.
 
 const PATHS: Record<ProviderId, string> = {

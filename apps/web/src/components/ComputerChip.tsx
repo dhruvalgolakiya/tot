@@ -1,5 +1,5 @@
 import { Monitor } from "lucide-react";
-import type { ComputerSummary } from "@shared/types";
+import type { ComputerSummary } from "@tot/shared/types";
 import { computerTone } from "../lib/computer";
 import { selectActiveAgent, setComputerPanelOpen, useStore } from "../store";
 import { IconButton } from "./ui/IconButton";

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { CheckCheck, CircleCheck, CircleX, Clock, GitBranch, GitMerge, GitPullRequest, LoaderCircle, Pause, X } from "lucide-react";
-import type { Agent, Routine } from "@shared/types";
+import type { Agent, Routine } from "@tot/shared/types";
 import { useNow } from "../../hooks/useNow";
 import { boardSections, statsLine, taskStatusLine } from "../../lib/mission";
 import { selectDevice, useDevices } from "../../lib/remote";

@@ -2,7 +2,7 @@ import { useRef, useState, type RefObject } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { ArrowUp, Ellipsis, History, LoaderCircle, Pencil, Trash } from "lucide-react";
-import type { WikiPage } from "@shared/types";
+import type { WikiPage } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { navigateToConversation, notifyError, selectActiveAgent, sendMessage, useStore } from "../../store";

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Text, View } from "react-native";
-import type { Memory, MemoryCommit, MemoryRepoSummary } from "@shared/types";
+import type { Memory, MemoryCommit, MemoryRepoSummary } from "@tot/shared/types";
 import { Cell, FieldCell, Footnote, Group, LoadState, SettingsScroll, SwitchCell } from "../../components/settings";
 import { confirm, showMenu } from "../../components/ui";
 import { api, errorMessage } from "../../lib/api";

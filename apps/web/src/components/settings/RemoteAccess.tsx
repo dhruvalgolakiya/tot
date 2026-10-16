@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import clsx from "clsx";
 import { toast } from "sonner";
 import { Check, Copy, Eye, EyeOff, Smartphone } from "lucide-react";
-import type { DevicesStatus, RemoteAccessMode, SignInLink } from "@shared/types";
+import type { DevicesStatus, RemoteAccessMode, SignInLink } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { setDevicesStatus } from "../../lib/remote";
 import { useCopy } from "../../hooks/useCopy";

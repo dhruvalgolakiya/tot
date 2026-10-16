@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Ellipsis, FolderGit, GraduationCap, Pencil, Plus, Star, Trash2 } from "lucide-react";
-import type { Project, ProjectRepo } from "@shared/types";
+import type { Project, ProjectRepo } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { grantProjectRepo, removeProjectRepo, repoSourceLabel, updateProjectRepo } from "../../lib/project-repos";
 import { PROJECT_ICONS, tildePath } from "../../lib/projects";

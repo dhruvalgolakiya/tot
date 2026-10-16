@@ -1,4 +1,4 @@
-import type { PluginConfig, PluginInput, ProviderId } from "@shared/types";
+import type { PluginConfig, PluginInput, ProviderId } from "@tot/shared/types";
 
 export interface PluginFormValues {
   name: string;

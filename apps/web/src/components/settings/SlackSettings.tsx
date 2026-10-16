@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { Ellipsis, LoaderCircle, Unplug, X } from "lucide-react";
-import type { SlackPatch, SlackStatus } from "@shared/types";
+import type { SlackPatch, SlackStatus } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { useCopy } from "../../hooks/useCopy";
 import { notifyError, setSlackStatus, useLocalAgents, useStore } from "../../store";

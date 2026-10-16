@@ -1,7 +1,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { Pencil, Trash } from "lucide-react";
-import type { Memory } from "@shared/types";
+import type { Memory } from "@tot/shared/types";
 import { api } from "../lib/api";
 import { notifyError } from "../store";
 import { Button } from "./ui/Button";
@@ -18,7 +18,7 @@ type MemoryItemProps = {
   onDeleted: (id: string) => void;
 };
 
-/** Where an old memory shows while the one-time import hasn't landed (server/memory/legacy.ts): read-only. */
+/** Where an old memory shows while the one-time import hasn't landed (apps/server/memory/legacy.ts): read-only. */
 const NOT_IMPORTED = "(not imported yet)";
 
 const day = (time: number) => new Date(time).toLocaleDateString(undefined, { month: "short", day: "numeric", year: new Date(time).getFullYear() === new Date().getFullYear() ? undefined : "numeric" });

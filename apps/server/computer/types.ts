@@ -1,4 +1,4 @@
-import type { ComputerKind } from "../../shared/types.ts";
+import type { ComputerKind } from "@tot/shared/types";
 
 export interface ExecResult {
   stdout: string;

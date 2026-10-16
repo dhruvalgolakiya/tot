@@ -1,7 +1,7 @@
 import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { RefreshControl, SectionList, StyleSheet, Text, View } from "react-native";
-import type { Agent, Device } from "@shared/types";
+import type { Agent, Device } from "@tot/shared/types";
 import { Button, Dot, Icon, IconButton, Mascot, Row, SectionTitle, Separator } from "../components/ui";
 import { useConnection } from "../lib/connection";
 import { loadAll, useStore } from "../lib/store";

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
-import type { Memory, MemoryFile } from "@shared/types";
+import type { Memory, MemoryFile } from "@tot/shared/types";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { api, errorMessage } from "../../lib/api";
 import { memoryProse, useMemoryUi } from "../../lib/memory";

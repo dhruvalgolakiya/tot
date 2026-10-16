@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { MailAddress, Persona } from "../../shared/types.ts";
+import type { MailAddress, Persona } from "@tot/shared/types";
 import { askUser } from "../agent/approvals.ts";
 import { mail, type StoredMail } from "../data/mail.ts";
 import { isEmail, personas } from "../data/personas.ts";

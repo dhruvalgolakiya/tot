@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Project } from "@shared/types";
+import type { Project } from "@tot/shared/types";
 import { ApiError, errorMessage } from "../../lib/api";
 import { grantProjectFolder, sourceLabel } from "../../lib/projects";
 import { Button } from "../ui/Button";

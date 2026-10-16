@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { Check, ChevronDown, Copy, Ellipsis, ExternalLink, Unplug } from "lucide-react";
-import type { GitHubDeviceStart } from "@shared/types";
+import type { GitHubDeviceStart } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { useCopy } from "../../hooks/useCopy";
 import { notifyError, setGithubStatus, useStore } from "../../store";

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import clsx from "clsx";
 import { Check, LoaderCircle, Lock, SearchX } from "lucide-react";
-import type { Agent, GitHubRepo } from "@shared/types";
+import type { Agent, GitHubRepo } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";

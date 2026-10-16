@@ -1,4 +1,4 @@
-import type { Routine, RoutineInput } from "@shared/types";
+import type { Routine, RoutineInput } from "@tot/shared/types";
 import { redirectToSignIn } from "../../lib/api";
 
 /**

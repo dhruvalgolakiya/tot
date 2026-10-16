@@ -1,4 +1,4 @@
-import type { Brain, MessageStatus } from "../../shared/types.ts";
+import type { Brain, MessageStatus } from "@tot/shared/types";
 import { appEvents } from "../app-events.ts";
 import { agents } from "../data/agents.ts";
 import { brains, cloneFolder, githubFullName } from "../data/brains.ts";

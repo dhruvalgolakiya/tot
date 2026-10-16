@@ -1,8 +1,8 @@
 // Trust gates & playbooks (module 03): repo profiles, gates, the reviewer and playbooks, against
 // temporary git repos on the local computer backend and a fake model (no real model is called).
-// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx server/trust.test.ts
+// Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/trust.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
-import type { CommandRun, ProviderStatus, RepoProfile } from "../shared/types.ts";
+import type { CommandRun, ProviderStatus, RepoProfile } from "@tot/shared/types";
 import type { ModelCall } from "./trust/model.ts";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
@@ -414,8 +414,8 @@ await run("git checkout -q -- .", shop2);
 check("nothing to review is a 400", (await request("POST", "/trust/review", { agentId: agent.id, cwd: shop2, baseRef: "main" })).status === 400);
 
 // --- M4 · Playbooks -------------------------------------------------------------------------------------
-type PlaybookT = import("../shared/types.ts").Playbook;
-type MatchT = import("../shared/types.ts").PlaybookMatch;
+type PlaybookT = import("@tot/shared/types").Playbook;
+type MatchT = import("@tot/shared/types").PlaybookMatch;
 const { hintScore, isReadOnly } = await import("./trust/playbooks.ts");
 
 calls.length = 0;

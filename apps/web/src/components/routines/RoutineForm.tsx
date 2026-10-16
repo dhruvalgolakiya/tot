@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import clsx from "clsx";
-import type { Routine, RoutineInput } from "@shared/types";
+import type { Routine, RoutineInput } from "@tot/shared/types";
 import { Button } from "../ui/Button";
 import { Callout } from "../ui/Callout";
 import { cardClass } from "../ui/Card";

@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Text } from "react-native";
-import type { KnowledgeCommit } from "@shared/types";
+import type { KnowledgeCommit } from "@tot/shared/types";
 import { Cell, Group, LoadState, SettingsScroll } from "../../components/settings";
 import { confirm, type MenuItem, showMenu } from "../../components/ui";
 import { api, errorMessage } from "../../lib/api";

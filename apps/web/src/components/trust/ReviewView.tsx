@@ -1,4 +1,4 @@
-import type { Review, ReviewFinding } from "@shared/types";
+import type { Review, ReviewFinding } from "@tot/shared/types";
 import { modelLabel, PROVIDER_LABELS } from "../../lib/models";
 import { useStore } from "../../store";
 import { Badge } from "../ui/Badge";

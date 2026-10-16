@@ -7,7 +7,7 @@ import { undoUpdate } from "./auto/undo.ts";
 
 /**
  * Module 11 (docs/roadmap/11-workspaces.md), lane C: a project's knowledge auto-updates — the log, checking its
- * repos now, and undoing one. Route docs: shared/types.ts. Knowledge stays on its device: paired devices get 403.
+ * repos now, and undoing one. Route docs: packages/shared/types.ts. Knowledge stays on its device: paired devices get 403.
  */
 export const knowledgeAutoRoutes = new Hono();
 

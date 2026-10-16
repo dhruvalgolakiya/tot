@@ -1,5 +1,5 @@
 import { simpleParser, type AddressObject, type HeaderLines } from "mailparser";
-import type { MailAddress } from "../../shared/types.ts";
+import type { MailAddress } from "@tot/shared/types";
 
 /**
  * Turns a raw email into what TOT stores: plain text, the sign-in codes and links in it, and

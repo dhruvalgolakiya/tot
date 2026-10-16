@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { MemoryImportStatus, MemorySkippedMemory } from "@shared/types";
+import type { MemoryImportStatus, MemorySkippedMemory } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { notifyError } from "../../store";
 import { ConfirmDialog } from "../ConfirmDialog";

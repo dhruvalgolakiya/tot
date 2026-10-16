@@ -20,7 +20,7 @@
 // Mode's nested apply_patch is rejected), and every approval request we still
 // receive is declined.
 
-import type { Effort, ModelOption, ProviderAccount, ProviderStatus, Usage } from "../../../shared/types.ts";
+import type { Effort, ModelOption, ProviderAccount, ProviderStatus, Usage } from "@tot/shared/types";
 import { accountDir, accounts, binaryFor } from "../../accounts/accounts.ts";
 import { VERSION, paths } from "../../config.ts";
 import { settings as settingsStore } from "../../data/settings.ts";

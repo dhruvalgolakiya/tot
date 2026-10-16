@@ -1,7 +1,7 @@
 import { Suspense, useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Archive, Bell, Brain, Compass, Ellipsis, FolderGit2, GraduationCap, ScrollText, SlidersHorizontal, SquarePen, Wrench } from "lucide-react";
-import type { Agent, Project } from "@shared/types";
+import type { Agent, Project } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { lazyComponent } from "../../lib/lazyComponent";
 import { archiveProject, isCodeProject } from "../../lib/projects";

@@ -92,7 +92,7 @@ export function GeneralSettings({ draft, onChange }: SettingsSectionProps) {
   );
 }
 
-/** Mac app only: the menu-bar "open at login" OS setting, read and set through electron/'s bridge. */
+/** Mac app only: the menu-bar "open at login" OS setting, read and set through apps/desktop/'s bridge. */
 function OpenAtLoginRow() {
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(true); // starts true: loading the current state before it can be toggled

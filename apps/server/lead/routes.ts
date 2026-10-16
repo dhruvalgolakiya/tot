@@ -4,7 +4,7 @@ import { leadAsks } from "./asks.ts";
 import { homeProjects } from "./board.ts";
 import { leads } from "./lead.ts";
 
-/** Module 11 (docs/roadmap/11-workspaces.md), lane D: a project's Lead chat, and Home's project rows. Route docs: shared/types.ts. */
+/** Module 11 (docs/roadmap/11-workspaces.md), lane D: a project's Lead chat, and Home's project rows. Route docs: packages/shared/types.ts. */
 export const leadRoutes = new Hono();
 
 /** The project's Lead chat: made the first time (201), the same one after (200). Body: { agentId? }. */

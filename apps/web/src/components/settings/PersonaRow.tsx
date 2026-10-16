@@ -1,4 +1,4 @@
-import type { Agent, Persona } from "@shared/types";
+import type { Agent, Persona } from "@tot/shared/types";
 import { mailboxStatus } from "../../lib/personas";
 import { Badge } from "../ui/Badge";
 import { LedgerRow } from "../ui/Ledger";

@@ -1,5 +1,5 @@
 /**
- * Which paired device things live on (roadmap module 07), ported from the web app's src/lib/devices.ts.
+ * Which paired device things live on (roadmap module 07), ported from apps/web/src/lib/devices.ts.
  *
  * Everything another device sends (agents, chats, runs, messages) is "owned" by it: its ids are remembered,
  * and any later API call naming one of them goes to /api/d/<device>/…, which the signed-in TOT forwards.

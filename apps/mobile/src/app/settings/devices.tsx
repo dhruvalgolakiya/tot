@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert } from "react-native";
-import type { Device, DevicesStatus, SignInSession } from "@shared/types";
+import type { Device, DevicesStatus, SignInSession } from "@tot/shared/types";
 import { Cell, Group, LoadState, SettingsScroll, Status } from "../../components/settings";
 import { confirm } from "../../components/ui";
 import { api, errorMessage } from "../../lib/api";

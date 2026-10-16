@@ -4,12 +4,12 @@ import type { Context } from "hono";
 /**
  * TOT's few server-rendered pages: signing in from another device, and where a pairing link points. They
  * load before the app (signed out), so they're plain HTML hand-matching the app's design tokens
- * (src/index.css): canvas, text tiers, hairlines, Inter, light and dark.
+ * (apps/web/src/index.css): canvas, text tiers, hairlines, Inter, light and dark.
  */
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
-/** The TOT mark (two rings), as in src/components/ui/Logo.tsx. */
+/** The TOT mark (two rings), as in apps/web/src/components/ui/Logo.tsx. */
 const LOGO = `<svg viewBox="8 12 48 40" width="44" height="37" fill="none" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><circle cx="20" cy="32" r="9" stroke="url(#g)" stroke-width="5"/><circle cx="44" cy="32" r="9" stroke="url(#g)" stroke-width="5"/></svg>`;
 
 const STYLE = `
@@ -55,7 +55,7 @@ const STYLE = `
   [hidden] { display: none !important; }
 `;
 
-/** Same saved theme as the app (src/lib/theme.ts): localStorage, falling back to the device's setting. */
+/** Same saved theme as the app (apps/web/src/lib/theme.ts): localStorage, falling back to the device's setting. */
 const THEME = `(function () {
   var saved = null;
   try { saved = localStorage.getItem("tot-theme"); } catch (e) {}

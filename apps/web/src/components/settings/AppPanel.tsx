@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AppRule } from "@shared/types";
+import type { AppRule } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { humanizeAppTool } from "../../lib/apps";
 import { notifyError, setAppsStatus, useStore } from "../../store";

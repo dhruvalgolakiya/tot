@@ -1,4 +1,4 @@
-import type { ProviderId, Role, TaskBrief, TaskResult } from "../../shared/types.ts";
+import type { ProviderId, Role, TaskBrief, TaskResult } from "@tot/shared/types";
 
 /**
  * What each kind of session is for. A role sets the session's default tier (Settings → Models)

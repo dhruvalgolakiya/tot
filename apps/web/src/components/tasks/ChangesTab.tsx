@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { ChevronRight, RefreshCw } from "lucide-react";
-import type { TaskChangedFile, TaskChanges } from "@shared/types";
+import type { TaskChangedFile, TaskChanges } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import type { TaskConversation } from "../../lib/tasks";
 import { Callout } from "../ui/Callout";

@@ -1,4 +1,4 @@
-import type { GateName, GateResult, RepoProfileInput, TaskChecks } from "../../shared/types.ts";
+import type { GateName, GateResult, RepoProfileInput, TaskChecks } from "@tot/shared/types";
 import { brains } from "../data/brains.ts";
 import { conversations } from "../data/conversations.ts";
 import { grantFor } from "../projects/checkout.ts";

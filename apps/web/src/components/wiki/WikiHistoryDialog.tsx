@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import clsx from "clsx";
 import { ChevronRight } from "lucide-react";
-import type { WikiAuthor, WikiPage, WikiRevision } from "@shared/types";
+import type { WikiAuthor, WikiPage, WikiRevision } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { selectActiveAgent, useStore } from "../../store";

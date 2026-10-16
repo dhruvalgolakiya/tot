@@ -1,5 +1,5 @@
 import { LoaderCircle } from "lucide-react";
-import type { KnowledgeStatus, Project } from "@shared/types";
+import type { KnowledgeStatus, Project } from "@tot/shared/types";
 import { projectMemoryRepo } from "../../lib/memory";
 import { MemoryEntries } from "../memory/MemoryEntries";
 import { Callout } from "../ui/Callout";

@@ -1,7 +1,7 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { ArrowDown } from "lucide-react";
-import type { Message } from "@shared/types";
+import type { Message } from "@tot/shared/types";
 import { useStickToBottom } from "../hooks/useStickToBottom";
 import { whenIdle } from "../lib/idle";
 import { loadMarkdown, useMarkdownReady } from "../lib/markdownLoader";

@@ -1,4 +1,4 @@
-import type { LeadSignal, LeadSignalKind, Project } from "../../shared/types.ts";
+import type { LeadSignal, LeadSignalKind, Project } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { conversations } from "../data/conversations.ts";
 import { githubFullName } from "../data/brains.ts";

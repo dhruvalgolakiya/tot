@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { Alert, Image, Pressable, StyleSheet, Text, useColorScheme, View } from "react-native";
-import type { Agent, AgentIsland, MascotSpec } from "@shared/types";
+import type { Agent, AgentIsland, MascotSpec } from "@tot/shared/types";
 import { errorMessage } from "../lib/api";
 import { AGENT_ISLANDS, ISLAND_IMAGES, MASCOT_COLORS } from "../lib/agents";
 import { deleteAgent, useStore } from "../lib/store";

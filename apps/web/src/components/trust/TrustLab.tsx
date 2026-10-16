@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { GateReport, ProviderId, Review } from "@shared/types";
+import type { GateReport, ProviderId, Review } from "@tot/shared/types";
 import { errorMessage } from "../../lib/api";
 import { useStore } from "../../store";
 import { Button } from "../ui/Button";

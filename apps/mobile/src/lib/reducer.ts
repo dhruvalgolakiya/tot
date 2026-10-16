@@ -1,5 +1,5 @@
-// Ported as is from the web app's src/lib/reducer.ts: how a streaming run event changes its message. Keep the two in step.
-import type { Message, MessagePart, RunEvent } from "@shared/types";
+// Ported as is from apps/web/src/lib/reducer.ts: how a streaming run event changes its message. Keep the two in step.
+import type { Message, MessagePart, RunEvent } from "@tot/shared/types";
 
 export type RunStartEvent = Extract<RunEvent, { type: "run-start" }>;
 

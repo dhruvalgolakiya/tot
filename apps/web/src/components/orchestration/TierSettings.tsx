@@ -1,4 +1,4 @@
-import type { AccountStatus, ProviderId, Role, Settings, Tier } from "@shared/types";
+import type { AccountStatus, ProviderId, Role, Settings, Tier } from "@tot/shared/types";
 import { PROVIDER_LABELS } from "../../lib/models";
 import { ROLE_LABELS, ROLES, TIER_DESCRIPTIONS, TIER_LABELS, TIERS } from "../../lib/orchestration";
 import { useStore } from "../../store";
@@ -7,7 +7,7 @@ import { Select } from "../ui/Select";
 
 const PROVIDERS: ProviderId[] = ["claude", "chatgpt"];
 
-/** TOT's own pick for a tier when nothing is chosen (mirrors server/orchestration/tiers.ts, for the label). */
+/** TOT's own pick for a tier when nothing is chosen (mirrors apps/server/orchestration/tiers.ts, for the label). */
 function defaultLabel(tier: Tier, provider: ProviderId, models: { model: string; label: string }[]): string {
   if (provider === "claude") return tier === "deep" ? "Opus 5.5" : "Sonnet 5.5";
   const deep = models[0];

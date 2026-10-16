@@ -1,4 +1,4 @@
-import type { Conversation } from "@shared/types";
+import type { Conversation } from "@tot/shared/types";
 
 /** Chats attached to a message as reference (module 05): at most three, from the same agent. */
 export const MAX_ATTACHED_CHATS = 3;

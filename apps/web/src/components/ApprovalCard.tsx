@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { toast } from "sonner";
 import type { LucideIcon } from "lucide-react";
 import { ExternalLink, ShieldAlert, ShieldCheck, ShieldOff, ShieldQuestion, ShieldX } from "lucide-react";
-import type { ApprovalField, MessagePart } from "@shared/types";
+import type { ApprovalField, MessagePart } from "@tot/shared/types";
 import { api, ApiError } from "../lib/api";
 import { toMs, truncate } from "../lib/format";
 import { loadConversation, notifyError, useStore } from "../store";

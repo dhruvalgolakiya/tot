@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Plugin, PluginConfig, PluginInput, ProviderId } from "../../shared/types.ts";
+import type { Plugin, PluginConfig, PluginInput, ProviderId } from "@tot/shared/types";
 import { db, parseJson, type Row } from "../db.ts";
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;

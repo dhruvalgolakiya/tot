@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { toast } from "sonner";
 import { ArrowUpRight, CircleCheck, CircleMinus, CircleX, Ellipsis, GitMerge, GitPullRequestDraft, ListChecks, LoaderCircle, RefreshCw, Trash, TriangleAlert } from "lucide-react";
-import type { Conversation, TaskChecks, TaskLandOptions } from "@shared/types";
+import type { Conversation, TaskChecks, TaskLandOptions } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { useProjects } from "../../lib/projects";
 import { isOpenTask, type TaskConversation } from "../../lib/tasks";

@@ -2,7 +2,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { ChatWorkspaceMode } from "@shared/types";
+import type { ChatWorkspaceMode } from "@tot/shared/types";
 import { PROJECT_ICONS, TaskStatusIcon } from "../../components/tasks";
 import { confirm, Dot, Icon, type IconName, IconButton, Row, SectionTitle, Separator, showMenu } from "../../components/ui";
 import { errorMessage } from "../../lib/api";

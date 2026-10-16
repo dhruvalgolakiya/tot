@@ -1,4 +1,4 @@
-import type { AppCatalogItem, AppRule } from "@shared/types";
+import type { AppCatalogItem, AppRule } from "@tot/shared/types";
 
 /** Short hint on a catalog card for how connecting works; null shows nothing (types "none"/"unknown"). */
 export function connectHint(connect: AppCatalogItem["connect"]): string | null {

@@ -1,4 +1,4 @@
-import type { Role, Tier } from "@shared/types";
+import type { Role, Tier } from "@tot/shared/types";
 
 export const ROLE_LABELS: Record<Role, string> = {
   explorer: "Explorer",

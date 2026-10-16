@@ -1,4 +1,4 @@
-import type { HomeProject } from "@shared/types";
+import type { HomeProject } from "@tot/shared/types";
 import { api } from "./api";
 import { onDevice } from "./devices";
 import { useDevices } from "./remote";

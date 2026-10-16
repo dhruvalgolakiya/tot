@@ -1,4 +1,4 @@
-import type { Project } from "../../shared/types.ts";
+import type { Project } from "@tot/shared/types";
 import type { ConversationRecord } from "../data/conversations.ts";
 import { brains } from "../data/brains.ts";
 import { repoLines } from "./board.ts";

@@ -2,7 +2,7 @@ import { useState } from "react";
 import clsx from "clsx";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import type { Project } from "@shared/types";
+import type { Project } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { memoryChanged, projectMemoryRepo } from "../../lib/memory";
 import { notifyError } from "../../store";

@@ -1,4 +1,4 @@
-import type { TaskInfo } from "../../shared/types.ts";
+import type { TaskInfo } from "@tot/shared/types";
 
 /**
  * What a coding task is told about its worktree (module 09), in its task instructions: its ports, how

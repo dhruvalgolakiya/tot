@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { Ellipsis, LoaderCircle, Power } from "lucide-react";
-import type { AppCatalogItem } from "@shared/types";
+import type { AppCatalogItem } from "@tot/shared/types";
 import { useAppConnect } from "../../hooks/useAppConnect";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { api, errorMessage } from "../../lib/api";

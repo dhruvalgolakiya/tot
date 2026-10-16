@@ -1,5 +1,5 @@
 /**
- * The Mac app's bridge (electron/ exposes this from its preload script when TOT runs inside the
+ * The Mac app's bridge (apps/desktop/ exposes this from its preload script when TOT runs inside the
  * Electron shell, with `titleBarStyle: "hiddenInset"`). `undefined` in a normal browser tab or on
  * a phone, so every call site guards on `totDesktop` first.
  */
@@ -15,7 +15,7 @@ export interface TotDesktopBridge {
   updates?: TotDesktopUpdates;
 }
 
-/** As electron/update-state.ts's UpdateState. The prompt shows only a `ready` update that isn't `dismissed`. */
+/** As apps/desktop/update-state.ts's UpdateState. The prompt shows only a `ready` update that isn't `dismissed`. */
 export type AppUpdateState =
   | { status: "idle" }
   | { status: "checking" }

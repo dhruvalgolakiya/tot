@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { toast } from "sonner";
 import { Check, Copy, Ellipsis, KeyRound, Laptop, Link2, LogOut, Pencil, RefreshCw, Smartphone, Unlink, Wifi } from "lucide-react";
-import type { Device, DevicesStatus, SignInSession } from "@shared/types";
+import type { Device, DevicesStatus, SignInSession } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { setDevicesStatus, useDevices } from "../../lib/remote";

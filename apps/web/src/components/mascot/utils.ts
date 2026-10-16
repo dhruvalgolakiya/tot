@@ -1,7 +1,7 @@
 // Internal helpers: deterministic hashing, a seedable PRNG, and small color-math
 // utilities used to derive each mascot's shaded palette from a single base color.
 // Nothing here is exported through index.ts — it's implementation detail.
-import type { MascotSpec } from "@shared/types";
+import type { MascotSpec } from "@tot/shared/types";
 
 /** Stable string key for a spec — used for hashing (blink timing, "random" mascot, name suggestions). */
 export function specKey(spec: MascotSpec): string {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { CloudUpload, Download, Flag, Minus, MoonStar, Pencil, Plus, RefreshCw, SquarePen, Undo2 } from "lucide-react";
-import type { MemoryCommit } from "@shared/types";
+import type { MemoryCommit } from "@tot/shared/types";
 import { api, errorMessage } from "../../lib/api";
 import { relativeTime } from "../../lib/format";
 import { commitActor, describeCommit, useMemoryUi } from "../../lib/memory";

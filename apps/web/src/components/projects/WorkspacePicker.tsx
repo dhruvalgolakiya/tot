@@ -1,6 +1,6 @@
 import { DropdownMenu } from "radix-ui";
 import { Check, ChevronDown, GitBranch, Laptop } from "lucide-react";
-import type { ChatWorkspaceMode } from "@shared/types";
+import type { ChatWorkspaceMode } from "@tot/shared/types";
 import { isCodeProject, useProjects } from "../../lib/projects";
 import { setDraftWorkspace, useStore } from "../../store";
 

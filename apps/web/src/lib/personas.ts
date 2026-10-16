@@ -1,4 +1,4 @@
-import type { PersonaMailbox } from "@shared/types";
+import type { PersonaMailbox } from "@tot/shared/types";
 import type { DotTone } from "./computer";
 
 /** Basic shape check, not a full RFC validator — good enough to catch typos in an allow-list. */

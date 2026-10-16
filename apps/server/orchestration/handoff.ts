@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { HandoffPacket, ProviderId } from "../../shared/types.ts";
+import type { HandoffPacket, ProviderId } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { limits } from "../agent/limits.ts";
 import { providers } from "../agent/providers/index.ts";

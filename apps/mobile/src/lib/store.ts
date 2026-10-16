@@ -1,5 +1,5 @@
 import { Alert } from "react-native";
-import type { Agent, AgentInput, AppEvent, ChatWorkspaceMode, Conversation, DevicesStatus, LandTaskRequest, LiveRuns, Message, MessagePart, ModelOption, Project, RunEvent, Settings, SettingsPatch } from "@shared/types";
+import type { Agent, AgentInput, AppEvent, ChatWorkspaceMode, Conversation, DevicesStatus, LandTaskRequest, LiveRuns, Message, MessagePart, ModelOption, Project, RunEvent, Settings, SettingsPatch } from "@tot/shared/types";
 import { create } from "zustand";
 import { ApiError, api, apiUrl, authHeaders, errorMessage } from "./api";
 import { CACHED_CHATS, CACHED_MESSAGES, readSnapshot, type Snapshot, writeSnapshot } from "./cache";
@@ -11,7 +11,7 @@ import { openSse, type SseHandle } from "./sse";
 
 /**
  * Everything the app shows, from the signed-in TOT and its online paired devices (module 07), kept live by its
- * event stream. Modeled on the web app's src/store.ts; nothing here is saved on the phone.
+ * event stream. Modeled on the web app's apps/web/src/store.ts; nothing here is saved on the phone.
  */
 
 type ApprovalPart = Extract<MessagePart, { type: "approval" }>;
