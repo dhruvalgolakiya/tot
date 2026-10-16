@@ -10,11 +10,9 @@
     <meta name="apple-mobile-web-app-title" content="TOT" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#08080a" />
-    <!-- Inter for the UI and headings, Geist Mono for code.
-         display=swap: text renders in the system font until they arrive. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..800;1,14..32,300..800&family=Geist+Mono:wght@400..600&display=swap" />
+    <!-- Inter for the UI and headings, Geist Mono for code, served with the app (src/fonts.css).
+         Inter's Latin file is on every screen: fetch it now, not once the stylesheet asks for it. -->
+    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
     <script>
       // Apply the saved theme before first paint, so there's no flash (see src/lib/theme.ts).
       (function () {

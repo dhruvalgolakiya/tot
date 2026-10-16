@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { Message, MessagePart, TaskStatus } from "@shared/types";
 import { isTask } from "../../lib/tasks";
 import { navigateToConversation, useStore } from "../../store";
@@ -28,7 +29,7 @@ export function isTaskEndingMessage(message: Message): boolean {
  * The tasks a chat started, as they finish: one quiet line each (status icon, title, the start of its result), stacked
  * together however many messages they came in. A line opens its task.
  */
-export function TaskNotices({ messages, conversationId }: { messages: Message[]; conversationId: string }) {
+export const TaskNotices = memo(function TaskNotices({ messages, conversationId }: { messages: Message[]; conversationId: string }) {
   const all = useStore((s) => s.conversations);
   const notices = messages.flatMap((message) => message.parts.filter(isTaskEndingNotice));
 
@@ -70,4 +71,4 @@ export function TaskNotices({ messages, conversationId }: { messages: Message[];
       })}
     </ul>
   );
-}
+});

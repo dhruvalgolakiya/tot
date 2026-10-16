@@ -1,21 +1,31 @@
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { Check, Copy, Ellipsis, GitFork } from "lucide-react";
-import type { Message } from "@shared/types";
+import type { Message, ModelOption } from "@shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { formatDuration } from "../lib/format";
 import { answeredByLabel, PROVIDER_LABELS } from "../lib/models";
 import { messageText } from "../lib/tools";
-import { forkChat, useStore } from "../store";
+import { forkChat } from "../store";
 import { Callout } from "./ui/Callout";
 import { IconButton } from "./ui/IconButton";
 import { Tip } from "./ui/Tip";
 
-/** Under a finished assistant message: error, copy, more (fork from here), model (why it was picked), stop state. */
-export function MessageMeta({ message, isLatest = false }: { message: Message; isLatest?: boolean }) {
-  const models = useStore((s) => s.models);
-  // Replies in chats fork (not TOT's own notices; tasks don't fork yet).
-  const inChat = useStore((s) => s.conversations.find((c) => c.id === message.conversationId)?.kind === "chat");
+/**
+ * Under a finished assistant message: error, copy, more (fork from here), model (why it was picked), stop state.
+ * `models` and `inChat` (the message is in a chat: replies there fork) come from the list, read once for all messages.
+ */
+export function MessageMeta({
+  message,
+  isLatest = false,
+  models,
+  inChat,
+}: {
+  message: Message;
+  isLatest?: boolean;
+  models: ModelOption[];
+  inChat: boolean;
+}) {
   const forkable = inChat && Boolean(message.provider);
   const { copied, copy } = useCopy();
   const text = messageText(message);

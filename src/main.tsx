@@ -1,9 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { LucideProvider } from "lucide-react";
+import "./fonts.css";
 import "./index.css";
 import App from "./App";
 import { totDesktop } from "./lib/desktop";
+import { loadMarkdown } from "./lib/markdownLoader";
+
+// An open chat waits for the markdown renderer (its own chunk): start fetching it now, alongside the app's first
+// requests. (index.html's modulepreload already has the browser downloading it; this runs it.)
+loadMarkdown().catch(() => {});
 
 // The Mac app (electron/) draws the window chrome itself (hidden title bar, traffic lights over the
 // page). This class is the one thing that tells the rest of the app it's running there — see

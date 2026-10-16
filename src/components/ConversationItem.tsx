@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent } from "react";
+import { memo, useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { DropdownMenu } from "radix-ui";
 import { Clock, Ellipsis, Mail, Pencil, Pin, PinOff, Ticket, Trash } from "lucide-react";
@@ -27,9 +27,28 @@ type ConversationItemProps = {
   href?: string;
   onOpen?: () => void;
 };
-export function ConversationItem({ conversation, active, streaming, workingTasks = 0, href, onOpen }: ConversationItemProps) {
+/** How long the pointer rests on a row before its chat is fetched ahead of the click. */
+const PREFETCH_HOVER_MS = 100;
+
+/** Fetch a chat before it's opened (the store's prefetch, where there is one). */
+function prefetch(id: string) {
+  (useStore.getState() as { prefetchConversation?: (id: string) => unknown }).prefetchConversation?.(id);
+}
+
+/** Memoized: switching chats re-renders the two rows whose `active` changed, not the whole list. */
+export const ConversationItem = memo(function ConversationItem({
+  conversation,
+  active,
+  streaming,
+  workingTasks = 0,
+  href,
+  onOpen,
+}: ConversationItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // The delete confirmation mounts the first time it's needed (and stays, for its closing animation).
+  const [confirmMounted, setConfirmMounted] = useState(false);
+  const hover = useRef(0);
   const [menuOpen, setMenuOpen] = useState(false);
   // Rename/Delete run after the menu has fully closed; a closing Radix menu
   // re-focuses itself on pointerleave and would steal focus from the dialog.
@@ -71,6 +90,12 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
       <a
         href={href ?? conversationPath(conversation.id)}
         onClick={open}
+        onPointerEnter={() => {
+          window.clearTimeout(hover.current);
+          hover.current = window.setTimeout(() => prefetch(conversation.id), PREFETCH_HOVER_MS);
+        }}
+        onPointerLeave={() => window.clearTimeout(hover.current)}
+        onFocus={() => prefetch(conversation.id)}
         aria-current={active ? "page" : undefined}
         title={title}
         // Dropped on the composer, it's attached to the next message as reference.
@@ -137,7 +162,10 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
               if (!action) return;
               event.preventDefault();
               if (action === "rename") setRenaming(true);
-              else setConfirming(true);
+              else {
+                setConfirmMounted(true);
+                setConfirming(true);
+              }
             }}
           >
             <DropdownMenu.Item className="menu-item" onSelect={() => {
@@ -173,19 +201,21 @@ export function ConversationItem({ conversation, active, streaming, workingTasks
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
 
-      <ConfirmDialog
-        open={confirming}
-        onOpenChange={setConfirming}
-        title="Delete chat?"
-        description={
-          <>
-            This deletes <span className="font-medium text-fg">{title}</span>. This can't be undone.
-            {conversation.lead && " The project gets a fresh Lead the next time you open it."}
-          </>
-        }
-        confirmLabel="Delete"
-        onConfirm={() => void deleteConversation(conversation.id)}
-      />
+      {confirmMounted && (
+        <ConfirmDialog
+          open={confirming}
+          onOpenChange={setConfirming}
+          title="Delete chat?"
+          description={
+            <>
+              This deletes <span className="font-medium text-fg">{title}</span>. This can't be undone.
+              {conversation.lead && " The project gets a fresh Lead the next time you open it."}
+            </>
+          }
+          confirmLabel="Delete"
+          onConfirm={() => void deleteConversation(conversation.id)}
+        />
+      )}
     </div>
   );
-}
+});
