@@ -20,8 +20,21 @@ Click the two rings in the menu bar:
 - **Open TOT**: shows the window.
 - A status line: "Remote access: off", "Remote access: on · this Wi‑Fi" or "Remote access: on · Tailscale".
 - **Open at login**: starts TOT when you log in to your Mac, so it's always reachable. It waits in the menu bar until you open it. You'll also find this in **Settings → General**.
+- **Check for Updates…**: looks for a new version now and tells you what it found. It's in the **TOT** menu too.
 - **Show log**: opens TOT's log in Console.
 - **Quit TOT**: stops TOT. `⌘Q` does the same.
+
+## Updates
+
+TOT keeps itself up to date. It checks for a new version a few seconds after it opens and every 4 hours after that, and downloads it in the background while you work.
+
+- When it's ready, **Update ready** appears at the bottom of the sidebar. **Restart to update** installs it and opens TOT again. Chats and tasks still running stop when TOT restarts.
+- Not now? Close it with **×**. The update installs the next time you quit TOT anyway, and the prompt is back the next time TOT opens.
+- **Check for Updates…** (menu bar menu or the **TOT** menu) checks right away and says "You're up to date", or what it found.
+- TOT updates itself once it's in your Applications folder. Run straight from the disk image, it can't replace itself.
+- No connection, or nothing new: nothing happens and nothing pops up. The log notes each check.
+
+New versions are published as [GitHub releases](https://github.com/dhruvalgolakiya/tot/releases): a .dmg for a fresh install, plus the files the app updates from.
 
 ## Good to know
 
@@ -34,7 +47,6 @@ Click the two rings in the menu bar:
 ## Limits
 
 - **Signed and notarized** with a Developer ID, so the .dmg opens on any Mac with no security warning. There's no public download yet.
-- **No auto-update.** It needs signing and public releases first.
 - **Apple silicon only.** No Intel build yet.
 - **No dictation.** The mic button is hidden in the app.
 - **It's big**: about 900 MB on disk, mostly Claude Code and Codex.
