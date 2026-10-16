@@ -13,6 +13,7 @@ import { attachedTo } from "../chats/attach.ts";
 import { forks } from "../chats/fork.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations } from "../data/conversations.ts";
+import { messages } from "../data/messages.ts";
 import { describeSchedule, routines, validateRoutine } from "../data/routines.ts";
 import { settings } from "../data/settings.ts";
 import { redactGitHubTokens } from "../github.ts";
@@ -28,6 +29,7 @@ import { homeRelative } from "../tasks/worktree.ts";
 import { taskPorts } from "../worktrees/ports.ts";
 import type { ConversationRecord } from "../data/conversations.ts";
 import { clip, guarded, isoDay, reply } from "./results.ts";
+import { registerSkillTools } from "../skills/tools.ts";
 import { registerMailTools } from "./mail-tools.ts";
 import { registerWikiTools } from "./wiki-tools.ts";
 
@@ -350,6 +352,9 @@ function buildServer(conversation: ConversationRecord): McpServer {
         }),
     );
   }
+
+  // The folders of skills this chat invoked ("/dh-stack …"): their references and scripts, read-only.
+  if (messages.skillsUsed(conversationId).length) registerSkillTools(server, conversationId);
 
   // chat_read always works on this chat (context selection points models at what it left out) and on the
   // chats linked to it (the one it was forked from, its forks, chats attached to its messages); on the

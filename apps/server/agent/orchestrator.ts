@@ -50,6 +50,7 @@ import { leadNote, leadSection } from "../lead/prompt.ts";
 import { leadSession } from "../lead/session.ts";
 import { leadSignals } from "../signals/store.ts";
 import { promptMemory } from "../memory/prompt.ts";
+import { skillBlock, skills, slashSkill, type SkillRecord } from "../skills/skills.ts";
 
 export class HttpError extends Error {
   constructor(
@@ -97,6 +98,39 @@ export function sameProviderFallback(
   return null;
 }
 
+/** A skill a message invoked: its SKILL.md for this turn's prompt, and the message's text without the "/name". */
+export interface InvokedSkill {
+  skill: Pick<SkillRecord, "name" | "dir">;
+  body: string;
+  text: string;
+}
+
+/**
+ * The skill a message invokes: the one the composer sent, else a known skill its text starts with ("/dh-stack …", so
+ * mobile and Slack need nothing new). A "/word" that isn't a skill is an ordinary message; a skill the composer sent
+ * that's gone is an error.
+ */
+export function invokedSkill(requested: string | undefined, text: string): InvokedSkill | null {
+  const typed = slashSkill(text);
+  const asked = requested?.trim();
+  const name = asked || typed?.name;
+  if (!name) return null;
+  const skill = skills.find(name);
+  if (!skill) {
+    if (asked) throw new HttpError(400, `There's no skill called “${asked}” on this computer.`);
+    return null;
+  }
+  let body: string;
+  try {
+    body = skills.body(skill);
+  } catch {
+    throw new HttpError(400, `The skill “${skill.name}” couldn't be read.`);
+  }
+  // The "/name" in front goes when it names this skill; any other text stays as it is.
+  const rest = typed && skills.find(typed.name)?.name === skill.name ? typed.rest : text;
+  return { skill: { name: skill.name, dir: skill.dir }, body, text: rest };
+}
+
 /** Server-side extras for a turn (not part of the public API). */
 export interface TurnOptions {
   /** Instructions put before the user's text for the model only (e.g. for routine runs). */
@@ -134,11 +168,15 @@ export async function sendMessage(
   if (files.length > MAX_ATTACHMENTS) throw new HttpError(400, `You can attach up to ${MAX_ATTACHMENTS} files per message.`);
   const attachments = files as UploadRecord[];
   const text = request.text?.trim() ?? "";
-  if (!text && !attachments.length) throw new HttpError(400, "Message is empty.");
+  if (!text && !attachments.length && !request.skill?.trim()) throw new HttpError(400, "Message is empty.");
   if (runRegistry.activeFor(conversationId) || starting.has(conversationId)) {
     throw new HttpError(409, `${agents.get(conversation.agentId)?.name ?? "TOT"} is still replying in this chat.`);
   }
   const contextChats = cleanContextChats(request.contextChats, conversation);
+  // A skill this message invokes: its SKILL.md goes into this turn's prompt only. TOT's own turns never invoke one.
+  const invoked = options.auto ? null : invokedSkill(request.skill, text);
+  // What the model gets as the user's words: the text without the "/name" in front.
+  const said = invoked ? invoked.text : text;
 
   const modelId = request.modelId ?? conversation.modelId;
   // Held from here until the run exists (no await after this one), so two messages can't both start a turn.
@@ -150,7 +188,7 @@ export async function sendMessage(
   } finally {
     starting.delete(conversationId);
   }
-  const routingText = text || attachments.map((file) => file.name).join(", ");
+  const routingText = said || text || attachments.map((file) => file.name).join(", ");
   const complexity = options.heavy ? ({ complex: true, why: options.heavy } as const) : undefined;
   const result = resolveRoute(modelId, routingText, {
     thinkHarder: request.thinkHarder,
@@ -181,6 +219,7 @@ export async function sendMessage(
     status: "complete",
     ...(options.auto ? { auto: true } : {}),
     ...(contextChats.length ? { contextChats } : {}),
+    ...(invoked ? { skill: invoked.skill.name } : {}),
     createdAt: now,
   };
   const assistant: Message = {
@@ -214,7 +253,8 @@ export async function sendMessage(
     run,
     conversation: updated,
     assistant,
-    text,
+    text: said,
+    skill: invoked ?? undefined,
     route,
     history,
     attachments,
@@ -251,6 +291,8 @@ interface TurnContext {
   route: Route;
   history: Message[];
   attachments: UploadRecord[];
+  /** The skill the message invoked: its SKILL.md comes before the user's text, this turn only. */
+  skill?: InvokedSkill;
   /** Chats attached to the message as reference. */
   contextChats: string[];
   preamble?: string;
@@ -303,7 +345,9 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   });
   if (ctx.notice) builder.notice("info", ctx.notice);
   const unsubscribe = bus.subscribe(conversation.agentId, (event) => run.push(event));
-  const title = ctx.autoTitle ? generateTitle(conversation.id, ctx.text || ctx.attachments.map((f) => f.name).join(", "), run) : null;
+  const title = ctx.autoTitle
+    ? generateTitle(conversation.id, ctx.text || ctx.attachments.map((f) => f.name).join(", ") || (ctx.skill?.skill.name ?? ""), run)
+    : null;
 
   let route = ctx.route;
   let status: MessageStatus = "complete";
@@ -488,8 +532,11 @@ async function prepareTurn(ctx: TurnContext, heardSignals: string[] = []): Promi
   // A project's Lead (module 11): its section follows the project's repos; a change is said once.
   const lead = leadNote(conversation, project, moved.prompt ?? conversation.systemPrompt);
   if (lead.prompt !== null) conversations.update(conversation.id, { systemPrompt: lead.prompt });
+  // A skill the message invoked comes right before the user's words (all of them when they only typed "/name").
+  const skill = ctx.skill ? skillBlock(ctx.skill.skill, ctx.skill.body) : "";
+  const said = ctx.text || (ctx.skill ? "Run the skill." : "");
   const text =
-    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, lead.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, ctx.text]
+    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, lead.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, skill, said]
       .filter(Boolean)
       .join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
@@ -549,10 +596,13 @@ export function promptGitHubAccess(agentId: string): GitHubAccess {
 }
 
 export function mcpServersFor(conversation: Pick<ConversationRecord, "id" | "agentId"> & { lead?: boolean }, provider: ProviderId): McpServerSpec[] {
+  // A chat that invoked a skill also gets skill_read; marking its URL changes a loaded Codex thread's config, so the
+  // thread is resumed with the tool (Claude Code lists tools afresh every turn).
+  const withSkills = messages.skillsUsed(conversation.id).length > 0;
   const tot: McpServerSpec = {
     name: "tot",
     type: "http",
-    url: `${INTERNAL_BASE_URL}/mcp/${conversation.id}`,
+    url: `${INTERNAL_BASE_URL}/mcp/${conversation.id}${withSkills ? "?skills=1" : ""}`,
     headers: { Authorization: `Bearer ${MCP_TOKEN}` },
   };
   const extra = plugins.enabledFor(provider).map((plugin): McpServerSpec =>
