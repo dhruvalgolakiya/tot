@@ -12,15 +12,18 @@ export function slashWordAt(text: string, caret: number): { query: string; end: 
   return { query: match[1]!, end: match[0].length };
 }
 
-/** a, b, c in order anywhere in the text ("dhs" in "dh-stack"). */
-function inOrder(needle: string, hay: string): boolean {
-  let at = 0;
-  for (const char of hay) if (char === needle[at]) at++;
-  return at === needle.length;
+/** Each letter right after the one before, or at the start of a later word: "ds" and "dhst" in "dh-stack", not "dh" in "edit-in-houdini". */
+function wordStarts(needle: string, hay: string, from = 0): boolean {
+  if (!needle) return true;
+  for (let i = from; i < hay.length; i++) {
+    const wordStart = i === 0 || /[-_.: ]/.test(hay[i - 1]!);
+    if (hay[i] === needle[0] && (wordStart || (from > 0 && i === from)) && wordStarts(needle.slice(1), hay, i + 1)) return true;
+  }
+  return false;
 }
 
-/** The picker's skills for a query: names that start with it (a plugin's skill by its own name too), contain it, have its letters in order, then descriptions that mention it. */
-export function skillMatches(skills: SkillInfo[], query: string, limit = 50): SkillInfo[] {
+/** The picker's skills for a query: names that start with it (a plugin's skill by its own name too), contain it, match it by word starts, then descriptions that mention it. */
+export function skillMatches(skills: SkillInfo[], query: string, limit = 100): SkillInfo[] {
   const needle = query.toLowerCase();
   if (!needle) return skills.slice(0, limit);
   const rank = (skill: SkillInfo): number => {
@@ -28,7 +31,7 @@ export function skillMatches(skills: SkillInfo[], query: string, limit = 50): Sk
     const own = name.slice(name.indexOf(":") + 1);
     if (name.startsWith(needle) || own.startsWith(needle)) return 0;
     if (name.includes(needle)) return 1;
-    if (inOrder(needle, name)) return 2;
+    if (wordStarts(needle, name)) return 2;
     return skill.description.toLowerCase().includes(needle) ? 3 : -1;
   };
   return skills
