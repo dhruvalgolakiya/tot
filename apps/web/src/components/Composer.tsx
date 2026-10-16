@@ -1,13 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Columns2, LoaderCircle, MessageSquare, Plus, Square } from "lucide-react";
+import { ArrowUp, Columns2, LoaderCircle, MessageSquare, Plus, Square, SquareSlash } from "lucide-react";
 import type { Conversation } from "@tot/shared/types";
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
-import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, slashQuery, type SlashCommandName } from "../lib/mission";
+import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, type SlashCommandName } from "../lib/mission";
+import { skillMatches, slashWordAt, typedSkill } from "../lib/skills";
 import { isSteerable, isTask } from "../lib/tasks";
 import {
   clearComposerDraft,
+  loadSkills,
   selectActiveAgent,
   selectActiveAgentId,
   selectCurrentConversation,
@@ -32,10 +34,13 @@ const SLASH_ICONS: Record<SlashCommandName, typeof Columns2> = { "best-of": Colu
 
 const NO_CONVERSATIONS: Conversation[] = [];
 
+/** A row of the "/" menu: a command (/best-of) or a skill. */
+type SlashItem = { kind: "command"; name: SlashCommandName; description: string } | { kind: "skill"; name: string; description: string };
+
 /**
  * `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page.
  * The agent (or a project's Lead) decides on its own when work needs a task; this box is just chat, plus
- * `/best-of` to run a couple of attempts and compare.
+ * `/best-of` to run a couple of attempts and compare, and skills ("/dh-stack fix the cart") to run a message with.
  */
 export function Composer({
   attachments,
@@ -61,13 +66,14 @@ export function Composer({
   // preview under the textarea — never merged into `text` until it finalizes,
   // so it can't clobber anything the user has typed.
   const [interim, setInterim] = useState("");
-  // The slash commands' menu (just /best-of now).
+  // The "/" menu: /best-of and skills, while the message's first word is being typed.
   const [slashHighlight, setSlashHighlight] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState<string | null>(null);
   /** The last best-of start's text and request id: sending the same text again after a failure reuses the id, so it starts once. */
   const pendingRequest = useRef<{ text: string; id: string } | null>(null);
   const providers = useStore((s) => s.providers);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const slashListRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // A message sent from a project's page that failed once its chat had opened: put its text back here.
   const draft = useStore((s) => s.composerDraft);
@@ -84,12 +90,27 @@ export function Composer({
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [chatOver, setChatOver] = useState(false);
   useEffect(() => setContextChats([]), [currentId]);
-  // /best-of is for chats, project pages and home; a task's composer steers or replies.
+  // /best-of and skills are for chats, project pages and home; a task's composer steers or replies.
   const command = task ? null : parseSlash(text);
-  const query = task ? null : slashQuery(text);
-  const slashMatches = query !== null && text !== slashDismissed ? SLASH_COMMANDS.filter((c) => c.name.startsWith(query)) : [];
-  const slashing = slashMatches.length > 0;
-  useEffect(() => setSlashHighlight(0), [query]);
+  const slashWord = task ? null : slashWordAt(text, caret);
+  const slashOpen = slashWord !== null && text !== slashDismissed;
+  // Skills load the first time the menu opens.
+  const skills = useStore((s) => s.skills);
+  useEffect(() => {
+    if (slashOpen) void loadSkills();
+  }, [slashOpen]);
+  const slashItems: SlashItem[] = slashOpen
+    ? [
+        ...SLASH_COMMANDS.filter((c) => c.name.startsWith(slashWord.query.toLowerCase())).map((c) => ({ kind: "command" as const, ...c })),
+        ...skillMatches(skills ?? [], slashWord.query).map((skill) => ({ kind: "skill" as const, name: skill.name, description: skill.description })),
+      ]
+    : [];
+  const slashing = slashItems.length > 0;
+  const noSkills = slashOpen && !slashing && skills !== null;
+  useEffect(() => setSlashHighlight(0), [slashWord?.query]);
+  useEffect(() => {
+    slashListRef.current?.querySelector("[data-highlighted]")?.scrollIntoView({ block: "nearest" });
+  }, [slashHighlight]);
   const bestOf = bestOfProviders(providers);
   // This message, once sent, starts a best-of run instead of a reply.
   const sendsBestOf = !task && command !== null;
@@ -178,7 +199,7 @@ export function Composer({
     setInterim("");
     setContextChats([]);
     attachments.clear();
-    const sent = await sendMessage(message, { attachments: files, contextChats: chats });
+    const sent = await sendMessage(message, { attachments: files, contextChats: chats, skill: typedSkill(skills, message) });
     if (!sent) {
       setContextChats(chats);
       setText((current) => current || value);
@@ -186,14 +207,14 @@ export function Composer({
     }
   }
 
-  /** Swaps the command being typed for the whole command and a space: "/be" → "/best-of ". */
-  function pickSlash(name: SlashCommandName) {
-    const next = `/${name} `;
-    setText(next);
+  /** Swaps the first word being typed for the whole name and a space: "/be" → "/best-of ", "/dh fix it" → "/dh-stack fix it". */
+  function pickSlash(name: string) {
+    const head = `/${name} `;
+    setText(head + (slashWord ? text.slice(slashWord.end).trimStart() : ""));
     requestAnimationFrame(() => {
       inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(next.length, next.length);
-      setCaret(next.length);
+      inputRef.current?.setSelectionRange(head.length, head.length);
+      setCaret(head.length);
     });
   }
 
@@ -203,19 +224,19 @@ export function Composer({
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const step = event.key === "ArrowDown" ? 1 : -1;
-        setSlashHighlight((current) => (current + step + slashMatches.length) % slashMatches.length);
+        setSlashHighlight((current) => (current + step + slashItems.length) % slashItems.length);
         return;
       }
       if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
         event.preventDefault();
-        pickSlash(slashMatches[Math.min(slashHighlight, slashMatches.length - 1)]!.name);
+        pickSlash(slashItems[Math.min(slashHighlight, slashItems.length - 1)]!.name);
         return;
       }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setSlashDismissed(text);
-        return;
-      }
+    }
+    if ((slashing || noSkills) && event.key === "Escape") {
+      event.preventDefault();
+      setSlashDismissed(text);
+      return;
     }
     // The @ chat picker takes the arrows, Enter / Tab and Escape while it's open.
     if (picking) {
@@ -288,31 +309,45 @@ export function Composer({
         chatOver ? "border-accent-edge" : "border-edge",
       )}
     >
-      {slashing && (
-        <div role="listbox" aria-label="Commands" className="menu absolute bottom-full left-0 mb-2 w-96 max-w-full">
-          {slashMatches.map((item, index) => {
-            const Icon = SLASH_ICONS[item.name];
+      {(slashing || noSkills) && (
+        <div
+          ref={slashListRef}
+          role="listbox"
+          aria-label="Commands and skills"
+          className="menu absolute bottom-full left-0 mb-2 max-h-80 w-96 max-w-full overflow-y-auto"
+        >
+          {slashItems.map((item, index) => {
+            const Icon = item.kind === "command" ? SLASH_ICONS[item.name] : SquareSlash;
             const description =
-              item.name === "best-of" && bestOf.length ? `On ${bestOfLabel(bestOf)}, then compare` : item.description;
+              item.kind === "command" && item.name === "best-of" && bestOf.length ? `On ${bestOfLabel(bestOf)}, then compare` : item.description;
+            const firstSkill = item.kind === "skill" && slashItems[index - 1]?.kind !== "skill";
             return (
-              <div
-                key={item.name}
-                role="option"
-                aria-selected={index === slashHighlight}
-                data-highlighted={index === slashHighlight ? "" : undefined}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  pickSlash(item.name);
-                }}
-                onMouseEnter={() => setSlashHighlight(index)}
-                className="menu-item"
-              >
-                <Icon className="size-4 shrink-0 text-fg-muted" />
-                <span className="shrink-0 font-medium">/{item.name}</span>
-                <span className="min-w-0 flex-1 truncate text-fg-subtle">{description}</span>
-              </div>
+              <Fragment key={`${item.kind}:${item.name}`}>
+                {firstSkill && <p className="menu-label">Skills</p>}
+                <div
+                  role="option"
+                  aria-selected={index === slashHighlight}
+                  data-highlighted={index === slashHighlight ? "" : undefined}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    pickSlash(item.name);
+                  }}
+                  onMouseEnter={() => setSlashHighlight(index)}
+                  className="menu-item"
+                >
+                  <Icon className="size-4 shrink-0 text-fg-muted" />
+                  <span className="max-w-[60%] shrink-0 truncate font-medium">/{item.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-fg-subtle">{description}</span>
+                </div>
+              </Fragment>
             );
           })}
+          {noSkills && (
+            <>
+              <p className="menu-label">Skills</p>
+              <p className="px-2 pt-0.5 pb-2 text-fg-subtle">No skills found</p>
+            </>
+          )}
         </div>
       )}
       {picking && (

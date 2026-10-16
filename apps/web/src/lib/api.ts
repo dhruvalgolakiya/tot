@@ -74,6 +74,7 @@ import type {
   RoutineInput,
   SendMessageRequest,
   SendMessageResponse,
+  SkillInfo,
   Settings,
   SettingsPatch,
   SetupDetection,
@@ -200,6 +201,8 @@ export const api = {
   /** Starts a browser login (ChatGPT only for now); open the returned URL in a new tab. */
   loginProvider: (id: ProviderId) => request<{ url: string }>("POST", `/providers/${seg(id)}/login`, {}),
   listModels: () => request<ModelOption[]>("GET", "/models"),
+  /** Skills a message can invoke with "/name" (from their SKILL.md frontmatter). */
+  listSkills: () => request<SkillInfo[]>("GET", "/skills"),
 
   /** Provider accounts: several Claude / ChatGPT sign-ins. `refresh` re-checks every sign-in. */
   listAccounts: ({ refresh = false } = {}) => request<AccountStatus[]>("GET", refresh ? "/accounts?refresh=1" : "/accounts"),

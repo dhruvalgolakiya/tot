@@ -1,10 +1,11 @@
 import { memo } from "react";
 import clsx from "clsx";
-import { Check, Copy, Download } from "lucide-react";
+import { Check, Copy, Download, SquareSlash } from "lucide-react";
 import type { Attachment, Message, MessagePart } from "@tot/shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { formatBytes } from "../lib/format";
 import { fileIcon, isImageMime } from "../lib/fileIcon";
+import { withoutSkill } from "../lib/skills";
 import { messageText } from "../lib/tools";
 import { IconButton } from "./ui/IconButton";
 import { ChatChip } from "./ChatChip";
@@ -74,6 +75,8 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
   if (message.auto) return <AutoDivider text={text} />;
   if (message.steered) return <SteerNote message={message} />;
   const pending = message.id.startsWith("local-");
+  // A skill the message ran with shows as a chip, so its "/name" doesn't repeat in the bubble.
+  const shown = message.skill ? withoutSkill(text, message.skill) : text;
   const files = message.parts.filter(
     (part): part is Extract<MessagePart, { type: "file" }> => part.type === "file",
   );
@@ -91,14 +94,26 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
           )}
         </div>
       )}
-      {text && (
+      {message.skill && (
+        <span
+          title={`Ran with the ${message.skill} skill`}
+          className={clsx(
+            "mb-1.5 inline-flex h-6 max-w-[80%] min-w-0 items-center gap-1 rounded-full border border-hairline bg-fill-subtle px-2 text-xs text-fg-muted sm:max-w-[70%]",
+            pending && "opacity-70",
+          )}
+        >
+          <SquareSlash className="size-3.5 shrink-0 text-fg-subtle" aria-hidden="true" />
+          <span className="min-w-0 truncate">{message.skill}</span>
+        </span>
+      )}
+      {shown && (
         <div
           className={clsx(
             "max-w-[80%] rounded-3xl bg-bubble px-4 py-2.5 text-chat whitespace-pre-wrap text-fg [overflow-wrap:anywhere] transition-opacity sm:max-w-[70%]",
             pending && "opacity-70",
           )}
         >
-          {text}
+          {shown}
         </div>
       )}
       {message.contextChats?.length ? (

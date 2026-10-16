@@ -22,6 +22,7 @@ import type {
   RunEvent,
   Settings,
   SettingsPatch,
+  SkillInfo,
   SlackStatus,
   TaskPatch,
   UpdateConversationRequest,
@@ -132,6 +133,8 @@ export interface TotState {
   /** Conversations whose run just completed; mascot stays "happy" briefly. */
   justFinished: Record<string, boolean>;
   models: ModelOption[];
+  /** Skills for the composer's "/" menu: loaded the first time it opens; null until then. */
+  skills: SkillInfo[] | null;
   /** Paired devices' models (module 07): another device's agent picks from its own device's. */
   deviceModels: Record<string, ModelOption[]>;
   /** Paired devices' brains (module 07): another device's agent's notebook and brains are on its device. */
@@ -226,6 +229,7 @@ export const useStore = create<TotState>()(() => ({
   composerDraft: null,
   justFinished: {},
   models: [],
+  skills: null,
   deviceModels: {},
   deviceBrains: {},
   providers: [],
@@ -1292,12 +1296,14 @@ export interface SendMessageOptions {
   attachments?: Attachment[];
   /** Other chats attached as reference. */
   contextChats?: string[];
+  /** The skill the message starts with ("/dh-stack …"), shown on it as a chip. */
+  skill?: string | null;
 }
 
 /** Send a message; creates the conversation first on an agent's home screen. */
 export async function sendMessage(
   text: string,
-  { thinkHarder = false, attachments = [], contextChats = [] }: SendMessageOptions = {},
+  { thinkHarder = false, attachments = [], contextChats = [], skill = null }: SendMessageOptions = {},
 ): Promise<boolean> {
   const body = text.trim();
   if ((!body && attachments.length === 0) || get().sending) return false;
@@ -1354,6 +1360,7 @@ export async function sendMessage(
         parts,
         status: "complete",
         ...(contextChats.length ? { contextChats } : {}),
+        ...(skill ? { skill } : {}),
         createdAt: Date.now(),
       },
     ]);
@@ -1365,6 +1372,7 @@ export async function sendMessage(
       ...(attachments.length ? { attachments: attachments.map((a) => a.id) } : {}),
       ...(thinkHarder ? { thinkHarder: true } : {}),
       ...(contextChats.length ? { contextChats } : {}),
+      ...(skill ? { skill } : {}),
     });
 
     set((s) => ({
@@ -1387,6 +1395,21 @@ export async function sendMessage(
   } finally {
     set({ sending: false });
   }
+}
+
+let skillsLoad: { at: number; promise: Promise<void> } | null = null;
+/** How long the "/" menu's skills last before it asks again (skills get installed while TOT runs). */
+const SKILLS_TTL_MS = 60_000;
+
+/** Loads the skills for the "/" menu, at most once a minute. A failure leaves the menu empty ("No skills found"). */
+export function loadSkills(): Promise<void> {
+  if (skillsLoad && Date.now() - skillsLoad.at < SKILLS_TTL_MS) return skillsLoad.promise;
+  const promise = api.listSkills().then(
+    (skills) => set({ skills }),
+    () => set((s) => ({ skills: s.skills ?? [] })),
+  );
+  skillsLoad = { at: Date.now(), promise };
+  return promise;
 }
 
 /** "/best-of": the same goal on each signed-in provider, from the open chat (cards there), a project's page (they show in its list) or home (the compare view opens). */

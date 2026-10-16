@@ -113,12 +113,6 @@ export const SLASH_COMMANDS: { name: SlashCommandName; description: string }[] =
   { name: "best-of", description: "On Claude and ChatGPT, then compare" },
 ];
 
-/** While the command itself is being typed ("/", "/be"): what's typed after the slash; null otherwise. */
-export function slashQuery(text: string): string | null {
-  const match = /^\/([\w-]*)$/.exec(text);
-  return match ? match[1]!.toLowerCase() : null;
-}
-
 /** "/best-of fix the cart total" → { command: "best-of", body: "fix the cart total" }; null for anything else. */
 export function parseSlash(text: string): { command: SlashCommandName; body: string } | null {
   const match = /^\/(best-of)(?:\s+([\s\S]*))?$/.exec(text.trimStart());
