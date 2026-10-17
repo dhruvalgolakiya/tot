@@ -87,12 +87,29 @@ export function useAttachments(deviceId: string | null = null) {
     setItems((current) => (current.length === 0 ? previous : current));
   }, []);
 
+  /** Adds files that are already uploaded (a stashed draft coming back), up to the limit, skipping ones already here. */
+  const addUploaded = useCallback((uploaded: Attachment[]) => {
+    if (uploaded.length === 0) return;
+    setItems((current) => {
+      const have = new Set(current.map((it) => it.attachment?.id));
+      const added = uploaded
+        .filter((attachment) => !have.has(attachment.id))
+        .map((attachment): PendingAttachment => ({
+          localId: nextLocalId(),
+          file: new File([], attachment.name, { type: attachment.mimeType }),
+          status: "done",
+          attachment,
+        }));
+      return [...current, ...added].slice(0, MAX_ATTACHMENTS);
+    });
+  }, []);
+
   const uploading = items.some((it) => it.status === "uploading");
   const ready = items.filter((it) => it.status === "done" && it.attachment) as (PendingAttachment & {
     attachment: Attachment;
   })[];
 
-  return { items, addFiles, removeAttachment, clear, restore, uploading, ready };
+  return { items, addFiles, addUploaded, removeAttachment, clear, restore, uploading, ready };
 }
 
 export type UseAttachments = ReturnType<typeof useAttachments>;

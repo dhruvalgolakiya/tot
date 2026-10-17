@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
+import { toast } from "sonner";
 import { ArrowUp, Columns2, FileText, ListChecks, LoaderCircle, MessageSquare, Plus, Square, SquarePen, SquareSlash } from "lucide-react";
 import type { Conversation } from "@tot/shared/types";
 import type { UseAttachments } from "../hooks/useAttachments";
@@ -7,6 +8,7 @@ import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../l
 import { droppedPath, fileMentionAt, filesInText, splitPath, type FilesTarget } from "../lib/files";
 import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, type SlashCommandName } from "../lib/mission";
 import { skillMatches, slashWordAt, typedSkill } from "../lib/skills";
+import { dropStashed, stashDraft, type StashedDraft } from "../lib/stash";
 import { adoptDraftPlanMode, DRAFT, modeCommand, setPlanMode, usePlanMode } from "../lib/plan-mode";
 import { isCodeProject, useProjects } from "../lib/projects";
 import { queueMessage } from "../lib/queue";
@@ -29,7 +31,9 @@ import { ChatChip } from "./ChatChip";
 import { MentionOverlay } from "./composer/MentionText";
 import { PlanFollowUp } from "./composer/PlanFollowUp";
 import { QueuedMessages } from "./composer/QueuedMessages";
+import { StashMenu } from "./composer/StashMenu";
 import { useFileMentions } from "./composer/useFileMentions";
+import { usePromptHistory } from "./composer/usePromptHistory";
 import { ProjectPicker } from "./projects/ProjectPicker";
 import { WorkspacePicker } from "./projects/WorkspacePicker";
 import { Tip } from "./ui/Tip";
@@ -226,6 +230,45 @@ export function Composer({
     });
   }
 
+  // ↑ / ↓ in an empty composer: this chat's earlier prompts.
+  const history = usePromptHistory(currentId);
+  const deviceId = agent?.deviceId ?? null;
+
+  /** ⌘S: what's being written goes aside (the stash menu brings it back), leaving the composer clear. */
+  function stash() {
+    const uploads = attachments.ready.map((it) => it.attachment);
+    if (!text.trim() && !uploads.length && !contextChats.length) return;
+    if (attachments.uploading) {
+      toast("Wait for the files to finish uploading, then stash.");
+      return;
+    }
+    stashDraft({ text, attachments: uploads, deviceId, contextChats, files: filesInText(text, mentions.named) });
+    setText("");
+    setInterim("");
+    setContextChats([]);
+    mentions.setNamed([]);
+    attachments.clear();
+  }
+
+  /** A stashed draft comes back, after anything already written, and leaves the stash. */
+  function restoreStashed(draft: StashedDraft) {
+    dropStashed(draft.id);
+    const next = text.trim() ? `${text.replace(/\s+$/, "")}\n\n${draft.text}` : draft.text;
+    setText(next);
+    if (canAttachChats) draft.contextChats.forEach(attachChat);
+    draft.files.forEach(mentions.name);
+    if (draft.attachments.length) {
+      // Files live on the device they were uploaded to (module 07).
+      if (draft.deviceId === deviceId) attachments.addUploaded(draft.attachments);
+      else toast("The draft's files are on another device, so they weren't added here.");
+    }
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.length, next.length);
+      setCaret(next.length);
+    });
+  }
+
   const hasText = command ? command.body.length > 0 : text.trim().length > 0;
   const canSend = steering
     ? text.trim().length > 0 && attachments.items.length === 0
@@ -358,6 +401,11 @@ export function Composer({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      stash();
+      return;
+    }
     // The slash menu takes the arrows, Enter / Tab and Escape while it's open.
     if (slashing && !event.metaKey && !event.ctrlKey) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -408,6 +456,22 @@ export function Composer({
         requestAnimationFrame(() => {
           inputRef.current?.setSelectionRange(start, start);
           setCaret(start);
+        });
+        return;
+      }
+    }
+    // Earlier prompts: ↑ on the first line, ↓ on the last, in an empty composer or one showing a recalled prompt.
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && !picking) {
+      const input = event.currentTarget;
+      const up = event.key === "ArrowUp";
+      const edge = up ? !text.slice(0, input.selectionStart).includes("\n") : !text.slice(input.selectionEnd).includes("\n");
+      const recalled = edge ? (up ? history.back(text) : history.forward(text)) : null;
+      if (recalled !== null) {
+        event.preventDefault();
+        setText(recalled);
+        requestAnimationFrame(() => {
+          inputRef.current?.setSelectionRange(recalled.length, recalled.length);
+          setCaret(recalled.length);
         });
         return;
       }
@@ -643,6 +707,7 @@ export function Composer({
           {!currentId && <WorkspacePicker projectId={draftProject} />}
 
           <div className="ml-auto flex min-w-0 items-center gap-2">
+            <StashMenu onRestore={restoreStashed} />
             {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}
             {command && (
               <span className="hidden truncate text-xs text-fg-subtle sm:inline">
