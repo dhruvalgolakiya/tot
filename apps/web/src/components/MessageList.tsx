@@ -1,10 +1,11 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { ArrowDown } from "lucide-react";
 import type { Message } from "@tot/shared/types";
 import { useStickToBottom } from "../hooks/useStickToBottom";
 import { whenIdle } from "../lib/idle";
 import { loadMarkdown, useMarkdownReady } from "../lib/markdownLoader";
+import { lazyComponent } from "../lib/lazyComponent";
 import { isTask } from "../lib/tasks";
 import { retryConversation, selectActiveAgent, setChatScrolled, useStore } from "../store";
 import { AssistantMessage } from "./AssistantMessage";
@@ -18,6 +19,21 @@ import { Callout } from "./ui/Callout";
 import { Skeleton } from "./ui/Skeleton";
 
 const NO_MESSAGES: Message[] = [];
+
+const ImageLightbox = lazyComponent(() => import("./ImageLightbox"), "ImageLightbox");
+
+/**
+ * The image a click in the list opens full screen: an attachment or screenshot (marked `data-zoom` with its URL) or an
+ * image in a reply's text. Clicks with a modifier keep their usual meaning (a new tab).
+ */
+function zoomTarget(event: MouseEvent): { src: string; alt: string } | null {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return null;
+  const target = event.target as Element;
+  const marked = target.closest("[data-zoom]");
+  if (marked) return { src: marked.getAttribute("data-zoom")!, alt: marked.getAttribute("data-zoom-alt") ?? "" };
+  if (target instanceof HTMLImageElement && target.closest("[data-reply] .markdown") && !target.closest("a")) return { src: target.currentSrc || target.src, alt: target.alt };
+  return null;
+}
 
 /** One row of the list: a message, or tasks' "… is done" notices in a row, shown as one compact list. */
 type Row = Message | Message[];
@@ -229,6 +245,14 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
     anchor.current = row ? { row, top: offset(row) } : null;
   }, [start, ready, scrollRef, stuck]);
 
+  const [zoomed, setZoomed] = useState<{ src: string; alt: string } | null>(null);
+  const openImage = useCallback((event: MouseEvent) => {
+    const image = zoomTarget(event);
+    if (!image) return;
+    event.preventDefault();
+    setZoomed(image);
+  }, []);
+
   // Between "sent" and the run's first event there is no assistant message yet.
   const awaitingReply = run ? !run.messageId : sending;
   const lastAssistantId = messages.findLast((m) => m.role === "assistant")?.id;
@@ -243,7 +267,12 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain">
-        <div ref={contentRef} className={`mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 pb-10 sm:px-6 ${topPadding}`}>
+        {/* Images in messages open full screen (zoomTarget). */}
+        <div
+          ref={contentRef}
+          onClick={openImage}
+          className={`mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 pb-10 sm:px-6 [&_[data-reply]_.markdown_img]:cursor-zoom-in ${topPadding}`}
+        >
           {loading && (
             <div className="space-y-4 pt-6" aria-busy="true" aria-label="Loading chat">
               <Skeleton className="ml-auto h-10 w-2/5 rounded-3xl" />
@@ -311,6 +340,11 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
       />
 
       <QuoteSelection root={contentRef} scroller={scrollRef} />
+      {zoomed && (
+        <Suspense fallback={null}>
+          <ImageLightbox src={zoomed.src} alt={zoomed.alt} onClose={() => setZoomed(null)} />
+        </Suspense>
+      )}
 
       {!atBottom && (
         <button

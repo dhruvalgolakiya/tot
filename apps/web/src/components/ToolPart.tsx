@@ -69,13 +69,20 @@ export function ToolPart({ part, live }: ToolPartProps) {
       </button>
 
       {screenshotUrl && (
-        <div className="mt-1.5 rounded-xl bg-fill-subtle p-2">
+        // The message list opens it full screen.
+        <button
+          type="button"
+          data-zoom={screenshotUrl}
+          data-zoom-alt="Screenshot of the computer's screen"
+          aria-label="Open the screenshot"
+          className="mt-1.5 block w-full cursor-zoom-in rounded-xl bg-fill-subtle p-2"
+        >
           <img
             src={screenshotUrl}
             alt="Screenshot of the computer's screen"
             className="max-h-72 w-full rounded-lg object-contain"
           />
-        </div>
+        </button>
       )}
 
       {exposedUrl && (

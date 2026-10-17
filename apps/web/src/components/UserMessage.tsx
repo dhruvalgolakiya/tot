@@ -19,7 +19,10 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
       href={attachment.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="block max-w-56 overflow-hidden rounded-xl border border-hairline transition-opacity hover:opacity-90"
+      // The message list opens it full screen (a modified click still opens a new tab).
+      data-zoom={attachment.url}
+      data-zoom-alt={attachment.name}
+      className="block max-w-56 cursor-zoom-in overflow-hidden rounded-xl border border-hairline transition-opacity hover:opacity-90"
       title={`Open ${attachment.name}`}
     >
       <img src={attachment.url} alt={attachment.name} className="block max-h-72 w-full object-cover" />

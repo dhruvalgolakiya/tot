@@ -65,3 +65,12 @@ clicking puts the selection into the message box as a markdown quote (`> …`, b
 blank line with the cursor (`components/QuoteSelection.tsx`, one listener per message list). Text goes to the composer
 through `lib/composerInbox.ts`, the same small hand-off a rewound message uses, so the composer only adds one hook
 (`hooks/useComposerInbox.ts`).
+
+## Image zoom
+
+Images in messages open full screen: attachments in the user's messages, a computer's screenshots in tool rows, and
+images in a reply's text. One click handler on the message list does it (attachments and screenshots carry
+`data-zoom`; a modified click on an attachment still opens it in a new tab), and the lightbox loads on first use
+(`components/ImageLightbox.tsx`). It opens fitted; the wheel or a trackpad pinch zooms around the pointer, as do the
+toolbar buttons, a double click and `+`, `−` and `0`; once zoomed in, drag to look around. Esc, the close button or a
+click beside the image closes it, and the toolbar links to the original.
