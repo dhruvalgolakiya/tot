@@ -7,6 +7,11 @@
  * GET    /api/conversations/:id/workspace/events          -> SSE: { type: "changed" } when files in it change (debounced)
  * GET    /api/conversations/:id/workspace/diff            -> WorkspaceDiff  (working tree and untracked files vs HEAD)
  * GET    /api/conversations/:id/workspace/diff/file?path=&old= -> WorkspaceFileDiff  (`old`: a renamed file's path before)
+ * GET    /api/conversations/:id/workspace/files           -> WorkspaceFiles (what git doesn't ignore)
+ * GET    /api/conversations/:id/workspace/file?path=      -> WorkspaceFile
+ * GET    /api/conversations/:id/workspace/raw?path=       -> an image's bytes, for its preview
+ * PUT    /api/conversations/:id/workspace/file            WorkspaceSave -> WorkspaceSaved  (409 when it changed since it was read)
+ * GET    /api/conversations/:id/workspace/search?q=&case=1&regex=1 -> WorkspaceSearch
  */
 
 export type WorkspaceTab = "diff" | "files" | "terminal" | "browser";
@@ -52,5 +57,49 @@ export interface WorkspaceFileDiff {
   patch: string;
   binary: boolean;
   /** Only the start of a very large diff came. */
+  truncated: boolean;
+}
+
+export interface WorkspaceFiles {
+  /** Every file, as paths relative to the folder, sorted; ignored files left out. */
+  files: string[];
+  truncated: boolean;
+}
+
+export interface WorkspaceFile {
+  path: string;
+  kind: "text" | "image" | "binary" | "too-large";
+  /** The text, for kind "text". */
+  content?: string;
+  size: number;
+  /** Last modified (ms): saving sends it back, so a file changed meanwhile isn't overwritten. */
+  mtime: number;
+}
+
+export interface WorkspaceSave {
+  path: string;
+  content: string;
+  /** The mtime the edit started from; omitted to write whatever is there. */
+  baseMtime?: number;
+}
+
+export interface WorkspaceSaved {
+  path: string;
+  size: number;
+  mtime: number;
+}
+
+export interface WorkspaceSearchHit {
+  path: string;
+  /** 1-based. */
+  line: number;
+  /** 1-based, in characters. */
+  column: number;
+  text: string;
+}
+
+export interface WorkspaceSearch {
+  hits: WorkspaceSearchHit[];
+  /** More matches than are listed. */
   truncated: boolean;
 }

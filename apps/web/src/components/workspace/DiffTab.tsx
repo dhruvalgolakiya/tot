@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { GitCompare, RefreshCw } from "lucide-react";
+import { FileText, GitCompare, RefreshCw } from "lucide-react";
 import type { Conversation } from "@tot/shared/types";
 import type { WorkspaceChange, WorkspaceDiff, WorkspaceFileDiff, WorkspaceInfo } from "@tot/shared/workspace";
 import { errorMessage } from "../../lib/api";
-import { workspaceApi } from "../../lib/workspace";
+import { askFiles, workspaceApi } from "../../lib/workspace";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
 import { IconButton } from "../ui/IconButton";
@@ -45,13 +45,20 @@ function FilePatch({ chatId, change, version }: { chatId: string; change: Worksp
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-hairline px-3">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-hairline pr-1.5 pl-3">
         <span className="min-w-0 truncate font-mono text-ui text-fg" title={change.path}>
           {change.oldPath ? `${change.oldPath} → ${change.path}` : change.path}
         </span>
         <span className="shrink-0 text-xs text-fg-subtle">{STATUS[change.status]}</span>
         <span className="ml-auto" />
         <Counts change={change} />
+        {change.status !== "deleted" && (
+          <Tip content="Open file">
+            <IconButton size="sm" label={`Open ${change.path}`} onClick={() => askFiles(chatId, { kind: "open", path: change.path })}>
+              <FileText />
+            </IconButton>
+          </Tip>
+        )}
       </div>
       {shown.status === "loading" ? (
         <div className="space-y-1.5 p-3" aria-busy="true" aria-label="Loading the diff">

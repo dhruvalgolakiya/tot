@@ -1,6 +1,15 @@
 import { create } from "zustand";
 import type { Conversation } from "@tot/shared/types";
-import type { WorkspaceDiff, WorkspaceFileDiff, WorkspaceInfo, WorkspaceTab } from "@tot/shared/workspace";
+import type {
+  WorkspaceDiff,
+  WorkspaceFile,
+  WorkspaceFileDiff,
+  WorkspaceFiles,
+  WorkspaceInfo,
+  WorkspaceSaved,
+  WorkspaceSearch,
+  WorkspaceTab,
+} from "@tot/shared/workspace";
 import { request } from "./api";
 import { apiUrl, deviceOf } from "./devices";
 
@@ -17,10 +26,14 @@ const REMEMBERED_TABS = 200;
 export const PANEL_MIN_WIDTH = 360;
 export const PANEL_DEFAULT_WIDTH = 560;
 
+/** Something asked of the Files tab from elsewhere: quick open (⌘P), search (⌘⇧F), or a file to show at a line. */
+export type FilesIntent = { kind: "quick-open" } | { kind: "search" } | { kind: "open"; path: string; line?: number };
+
 interface WorkspacePanelState {
   open: boolean;
   width: number;
   tabs: Record<string, WorkspaceTab>;
+  filesIntent: (FilesIntent & { chatId: string; nonce: number }) | null;
 }
 
 function read<T>(key: string, fallback: T): T {
@@ -46,6 +59,7 @@ export const useWorkspacePanel = create<WorkspacePanelState>()(() => ({
   open: saved.open,
   width: Math.max(PANEL_MIN_WIDTH, Number(saved.width) || PANEL_DEFAULT_WIDTH),
   tabs: read<Record<string, WorkspaceTab>>(TABS_KEY, {}),
+  filesIntent: null,
 }));
 
 const set = useWorkspacePanel.setState;
@@ -75,6 +89,15 @@ export function setWorkspaceTab(chatId: string, tab: WorkspaceTab): void {
   write(TABS_KEY, tabs);
 }
 
+let nonce = 0;
+
+/** Opens the chat's Files tab for something: quick open, search, or a file (at a line). */
+export function askFiles(chatId: string, intent: FilesIntent): void {
+  setWorkspaceTab(chatId, "files");
+  set({ open: true, filesIntent: { ...intent, chatId, nonce: ++nonce } });
+  savePanel();
+}
+
 /** A chat with a folder the panel can show: one that picked where it works (its worktree made on its first message). */
 export function hasWorkspace(chat: Conversation | undefined): chat is Conversation & { workspace: NonNullable<Conversation["workspace"]> } {
   if (!chat || chat.kind === "task" || !chat.workspace) return false;
@@ -89,6 +112,13 @@ export const workspaceApi = {
   diff: (chatId: string) => request<WorkspaceDiff>("GET", `${base(chatId)}/diff`),
   diffFile: (chatId: string, path: string, oldPath?: string) =>
     request<WorkspaceFileDiff>("GET", `${base(chatId)}/diff/file?path=${seg(path)}${oldPath ? `&old=${seg(oldPath)}` : ""}`),
+  files: (chatId: string) => request<WorkspaceFiles>("GET", `${base(chatId)}/files`),
+  file: (chatId: string, path: string) => request<WorkspaceFile>("GET", `${base(chatId)}/file?path=${seg(path)}`),
+  rawUrl: (chatId: string, path: string, mtime: number) => apiUrl(`${base(chatId)}/raw?path=${seg(path)}&v=${Math.round(mtime)}`, deviceOf(chatId)),
+  save: (chatId: string, path: string, content: string, baseMtime?: number) =>
+    request<WorkspaceSaved>("PUT", `${base(chatId)}/file`, { path, content, baseMtime }),
+  search: (chatId: string, query: string, { regex = false, caseSensitive = false } = {}) =>
+    request<WorkspaceSearch>("GET", `${base(chatId)}/search?q=${seg(query)}${regex ? "&regex=1" : ""}${caseSensitive ? "&case=1" : ""}`),
   /** The stream that says when files in the chat's folder changed (on the device that has the chat). */
   eventsUrl: (chatId: string) => apiUrl(`${base(chatId)}/events`, deviceOf(chatId)),
 };

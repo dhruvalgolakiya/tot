@@ -4,7 +4,7 @@
 // the local computer backend, a fake GitHub; no network.
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Conversation, Project } from "@tot/shared/types";
@@ -181,6 +181,62 @@ check("a worktree's diff comes from its computer, its branch named", res.status 
 check("…and holds only its own changes", !(res.data.files as Diff["files"]).some((file) => file.path === "NOTES.md"));
 res = await call<FileDiff>("GET", `/conversations/${worktreeChat.id}/workspace/diff/file?path=src/app.ts`);
 check("…as does a file's diff there", res.data.patch.includes("+export const answer = 43;"), res.data.patch);
+
+// =============================================================================
+console.log("\n# Files");
+type Files = import("@tot/shared/workspace").WorkspaceFiles;
+type File = import("@tot/shared/workspace").WorkspaceFile;
+type Search = import("@tot/shared/workspace").WorkspaceSearch;
+writeFileSync(join(web, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]));
+writeFileSync(join(web, "data.bin"), Buffer.from([1, 2, 0, 3]));
+writeFileSync(join(web, "page.svg"), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+git(web, "add", "src/app.ts");
+git(web, "commit", "-qm", "two");
+rmSync(join(web, "README.txt"));
+res = await call<Files>("GET", `/conversations/${checkoutChat.id}/workspace/files`);
+const listed: string[] = res.data.files;
+check("the folder's files are listed, new ones too", res.status === 200 && listed.includes("src/app.ts") && listed.includes("NOTES.md"), JSON.stringify(listed));
+check("…but not what git ignores, nor files deleted from disk", !listed.includes("dist/bundle.js") && !listed.includes("README.txt") && !listed.includes("README.md"), JSON.stringify(listed));
+res = await call<File>("GET", `/conversations/${checkoutChat.id}/workspace/file?path=src/app.ts`);
+check("a text file is read", res.status === 200 && res.data.kind === "text" && res.data.content.startsWith("export const answer = 42;") && res.data.mtime > 0, JSON.stringify(res.data));
+const opened: File = res.data;
+check("an image is named as one", (await call<File>("GET", `/conversations/${checkoutChat.id}/workspace/file?path=logo.png`)).data.kind === "image");
+check("a binary file isn't sent as text", (await call<File>("GET", `/conversations/${checkoutChat.id}/workspace/file?path=data.bin`)).data.kind === "binary");
+res = await call("GET", `/conversations/${checkoutChat.id}/workspace/raw?path=page.svg`);
+check("an image comes as it is, never runnable as a page", res.status === 200 && res.headers.get("content-type") === "image/svg+xml" && /sandbox/.test(res.headers.get("content-security-policy") ?? "") && res.headers.get("x-content-type-options") === "nosniff");
+check("…and nothing but images does", (await call("GET", `/conversations/${checkoutChat.id}/workspace/raw?path=src/app.ts`)).status === 400);
+for (const path of ["leak.txt", "home/secret.txt", "../secret.txt", ".git/config", join(HOME, "secret.txt")]) {
+  res = await call("GET", `/conversations/${checkoutChat.id}/workspace/file?path=${encodeURIComponent(path)}`);
+  check(`reading ${path} is refused`, [400, 403].includes(res.status) && !JSON.stringify(res.data).includes("the user's secret"), `${res.status} ${JSON.stringify(res.data)}`);
+}
+
+const save = (body: Record<string, unknown>, options: { headers?: Record<string, string>; from?: string } = {}) =>
+  call("PUT", `/conversations/${checkoutChat.id}/workspace/file`, { body, ...options });
+res = await save({ path: "src/app.ts", content: "export const answer = 44;\n", baseMtime: opened.mtime });
+check("a file is saved", res.status === 200 && readFileSync(join(web, "src/app.ts"), "utf8") === "export const answer = 44;\n" && res.data.mtime >= opened.mtime, JSON.stringify(res.data));
+res = await save({ path: "src/app.ts", content: "stale\n", baseMtime: opened.mtime - 5000 });
+check("a save over a change made since is refused", res.status === 409 && readFileSync(join(web, "src/app.ts"), "utf8") === "export const answer = 44;\n", JSON.stringify(res.data));
+res = await save({ path: "src/new.ts", content: "export {};\n" });
+check("a new file can be made in a folder that's there", res.status === 200 && readFileSync(join(web, "src/new.ts"), "utf8") === "export {};\n");
+check("…but not in one that isn't", (await save({ path: "nope/new.ts", content: "x" })).status === 400);
+res = await save({ path: "leak.txt", content: "overwritten" });
+check("saving through a link out of the folder is refused", res.status === 403 && readFileSync(join(HOME, "secret.txt"), "utf8") === "the user's secret\n", JSON.stringify(res.data));
+check("…and into a linked folder outside it", (await save({ path: "home/planted.txt", content: "x" })).status === 403);
+check("…and into git's own files", (await save({ path: ".git/hooks/pre-commit", content: "#!/bin/sh\n" })).status === 403);
+check("…and out with “..”", (await save({ path: "../planted.txt", content: "x" })).status === 400);
+res = await save({ path: "src/app.ts", content: "from a device\n" }, asDevice);
+check("a paired device can't save", res.status === 403 && readFileSync(join(web, "src/app.ts"), "utf8") === "export const answer = 44;\n", JSON.stringify(res.data));
+check("…but can read", (await call("GET", `/conversations/${checkoutChat.id}/workspace/file?path=src/app.ts`, asDevice)).status === 200);
+
+const search = (query: string, flags = "") => call<Search>("GET", `/conversations/${checkoutChat.id}/workspace/search?q=${encodeURIComponent(query)}${flags}`);
+res = await search("ANSWER");
+check("search finds text in any case, with its line and column", res.status === 200 && res.data.hits.some((hit: any) => hit.path === "src/app.ts" && hit.line === 1 && hit.column === 14), JSON.stringify(res.data));
+check("…not in any case when asked", (await search("ANSWER", "&case=1")).data.hits.length === 0);
+check("…as a regular expression when asked", (await search("answer = \\d+", "&regex=1")).data.hits.some((hit: any) => hit.path === "src/app.ts"));
+check("…and literally otherwise", (await search("answer = \\d+")).data.hits.length === 0);
+check("a bad regular expression is a 400", (await search("(", "&regex=1")).status === 400);
+check("search skips ignored files", !(await search("ignored")).data.hits.some((hit: any) => hit.path.startsWith("dist/")));
+check("…and never reads through a link out of the folder", (await search("secret")).data.hits.every((hit: any) => !hit.text.includes("the user's secret")));
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll workspace checks passed");
 process.exit(failures ? 1 : 0);

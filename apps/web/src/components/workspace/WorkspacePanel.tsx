@@ -8,6 +8,7 @@ import { useMediaQuery, WIDE_QUERY } from "../../hooks/useMediaQuery";
 import { errorMessage } from "../../lib/api";
 import { lazyComponent } from "../../lib/lazyComponent";
 import {
+  askFiles,
   hasWorkspace,
   PANEL_MIN_WIDTH,
   setWorkspacePanelOpen,
@@ -23,6 +24,7 @@ import { Skeleton } from "../ui/Skeleton";
 import { Tip } from "../ui/Tip";
 
 const DiffTab = lazyComponent(() => import("./DiffTab"), "DiffTab");
+const FilesTab = lazyComponent(() => import("./FilesTab"), "FilesTab");
 
 const TABS: { id: WorkspaceTab; label: string }[] = [
   { id: "diff", label: "Diff" },
@@ -117,6 +119,8 @@ function TabBody({ tab, chat, info }: { tab: WorkspaceTab; chat: Conversation; i
   const body =
     tab === "diff" ? (
       <DiffTab key={chat.id} chat={chat} info={info} />
+    ) : tab === "files" ? (
+      <FilesTab key={chat.id} chat={chat} info={info} />
     ) : (
       <EmptyState size="sm" title={TABS.find((t) => t.id === tab)!.label} description="Nothing here yet." />
     );
@@ -143,6 +147,19 @@ function Panel({ chat }: { chat: Conversation }) {
   const tab = useWorkspacePanel((s) => s.tabs[chat.id] ?? "diff");
   const info = useWorkspaceInfo(chat);
   const panelRef = useRef<HTMLElement>(null);
+
+  // ⌘P: go to a file; ⌘⇧F: search in files (both in the Files tab).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.isComposing) return;
+      if (!event.shiftKey && (event.code === "KeyP" || event.key.toLowerCase() === "p")) askFiles(chat.id, { kind: "quick-open" });
+      else if (event.shiftKey && (event.code === "KeyF" || event.key.toLowerCase() === "f")) askFiles(chat.id, { kind: "search" });
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [chat.id]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

@@ -1,10 +1,11 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { WorkspaceInfo } from "@tot/shared/workspace";
+import type { WorkspaceInfo, WorkspaceSave } from "@tot/shared/workspace";
 import { HttpError } from "../agent/orchestrator.ts";
 import { callerKey, callerOf } from "../auth.ts";
 import { onSignOut } from "../devices/sessions.ts";
 import { workspaceDiff } from "./diff.ts";
+import { workspaceFiles } from "./files.ts";
 import { chatSpaces } from "./root.ts";
 import { workspaceWatch } from "./watch.ts";
 
@@ -63,6 +64,35 @@ workspaceRoutes.get("/conversations/:id/workspace/diff", async (c) => c.json(awa
 
 workspaceRoutes.get("/conversations/:id/workspace/diff/file", async (c) =>
   c.json(await workspaceDiff.file(chatSpaces.resolve(c.req.param("id")), c.req.query("path"), c.req.query("old"))),
+);
+
+workspaceRoutes.get("/conversations/:id/workspace/files", async (c) => c.json(await workspaceFiles.list(chatSpaces.resolve(c.req.param("id")))));
+
+workspaceRoutes.get("/conversations/:id/workspace/file", (c) => c.json(workspaceFiles.read(chatSpaces.resolve(c.req.param("id")), c.req.query("path"))));
+
+// An image from the folder, as it is. Never run as a page (an SVG opened on its own could carry a script).
+workspaceRoutes.get("/conversations/:id/workspace/raw", (c) => {
+  const { body, type } = workspaceFiles.raw(chatSpaces.resolve(c.req.param("id")), c.req.query("path"));
+  return c.body(new Uint8Array(body), 200, {
+    "content-type": type,
+    "content-security-policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
+    "x-content-type-options": "nosniff",
+    "cache-control": "no-store",
+  });
+});
+
+workspaceRoutes.put("/conversations/:id/workspace/file", async (c) => {
+  const input = (await c.req.json().catch(() => null)) as WorkspaceSave | null;
+  return c.json(workspaceFiles.save(chatSpaces.resolve(c.req.param("id")), input!));
+});
+
+workspaceRoutes.get("/conversations/:id/workspace/search", async (c) =>
+  c.json(
+    await workspaceFiles.search(chatSpaces.resolve(c.req.param("id")), c.req.query("q"), {
+      regex: c.req.query("regex") === "1",
+      caseSensitive: c.req.query("case") === "1",
+    }),
+  ),
 );
 
 export const workspaceAccess = { canWrite, canTerminal };

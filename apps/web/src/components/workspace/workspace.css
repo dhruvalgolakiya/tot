@@ -104,3 +104,50 @@
 .dark .ws-code .hljs-quote {
   color: #8b949e;
 }
+
+/* The editor's tokens (CodeMirror's class highlighter), in the same colors. */
+.ws-code .tok-keyword,
+.ws-code .tok-operator.tok-keyword { color: #cf222e; }
+.ws-code .tok-string,
+.ws-code .tok-string2 { color: #0a3069; }
+.ws-code .tok-number,
+.ws-code .tok-bool,
+.ws-code .tok-atom,
+.ws-code .tok-literal,
+.ws-code .tok-propertyName { color: #0550ae; }
+.ws-code .tok-variableName.tok-definition,
+.ws-code .tok-className,
+.ws-code .tok-macroName { color: #8250df; }
+.ws-code .tok-typeName,
+.ws-code .tok-namespace { color: #953800; }
+.ws-code .tok-heading,
+.ws-code .tok-labelName { color: #116329; font-weight: 600; }
+.ws-code .tok-comment,
+.ws-code .tok-meta { color: #6e7781; font-style: italic; }
+.ws-code .tok-link,
+.ws-code .tok-url { color: #0550ae; text-decoration: underline; }
+.ws-code .tok-emphasis { font-style: italic; }
+.ws-code .tok-strong { font-weight: 600; }
+.ws-code .tok-invalid { color: #cf222e; }
+
+.dark .ws-code .tok-keyword,
+.dark .ws-code .tok-operator.tok-keyword { color: #ff7b72; }
+.dark .ws-code .tok-string,
+.dark .ws-code .tok-string2 { color: #a5d6ff; }
+.dark .ws-code .tok-number,
+.dark .ws-code .tok-bool,
+.dark .ws-code .tok-atom,
+.dark .ws-code .tok-literal,
+.dark .ws-code .tok-propertyName { color: #79c0ff; }
+.dark .ws-code .tok-variableName.tok-definition,
+.dark .ws-code .tok-className,
+.dark .ws-code .tok-macroName { color: #d2a8ff; }
+.dark .ws-code .tok-typeName,
+.dark .ws-code .tok-namespace { color: #ffa657; }
+.dark .ws-code .tok-heading,
+.dark .ws-code .tok-labelName { color: #7ee787; }
+.dark .ws-code .tok-comment,
+.dark .ws-code .tok-meta { color: #8b949e; }
+.dark .ws-code .tok-link,
+.dark .ws-code .tok-url { color: #79c0ff; }
+.dark .ws-code .tok-invalid { color: #ff7b72; }
