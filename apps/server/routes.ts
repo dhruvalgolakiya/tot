@@ -77,6 +77,7 @@ import { landingRoutes } from "./landing/routes.ts";
 import { missionRoutes } from "./mission/routes.ts";
 import { worktreeRoutes } from "./worktrees/routes.ts";
 import { chatRoutes } from "./chats/routes.ts";
+import { workspaceRoutes } from "./workspace/routes.ts";
 import { skillRoutes } from "./skills/routes.ts";
 import { projectRoutes } from "./projects/routes.ts";
 import { projectRepoRoutes } from "./projects/repos-routes.ts";
@@ -418,6 +419,8 @@ api.route("/", landingRoutes);
 api.route("/", missionRoutes);
 api.route("/", worktreeRoutes);
 api.route("/", chatRoutes);
+// The workspace panel: a chat's folder, its changes, files, terminals and git.
+api.route("/", workspaceRoutes);
 api.route("/", skillRoutes);
 api.route("/", projectRoutes);
 // Module 11: workspaces (lanes A–D).

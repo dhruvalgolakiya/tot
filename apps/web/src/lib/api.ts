@@ -127,7 +127,8 @@ export function redirectToSignIn(): void {
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 type Ok = { ok: true };
 
-async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
+/** A call to the API (here or on the device that owns an id in it); `api` below is made of these. */
+export async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   // Decided before the first await: `onDevice` pins the device only while the call starts.
   const device = deviceFor(path, body);
   let response: Response;
