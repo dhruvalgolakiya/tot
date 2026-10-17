@@ -81,6 +81,7 @@ function cleanRequest(request: Partial<SendMessageRequest> | null | undefined): 
   const attachments = strings(request.attachments);
   const contextChats = strings(request.contextChats);
   const skill = typeof request.skill === "string" ? request.skill.trim() : "";
+  const files = strings(request.files);
   if (!text && !attachments.length && !skill) throw new HttpError(400, "Message is empty.");
   return {
     text,
@@ -89,6 +90,7 @@ function cleanRequest(request: Partial<SendMessageRequest> | null | undefined): 
     ...(request.thinkHarder ? { thinkHarder: true } : {}),
     ...(contextChats.length ? { contextChats } : {}),
     ...(skill ? { skill } : {}),
+    ...(files.length ? { files } : {}),
   };
 }
 
@@ -100,6 +102,7 @@ function steerable(request: SendMessageRequest): boolean {
     !request.attachments?.length &&
     !request.contextChats?.length &&
     !request.skill &&
+    !request.files?.length &&
     !request.thinkHarder
   );
 }

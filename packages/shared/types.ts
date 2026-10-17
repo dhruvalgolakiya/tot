@@ -416,6 +416,8 @@ export interface Message {
   contextChats?: string[];
   /** User messages: the skill invoked with it ("/dh-stack …"), shown as a chip; its SKILL.md went to the model, not here. */
   skill?: string;
+  /** User messages: files of the chat's folder it named ("@src/cart.ts"), relative to it. */
+  files?: string[];
   createdAt: number;
 }
 
@@ -1110,6 +1112,9 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //                                              turn running, or "" — else picks it up again with this message.
 //                                              A chat: its model answers, starting tasks itself when the work calls for it)
 // POST   /api/conversations/:id/computer/stop -> ComputerSummary | null   (alias: the chat's agent's computer)
+// GET    /api/conversations/:id/files[?q=&limit=] -> ChatFiles  (files in the chat's working folder for "@", best first;
+//                                              gitignore-aware, listed again after 30 s)
+// GET    /api/projects/:id/files?agentId=[&q=&limit=] -> ChatFiles  (the same for a chat not sent yet in the project)
 // GET    /api/conversations/:id/queue         -> QueuedMessage[]  (messages waiting for the chat's turn to end, in order)
 // POST   /api/conversations/:id/queue         SendMessageRequest -> QueuedMessage  (201; goes out when the turn ends, or
 //                                              at once when nothing is running)
@@ -1397,6 +1402,21 @@ export interface SendMessageRequest {
    * starting with "/name" of a known skill invokes it too, so any client can.
    */
   skill?: string;
+  /** Files of the chat's working folder the message names ("@src/cart.ts"), relative to it; small text ones go in its prompt. */
+  files?: string[];
+}
+
+/** GET /api/conversations/:id/files: the chat's working folder's files matching a query, best first. */
+export interface ChatFiles {
+  files: string[];
+  /** How many files the folder has (up to the listing's cap). */
+  total: number;
+  /** The folder's real path when it's on this Mac (a folder project, a local computer), for paths dragged in; else null. */
+  root: string | null;
+  /** The listing stopped at its cap: there are more. */
+  truncated?: boolean;
+  /** Why there's no list (no project with files, the computer is off…), for the menu to say. */
+  unavailable?: string;
 }
 
 export interface SendMessageResponse {

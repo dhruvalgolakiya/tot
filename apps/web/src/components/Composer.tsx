@@ -1,11 +1,13 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Columns2, LoaderCircle, MessageSquare, Plus, Square, SquareSlash } from "lucide-react";
+import { ArrowUp, Columns2, FileText, LoaderCircle, MessageSquare, Plus, Square, SquareSlash } from "lucide-react";
 import type { Conversation } from "@tot/shared/types";
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
+import { droppedPath, fileMentionAt, filesInText, splitPath, type FilesTarget } from "../lib/files";
 import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, type SlashCommandName } from "../lib/mission";
 import { skillMatches, slashWordAt, typedSkill } from "../lib/skills";
+import { isCodeProject, useProjects } from "../lib/projects";
 import { queueMessage } from "../lib/queue";
 import { isSteerable, isTask } from "../lib/tasks";
 import {
@@ -23,7 +25,9 @@ import {
 } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
+import { MentionOverlay } from "./composer/MentionText";
 import { QueuedMessages } from "./composer/QueuedMessages";
+import { useFileMentions } from "./composer/useFileMentions";
 import { ProjectPicker } from "./projects/ProjectPicker";
 import { WorkspacePicker } from "./projects/WorkspacePicker";
 import { Tip } from "./ui/Tip";
@@ -36,6 +40,12 @@ const touchOnly = () => window.matchMedia("(pointer: coarse)").matches;
 const SLASH_ICONS: Record<SlashCommandName, typeof Columns2> = { "best-of": Columns2 };
 
 const NO_CONVERSATIONS: Conversation[] = [];
+
+/** The textarea's box and type, which the chips laid under it must match exactly. */
+const INPUT_METRICS = "px-4 pt-4 pb-1 text-chat";
+
+/** A row of the "@" menu: a file of the chat's folder, or another chat to attach. */
+type MentionItem = { kind: "file"; path: string } | { kind: "chat"; id: string; title: string };
 
 /** A row of the "/" menu: a command (/best-of) or a skill. */
 type SlashItem = { kind: "command"; name: SlashCommandName; description: string } | { kind: "skill"; name: string; description: string };
@@ -127,8 +137,25 @@ export function Composer({
     mention && mention.start !== dismissedAt
       ? chatMatches(conversations, { agentId, exclude: [...contextChats, ...(currentId ? [currentId] : [])], query: mention.query })
       : [];
-  const picking = matches.length > 0;
-  useEffect(() => setHighlight(0), [mention?.query]);
+  // Files of the chat's working folder (or, for a chat not sent yet, its project's), in a project with code.
+  const chatProjectId = currentId ? (conversation?.projectId ?? null) : draftProject;
+  const fileProject = useProjects((s) => (chatProjectId ? s.projects.find((p) => p.id === chatProjectId) : undefined));
+  const filesTarget: FilesTarget | null =
+    !canAttachChats || !fileProject || !isCodeProject(fileProject) ? null : currentId ? { conversationId: currentId } : { projectId: fileProject.id, agentId };
+  const fileMention = filesTarget ? fileMentionAt(text, caret) : null;
+  const fileQuery = fileMention && fileMention.start !== dismissedAt ? fileMention.query : null;
+  const mentions = useFileMentions(filesTarget, fileQuery);
+  const mentionItems: MentionItem[] = [
+    ...(fileQuery !== null ? mentions.files.map((path) => ({ kind: "file" as const, path })) : []),
+    ...matches.map((chat) => ({ kind: "chat" as const, id: chat.id, title: chat.title })),
+  ];
+  const picking = mentionItems.length > 0;
+  const mentionListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => setHighlight(0), [fileMention?.query, mention?.query]);
+  useEffect(() => {
+    mentionListRef.current?.querySelector("[data-highlighted]")?.scrollIntoView({ block: "nearest" });
+  }, [highlight]);
+  const [scrollTop, setScrollTop] = useState(0);
   const attachChat = (id: string) =>
     setContextChats((list) => (list.includes(id) || id === currentId || list.length >= MAX_ATTACHED_CHATS ? list : [...list, id]));
 
@@ -144,6 +171,38 @@ export function Composer({
       setCaret(before.length);
     });
   }
+  /** Swaps the "@query" being typed for the file's `@path`, shown as a chip, and a space. */
+  function pickFile(path: string) {
+    if (!fileMention) return;
+    const before = `${text.slice(0, fileMention.start)}@${path} `;
+    setText(before + text.slice(caret).replace(/^ /, ""));
+    mentions.name(path);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(before.length, before.length);
+      setCaret(before.length);
+    });
+  }
+
+  function pickMention(item: MentionItem) {
+    if (item.kind === "file") pickFile(item.path);
+    else pickChat(item.id);
+  }
+
+  /** A path dragged in from an editor, inside the chat's folder: it becomes a chip where the caret is. */
+  function insertFile(path: string) {
+    const at = inputRef.current?.selectionStart ?? text.length;
+    const spaceBefore = at > 0 && !/\s$/.test(text.slice(0, at)) ? " " : "";
+    const before = `${text.slice(0, at)}${spaceBefore}@${path} `;
+    setText(before + text.slice(at));
+    mentions.name(path);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(before.length, before.length);
+      setCaret(before.length);
+    });
+  }
+
   const hasText = command ? command.body.length > 0 : text.trim().length > 0;
   const canSend = steering
     ? text.trim().length > 0 && attachments.items.length === 0
@@ -199,33 +258,39 @@ export function Composer({
     }
     if (!canSend) return;
     const message = value;
-    const files = attachments.ready.map((it) => it.attachment);
+    const uploads = attachments.ready.map((it) => it.attachment);
     const previousItems = attachments.items;
     const chats = contextChats;
+    const named = mentions.named;
+    const files = filesInText(message, named);
     setText("");
     setInterim("");
     setContextChats([]);
+    mentions.setNamed([]);
     attachments.clear();
     const skill = typedSkill(skills, message);
     if (queueing && currentId) {
       try {
         await queueMessage(currentId, {
           text: message.trim(),
-          ...(files.length ? { attachments: files.map((file) => file.id) } : {}),
+          ...(uploads.length ? { attachments: uploads.map((file) => file.id) } : {}),
           ...(chats.length ? { contextChats: chats } : {}),
           ...(skill ? { skill } : {}),
+          ...(files.length ? { files } : {}),
         });
       } catch (error) {
         notifyError(error);
         setContextChats(chats);
+        mentions.setNamed(named);
         setText((current) => current || value);
         attachments.restore(previousItems);
       }
       return;
     }
-    const sent = await sendMessage(message, { attachments: files, contextChats: chats, skill });
+    const sent = await sendMessage(message, { attachments: uploads, contextChats: chats, skill, files });
     if (!sent) {
       setContextChats(chats);
+      mentions.setNamed(named);
       setText((current) => current || value);
       attachments.restore(previousItems);
     }
@@ -262,22 +327,38 @@ export function Composer({
       setSlashDismissed(text);
       return;
     }
-    // The @ chat picker takes the arrows, Enter / Tab and Escape while it's open.
+    // The @ picker takes the arrows, Enter / Tab and Escape while it's open.
     if (picking) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const step = event.key === "ArrowDown" ? 1 : -1;
-        setHighlight((current) => (current + step + matches.length) % matches.length);
+        setHighlight((current) => (current + step + mentionItems.length) % mentionItems.length);
         return;
       }
       if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
         event.preventDefault();
-        pickChat(matches[Math.min(highlight, matches.length - 1)]!.id);
+        pickMention(mentionItems[Math.min(highlight, mentionItems.length - 1)]!);
         return;
       }
       if (event.key === "Escape") {
         event.preventDefault();
-        setDismissedAt(mention!.start);
+        setDismissedAt((fileMention ?? mention)!.start);
+        return;
+      }
+    }
+    // Backspace right after a file's chip takes the whole chip.
+    if (event.key === "Backspace" && mentions.named.length && event.currentTarget.selectionStart === event.currentTarget.selectionEnd) {
+      const at = event.currentTarget.selectionStart;
+      const before = text.slice(0, at);
+      const chip = mentions.named.find((path) => before.endsWith(`@${path}`) && /(^|\s)$/.test(before.slice(0, -path.length - 1)));
+      if (chip) {
+        event.preventDefault();
+        const start = at - chip.length - 1;
+        setText(text.slice(0, start) + text.slice(at));
+        requestAnimationFrame(() => {
+          inputRef.current?.setSelectionRange(start, start);
+          setCaret(start);
+        });
         return;
       }
     }
@@ -315,6 +396,8 @@ export function Composer({
           void submit();
         }}
         onDragOver={(event) => {
+          // A path dragged from an editor: the folder's real path is fetched now, for the drop.
+          if (filesTarget && !event.dataTransfer.types.includes("Files") && event.dataTransfer.types.includes("text/uri-list")) mentions.loadRoot();
           if (!canAttachChats || !event.dataTransfer.types.includes(CHAT_DRAG_TYPE)) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
@@ -324,6 +407,15 @@ export function Composer({
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setChatOver(false);
         }}
         onDrop={(event) => {
+          if (filesTarget && !event.dataTransfer.types.includes("Files")) {
+            const path = droppedPath(event.dataTransfer.getData("text/uri-list") || event.dataTransfer.getData("text/plain"), mentions.root() ?? null);
+            if (path) {
+              event.preventDefault();
+              event.stopPropagation();
+              insertFile(path);
+              return;
+            }
+          }
           const id = event.dataTransfer.getData(CHAT_DRAG_TYPE);
           if (!id) return;
           event.preventDefault();
@@ -376,26 +468,45 @@ export function Composer({
             )}
           </div>
         )}
-        {picking && (
-          <div role="listbox" aria-label="Attach a chat" className="menu absolute bottom-full left-0 mb-2 w-80 max-w-full">
-            <p className="menu-label">Attach a chat for reference</p>
-            {matches.map((chat, index) => (
-              <div
-                key={chat.id}
-                role="option"
-                aria-selected={index === highlight}
-                data-highlighted={index === highlight ? "" : undefined}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  pickChat(chat.id);
-                }}
-                onMouseEnter={() => setHighlight(index)}
-                className="menu-item"
-              >
-                <MessageSquare className="size-4 shrink-0 text-fg-muted" />
-                <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-              </div>
-            ))}
+        {(picking || (fileQuery && mentions.unavailable)) && (
+          <div
+            ref={mentionListRef}
+            role="listbox"
+            aria-label="Mention a file or a chat"
+            className="menu absolute bottom-full left-0 mb-2 max-h-80 w-96 max-w-full overflow-y-auto"
+          >
+            {mentionItems.map((item, index) => {
+              const first = mentionItems[index - 1]?.kind !== item.kind;
+              const { name, folder } = item.kind === "file" ? splitPath(item.path) : { name: item.title, folder: "" };
+              return (
+                <Fragment key={item.kind === "file" ? `f:${item.path}` : `c:${item.id}`}>
+                  {first && <p className="menu-label">{item.kind === "file" ? "Files" : "Attach a chat for reference"}</p>}
+                  <div
+                    role="option"
+                    aria-selected={index === highlight}
+                    data-highlighted={index === highlight ? "" : undefined}
+                    title={item.kind === "file" ? item.path : undefined}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      pickMention(item);
+                    }}
+                    onMouseEnter={() => setHighlight(index)}
+                    className="menu-item"
+                  >
+                    {item.kind === "file" ? <FileText className="size-4 shrink-0 text-fg-muted" /> : <MessageSquare className="size-4 shrink-0 text-fg-muted" />}
+                    <span className="max-w-[60%] shrink-0 truncate">{name}</span>
+                    {/* A long folder keeps its end, the part nearest the file. */}
+                    {folder && <span className="min-w-0 flex-1 truncate text-left text-fg-subtle [direction:rtl]">{`\u200e${folder}`}</span>}
+                  </div>
+                </Fragment>
+              );
+            })}
+            {!mentionItems.some((item) => item.kind === "file") && fileQuery && mentions.unavailable && (
+              <>
+                <p className="menu-label">Files</p>
+                <p className="px-2 pt-0.5 pb-2 text-fg-subtle">{mentions.unavailable}</p>
+              </>
+            )}
           </div>
         )}
         <input
@@ -421,21 +532,28 @@ export function Composer({
         <label htmlFor="composer-input" className="sr-only">
           {steering ? "Note for the task" : `Message ${agentName}`}
         </label>
-        <textarea
-          id="composer-input"
-          ref={inputRef}
-          rows={1}
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-            setCaret(event.target.selectionStart);
-          }}
-          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          placeholder={placeholder}
-          className="block min-h-[76px] max-h-[240px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
-        />
+        <div className="relative">
+          {mentions.named.length > 0 && <MentionOverlay text={text} files={mentions.named} scrollTop={scrollTop} className={INPUT_METRICS} />}
+          <textarea
+            id="composer-input"
+            ref={inputRef}
+            rows={1}
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+              setCaret(event.target.selectionStart);
+            }}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            placeholder={placeholder}
+            className={clsx(
+              "relative block min-h-[76px] max-h-[240px] w-full resize-none overflow-y-auto bg-transparent text-fg outline-none placeholder:text-fg-subtle",
+              INPUT_METRICS,
+            )}
+          />
+        </div>
         {interim.trim() && (
           <p aria-live="polite" className="truncate px-4 pb-1 text-ui text-fg-subtle italic">
             {interim}

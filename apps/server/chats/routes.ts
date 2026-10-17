@@ -1,10 +1,14 @@
 import { Hono } from "hono";
 import type { ForkRequest, SendMessageRequest } from "@tot/shared/types";
-import { toPublicConversation } from "../data/conversations.ts";
+import { HttpError } from "../agent/orchestrator.ts";
+import { agents } from "../data/agents.ts";
+import { conversations, toPublicConversation } from "../data/conversations.ts";
+import { projects } from "../projects/projects.ts";
+import { chatFiles } from "./files.ts";
 import { forks } from "./fork.ts";
 import { chatQueue } from "./queue.ts";
 
-/** Chat routes of module 05 (forks) and the composer's queue, mounted on /api; see the route docs in packages/shared/types.ts. */
+/** Chat routes of module 05 (forks) and the composer's (its queue, files for "@"), mounted on /api; see the route docs in packages/shared/types.ts. */
 export const chatRoutes = new Hono();
 
 chatRoutes.post("/conversations/:id/fork", async (c) => {
@@ -28,3 +32,20 @@ chatRoutes.delete("/conversations/:id/queue/:itemId", (c) => {
 });
 
 chatRoutes.post("/conversations/:id/queue/:itemId/send", async (c) => c.json(await chatQueue.sendNow(c.req.param("id"), c.req.param("itemId"))));
+
+const limitOf = (value: string | undefined) => (value && Number.isFinite(Number(value)) ? Number(value) : undefined);
+
+chatRoutes.get("/conversations/:id/files", async (c) => {
+  const chat = conversations.get(c.req.param("id"));
+  if (!chat) throw new HttpError(404, "Chat not found.");
+  return c.json(await chatFiles.list(chat, c.req.query("q") ?? "", limitOf(c.req.query("limit"))));
+});
+
+// A chat not sent yet, in a project: its main checkout's files (a worktree of its own doesn't exist yet).
+chatRoutes.get("/projects/:id/files", async (c) => {
+  const project = projects.get(c.req.param("id"));
+  if (!project) throw new HttpError(404, "Project not found.");
+  const agent = agents.get(c.req.query("agentId") ?? "") ?? agents.first();
+  const draft = { id: "", title: "", agentId: agent.id, projectId: project.id, kind: "chat" as const, task: null };
+  return c.json(await chatFiles.list(draft, c.req.query("q") ?? "", limitOf(c.req.query("limit"))));
+});

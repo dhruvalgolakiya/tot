@@ -1301,12 +1301,14 @@ export interface SendMessageOptions {
   contextChats?: string[];
   /** The skill the message starts with ("/dh-stack …"), shown on it as a chip. */
   skill?: string | null;
+  /** Files of the chat's folder it names ("@src/cart.ts"). */
+  files?: string[];
 }
 
 /** Send a message; creates the conversation first on an agent's home screen. */
 export async function sendMessage(
   text: string,
-  { thinkHarder = false, attachments = [], contextChats = [], skill = null }: SendMessageOptions = {},
+  { thinkHarder = false, attachments = [], contextChats = [], skill = null, files = [] }: SendMessageOptions = {},
 ): Promise<boolean> {
   const body = text.trim();
   if ((!body && attachments.length === 0) || get().sending) return false;
@@ -1364,6 +1366,7 @@ export async function sendMessage(
         status: "complete",
         ...(contextChats.length ? { contextChats } : {}),
         ...(skill ? { skill } : {}),
+        ...(files.length ? { files } : {}),
         createdAt: Date.now(),
       },
     ]);
@@ -1376,6 +1379,7 @@ export async function sendMessage(
       ...(thinkHarder ? { thinkHarder: true } : {}),
       ...(contextChats.length ? { contextChats } : {}),
       ...(skill ? { skill } : {}),
+      ...(files.length ? { files } : {}),
     });
 
     set((s) => ({

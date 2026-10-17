@@ -10,6 +10,7 @@ import { messageText } from "../lib/tools";
 import { useStore } from "../store";
 import { IconButton } from "./ui/IconButton";
 import { ChatChip } from "./ChatChip";
+import { MentionText } from "./composer/MentionText";
 import { Tip } from "./ui/Tip";
 
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
@@ -116,7 +117,7 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
             pending && "opacity-70",
           )}
         >
-          {shown}
+          {message.files?.length ? <MentionText text={shown} files={message.files} /> : shown}
         </div>
       )}
       {message.contextChats?.length ? (

@@ -20,6 +20,7 @@ import type {
   AppsStatus,
   Attachment,
   BestOfRequest,
+  ChatFiles,
   ComputerSummary,
   Conversation,
   ContinueOnRequest,
@@ -247,6 +248,11 @@ export const api = {
     request<Ok>("DELETE", `/conversations/${seg(id)}${opts.deleteBranch ? "?deleteBranch=1" : ""}`),
   sendMessage: (id: string, body: SendMessageRequest) =>
     request<SendMessageResponse>("POST", `/conversations/${seg(id)}/messages`, body),
+  /** Files for the composer's "@": in the chat's working folder, or (a chat not sent yet) its project's. */
+  listChatFiles: (id: string, query: string, limit?: number) =>
+    request<ChatFiles>("GET", `/conversations/${seg(id)}/files?q=${seg(query)}${limit ? `&limit=${limit}` : ""}`),
+  listProjectFiles: (projectId: string, agentId: string | null, query: string, limit?: number) =>
+    request<ChatFiles>("GET", `/projects/${seg(projectId)}/files?q=${seg(query)}${agentId ? `&agentId=${seg(agentId)}` : ""}${limit ? `&limit=${limit}` : ""}`),
   /** The composer's queue: messages sent while the chat's turn runs. */
   listQueue: (id: string) => request<QueuedMessage[]>("GET", `/conversations/${seg(id)}/queue`),
   queueMessage: (id: string, body: SendMessageRequest) => request<QueuedMessage>("POST", `/conversations/${seg(id)}/queue`, body),

@@ -9,6 +9,7 @@ import { brains } from "../data/brains.ts";
 import { CUT_OFF_BY_RESTART } from "../db.ts";
 import { attachedNote, cleanContextChats } from "../chats/attach.ts";
 import { forks } from "../chats/fork.ts";
+import { chatFiles } from "../chats/files.ts";
 import { chatQueue } from "../chats/queue.ts";
 import { chatWorkspaces } from "../chats/workspace.ts";
 import { chatSearch } from "../data/chat-search.ts";
@@ -174,6 +175,7 @@ export async function sendMessage(
     throw new HttpError(409, `${agents.get(conversation.agentId)?.name ?? "TOT"} is still replying in this chat.`);
   }
   const contextChats = cleanContextChats(request.contextChats, conversation);
+  const named = chatFiles.clean(request.files);
   // A skill this message invokes: its SKILL.md goes into this turn's prompt only. TOT's own turns never invoke one.
   const invoked = options.auto ? null : invokedSkill(request.skill, text);
   // What the model gets as the user's words: the text without the "/name" in front.
@@ -221,6 +223,7 @@ export async function sendMessage(
     ...(options.auto ? { auto: true } : {}),
     ...(contextChats.length ? { contextChats } : {}),
     ...(invoked ? { skill: invoked.skill.name } : {}),
+    ...(named.length ? { files: named } : {}),
     createdAt: now,
   };
   const assistant: Message = {
@@ -260,6 +263,7 @@ export async function sendMessage(
     history,
     attachments,
     contextChats,
+    files: named,
     preamble: [fresh?.preamble, options.preamble].filter(Boolean).join("\n\n") || undefined,
     autoTitle: isFirstTurn,
     auto: parseModelId(modelId) === "auto",
@@ -296,6 +300,8 @@ interface TurnContext {
   skill?: InvokedSkill;
   /** Chats attached to the message as reference. */
   contextChats: string[];
+  /** Files of the chat's folder the message names. */
+  files: string[];
   preamble?: string;
   autoTitle: boolean;
   /** Routed by TOT Auto, so a usage limit may move the turn to the other provider. */
@@ -513,8 +519,9 @@ async function prepareTurn(ctx: TurnContext, heardSignals: string[] = []): Promi
   // Results of tasks this chat started that finished since its model last heard, and what its forks brought back.
   const tasksNote = childResultsNote(conversation, heardSignals);
   const mergeNote = forks.takeNotes(conversation);
-  // Chats the user attached to this message, as reference.
+  // Chats the user attached to this message, as reference, and files of its folder it names.
   const attached = attachedNote(ctx.contextChats);
+  const mentioned = await chatFiles.note(conversation, ctx.files);
   // A chat's last reply cut off by a restart: said once, on the next turn (tasks hear it from their loop).
   const lastReply = ctx.history.findLast((m) => m.role === "assistant" && m.parts.some((part) => part.type !== "notice"));
   const restartNote =
@@ -538,7 +545,7 @@ async function prepareTurn(ctx: TurnContext, heardSignals: string[] = []): Promi
   const skill = ctx.skill ? skillBlock(ctx.skill.skill, ctx.skill.body) : "";
   const said = ctx.text || (ctx.skill ? "Run the skill." : "");
   const text =
-    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, lead.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, skill, said]
+    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, lead.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, mentioned, prepared.context, skill, said]
       .filter(Boolean)
       .join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";
