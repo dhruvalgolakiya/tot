@@ -91,6 +91,7 @@ function cleanRequest(request: Partial<SendMessageRequest> | null | undefined): 
     ...(contextChats.length ? { contextChats } : {}),
     ...(skill ? { skill } : {}),
     ...(files.length ? { files } : {}),
+    ...(request.plan ? { plan: true } : {}),
   };
 }
 
@@ -103,6 +104,7 @@ function steerable(request: SendMessageRequest): boolean {
     !request.contextChats?.length &&
     !request.skill &&
     !request.files?.length &&
+    !request.plan &&
     !request.thinkHarder
   );
 }

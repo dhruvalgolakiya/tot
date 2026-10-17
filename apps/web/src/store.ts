@@ -1303,12 +1303,14 @@ export interface SendMessageOptions {
   skill?: string | null;
   /** Files of the chat's folder it names ("@src/cart.ts"). */
   files?: string[];
+  /** Plan mode: investigate and propose a plan, change nothing. */
+  plan?: boolean;
 }
 
 /** Send a message; creates the conversation first on an agent's home screen. */
 export async function sendMessage(
   text: string,
-  { thinkHarder = false, attachments = [], contextChats = [], skill = null, files = [] }: SendMessageOptions = {},
+  { thinkHarder = false, attachments = [], contextChats = [], skill = null, files = [], plan = false }: SendMessageOptions = {},
 ): Promise<boolean> {
   const body = text.trim();
   if ((!body && attachments.length === 0) || get().sending) return false;
@@ -1367,6 +1369,7 @@ export async function sendMessage(
         ...(contextChats.length ? { contextChats } : {}),
         ...(skill ? { skill } : {}),
         ...(files.length ? { files } : {}),
+        ...(plan ? { plan: true } : {}),
         createdAt: Date.now(),
       },
     ]);
@@ -1380,6 +1383,7 @@ export async function sendMessage(
       ...(contextChats.length ? { contextChats } : {}),
       ...(skill ? { skill } : {}),
       ...(files.length ? { files } : {}),
+      ...(plan ? { plan: true } : {}),
     });
 
     set((s) => ({

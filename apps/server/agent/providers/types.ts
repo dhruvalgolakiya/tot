@@ -50,6 +50,8 @@ export interface TurnInput {
    * stopping at the next tool boundary and sending the note with the next turn).
    */
   onSteerable?: (deliver: (text: string) => Promise<boolean>) => void;
+  /** Plan mode (chats/plan.ts): the turn only investigates and proposes; a provider with a read-only mode of its own uses it. */
+  plan?: boolean;
 }
 
 /** An MCP server asking the user something mid-turn (MCP `elicitation/create`). */

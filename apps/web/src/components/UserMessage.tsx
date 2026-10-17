@@ -1,6 +1,6 @@
 import { memo } from "react";
 import clsx from "clsx";
-import { Check, Copy, Download, SquareSlash } from "lucide-react";
+import { Check, Copy, Download, ListChecks, SquareSlash } from "lucide-react";
 import type { Attachment, Message, MessagePart } from "@tot/shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { formatBytes } from "../lib/format";
@@ -97,6 +97,18 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
             ),
           )}
         </div>
+      )}
+      {message.plan && (
+        <span
+          title="Sent in plan mode: a plan, no changes"
+          className={clsx(
+            "mb-1.5 inline-flex h-6 items-center gap-1 rounded-full border border-hairline bg-fill-subtle px-2 text-xs text-fg-muted",
+            pending && "opacity-70",
+          )}
+        >
+          <ListChecks className="size-3.5 shrink-0 text-fg-subtle" aria-hidden="true" />
+          Plan
+        </span>
       )}
       {message.skill && (
         <span

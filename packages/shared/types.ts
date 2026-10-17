@@ -418,6 +418,8 @@ export interface Message {
   skill?: string;
   /** User messages: files of the chat's folder it named ("@src/cart.ts"), relative to it. */
   files?: string[];
+  /** Plan mode: the user message asked for a plan only, or the reply is that plan. */
+  plan?: boolean;
   createdAt: number;
 }
 
@@ -1404,6 +1406,8 @@ export interface SendMessageRequest {
   skill?: string;
   /** Files of the chat's working folder the message names ("@src/cart.ts"), relative to it; small text ones go in its prompt. */
   files?: string[];
+  /** Plan mode: the agent investigates read-only and replies with a plan, changing nothing (the reply is marked `plan`). */
+  plan?: boolean;
 }
 
 /** GET /api/conversations/:id/files: the chat's working folder's files matching a query, best first. */

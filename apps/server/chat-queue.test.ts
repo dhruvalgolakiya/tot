@@ -1,5 +1,6 @@
 // The composer's queue: messages sent while a chat's turn runs wait and go out in order when it ends; "send now" hands
-// one to the running turn (or stops it at its next step and sends it right after). Fake providers, no network.
+// one to the running turn (or stops it at its next step and sends it right after). Then plan mode: a plan turn is
+// marked, told to only plan, and TOT's tools that change things refuse while it runs. Fake providers, no network.
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { serve } from "@hono/node-server";
 import type { Message, QueuedMessage, SendNowResult } from "@tot/shared/types";
@@ -9,6 +10,7 @@ const PORT = 38_000 + Math.floor(Math.random() * 2000);
 
 const { providers } = await import("./agent/providers/index.ts");
 const { runRegistry } = await import("./agent/runs.ts");
+const { CHANGING_TOOLS, PLAN_NOTE, PLAN_REFUSAL, planTurns } = await import("./chats/plan.ts");
 const { agents } = await import("./data/agents.ts");
 const { conversations } = await import("./data/conversations.ts");
 const { messages } = await import("./data/messages.ts");
@@ -242,6 +244,43 @@ r = await request("GET", `/conversations/no-such-chat/queue`);
 check("an unknown chat is a 404", r.status === 404);
 r = await request("POST", `/conversations/${chat.id}/queue/no-such-item/send`, {});
 check("an unknown item is a 404", r.status === 404);
+
+// --- Plan mode ----------------------------------------------------------------------------------------------------------
+hold = false;
+const planChat = newChat("Plan");
+const planned = (await request<{ runId: string; userMessage: Message }>("POST", `/conversations/${planChat.id}/messages`, { text: "move auth to the server", plan: true })).data;
+await waitFor("the plan turn", () => !running(planChat.id) && turns.at(-1)?.prompt.endsWith("move auth to the server") === true);
+const planTurn = turns.at(-1)!;
+check("a plan turn tells the provider", planTurn.plan === true);
+check("…and the model, right before the message", planTurn.prompt.endsWith(`${PLAN_NOTE}\n\nmove auth to the server`), planTurn.prompt);
+check("the user message is marked, and stored so", planned.userMessage.plan === true && messages.get(planned.userMessage.id)?.plan === true);
+const planReply = messages.listByConversation(planChat.id).find((m) => m.role === "assistant");
+check("…and so is the reply (the composer offers to implement it)", planReply?.plan === true && planReply.status === "complete");
+await request("POST", `/conversations/${planChat.id}/messages`, { text: "go ahead" });
+await waitFor("the next turn", () => !running(planChat.id) && turns.at(-1)?.prompt === "go ahead");
+check("the next message without plan is a normal turn", turns.at(-1)?.plan === undefined && turns.at(-1)?.prompt === "go ahead", turns.at(-1)?.prompt);
+const queuedPlan = (await request<QueuedMessage>("POST", `/conversations/${chat.id}/queue`, { text: "plan it", plan: true })).data;
+check("a queued message keeps plan mode", queuedPlan.request.plan === true);
+await request("DELETE", `/conversations/${chat.id}/queue/${queuedPlan.id}`);
+
+// TOT's tools during a plan turn: the changing ones refuse; reading ones (and other chats) carry on.
+const handlers: Record<string, (...args: unknown[]) => unknown> = {};
+const fakeServer = { registerTool: (name: string, _config: unknown, handler: (...args: unknown[]) => unknown) => void (handlers[name] = handler) };
+planTurns.guard(fakeServer as never, "plan-chat");
+for (const name of ["computer_write_file", "task_start", "computer_read_file"]) fakeServer.registerTool(name, {}, () => ({ content: [{ type: "text", text: `ran ${name}` }] }));
+const textOf = (result: unknown) => (result as { content: { text: string }[] }).content[0]!.text;
+check("outside a plan turn, every tool runs", textOf(handlers.computer_write_file!()) === "ran computer_write_file");
+planTurns.begin("plan-chat");
+const refused = handlers.computer_write_file!() as { isError: boolean };
+check("in a plan turn, writing a file refuses", textOf(refused) === PLAN_REFUSAL && refused.isError === true);
+check("…and so does starting a task", textOf(handlers.task_start!()) === PLAN_REFUSAL);
+check("…but reading goes on", textOf(handlers.computer_read_file!()) === "ran computer_read_file");
+check("the list covers the desktop, tasks, mail and the wiki", ["computer_click", "task_land", "email_send", "wiki_write"].every((name) => CHANGING_TOOLS.has(name)));
+const grant = { folder: "/repo", write: true, task: { branch: "tot/x", worktree: "x" }, reads: ["/other"] };
+check("a plan turn's folder grant is read-only", JSON.stringify(planTurns.readOnly("plan-chat", grant)) === JSON.stringify({ folder: "/repo", reads: ["/other"] }));
+check("…other chats' grants are untouched", planTurns.readOnly("another-chat", grant) === grant);
+planTurns.end("plan-chat");
+check("after the plan turn, tools run again", textOf(handlers.task_start!()) === "ran task_start" && planTurns.readOnly("plan-chat", grant) === grant);
 
 server.close();
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");

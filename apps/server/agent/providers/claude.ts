@@ -14,6 +14,7 @@ import { accountDir, accounts, binaryFor, tildePath } from "../../accounts/accou
 import { claudeAuthEnv, claudeMcpServers, claudePlugins, claudeSettingsEnv, mergeMcpServers } from "../../accounts/config.ts";
 import { getSecret, paths } from "../../config.ts";
 import { settings } from "../../data/settings.ts";
+import { CHANGING_TOOLS, PLAN_REFUSAL, PLAN_WORKFLOW } from "../../chats/plan.ts";
 import { CLAUDE_OPUS, CLAUDE_SONNET } from "../router.ts";
 import type { AgentProvider, McpServerSpec, ProviderEvent, TurnInput } from "./types.ts";
 
@@ -432,9 +433,18 @@ export function makeClaudeProvider(accountId: string): AgentProvider {
           disallowedTools: tools.servers.flatMap((spec) =>
             spec.type === "http" ? (spec.disabledTools ?? []).map((tool) => `mcp__${spec.name}__${tool}`) : [],
           ),
-          // Safe because the local tool surface is just web search/fetch.
-          permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
+          // Safe because the local tool surface is just web search/fetch. A plan turn runs in Claude Code's own plan
+          // mode instead, with TOT's tools that change things turned away here too (and by TOT's server).
+          ...(input.plan
+            ? {
+                permissionMode: "plan" as const,
+                planModeInstructions: PLAN_WORKFLOW,
+                canUseTool: async (tool: string, toolInput: Record<string, unknown>) =>
+                  CHANGING_TOOLS.has(normalizeToolName(tool))
+                    ? { behavior: "deny" as const, message: PLAN_REFUSAL }
+                    : { behavior: "allow" as const, updatedInput: toolInput },
+              }
+            : { permissionMode: "bypassPermissions" as const, allowDangerouslySkipPermissions: true }),
           settings: { disableClaudeAiConnectors: !settings.get().claude.useConnectedApps },
           ...resumeOptions(input),
           includePartialMessages: true,

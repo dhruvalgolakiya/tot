@@ -1,12 +1,13 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Columns2, FileText, LoaderCircle, MessageSquare, Plus, Square, SquareSlash } from "lucide-react";
+import { ArrowUp, Columns2, FileText, ListChecks, LoaderCircle, MessageSquare, Plus, Square, SquarePen, SquareSlash } from "lucide-react";
 import type { Conversation } from "@tot/shared/types";
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
 import { droppedPath, fileMentionAt, filesInText, splitPath, type FilesTarget } from "../lib/files";
 import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, type SlashCommandName } from "../lib/mission";
 import { skillMatches, slashWordAt, typedSkill } from "../lib/skills";
+import { adoptDraftPlanMode, DRAFT, modeCommand, setPlanMode, usePlanMode } from "../lib/plan-mode";
 import { isCodeProject, useProjects } from "../lib/projects";
 import { queueMessage } from "../lib/queue";
 import { isSteerable, isTask } from "../lib/tasks";
@@ -26,6 +27,7 @@ import {
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
 import { MentionOverlay } from "./composer/MentionText";
+import { PlanFollowUp } from "./composer/PlanFollowUp";
 import { QueuedMessages } from "./composer/QueuedMessages";
 import { useFileMentions } from "./composer/useFileMentions";
 import { ProjectPicker } from "./projects/ProjectPicker";
@@ -47,8 +49,17 @@ const INPUT_METRICS = "px-4 pt-4 pb-1 text-chat";
 /** A row of the "@" menu: a file of the chat's folder, or another chat to attach. */
 type MentionItem = { kind: "file"; path: string } | { kind: "chat"; id: string; title: string };
 
-/** A row of the "/" menu: a command (/best-of) or a skill. */
-type SlashItem = { kind: "command"; name: SlashCommandName; description: string } | { kind: "skill"; name: string; description: string };
+/** Plan mode on and off, from the "/" menu (each shows only when it would change something). */
+const MODES = [
+  { name: "plan", description: "Propose a plan first, change nothing", Icon: ListChecks },
+  { name: "default", description: "Back to making changes", Icon: SquarePen },
+] as const;
+
+/** A row of the "/" menu: a command (/best-of), plan mode on or off, or a skill. */
+type SlashItem =
+  | { kind: "command"; name: SlashCommandName; description: string }
+  | { kind: "mode"; name: (typeof MODES)[number]["name"]; description: string }
+  | { kind: "skill"; name: string; description: string };
 
 /**
  * `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page.
@@ -76,6 +87,13 @@ export function Composer({
   const steering = Boolean(task && isSteerable(task));
   // In a chat whose reply is still coming, what's sent waits in its queue and goes when the reply is done.
   const queueing = Boolean(run && currentId && !task);
+  // Plan mode, kept per chat (a chat not sent yet keeps it as the draft's until its first message gives it an id).
+  const planKey = currentId ?? DRAFT;
+  const planning = usePlanMode((s) => s.on.has(planKey)) && !task;
+  const startedAs = useRef(currentId);
+  useEffect(() => {
+    if (!startedAs.current && currentId) adoptDraftPlanMode(currentId);
+  }, [currentId]);
   const [text, setText] = useState("");
   // The in-progress (not-yet-final) speech recognition guess, shown as a quiet
   // preview under the textarea — never merged into `text` until it finalizes,
@@ -117,6 +135,11 @@ export function Composer({
   const slashItems: SlashItem[] = slashOpen
     ? [
         ...SLASH_COMMANDS.filter((c) => c.name.startsWith(slashWord.query.toLowerCase())).map((c) => ({ kind: "command" as const, ...c })),
+        ...MODES.filter((m) => (m.name === "plan") !== planning && m.name.startsWith(slashWord.query.toLowerCase())).map(({ name, description }) => ({
+          kind: "mode" as const,
+          name,
+          description,
+        })),
         ...skillMatches(skills ?? [], slashWord.query).map((skill) => ({ kind: "skill" as const, name: skill.name, description: skill.description })),
       ]
     : [];
@@ -220,7 +243,9 @@ export function Composer({
         ? "Reply to pick this task up again…"
         : queueing
           ? "Queue a follow-up…"
-          : (newChatPlaceholder ?? `Ask ${agentName} anything`);
+          : planning
+            ? "What should be planned?"
+            : (newChatPlaceholder ?? `Ask ${agentName} anything`);
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -257,7 +282,17 @@ export function Composer({
       return;
     }
     if (!canSend) return;
-    const message = value;
+    // "/plan …" or "/default …" typed in full: plan mode changes, and the rest, if any, goes as the message.
+    const mode = task ? null : modeCommand(value);
+    if (mode) {
+      setPlanMode(planKey, mode.plan);
+      if (!mode.rest && attachments.ready.length === 0) {
+        setText("");
+        return;
+      }
+    }
+    const message = mode ? mode.rest : value;
+    const plan = mode ? mode.plan : planning;
     const uploads = attachments.ready.map((it) => it.attachment);
     const previousItems = attachments.items;
     const chats = contextChats;
@@ -277,6 +312,7 @@ export function Composer({
           ...(chats.length ? { contextChats: chats } : {}),
           ...(skill ? { skill } : {}),
           ...(files.length ? { files } : {}),
+          ...(plan ? { plan: true } : {}),
         });
       } catch (error) {
         notifyError(error);
@@ -287,7 +323,7 @@ export function Composer({
       }
       return;
     }
-    const sent = await sendMessage(message, { attachments: uploads, contextChats: chats, skill, files });
+    const sent = await sendMessage(message, { attachments: uploads, contextChats: chats, skill, files, plan });
     if (!sent) {
       setContextChats(chats);
       mentions.setNamed(named);
@@ -296,9 +332,23 @@ export function Composer({
     }
   }
 
-  /** Swaps the first word being typed for the whole name and a space: "/be" → "/best-of ", "/dh fix it" → "/dh-stack fix it". */
-  function pickSlash(name: string) {
-    const head = `/${name} `;
+  /**
+   * Swaps the first word being typed for the whole name and a space: "/be" → "/best-of ", "/dh fix it" → "/dh-stack fix
+   * it". Plan mode's two turn it on or off instead, and leave the rest of the text.
+   */
+  function pickSlash(item: SlashItem) {
+    if (item.kind === "mode") {
+      setPlanMode(planKey, item.name === "plan");
+      const rest = slashWord ? text.slice(slashWord.end).trimStart() : "";
+      setText(rest);
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(rest.length, rest.length);
+        setCaret(rest.length);
+      });
+      return;
+    }
+    const head = `/${item.name} `;
     setText(head + (slashWord ? text.slice(slashWord.end).trimStart() : ""));
     requestAnimationFrame(() => {
       inputRef.current?.focus();
@@ -318,7 +368,7 @@ export function Composer({
       }
       if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
         event.preventDefault();
-        pickSlash(slashItems[Math.min(slashHighlight, slashItems.length - 1)]!.name);
+        pickSlash(slashItems[Math.min(slashHighlight, slashItems.length - 1)]!);
         return;
       }
     }
@@ -389,6 +439,7 @@ export function Composer({
 
   return (
     <>
+      {currentId && !task && <PlanFollowUp conversationId={currentId} />}
       {currentId && !task && <QueuedMessages conversationId={currentId} />}
       <form
         onSubmit={(event) => {
@@ -435,7 +486,7 @@ export function Composer({
             className="menu absolute bottom-full left-0 mb-2 max-h-80 w-96 max-w-full overflow-y-auto"
           >
             {slashItems.map((item, index) => {
-              const Icon = item.kind === "command" ? SLASH_ICONS[item.name] : SquareSlash;
+              const Icon = item.kind === "command" ? SLASH_ICONS[item.name] : item.kind === "mode" ? MODES.find((m) => m.name === item.name)!.Icon : SquareSlash;
               const description =
                 item.kind === "command" && item.name === "best-of" && bestOf.length ? `On ${bestOfLabel(bestOf)}, then compare` : item.description;
               const firstSkill = item.kind === "skill" && slashItems[index - 1]?.kind !== "skill";
@@ -448,7 +499,7 @@ export function Composer({
                     data-highlighted={index === slashHighlight ? "" : undefined}
                     onMouseDown={(event) => {
                       event.preventDefault();
-                      pickSlash(item.name);
+                      pickSlash(item);
                     }}
                     onMouseEnter={() => setSlashHighlight(index)}
                     className="menu-item"
@@ -573,6 +624,19 @@ export function Composer({
             </Tip>
           )}
           <VoiceInputButton onTranscript={onTranscript} />
+          {planning && (
+            <Tip content="Plan mode: the agent looks into it and proposes a plan, changing nothing. Click to turn it off.">
+              <button
+                type="button"
+                aria-pressed="true"
+                onClick={() => setPlanMode(planKey, false)}
+                className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-fill px-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+              >
+                <ListChecks className="size-3.5" aria-hidden="true" />
+                Plan
+              </button>
+            </Tip>
+          )}
           {/* A chat not sent yet, from an agent's home: the project it starts in. */}
           {!currentId && !onProjectPage && <ProjectPicker />}
           {/* …and in a project with code, whether it works in the main checkout or a new worktree. */}

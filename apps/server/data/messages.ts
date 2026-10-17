@@ -3,9 +3,9 @@ import { db, parseJson, statement, type Row } from "../db.ts";
 
 /**
  * Extras kept in the meta column: how a user message was sent (module 01), the chats attached to it (module 05), the
- * skill it invoked and the files it named.
+ * skill it invoked, the files it named, and plan mode's messages.
  */
-type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "contextChats" | "skill" | "files">;
+type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "contextChats" | "skill" | "files" | "plan">;
 
 function metaOf(message: Message): string | null {
   const meta: MessageMeta = {
@@ -15,13 +15,14 @@ function metaOf(message: Message): string | null {
     ...(message.contextChats?.length ? { contextChats: message.contextChats } : {}),
     ...(message.skill ? { skill: message.skill } : {}),
     ...(message.files?.length ? { files: message.files } : {}),
+    ...(message.plan ? { plan: true } : {}),
   };
   return Object.keys(meta).length ? JSON.stringify(meta) : null;
 }
 
 /** The meta column's known extras (older rows can hold others, e.g. a dispatch decision from before it was removed). */
 function metaFrom(value: unknown): MessageMeta {
-  const { steered, steeredInto, auto, contextChats, skill, files } = parseJson<MessageMeta>(value, {});
+  const { steered, steeredInto, auto, contextChats, skill, files, plan } = parseJson<MessageMeta>(value, {});
   return {
     ...(steered ? { steered } : {}),
     ...(steeredInto ? { steeredInto } : {}),
@@ -29,6 +30,7 @@ function metaFrom(value: unknown): MessageMeta {
     ...(contextChats?.length ? { contextChats } : {}),
     ...(typeof skill === "string" && skill ? { skill } : {}),
     ...(Array.isArray(files) && files.length ? { files } : {}),
+    ...(plan ? { plan: true } : {}),
   };
 }
 
