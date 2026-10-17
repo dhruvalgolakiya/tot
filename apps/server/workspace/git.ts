@@ -20,8 +20,8 @@ export interface GitResult {
 }
 
 const TIMEOUT_MS = 60_000;
-/** No pager, no colors, and paths as they are (not quoted). */
-const SAFE = ["-c", "core.quotePath=false", "-c", "color.ui=false", "-c", "core.pager=cat"];
+/** No pager, no colors, paths as they are (not quoted), and no file-system monitor (a program git would start). */
+const SAFE = ["-c", "core.quotePath=false", "-c", "color.ui=false", "-c", "core.pager=cat", "-c", "core.fsmonitor=false"];
 
 /** Several git commands in the folder, in one trip to the computer; each one's own result. */
 export async function gitBatch(space: ChatSpace, commands: string[][], { timeoutMs = TIMEOUT_MS } = {}): Promise<GitResult[]> {

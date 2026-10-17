@@ -104,6 +104,7 @@ const shells: MiddlewareHandler = async (c, next) => {
   await next();
 };
 workspaceRoutes.use("/conversations/:id/workspace/terminals", shells);
+workspaceRoutes.use("/conversations/:id/workspace/terminals/*", shells);
 workspaceRoutes.use("/workspace/terminals/*", shells);
 
 workspaceRoutes.get("/conversations/:id/workspace/terminals", (c) => {
@@ -116,16 +117,16 @@ workspaceRoutes.post("/conversations/:id/workspace/terminals", async (c) => {
   return c.json(await terminals.open(chatSpaces.resolve(c.req.param("id")), size), 201);
 });
 
-workspaceRoutes.get("/workspace/terminals/:tid/stream", (c) => {
-  const id = c.req.param("tid");
-  terminals.get(id);
+// Every terminal of the chat over one stream: a browser keeps only a few connections open to one server.
+workspaceRoutes.get("/conversations/:id/workspace/terminals/stream", (c) => {
+  const id = c.req.param("id");
+  chatSpaces.resolve(id);
   return streamSSE(c, async (stream) => {
     let finish!: () => void;
     const finished = new Promise<void>((resolve) => (finish = resolve));
     let writes: Promise<unknown> = stream.writeSSE({ data: "", event: "ready", retry: 2000 });
-    const unsubscribe = terminals.subscribe(id, (event) => {
+    const unsubscribe = terminals.subscribeChat(id, (event) => {
       writes = writes.then(() => stream.writeSSE({ data: JSON.stringify(event) }));
-      if (event.type === "exit") void writes.then(finish);
     });
     const heartbeat = setInterval(() => {
       writes = writes.then(() => stream.write(": ping\n\n"));

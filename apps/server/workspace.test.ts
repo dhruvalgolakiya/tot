@@ -5,7 +5,7 @@
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Conversation, Project } from "@tot/shared/types";
@@ -129,6 +129,10 @@ check("“..” out of the folder is refused", throws(() => cleanPath("../secret
 check("…but “..” that stays inside is fine", cleanPath("src/../README.md") === "README.md");
 check("an absolute path is refused", throws(() => cleanPath("/etc/passwd"), 400) && throws(() => cleanPath(join(HOME, "secret.txt")), 400));
 check("git's own files are refused", throws(() => cleanPath(".git/config"), 403) && throws(() => cleanPath("src/.git/hooks/pre-commit"), 403));
+check("…in any case (this disk doesn't care)", throws(() => cleanPath(".GIT/config"), 403) && throws(() => cleanPath("src/.Git/HEAD"), 403) && throws(() => cleanPath(".Tot-Worktrees/x"), 403));
+symlinkSync(".git/config", join(web, "gitconfig"));
+check("…and so is a link into them", throws(() => inside(web, "gitconfig"), 403));
+rmSync(join(web, "gitconfig"));
 check("other chats' worktrees are refused", throws(() => cleanPath(".tot-worktrees/x/README.md"), 403));
 check("control characters and a NUL are refused", throws(() => cleanPath("a\0b"), 400) && throws(() => cleanPath("a\nb"), 400));
 check("a non-string is refused", throws(() => cleanPath(42), 400));
@@ -165,6 +169,13 @@ await sleep(800);
 check("changing files in the folder tells its watchers, once per burst", changes >= 1 && changes <= 2, String(changes));
 unwatch();
 check("…and the watcher closes with its last listener", workspaceWatch.count() === 0);
+let fromOtherChats = 0;
+const unwatchQuiet = workspaceWatch.subscribe(web, () => fromOtherChats++);
+writeFileSync(join(worktree, "busy.txt"), "another chat's work\n");
+await sleep(800);
+unwatchQuiet();
+rmSync(join(worktree, "busy.txt"));
+check("…but not about other chats' worktrees inside it", fromOtherChats === 0, String(fromOtherChats));
 res = await call<Diff>("GET", `/conversations/${checkoutChat.id}/workspace/diff`);
 const byPath = new Map((res.data.files as Diff["files"]).map((file) => [file.path, file]));
 check("the diff names the branch", res.status === 200 && res.data.branch === "main", JSON.stringify(res.data).slice(0, 200));
@@ -233,6 +244,13 @@ res = await save({ path: "leak.txt", content: "overwritten" });
 check("saving through a link out of the folder is refused", res.status === 403 && readFileSync(join(HOME, "secret.txt"), "utf8") === "the user's secret\n", JSON.stringify(res.data));
 check("…and into a linked folder outside it", (await save({ path: "home/planted.txt", content: "x" })).status === 403);
 check("…and into git's own files", (await save({ path: ".git/hooks/pre-commit", content: "#!/bin/sh\n" })).status === 403);
+symlinkSync(".git/hooks", join(web, "hooks"));
+check("…however it's spelled or linked", (await save({ path: ".GIT/hooks/pre-commit", content: "#!/bin/sh\n" })).status === 403 && (await save({ path: "hooks/pre-commit", content: "#!/bin/sh\n" })).status === 403);
+unlinkSync(join(web, "hooks"));
+linkSync(join(HOME, "secret.txt"), join(web, "hard.txt"));
+res = await save({ path: "hard.txt", content: "overwritten" });
+check("…and over a file that's also somewhere else (a hard link)", res.status === 400 && readFileSync(join(HOME, "secret.txt"), "utf8") === "the user's secret\n", JSON.stringify(res.data));
+rmSync(join(web, "hard.txt"));
 check("…and out with “..”", (await save({ path: "../planted.txt", content: "x" })).status === 400);
 res = await save({ path: "src/app.ts", content: "from a device\n" }, asDevice);
 check("a paired device can't save", res.status === 403 && readFileSync(join(web, "src/app.ts"), "utf8") === "export const answer = 44;\n", JSON.stringify(res.data));
@@ -275,12 +293,24 @@ const stopReplay = terminals.subscribe(terminal.id, (event: TerminalEvent) => {
 check("whoever opens it later gets what it printed", replayed.includes("sum-42"));
 stopReplay();
 stopListening();
-res = await call("GET", `/workspace/terminals/${terminal.id}/stream`, asDevice);
-check("a paired device can't watch a terminal", res.status === 403);
+const heard = new Map<string, string>();
+const stopChat = terminals.subscribeChat(checkoutChat.id, (event) => {
+  if (event.type === "output") heard.set(event.id, (heard.get(event.id) ?? "") + event.data);
+});
+const second: Terminal = (await call<Terminal>("POST", `/conversations/${checkoutChat.id}/workspace/terminals`, { body: {} })).data;
+await call("POST", `/workspace/terminals/${second.id}/input`, { body: { data: "echo second-$((1+1))\r" } });
+check("one stream carries every terminal of the chat, each named, those opened later too", (heard.get(terminal.id) ?? "").includes("sum-42") && (await until(() => (heard.get(second.id) ?? "").includes("second-2"))), [...heard.keys()].join(","));
+stopChat();
+await call("DELETE", `/workspace/terminals/${second.id}`);
+await call("PATCH", `/conversations/${checkoutChat.id}`, { body: { title: "Renamed" } });
+check("renaming the chat leaves its terminals running", terminals.list(checkoutChat.id).some((t) => t.id === terminal.id));
+res = await call("GET", `/conversations/${checkoutChat.id}/workspace/terminals/stream`, asDevice);
+check("a paired device can't watch the chat's terminals", res.status === 403);
 check("…nor open one", (await call("POST", `/conversations/${checkoutChat.id}/workspace/terminals`, { body: {}, ...asDevice })).status === 403);
 check("…nor type into one", (await call("POST", `/workspace/terminals/${terminal.id}/input`, { body: { data: "touch pwned\r" }, ...asDevice })).status === 403);
-res = await call("POST", `/conversations/${checkoutChat.id}/workspace/terminals`, { body: {}, headers: { authorization: `Bearer ${process.env.TOT_ACCESS_TOKEN}` }, from: "192.168.1.70" });
-check("the access token gets no terminal", res.status === 403);
+const withToken = { headers: { authorization: `Bearer ${process.env.TOT_ACCESS_TOKEN}` }, from: "192.168.1.70" };
+res = await call("POST", `/conversations/${checkoutChat.id}/workspace/terminals`, { body: {}, ...withToken });
+check("the access token gets no terminal", res.status === 403 && (await call("GET", `/conversations/${checkoutChat.id}/workspace/terminals/stream`, withToken)).status === 403);
 const login = await app.request(
   "http://127.0.0.1:8787/login",
   { method: "POST", body: new URLSearchParams({ password: process.env.TOT_ACCESS_TOKEN!, next: "/" }).toString(), headers: { host: "127.0.0.1:8787", "content-type": "application/x-www-form-urlencoded" } },
@@ -410,7 +440,20 @@ res = await call<GitResult>("POST", `${gitPath}/commit`, { body: { message: "Cac
 const draft = pulls.find((pull) => pull.path === "/repos/acme/web/pulls");
 check("commit, push and a draft pull request, in one", res.status === 200 && res.data.pr?.number === 7 && /opened draft PR #7/.test(res.data.summary) && git(remote, "rev-parse", "feature/cache") === git(web, "rev-parse", "HEAD"), JSON.stringify(res.data));
 check("…a draft from the branch into the default one, through the fake GitHub only", draft?.body?.draft === true && draft.body.head === "feature/cache" && draft.body.base === "main" && draft.body.title === "Cache the answer" && draft.body.body.startsWith("Once read, kept.") && draft.auth === "Bearer ghp_testtokenthatisnotreal000000000000", JSON.stringify(draft));
+// A branch whose pushes git sends to main (its config says so) counts as pushing to main.
+git(web, "checkout", "-q", "-b", "sneaky", "--track", "origin/main");
+git(web, "config", "push.default", "upstream");
+writeFileSync(join(web, "SNEAKY.md"), "x\n");
+git(web, "add", "SNEAKY.md");
+git(web, "commit", "-qm", "sneaky");
+res = await call<Git>("GET", gitPath);
+check("a branch that pushes to main says so", res.data.branch === "sneaky" && res.data.pushesTo === "main" && res.data.ahead === 1, JSON.stringify(res.data));
+const mainBefore = git(remote, "rev-parse", "main");
+res = await call<GitResult>("POST", `${gitPath}/push`);
+check("…and its push needs the OK too", res.status === 409 && /needs your OK/.test(JSON.stringify(res.data)) && git(remote, "rev-parse", "main") === mainBefore, JSON.stringify(res.data));
+git(web, "config", "--unset", "push.default");
 git(web, "checkout", "-q", "main");
+git(web, "branch", "-q", "-D", "sneaky");
 
 // Pull and sync, with a remote that's a folder on this machine.
 const libRemote = join(HOME, "remote/lib.git");
@@ -436,8 +479,9 @@ await call("POST", `${libGit}/sync`, { body: { confirmDefault: true } });
 check("pull fast-forwards to what was pushed elsewhere", readFileSync(join(lib, "lib.txt"), "utf8") === "one\ntwo\n");
 writeFileSync(join(lib, "lib.txt"), "one\ntwo\nthree\n");
 await call("POST", `${libGit}/commit`, { body: { message: "three" } });
+const libBefore = git(lib, "rev-parse", "HEAD");
 res = await call<GitResult>("POST", `${libGit}/sync`);
-check("sync won't push to the default branch without an OK", res.status === 409 && /needs your OK/.test(JSON.stringify(res.data)), JSON.stringify(res.data));
+check("sync won't push to the default branch without an OK, and does nothing", res.status === 409 && /needs your OK/.test(JSON.stringify(res.data)) && git(lib, "rev-parse", "HEAD") === libBefore, JSON.stringify(res.data));
 res = await call<GitResult>("POST", `${libGit}/sync`, { body: { confirmDefault: true } });
 check("…and with it, pulls then pushes", res.status === 200 && git(libRemote, "rev-parse", "main") === git(lib, "rev-parse", "HEAD") && res.data.git.ahead === 0, JSON.stringify(res.data));
 git(other, "pull", "-q", "--ff-only");

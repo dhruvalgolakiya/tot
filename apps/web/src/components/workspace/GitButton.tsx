@@ -31,10 +31,13 @@ function done(result: WorkspaceGitResult): void {
   }
 }
 
+/** A push from here lands on the repo's default branch. */
+const pushesToDefault = (git: WorkspaceGit) => Boolean(git.pushesTo) && git.pushesTo === git.defaultBranch;
+
 /** The one thing to do now: commit what changed, push what's committed, pull what's new, or else sync. */
 function primaryOf(git: WorkspaceGit): { label: string; kind: "commit" | "push" | "pull" | "sync" } {
   if (git.changes) return { label: "Commit", kind: "commit" };
-  if (git.ahead || (!git.upstream && git.branch && git.branch !== git.defaultBranch)) return { label: "Push", kind: "push" };
+  if (git.ahead || (!git.upstream && git.branch && !pushesToDefault(git))) return { label: "Push", kind: "push" };
   if (git.behind) return { label: "Pull", kind: "pull" };
   return { label: "Sync", kind: "sync" };
 }
@@ -59,7 +62,7 @@ function CommitDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const typed = useRef(false);
   const pushing = flavor !== "commit";
-  const toDefault = pushing && Boolean(git.branch) && git.branch === git.defaultBranch;
+  const toDefault = pushing && pushesToDefault(git);
 
   useEffect(() => {
     let live = true;
@@ -110,7 +113,7 @@ function CommitDialog({
           aria-label="Commit message"
           className="input min-h-28 resize-y rounded-xl font-mono text-ui leading-relaxed"
         />
-        {toDefault && <Callout tone="warning">This pushes straight to {git.branch}, the repo's default branch.</Callout>}
+        {toDefault && <Callout tone="warning">This pushes straight to {git.pushesTo}, the repo's default branch.</Callout>}
         {problem && <Callout tone="danger">{problem}</Callout>}
       </ModalBody>
       <ModalFooter>
@@ -118,7 +121,7 @@ function CommitDialog({
           Cancel
         </Button>
         <Button variant="primary" onClick={() => void submit()} disabled={!message.trim() || working}>
-          {working ? "Working…" : toDefault ? `${FLAVORS[flavor].verb} to ${git.branch}` : FLAVORS[flavor].verb}
+          {working ? "Working…" : toDefault ? `${FLAVORS[flavor].verb} to ${git.pushesTo}` : FLAVORS[flavor].verb}
         </Button>
       </ModalFooter>
     </Modal>
@@ -161,7 +164,7 @@ export function GitButton({ chat }: { chat: Conversation }) {
   };
 
   if (!git) return null;
-  const onDefault = Boolean(git.branch) && git.branch === git.defaultBranch;
+  const onDefault = pushesToDefault(git);
   const push = (confirmed = false) => {
     if (onDefault && !confirmed) return setConfirm("push");
     void run("Pushing…", () => workspaceApi.push(chat.id, confirmed));
@@ -201,7 +204,7 @@ export function GitButton({ chat }: { chat: Conversation }) {
               <DropdownMenu.Item
                 className="menu-item"
                 disabled={!git.changes || !git.canOpenPr || onDefault}
-                title={!git.canOpenPr ? (git.prProblem ?? undefined) : onDefault ? `Make a branch other than ${git.branch} first.` : undefined}
+                title={!git.canOpenPr ? (git.prProblem ?? undefined) : onDefault ? `Make a branch other than ${git.defaultBranch} first.` : undefined}
                 onSelect={() => setFlavor("pr")}
               >
                 <GitPullRequestDraft className="size-4 text-fg-muted" /> Commit, push and open PR…
@@ -237,9 +240,9 @@ export function GitButton({ chat }: { chat: Conversation }) {
       <ConfirmDialog
         open={confirm !== null}
         onOpenChange={(open) => !open && setConfirm(null)}
-        title={`Push to ${git.branch}?`}
-        description={`This pushes straight to ${git.branch}, the repo's default branch, without a pull request.`}
-        confirmLabel={`Push to ${git.branch}`}
+        title={`Push to ${git.pushesTo}?`}
+        description={`This pushes straight to ${git.pushesTo}, the repo's default branch, without a pull request.`}
+        confirmLabel={`Push to ${git.pushesTo}`}
         onConfirm={() => (confirm === "sync" ? sync(true) : push(true))}
       />
     </>

@@ -51,7 +51,7 @@ const configLocked = (space: ChatSpace) => Boolean(space.grant?.task);
 
 export async function gitStatus(space: ChatSpace): Promise<WorkspaceGit> {
   if (!space.git) throw new HttpError(409, "This folder isn't a git repo.");
-  const [branch, upstream, counts, status, origin, originHead, usual] = await gitBatch(space, [
+  const [branch, upstream, counts, status, origin, originHead, usual, pushRef] = await gitBatch(space, [
     ["symbolic-ref", "--quiet", "--short", "HEAD"],
     ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
     ["rev-list", "--left-right", "--count", "@{u}...HEAD"],
@@ -59,6 +59,7 @@ export async function gitStatus(space: ChatSpace): Promise<WorkspaceGit> {
     ["remote", "get-url", "origin"],
     ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
     ["for-each-ref", "--format=%(refname:short)", "refs/heads/main", "refs/heads/master"],
+    ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{push}"],
   ]);
   const [behind = 0, ahead = 0] = counts!.code === 0 ? counts!.stdout.trim().split(/\s+/).map(Number) : [];
   const repo = githubFullName(origin!.code === 0 ? origin!.stdout.trim() : "");
@@ -78,10 +79,18 @@ export async function gitStatus(space: ChatSpace): Promise<WorkspaceGit> {
       : !access.allowWrites
         ? "Turn on GitHub writes in Settings to open pull requests."
         : null;
+  const current = branch!.code === 0 ? branch!.stdout.trim() : null;
+  const tracking = upstream!.code === 0 ? upstream!.stdout.trim() : null;
+  // Where a push lands. A tracked branch pushes wherever git's config sends it (maybe another name); an untracked
+  // one is pushed explicitly to its own name.
+  const onRemote = (ref: string) => ref.replace(/^[^/]+\//, "");
+  const pushed = pushRef!.code === 0 ? pushRef!.stdout.trim() : "";
+  const pushesTo = tracking ? onRemote(pushed || tracking) : current;
   return {
-    branch: branch!.code === 0 ? branch!.stdout.trim() : null,
+    branch: current,
     defaultBranch,
-    upstream: upstream!.code === 0 ? upstream!.stdout.trim() : null,
+    pushesTo,
+    upstream: tracking,
     ahead: ahead || 0,
     behind: behind || 0,
     changes: status!.stdout.split("\0").filter((entry) => entry.length > 3).length,
@@ -169,12 +178,17 @@ async function openDraft(repo: string, token: string, request: { title: string; 
   throw new HttpError(409, `GitHub didn't open the pull request (${res.status}${said ? `: ${said.slice(0, 200)}` : ""}).`);
 }
 
+/** A push would land on the default branch, and the user hasn't said yes to that. */
+function needsOk(status: WorkspaceGit, confirmDefault: boolean): boolean {
+  return !confirmDefault && Boolean(status.pushesTo) && status.pushesTo === status.defaultBranch;
+}
+
+const NEEDS_OK = (status: WorkspaceGit) => new HttpError(409, `Pushing to ${status.pushesTo}, the repo's default branch, needs your OK first.`);
+
 async function push(space: ChatSpace, status: WorkspaceGit, confirmDefault: boolean): Promise<void> {
   if (!status.branch) throw new HttpError(409, "There's no branch checked out to push.");
-  if (status.branch === status.defaultBranch && !confirmDefault) {
-    throw new HttpError(409, `Pushing to ${status.branch}, the repo's default branch, needs your OK first.`);
-  }
-  const args = status.upstream ? ["push"] : configLocked(space) ? ["push", "origin", `HEAD:refs/heads/${status.branch}`] : ["push", "-u", "origin", "HEAD"];
+  if (needsOk(status, confirmDefault)) throw NEEDS_OK(status);
+  const args = status.upstream ? ["push"] : ["push", ...(configLocked(space) ? [] : ["-u"]), "origin", `HEAD:refs/heads/${status.branch}`];
   const pushed = await gitRun(space, args, { timeoutMs: NETWORK_TIMEOUT_MS });
   if (pushed.code !== 0) throw new HttpError(409, `Couldn't push ${status.branch}: ${gitWords(pushed.stderr || pushed.stdout) || `exit code ${pushed.code}`}`);
 }
@@ -198,10 +212,10 @@ export const workspaceGit = {
     const before = await gitStatus(space);
     const pushing = Boolean(input?.push || input?.pr);
     // Asked before anything happens, so a refusal leaves nothing half done.
-    if (pushing && before.branch && before.branch === before.defaultBranch && !input.confirmDefault) {
-      throw new HttpError(409, `Pushing to ${before.branch}, the repo's default branch, needs your OK first.`);
+    if (pushing && needsOk(before, Boolean(input.confirmDefault))) throw NEEDS_OK(before);
+    if (input?.pr && (before.branch === before.defaultBranch || before.pushesTo === before.defaultBranch)) {
+      throw new HttpError(409, `A pull request needs a branch other than ${before.defaultBranch}.`);
     }
-    if (input?.pr && before.branch === before.defaultBranch) throw new HttpError(409, `A pull request needs a branch other than ${before.branch}.`);
     if (input?.pr && !before.canOpenPr) throw new HttpError(409, before.prProblem ?? "A pull request can't be opened from here.");
     const steps: string[] = [];
     if (before.changes) {
@@ -251,6 +265,8 @@ export const workspaceGit = {
   /** Pull (fast-forward only), then push what's left. */
   async sync(space: ChatSpace, confirmDefault: boolean): Promise<WorkspaceGitResult> {
     const before = await gitStatus(space);
+    // Asked before pulling, so a refusal changes nothing.
+    if ((before.ahead || !before.upstream) && needsOk(before, confirmDefault)) throw NEEDS_OK(before);
     if (before.upstream) await pullFastForward(space);
     const middle = await gitStatus(space);
     if (middle.ahead || !middle.upstream) await push(space, middle, confirmDefault);

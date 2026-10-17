@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readSync, statSync, writeSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, ftruncateSync, lstatSync, readdirSync, readSync, statSync, writeSync } from "node:fs";
 import { delimiter, dirname, extname, join } from "node:path";
 import { createInterface } from "node:readline";
 import type { WorkspaceFile, WorkspaceFiles, WorkspaceSave, WorkspaceSaved, WorkspaceSearch, WorkspaceSearchHit } from "@tot/shared/workspace";
 import { HttpError } from "../agent/orchestrator.ts";
 import { gitBatch } from "./git.ts";
-import { inside, isLink, type ChatSpace } from "./root.ts";
+import { cleanPath, inside, openInside, type ChatSpace } from "./root.ts";
 
 /**
  * The Files tab: a chat folder's files (what git doesn't ignore), one file read or saved, its images, and a
@@ -62,12 +62,13 @@ function walk(root: string): { files: string[]; truncated: boolean } {
   return { files, truncated: false };
 }
 
-/** Reads up to `limit` bytes of a file, never through a symlink in its last step. */
-function readCapped(path: string, limit: number): { buffer: Buffer; size: number; mtime: number } {
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+/** Up to `limit` bytes of a file in the folder (opened by openInside), with its size and mtime; a folder is refused. */
+export function readInside(root: string, input: unknown, limit: number): { buffer: Buffer; size: number; mtime: number; rel: string } {
+  const { fd, rel } = openInside(root, input);
   try {
     const stat = fstatSync(fd);
-    if (!stat.isFile()) throw new HttpError(400, "That isn't a file.");
+    if (stat.isDirectory()) throw new HttpError(400, `${rel} is a folder.`);
+    if (!stat.isFile()) throw new HttpError(400, `${rel} isn't a file.`);
     const buffer = Buffer.alloc(Math.min(stat.size, limit));
     let read = 0;
     while (read < buffer.length) {
@@ -75,7 +76,7 @@ function readCapped(path: string, limit: number): { buffer: Buffer; size: number
       if (!got) break;
       read += got;
     }
-    return { buffer: buffer.subarray(0, read), size: stat.size, mtime: stat.mtimeMs };
+    return { buffer: buffer.subarray(0, read), size: stat.size, mtime: stat.mtimeMs, rel };
   } finally {
     closeSync(fd);
   }
@@ -158,10 +159,8 @@ function searchInNode(root: string, files: string[], { query, regex, caseSensiti
     if (Date.now() > deadline) return { hits, truncated: true };
     let text: string;
     try {
-      const path = inside(root, file).path;
-      if (isLink(path) || statSync(path).size > MAX_TEXT_BYTES) continue;
-      const buffer = readFileSync(path);
-      if (buffer.subarray(0, 8000).includes(0)) continue;
+      const { buffer, size } = readInside(root, file, MAX_TEXT_BYTES);
+      if (size > MAX_TEXT_BYTES || buffer.subarray(0, 8000).includes(0)) continue;
       text = buffer.toString("utf8");
     } catch {
       continue;
@@ -191,23 +190,19 @@ export const workspaceFiles = {
   },
 
   read(space: ChatSpace, input: unknown): WorkspaceFile {
-    const { path, rel } = inside(space.root, input);
-    if (!rel) throw new HttpError(400, "Name a file.");
-    if (statSync(path).isDirectory()) throw new HttpError(400, `${rel} is a folder.`);
-    const stat = statSync(path);
-    if (imageType(rel)) return { path: rel, kind: stat.size > MAX_IMAGE_BYTES ? "too-large" : "image", size: stat.size, mtime: stat.mtimeMs };
-    if (stat.size > MAX_TEXT_BYTES) return { path: rel, kind: "too-large", size: stat.size, mtime: stat.mtimeMs };
-    const { buffer, size, mtime } = readCapped(path, MAX_TEXT_BYTES);
+    // An image is only described here; its bytes come from `raw`.
+    const { buffer, size, mtime, rel } = readInside(space.root, input, imageType(cleanPath(input)) ? 0 : MAX_TEXT_BYTES);
+    if (imageType(rel)) return { path: rel, kind: size > MAX_IMAGE_BYTES ? "too-large" : "image", size, mtime };
+    if (size > MAX_TEXT_BYTES) return { path: rel, kind: "too-large", size, mtime };
     if (buffer.subarray(0, 8000).includes(0)) return { path: rel, kind: "binary", size, mtime };
     return { path: rel, kind: "text", content: buffer.toString("utf8"), size, mtime };
   },
 
   /** An image's bytes and type, for the preview (nothing else is served raw). */
   raw(space: ChatSpace, input: unknown): { body: Buffer; type: string } {
-    const { path, rel } = inside(space.root, input);
-    const type = imageType(rel);
+    const type = imageType(cleanPath(input));
     if (!type) throw new HttpError(400, "Only images are shown as they are.");
-    const { buffer, size } = readCapped(path, MAX_IMAGE_BYTES);
+    const { buffer, size } = readInside(space.root, input, MAX_IMAGE_BYTES);
     if (size > MAX_IMAGE_BYTES) throw new HttpError(400, "That image is too large to show.");
     return { body: buffer, type };
   },
@@ -218,20 +213,21 @@ export const workspaceFiles = {
     const { path, rel } = inside(space.root, input.path, { exists: false });
     if (!rel) throw new HttpError(400, "Name a file.");
     if (!existsSync(dirname(path)) || !statSync(dirname(path)).isDirectory()) throw new HttpError(400, `There's no folder for ${rel}.`);
-    if (existsSync(path)) {
-      const stat = lstatSync(path);
-      if (stat.isSymbolicLink() || !stat.isFile()) throw new HttpError(400, `${rel} isn't a file TOT can save over.`);
-      if (typeof input.baseMtime === "number" && Math.abs(stat.mtimeMs - input.baseMtime) > 1) {
+    const fresh = !existsSync(path);
+    if (!fresh && (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile())) throw new HttpError(400, `${rel} isn't a file TOT can save over.`);
+    // Opened (made, for a new file) and checked to be the file in this folder before anything in it changes.
+    const { fd } = openInside(space.root, rel, constants.O_WRONLY | (fresh ? constants.O_CREAT | constants.O_EXCL : 0));
+    try {
+      const stat = fstatSync(fd);
+      // A second name for the same file could be anywhere, outside the folder too: not one to write through.
+      if (!stat.isFile() || stat.nlink > 1) throw new HttpError(400, `${rel} isn't a file TOT can save over.`);
+      if (!fresh && typeof input.baseMtime === "number" && Math.abs(stat.mtimeMs - input.baseMtime) > 1) {
         throw new HttpError(409, `${rel} changed since you opened it. Reload it, then make your change again.`);
       }
-    }
-    // The folder it goes in is checked again right before writing, then the file opened without following a link.
-    inside(space.root, dirname(rel) === "." ? "" : dirname(rel));
-    const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o644);
-    try {
-      writeSync(fd, input.content);
-      const stat = fstatSync(fd);
-      return { path: rel, size: stat.size, mtime: stat.mtimeMs };
+      ftruncateSync(fd, 0);
+      writeSync(fd, input.content, 0);
+      const written = fstatSync(fd);
+      return { path: rel, size: written.size, mtime: written.mtimeMs };
     } finally {
       closeSync(fd);
     }

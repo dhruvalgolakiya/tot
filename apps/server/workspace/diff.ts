@@ -1,8 +1,8 @@
-import { closeSync, openSync, readSync, statSync } from "node:fs";
 import type { WorkspaceChange, WorkspaceChangeStatus, WorkspaceDiff, WorkspaceFileDiff } from "@tot/shared/workspace";
 import { HttpError } from "../agent/orchestrator.ts";
 import { gitBatch, gitRun } from "./git.ts";
-import { cleanPath, inside, type ChatSpace } from "./root.ts";
+import { readInside } from "./files.ts";
+import { cleanPath, type ChatSpace } from "./root.ts";
 
 /**
  * A chat folder's changes against its last commit: what's changed in the working tree (staged or not) and the
@@ -18,18 +18,10 @@ const MAX_COUNTED_BYTES = 2 * 1024 * 1024;
 const MAX_PATCH_CHARS = 1_500_000;
 const DIFF = ["--no-color", "--no-ext-diff", "--no-textconv", "-M"];
 
-/** The first bytes of a file, and whether it holds a NUL (git's own test for binary). */
-function head(path: string, bytes: number): { buffer: Buffer; size: number; binary: boolean } {
-  const fd = openSync(path, "r");
-  try {
-    const size = statSync(path).size;
-    const buffer = Buffer.alloc(Math.min(size, bytes));
-    const read = readSync(fd, buffer, 0, buffer.length, 0);
-    const sample = buffer.subarray(0, Math.min(read, 8000));
-    return { buffer: buffer.subarray(0, read), size, binary: sample.includes(0) };
-  } finally {
-    closeSync(fd);
-  }
+/** The first bytes of a file in the folder, and whether it holds a NUL (git's own test for binary). */
+function head(root: string, path: string, bytes: number): { buffer: Buffer; size: number; binary: boolean } {
+  const { buffer, size } = readInside(root, path, bytes);
+  return { buffer, size, binary: buffer.subarray(0, 8000).includes(0) };
 }
 
 function lineCount(text: string): number {
@@ -113,7 +105,7 @@ export const workspaceDiff = {
       if (oldPath) change.oldPath = oldPath;
       if (kind === "untracked") {
         try {
-          const file = head(inside(space.root, path).path, MAX_COUNTED_BYTES);
+          const file = head(space.root, path, MAX_COUNTED_BYTES);
           change.binary = file.binary;
           if (!file.binary && file.size <= MAX_COUNTED_BYTES) change.added = lineCount(file.buffer.toString("utf8"));
         } catch {
@@ -132,11 +124,11 @@ export const workspaceDiff = {
     const oldPath = old ? cleanPath(old) : "";
     if (!path) throw new HttpError(400, "Name a file.");
     if (!space.git) throw new HttpError(409, "This folder isn't a git repo.");
-    const tracked = await gitRun(space, ["ls-files", "--error-unmatch", "--", path]);
+    const tracked = await gitRun(space, ["--literal-pathspecs", "ls-files", "--error-unmatch", "--", path]);
     const deleted = tracked.code === 0 ? null : await gitRun(space, ["cat-file", "-e", `HEAD:${path}`]);
     if (tracked.code !== 0 && deleted?.code !== 0) {
       // Untracked: the whole file is new. Read here, inside the folder, rather than by `git diff --no-index`.
-      const file = head(inside(space.root, path).path, MAX_PATCH_CHARS);
+      const file = head(space.root, path, MAX_PATCH_CHARS);
       if (file.binary) return { path, patch: "", binary: true, truncated: false };
       const text = file.buffer.toString("utf8");
       const lines = text.split("\n");
@@ -144,7 +136,7 @@ export const workspaceDiff = {
       const patch = [`diff --git a/${path} b/${path}`, "new file", "--- /dev/null", `+++ b/${path}`, `@@ -0,0 +1,${lines.length} @@`, ...lines.map((line) => `+${line}`)].join("\n");
       return { path, patch: `${patch}\n`, binary: false, truncated: file.size > MAX_PATCH_CHARS };
     }
-    const result = await gitRun(space, ["diff", await base(space), ...DIFF, "--", ...(oldPath && oldPath !== path ? [oldPath] : []), path]);
+    const result = await gitRun(space, ["--literal-pathspecs", "diff", await base(space), ...DIFF, "--", ...(oldPath && oldPath !== path ? [oldPath] : []), path]);
     if (result.code !== 0) throw new HttpError(409, `Git couldn't diff ${path}.`);
     const binary = /^Binary files .* differ$/m.test(result.stdout);
     const truncated = result.stdout.length > MAX_PATCH_CHARS;

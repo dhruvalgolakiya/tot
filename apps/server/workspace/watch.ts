@@ -7,8 +7,9 @@ import { watch, type FSWatcher } from "node:fs";
  */
 
 const DEBOUNCE_MS = 300;
-/** Busy folders whose churn says nothing about the user's changes. git's index and HEAD still count. */
-const NOISE = /(^|\/)(node_modules|\.next|\.turbo|\.cache|\.DS_Store)(\/|$)|^\.git\/(objects|logs|lfs)\//;
+/** Busy folders whose churn says nothing about this folder's changes (other chats' worktrees included). git's index and HEAD still count. */
+const NOISE = /(^|\/)(node_modules|\.next|\.turbo|\.cache|\.DS_Store)(\/|$)|^\.git\/(objects|logs|lfs)\/|^\.tot-worktrees\//;
+const REWATCH_MS = 2000;
 
 interface Watched {
   watcher: FSWatcher | null;
@@ -29,18 +30,25 @@ export const workspaceWatch = {
     let entry = folders.get(root);
     if (!entry) {
       const created: Watched = { watcher: null, listeners: new Set(), timer: null };
-      try {
-        created.watcher = watch(root, { recursive: true }, (_event, name) => {
-          if (name && NOISE.test(String(name))) return;
-          if (!created.timer) created.timer = setTimeout(() => fire(created), DEBOUNCE_MS);
-        });
-        created.watcher.on("error", () => {
-          created.watcher?.close();
-          created.watcher = null;
-        });
-      } catch {
-        // Can't watch it (gone, or too many files for this system): panels still refresh on focus and after turns.
-      }
+      const start = () => {
+        try {
+          created.watcher = watch(root, { recursive: true }, (_event, name) => {
+            if (name && NOISE.test(String(name))) return;
+            if (!created.timer) created.timer = setTimeout(() => fire(created), DEBOUNCE_MS);
+          });
+          // Lost (the folder moved, a system limit): tried again while anyone's still listening.
+          created.watcher.on("error", () => {
+            created.watcher?.close();
+            created.watcher = null;
+            setTimeout(() => {
+              if (folders.get(root) === created && !created.watcher) start();
+            }, REWATCH_MS).unref();
+          });
+        } catch {
+          // Can't watch it (gone, or too many files for this system): panels still refresh on focus and after turns.
+        }
+      };
+      start();
       entry = created;
       folders.set(root, entry);
     }

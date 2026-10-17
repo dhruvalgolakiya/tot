@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import { accessSync, chmodSync, constants, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
-import type { TerminalEvent, WorkspaceTerminal } from "@tot/shared/workspace";
+import type { TerminalEvent, TerminalStreamEvent, WorkspaceTerminal } from "@tot/shared/workspace";
 import { HttpError } from "../agent/orchestrator.ts";
 import { appEvents } from "../app-events.ts";
 import { hostGitEnv } from "../git-env.ts";
-import { chatSpaces, type ChatSpace } from "./root.ts";
+import type { ConversationRecord } from "../data/conversations.ts";
+import type { ChatSpace } from "./root.ts";
 
 /**
  * Terminals in a chat's folder: a real shell (the user's own, as a login shell) on a pseudo-terminal, kept by
@@ -27,6 +28,8 @@ const BATCH_MS = 8;
 interface Session {
   info: WorkspaceTerminal;
   root: string;
+  /** The chat's project and workspace when it opened: a change to either ends it. */
+  place: string;
   pty: Pty;
   scrollback: string;
   pending: string;
@@ -35,6 +38,10 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
+/** Chat id → listeners to all its terminals (one stream per chat in the panel). */
+const chatListeners = new Map<string, Set<(event: TerminalStreamEvent) => void>>();
+
+const placeOf = (chat: Pick<ConversationRecord, "projectId" | "workspace">) => JSON.stringify([chat.projectId ?? null, chat.workspace ?? null]);
 let loaded: Promise<typeof import("node-pty")> | null = null;
 
 /**
@@ -63,18 +70,34 @@ function nodePty(): Promise<typeof import("node-pty")> {
   return loaded;
 }
 
-/** The user's environment for their shell, minus TOT's own settings and git variables pointing elsewhere. */
+/** Provider and GitHub credentials TOT may hold in its own environment: the user's shell loads its own from their profile. */
+const PRIVATE = /^(TOT_|ELECTRON_|npm_|ANTHROPIC_|OPENAI_|CLAUDE|CODEX_|GITHUB_TOKEN$|GH_TOKEN$|NODE_OPTIONS$)/;
+
+/**
+ * The user's environment for their shell, minus TOT's own settings and credentials, git variables pointing
+ * elsewhere, and with git's file-system monitor off: a prompt that runs `git status` in a folder an agent could
+ * write would otherwise start whatever program the agent named there.
+ */
 function shellEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(hostGitEnv())) {
-    if (value === undefined || /^(TOT_|ELECTRON_|npm_)/.test(key) || key === "NODE_OPTIONS") continue;
+    if (value === undefined || PRIVATE.test(key)) continue;
     env[key] = value;
   }
-  return { ...env, TERM: "xterm-256color", COLORTERM: "truecolor", LANG: env.LANG || "en_US.UTF-8" };
+  return {
+    ...env,
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    LANG: env.LANG || "en_US.UTF-8",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.fsmonitor",
+    GIT_CONFIG_VALUE_0: "false",
+  };
 }
 
 function emit(session: Session, event: TerminalEvent): void {
   for (const listener of [...session.listeners]) listener(event);
+  for (const listener of [...(chatListeners.get(session.info.conversationId) ?? [])]) listener({ ...event, id: session.info.id });
 }
 
 function end(session: Session): void {
@@ -118,7 +141,7 @@ export const terminals = {
       createdAt: Date.now(),
       exitCode: null,
     };
-    const session: Session = { info, root: space.root, pty: child, scrollback: "", pending: "", flush: null, listeners: new Set() };
+    const session: Session = { info, root: space.root, place: placeOf(space.chat), pty: child, scrollback: "", pending: "", flush: null, listeners: new Set() };
     sessions.set(info.id, session);
     child.onData((data) => {
       session.scrollback = (session.scrollback + data).slice(-SCROLLBACK_CHARS);
@@ -162,6 +185,21 @@ export const terminals = {
     return () => session.listeners.delete(listener);
   },
 
+  /** Every terminal of a chat: what each printed lately, then all they print, terminals opened later included. */
+  subscribeChat(chatId: string, listener: (event: TerminalStreamEvent) => void): () => void {
+    for (const session of sessions.values()) {
+      if (session.info.conversationId === chatId && session.scrollback) listener({ type: "output", data: session.scrollback, id: session.info.id });
+    }
+    let set = chatListeners.get(chatId);
+    if (!set) chatListeners.set(chatId, (set = new Set()));
+    const listeners = set;
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+      if (!listeners.size && chatListeners.get(chatId) === listeners) chatListeners.delete(chatId);
+    };
+  },
+
   write(id: string, data: unknown): void {
     if (typeof data !== "string" || data.length > 64 * 1024) throw new HttpError(400, "Send text to the terminal.");
     terminals.get(id).pty.write(data);
@@ -188,12 +226,12 @@ export const terminals = {
   count: () => sessions.size,
 };
 
-// A chat deleted, or no longer working in that folder (its worktree removed, moved to another project): its terminals end.
+// A chat deleted, or no longer working in that folder (moved to another project, its workspace changed): its terminals end.
 appEvents.subscribe((event) => {
   if (event.type === "conversation-deleted") terminals.closeChat(event.conversationId);
   else if (event.type === "conversation") {
-    const open = [...sessions.values()].filter((session) => session.info.conversationId === event.conversation.id);
-    if (open.length && chatSpaces.tryResolve(event.conversation.id)?.root !== open[0]!.root) terminals.closeChat(event.conversation.id);
+    const place = placeOf(event.conversation);
+    for (const session of [...sessions.values()]) if (session.info.conversationId === event.conversation.id && session.place !== place) end(session);
   }
 });
 process.once("exit", () => terminals.closeAll());

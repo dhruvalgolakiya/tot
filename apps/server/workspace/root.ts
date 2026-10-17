@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, posix, relative } from "node:path";
 import type { Project } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
@@ -93,7 +93,9 @@ function resolveSpace(chat: ConversationRecord): ChatSpace {
   const root = realOrNull(path);
   if (!root || !statSync(root).isDirectory()) throw new HttpError(409, `${tildePath(path)} is gone.`);
   if (!isIn(root, within)) throw new HttpError(409, `${tildePath(path)} now leads somewhere else, so TOT won't show it.`);
-  const host = own.kind === "folder" && workspace.mode === "checkout";
+  // TOT runs git itself only in the user's main checkout, and only while its .git is a plain repo folder: one that's a
+  // file, or names another folder as its common dir, could send git to config an agent wrote. Those run sandboxed.
+  const host = own.kind === "folder" && workspace.mode === "checkout" && plainGitDir(root);
   let grant: FolderGrant | null = null;
   let workDir: string | null = null;
   if (!host) {
@@ -117,6 +119,15 @@ function resolveSpace(chat: ConversationRecord): ChatSpace {
   };
 }
 
+/** A .git that's a real folder (not a link or a file pointing elsewhere) without a common dir of its own. */
+function plainGitDir(root: string): boolean {
+  try {
+    return lstatSync(join(root, ".git")).isDirectory() && !existsSync(join(root, ".git", "commondir"));
+  } catch {
+    return false;
+  }
+}
+
 export const chatSpaces = {
   /** The chat's folder; throws, in words for the user, when it has none on this Mac. */
   resolve(chatId: string): ChatSpace {
@@ -136,6 +147,16 @@ export const chatSpaces = {
 };
 
 /**
+ * Refuses a path in git's own files or in other chats' worktrees. The Mac's disk ignores case and Unicode form,
+ * so ".GIT" is .git there: names are compared folded.
+ */
+function refuseReserved(path: string): void {
+  const parts = path.split("/").map((part) => part.normalize("NFC").toLowerCase());
+  if (parts.includes(".git")) throw new HttpError(403, "Git's own files aren't shown here.");
+  if (parts[0] === ".tot-worktrees") throw new HttpError(403, "Other chats' and tasks' worktrees aren't shown here.");
+}
+
+/**
  * A relative path as the panel sends it, normalized ("src/app.ts"); "" for the folder itself. Refuses what
  * could leave the folder or reach git's own files.
  */
@@ -144,15 +165,14 @@ export function cleanPath(input: unknown): string {
   const path = posix.normalize(input.replaceAll("\\", "/")).replace(/^(\.\/)+/, "").replace(/\/+$/, "");
   if (path === "." || path === "") return "";
   if (path.startsWith("/") || path === ".." || path.startsWith("../")) throw new HttpError(400, `"${input}" is outside this chat's folder.`);
-  const parts = path.split("/");
-  if (parts.includes(".git")) throw new HttpError(403, "Git's own files aren't shown here.");
-  if (parts[0] === ".tot-worktrees") throw new HttpError(403, "Other chats' and tasks' worktrees aren't shown here.");
+  refuseReserved(path);
   return path;
 }
 
 /**
  * Where a relative path is in the folder, checked: the path itself and every folder on the way must stay
- * inside it once symlinks are followed. `exists` also requires something to be there.
+ * inside it once symlinks are followed, and not end up in git's own files that way either. `exists` also
+ * requires something to be there.
  */
 export function inside(root: string, input: unknown, { exists = true } = {}): { path: string; rel: string } {
   const rel = cleanPath(input);
@@ -161,11 +181,34 @@ export function inside(root: string, input: unknown, { exists = true } = {}): { 
   while (!existsSync(probe) && probe !== root && isIn(probe, root)) probe = dirname(probe);
   const real = realOrNull(probe);
   if (!real || !isIn(real, root)) throw new HttpError(403, `"${rel}" leads outside this chat's folder.`);
+  if (real !== root) refuseReserved(relative(root, real));
   if (probe !== target) {
     if (exists) throw new HttpError(404, `There's no ${rel} in this folder.`);
     return { path: join(real, relative(probe, target)), rel };
   }
   return { path: real, rel };
+}
+
+/**
+ * Opens a file in the folder, then checks that what was opened is what the path leads to inside it now: a folder
+ * on the way swapped for a link while it opened (an agent racing the panel) is caught by the file's identity, not
+ * just its name. Never through a link in its last step either. The caller closes the descriptor.
+ */
+export function openInside(root: string, input: unknown, flags: number = constants.O_RDONLY, mode = 0o644): { fd: number; path: string; rel: string } {
+  const { path, rel } = inside(root, input, { exists: !(flags & constants.O_CREAT) });
+  if (!rel) throw new HttpError(400, "Name a file.");
+  const fd = openSync(path, flags | constants.O_NOFOLLOW, mode);
+  try {
+    const opened = fstatSync(fd);
+    const real = realOrNull(path);
+    const now = real ? statSync(real) : null;
+    if (!real || !now || !isIn(real, root) || now.dev !== opened.dev || now.ino !== opened.ino) throw new HttpError(403, `"${rel}" leads outside this chat's folder.`);
+    refuseReserved(relative(root, real));
+    return { fd, path: real, rel };
+  } catch (err) {
+    closeSync(fd);
+    throw err;
+  }
 }
 
 /** Whether a path is a symlink (lstat): a file to write must not be one. */

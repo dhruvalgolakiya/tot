@@ -56,13 +56,16 @@ function grantRules(grant: FolderGrant | null | undefined): { read: string; writ
   const path = (...parts: string[]) => sbplString(join(...parts));
   if (grant.write) {
     // The main checkout: anything in it, except what git (or TOT) would later run or trust outside any
-    // sandbox: its config and hooks (a submodule's too), alternates, and the worktrees of tasks and other chats.
+    // sandbox: its config and hooks (a submodule's too), alternates, the worktrees of tasks and other chats, and
+    // .git itself and its commondir, either of which could point git at a config written elsewhere.
     return {
       read,
       write: `
 ; Folder grant for a chat in the user's main checkout: the folder, minus git's config, hooks and TOT's worktrees.
 (allow file-write* (subpath ${path(grant.folder)}))
 (deny file-write*
+  (literal ${path(git)})
+  (literal ${path(git, "commondir")})
   (literal ${path(git, "config")})
   (literal ${path(git, "config.lock")})
   (literal ${path(git, "config.worktree")})

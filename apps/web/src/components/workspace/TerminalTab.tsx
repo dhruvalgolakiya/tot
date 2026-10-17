@@ -6,7 +6,7 @@ import { Terminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { Plus, SquareTerminal, X } from "lucide-react";
 import type { Conversation } from "@tot/shared/types";
-import type { TerminalEvent, WorkspaceInfo, WorkspaceTerminal } from "@tot/shared/workspace";
+import type { TerminalStreamEvent, WorkspaceInfo, WorkspaceTerminal } from "@tot/shared/workspace";
 import { errorMessage } from "../../lib/api";
 import { useResolvedTheme, type ResolvedTheme } from "../../lib/theme";
 import { workspaceApi } from "../../lib/workspace";
@@ -37,19 +37,76 @@ const lastShown = new Map<string, string>();
 const post = (path: string, body: unknown) =>
   fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+/** Output waiting for its terminal's view, at most this much each. */
+const PENDING_CHARS = 256 * 1024;
+
+interface Writer {
+  write: (data: string) => void;
+  exit: (exitCode: number) => void;
+  /** The stream reconnected: what the terminal printed lately comes again, onto a clean screen. */
+  reset: () => void;
+}
+
 /**
- * One terminal: xterm.js on the server's shell, its output over a stream (what it printed lately first), keys
- * sent as they're typed, its size following the panel's. Escape and every other key go to the shell.
+ * Every terminal of a chat over one stream (a browser keeps only a few connections to one server): output goes to
+ * its terminal's view, or waits for it to attach.
+ */
+function useTerminalHub(chatId: string, enabled: boolean): (id: string, writer: Writer) => () => void {
+  const writers = useRef(new Map<string, Writer>());
+  const pending = useRef(new Map<string, string>());
+
+  useEffect(() => {
+    if (!enabled) return;
+    const source = new EventSource(`/api/conversations/${encodeURIComponent(chatId)}/workspace/terminals/stream`);
+    let dropped = false;
+    source.onerror = () => {
+      dropped = true;
+    };
+    source.onopen = () => {
+      if (dropped) {
+        pending.current.clear();
+        for (const writer of writers.current.values()) writer.reset();
+      }
+      dropped = false;
+    };
+    source.onmessage = (message) => {
+      if (!message.data) return;
+      const event = JSON.parse(message.data) as TerminalStreamEvent;
+      const writer = writers.current.get(event.id);
+      if (event.type === "output") {
+        if (writer) writer.write(event.data);
+        else pending.current.set(event.id, ((pending.current.get(event.id) ?? "") + event.data).slice(-PENDING_CHARS));
+      } else writer?.exit(event.exitCode);
+    };
+    return () => source.close();
+  }, [chatId, enabled]);
+
+  return useCallback((id: string, writer: Writer) => {
+    writers.current.set(id, writer);
+    const waiting = pending.current.get(id);
+    pending.current.delete(id);
+    if (waiting) writer.write(waiting);
+    return () => {
+      if (writers.current.get(id) === writer) writers.current.delete(id);
+    };
+  }, []);
+}
+
+/**
+ * One terminal: xterm.js on the server's shell, its output from the chat's terminal stream (what it printed lately
+ * first), keys sent as they're typed, its size following the panel's. Escape and every other key go to the shell.
  */
 function TerminalView({
   terminal,
   visible,
   theme,
+  attach,
   onExit,
 }: {
   terminal: WorkspaceTerminal;
   visible: boolean;
   theme: ResolvedTheme;
+  attach: (id: string, writer: Writer) => () => void;
   onExit: (exitCode: number) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -94,33 +151,20 @@ function TerminalView({
     fitRef.current = refit;
     const observer = new ResizeObserver(refit);
 
-    let source: EventSource | null = null;
+    const detach = attach(terminal.id, {
+      write: (data) => term.write(data),
+      exit: (exitCode) => {
+        term.write(`\r\n\x1b[2m[The shell exited with code ${exitCode}.]\x1b[0m\r\n`);
+        onExitRef.current(exitCode);
+      },
+      reset: () => term.reset(),
+    });
     // The font first, so xterm measures its cells in the right one.
     void document.fonts.load(`12px "Geist Mono"`).finally(() => {
       if (disposed) return;
       term.open(element);
       refit();
       observer.observe(element);
-      source = new EventSource(`/api/workspace/terminals/${encodeURIComponent(terminal.id)}/stream`);
-      let dropped = false;
-      source.onopen = () => {
-        // Back after a dropped connection: the server sends what it printed lately again, from a clean screen.
-        if (dropped) term.reset();
-        dropped = false;
-      };
-      source.onerror = () => {
-        dropped = true;
-      };
-      source.onmessage = (message) => {
-        if (!message.data) return;
-        const event = JSON.parse(message.data) as TerminalEvent;
-        if (event.type === "output") term.write(event.data);
-        else {
-          term.write(`\r\n\x1b[2m[The shell exited with code ${event.exitCode}.]\x1b[0m\r\n`);
-          source?.close();
-          onExitRef.current(event.exitCode);
-        }
-      };
     });
 
     return () => {
@@ -128,11 +172,12 @@ function TerminalView({
       flush();
       window.clearTimeout(resizeTimer);
       observer.disconnect();
-      source?.close();
+      detach();
       typed.dispose();
       term.dispose();
       termRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one xterm per terminal.
   }, [terminal.id]);
 
   useEffect(() => {
@@ -160,6 +205,7 @@ export function TerminalTab({ chat, info }: { chat: Conversation; info: Workspac
   const [problem, setProblem] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const started = useRef(false);
+  const attach = useTerminalHub(chat.id, info.canTerminal);
 
   const show = useCallback(
     (id: string | null) => {
@@ -261,6 +307,7 @@ export function TerminalTab({ chat, info }: { chat: Conversation; info: Workspac
               terminal={terminal}
               visible={terminal.id === shown}
               theme={theme}
+              attach={attach}
               onExit={(exitCode) => setList((current) => (current ?? []).map((each) => (each.id === terminal.id ? { ...each, exitCode } : each)))}
             />
           ))

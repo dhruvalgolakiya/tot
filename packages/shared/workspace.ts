@@ -14,7 +14,8 @@
  * GET    /api/conversations/:id/workspace/search?q=&case=1&regex=1 -> WorkspaceSearch
  * GET    /api/conversations/:id/workspace/terminals       -> WorkspaceTerminal[]
  * POST   /api/conversations/:id/workspace/terminals       { cols, rows } -> WorkspaceTerminal
- * GET    /api/workspace/terminals/:tid/stream             -> SSE: TerminalEvent (what it printed lately first)
+ * GET    /api/conversations/:id/workspace/terminals/stream -> SSE: TerminalStreamEvent, for every terminal of the chat
+ *                                                          (what each printed lately first, then terminals opened later too)
  * POST   /api/workspace/terminals/:tid/input              { data } -> { ok: true }
  * POST   /api/workspace/terminals/:tid/resize             { cols, rows } -> { ok: true }
  * DELETE /api/workspace/terminals/:tid                    -> { ok: true }
@@ -128,8 +129,11 @@ export interface WorkspaceTerminal {
   exitCode: number | null;
 }
 
-/** What a terminal's stream sends: its output (what it printed lately first), and its end. */
+/** What a terminal sends: its output (what it printed lately first), and its end. */
 export type TerminalEvent = { type: "output"; data: string } | { type: "exit"; exitCode: number };
+
+/** A chat's terminal stream: each terminal's events, with its id. */
+export type TerminalStreamEvent = TerminalEvent & { id: string };
 
 /** A dev server running from the chat's folder, to preview in the Browser tab. */
 export interface WorkspaceServer {
@@ -146,6 +150,8 @@ export interface WorkspaceGit {
   branch: string | null;
   /** The repo's default branch ("main"), when known. */
   defaultBranch: string | null;
+  /** The branch on the remote a push lands on (the branch's push destination, else what it tracks, else its name). */
+  pushesTo: string | null;
   upstream: string | null;
   ahead: number;
   behind: number;
