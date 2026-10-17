@@ -71,7 +71,7 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
   const folds = rows.filter((row) => row.kind === "work").length;
 
   return (
-    <div className="group/message min-w-0">
+    <div data-reply className="group/message min-w-0">
       {leading.map((note) => (
         <SteerNote key={note.id} message={note} inline />
       ))}

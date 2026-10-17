@@ -24,9 +24,11 @@ export function useComposerInbox({
         const current = inputRef.current?.value ?? "";
         const next = withInsert(current, insert);
         setText(next);
-        addUploaded(insert.attachments);
-        if (insert.contextChats.length) {
-          setContextChats((list) => [...new Set([...list, ...insert.contextChats])].slice(0, MAX_ATTACHED_CHATS));
+        if (insert.kind === "draft") {
+          addUploaded(insert.attachments);
+          if (insert.contextChats.length) {
+            setContextChats((list) => [...new Set([...list, ...insert.contextChats])].slice(0, MAX_ATTACHED_CHATS));
+          }
         }
         requestAnimationFrame(() => {
           const input = inputRef.current;

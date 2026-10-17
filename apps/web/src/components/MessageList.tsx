@@ -9,6 +9,7 @@ import { isTask } from "../lib/tasks";
 import { retryConversation, selectActiveAgent, setChatScrolled, useStore } from "../store";
 import { AssistantMessage } from "./AssistantMessage";
 import { ForkedFrom } from "./ForkedFrom";
+import { QuoteSelection } from "./QuoteSelection";
 import { TaskEmptyState } from "./tasks/TaskEmptyState";
 import { isTaskEndingMessage, TaskNotices } from "./tasks/TaskNotices";
 import { ThinkingIndicator } from "./ThinkingIndicator";
@@ -308,6 +309,8 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-linear-to-t from-canvas to-transparent"
       />
+
+      <QuoteSelection root={contentRef} scroller={scrollRef} />
 
       {!atBottom && (
         <button

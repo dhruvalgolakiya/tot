@@ -57,3 +57,11 @@ snapshotted again onto `refs/tot/checkpoints/<chat>/<reply>-end` and diffed agai
 with its `run-end` event, so the line costs nothing to show. A turn that only looked changes nothing and keeps no end
 ref. The files and diff load when the line is opened: `GET /api/conversations/:id/messages/:messageId/changes`
 (`TurnDiff`, patch cut at 200 kB). The line stays visible in folded turns.
+
+## Quote a selection
+
+Selecting text inside one reply shows a small floating **Quote** button over it (below it when there's no room above);
+clicking puts the selection into the message box as a markdown quote (`> …`, blank lines kept inside it) followed by a
+blank line with the cursor (`components/QuoteSelection.tsx`, one listener per message list). Text goes to the composer
+through `lib/composerInbox.ts`, the same small hand-off a rewound message uses, so the composer only adds one hook
+(`hooks/useComposerInbox.ts`).

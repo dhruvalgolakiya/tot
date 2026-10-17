@@ -91,7 +91,7 @@ export function Composer({
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [chatOver, setChatOver] = useState(false);
   useEffect(() => setContextChats([]), [currentId]);
-  // A rewound message comes back here to edit (lib/composerInbox).
+  // A rewound message comes back here to edit, and quotes from replies land here (lib/composerInbox).
   useComposerInbox({ inputRef, setText, setCaret, setContextChats, attachments });
   // /best-of and skills are for chats, project pages and home; a task's composer steers or replies.
   const command = task ? null : parseSlash(text);
