@@ -84,6 +84,7 @@ import { chatRoutes } from "./chats/routes.ts";
 import { workspaceRoutes } from "./workspace/routes.ts";
 import { skillRoutes } from "./skills/routes.ts";
 import { projectRoutes } from "./projects/routes.ts";
+import { sessionRoutes } from "./sessions/routes.ts";
 import { projectRepoRoutes } from "./projects/repos-routes.ts";
 import { knowledgeRoutes } from "./knowledge/routes.ts";
 import { knowledgeAutoRoutes } from "./knowledge/auto-routes.ts";
@@ -437,6 +438,8 @@ api.route("/", chatRoutes);
 api.route("/", workspaceRoutes);
 api.route("/", skillRoutes);
 api.route("/", projectRoutes);
+// A project's local Claude Code and Codex sessions, imported as chats.
+api.route("/", sessionRoutes);
 // Module 11: workspaces (lanes A–D).
 api.route("/", projectRepoRoutes);
 api.route("/", knowledgeRoutes);

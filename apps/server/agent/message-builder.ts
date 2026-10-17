@@ -7,6 +7,11 @@ const MAX_TOOL_OUTPUT_CHARS = 20_000;
 type TextLikePart = Extract<MessagePart, { type: "text" | "reasoning" }>;
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
 
+/** A tool's output as a reply keeps it: its first 20,000 characters, saying how many more there were. */
+export function clipToolOutput(output: string): string {
+  return output.length > MAX_TOOL_OUTPUT_CHARS ? `${output.slice(0, MAX_TOOL_OUTPUT_CHARS)}\n… (${output.length - MAX_TOOL_OUTPUT_CHARS} more characters)` : output;
+}
+
 function clip(value: unknown, max: number): string {
   const text = String(value ?? "").split("\n")[0].trim();
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -248,12 +253,7 @@ export class MessageBuilder {
     }
     part.status = isError ? "error" : "done";
     part.isError = Boolean(isError);
-    if (output !== undefined) {
-      part.output =
-        output.length > MAX_TOOL_OUTPUT_CHARS
-          ? `${output.slice(0, MAX_TOOL_OUTPUT_CHARS)}\n… (${output.length - MAX_TOOL_OUTPUT_CHARS} more characters)`
-          : output;
-    }
+    if (output !== undefined) part.output = clipToolOutput(output);
     this.emit({ type: "part-update", part: { ...part } });
   }
 }

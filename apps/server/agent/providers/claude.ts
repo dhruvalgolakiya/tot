@@ -409,6 +409,8 @@ export function makeClaudeProvider(accountId: string): AgentProvider {
         options: {
           ...baseOptions(controller, current),
           env: { ...buildEnv(current), ...mcp.env },
+          // TOT's own harness folder, or an imported session's folder: Claude Code finds a session by the folder it ran in.
+          cwd: input.workDir,
           model: input.model,
           effort: input.effort,
           // Current models omit reasoning text by default; summaries let the UI show "Thinking".

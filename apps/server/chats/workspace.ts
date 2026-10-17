@@ -160,11 +160,11 @@ export const chatWorkspaces = {
   /**
    * Deleting a worktree chat: its worktree goes (work in it that wasn't committed too, as the user asked), and its
    * branch goes only when it has nothing beyond its base and was never pushed; otherwise the branch stays. Null
-   * when the chat had no worktree to remove.
+   * when the chat had no worktree to remove, or only one it found (an imported session's), which stays.
    */
   async remove(chat: ConversationRecord): Promise<{ branchKept: boolean } | null> {
     const workspace = worktreeOf(chat);
-    if (!workspace?.created || !workspace.branch || !workspace.worktree) return null;
+    if (!workspace?.created || !workspace.branch || !workspace.worktree || workspace.external) return null;
     return worktrees.forTask(chat.id, async () => {
       const project = projects.get(chat.projectId);
       const own = project ? repoOf(project, workspace) : null;

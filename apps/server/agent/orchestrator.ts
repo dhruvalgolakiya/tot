@@ -55,6 +55,7 @@ import { leadSession } from "../lead/session.ts";
 import { leadSignals } from "../signals/store.ts";
 import { promptMemory } from "../memory/prompt.ts";
 import { skillBlock, skills, slashSkill, type SkillRecord } from "../skills/skills.ts";
+import { sessionImports } from "../sessions/imports.ts";
 
 export class HttpError extends Error {
   constructor(
@@ -413,7 +414,8 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         ...(fork ? { fork } : {}),
         systemPrompt,
         mcpServers: mcpServersFor(conversation, route.provider),
-        workDir: paths.agentHome,
+        // An imported session's CLI keeps it under the folder it ran in, so that's where its turns run (sessions/).
+        workDir: (resumable && sessionImports.workDir(conversation)) || paths.agentHome,
         signal,
         elicit,
         maxSteps: ctx.maxSteps,

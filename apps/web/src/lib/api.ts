@@ -47,10 +47,13 @@ import type {
   GitHubRepo,
   GitHubStatus,
   HomeProject,
+  ImportSessionsRequest,
+  ImportSessionsResult,
   KnowledgeRefreshResult,
   KnowledgeUpdate,
   LandTaskRequest,
   LeadSignal,
+  LocalSessionList,
   LearnRepoRequest,
   MailMessage,
   MailSummary,
@@ -352,6 +355,10 @@ export const api = {
   cleanUpWorktrees: (days?: number) => request<{ removed: number }>("POST", "/worktrees/cleanup", days === undefined ? {} : { days }),
   /** The setup command a project's lockfile implies: what its new worktrees run when it has none of its own. */
   detectProjectSetup: (id: string) => request<SetupDetection>("GET", `/projects/${seg(id)}/setup-detect`),
+  /** Claude Code and Codex sessions that ran in a project's folders or worktrees (`quick`: wait less on a large history). */
+  listProjectSessions: (id: string, { quick = false } = {}) => request<LocalSessionList>("GET", `/projects/${seg(id)}/sessions${quick ? "?quick=1" : ""}`),
+  /** Imports sessions as chats in the project that continue them; resolves with the chats made and what was skipped. */
+  importProjectSessions: (id: string, body: ImportSessionsRequest) => request<ImportSessionsResult>("POST", `/projects/${seg(id)}/sessions/import`, body),
 
   // Module 11 · lane A (a project's repos).
   /** Adds a GitHub repo, or a folder on this Mac (`grant` once the user said yes), to a project; resolves with the project. */

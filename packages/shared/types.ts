@@ -260,6 +260,8 @@ export type ChatWorkspace =
       baseBranch: string | null;
       /** Whether the worktree has been made (on the chat's first turn). */
       created: boolean;
+      /** A worktree the chat found rather than made (an imported session's): it stays when the chat is deleted. */
+      external?: boolean;
     };
 
 export type ConversationKind = "chat" | "task";
@@ -2695,6 +2697,76 @@ export interface T3ImportCandidate {
   binaryPath: string | null;
   /** An account with this folder exists already. */
   alreadyAdded: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Local sessions: a project's Claude Code and Codex sessions on this Mac, imported as chats
+//
+// GET  /api/projects/:id/sessions         → LocalSessionList (only reads the CLIs' folders; ?quick=1 waits less on a big history)
+// POST /api/projects/:id/sessions/import  ImportSessionsRequest → ImportSessionsResult
+//
+// Each imported session becomes a chat in the project that continues the same CLI session: its next message
+// resumes it in place (same session id, same account folder), so the model keeps its whole memory.
+// ---------------------------------------------------------------------------
+
+/** A session that ran in the project's folder or one of its worktrees, found in a Claude config folder or Codex home. */
+export interface LocalSession {
+  /** "<driver>:<session id>", what POST …/sessions/import takes. */
+  key: string;
+  driver: ProviderId;
+  sessionId: string;
+  /** The account whose folder holds it; null when no account uses that folder (it's copied into one on import). */
+  accountId: string | null;
+  /** The account's name, or the folder ("~/.claude-old") when no account uses it. */
+  accountName: string;
+  /** The folder it ran in. */
+  cwd: string;
+  /** Ran in a worktree (a TOT one or any other) rather than the main folder. */
+  worktree: boolean;
+  /** Its git branch, when it ran in a worktree or off the main folder's usual branch; null otherwise. */
+  branch: string | null;
+  /** Its own title (the CLI's summary or a name the user gave it), else its first prompt; trimmed. */
+  title: string;
+  firstPrompt: string;
+  /** User prompts and replies, as they import. */
+  messageCount: number;
+  lastActivityAt: number;
+  /** The chat it was imported into; null when it hasn't been. */
+  importedChatId: string | null;
+}
+
+/** An account a session in an unused folder can be copied into and continued on. */
+export interface LocalSessionAccount {
+  id: string;
+  driver: ProviderId;
+  name: string;
+  /** The provider's current account (Settings → Models): the default choice. */
+  isDefault: boolean;
+}
+
+export interface LocalSessionList {
+  /** Newest first. */
+  sessions: LocalSession[];
+  /** Some session files weren't read in time (a very large history): ask again shortly for the rest. */
+  partial: boolean;
+  /** When a session was last imported into this project; null before the first. */
+  lastImportAt: number | null;
+  accounts: LocalSessionAccount[];
+}
+
+export interface ImportSessionsRequest {
+  /** LocalSession keys. */
+  keys: string[];
+  /** The agent the chats are with; default: the first agent. */
+  agentId?: string;
+  /** Per provider, the account a session from an unused folder is copied into; default: that provider's current account. */
+  accounts?: Partial<Record<ProviderId, string>>;
+}
+
+export interface ImportSessionsResult {
+  imported: { key: string; conversationId: string }[];
+  /** Sessions not imported, and why (already imported, gone, unreadable). */
+  skipped: { key: string; reason: string }[];
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { Suspense, useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
-import { Archive, Bell, Brain, Compass, Ellipsis, FolderGit2, GraduationCap, ScrollText, SlidersHorizontal, SquarePen, Wrench } from "lucide-react";
+import { Archive, Bell, Brain, Compass, Ellipsis, FolderGit2, GraduationCap, History, ScrollText, SlidersHorizontal, SquarePen, Wrench } from "lucide-react";
 import type { Agent, Project } from "@tot/shared/types";
 import { api } from "../../lib/api";
 import { lazyComponent } from "../../lib/lazyComponent";
@@ -17,11 +17,13 @@ const InstructionsDialog = lazyComponent(() => import("./ProjectDialogs"), "Inst
 const ProjectSettingsDialog = lazyComponent(() => import("./ProjectDialogs"), "ProjectSettingsDialog");
 const WorktreeSetupDialog = lazyComponent(() => import("./ProjectDialogs"), "WorktreeSetupDialog");
 const ProjectSubscriptionsDialog = lazyComponent(() => import("./ProjectSubscriptionsDialog"), "ProjectSubscriptionsDialog");
+const ImportSessionsDialog = lazyComponent(() => import("./ImportSessionsDialog"), "ImportSessionsDialog");
 
-type Dialog = "repos" | "instructions" | "subscriptions" | "settings" | "worktree" | "archive";
+type Dialog = "repos" | "instructions" | "subscriptions" | "settings" | "worktree" | "sessions" | "archive";
 
 /**
- * The project page's one menu: New chat, Repos, Knowledge (the Knowledge page, on this project), then Instructions,
+ * The project page's one menu: New chat, Import sessions (a code project's Claude Code and Codex sessions on this
+ * Mac), Repos, Knowledge (the Knowledge page, on this project), then Instructions,
  * Subscriptions (module 12), Learn this project, Worktree setup, Settings, Archive. The page itself is only the Lead chat.
  */
 export function ProjectMenu({ project, agent }: { project: Project; agent: Agent | undefined }) {
@@ -95,6 +97,11 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
                 <SquarePen className="size-4 text-fg-muted" /> New chat
               </DropdownMenu.Item>
             )}
+            {!project.archived && isCodeProject(project) && (
+              <DropdownMenu.Item className="menu-item" onSelect={() => (pending.current = "sessions")}>
+                <History className="size-4 text-fg-muted" /> Import sessions…
+              </DropdownMenu.Item>
+            )}
             {!project.archived && (
               <DropdownMenu.Item className="menu-item" disabled={!agent} onSelect={() => void openLead()}>
                 <Compass className="size-4 text-fg-muted" />
@@ -151,6 +158,9 @@ export function ProjectMenu({ project, agent }: { project: Project; agent: Agent
           <ProjectSubscriptionsDialog project={project} open={dialog === "subscriptions"} onOpenChange={close} />
           <ProjectSettingsDialog project={project} open={dialog === "settings"} onOpenChange={close} />
           {isCodeProject(project) && <WorktreeSetupDialog project={project} open={dialog === "worktree"} onOpenChange={close} />}
+          {isCodeProject(project) && (
+            <ImportSessionsDialog project={project} agentId={agent?.id ?? activeAgentId ?? null} open={dialog === "sessions"} onOpenChange={close} />
+          )}
         </Suspense>
       )}
       <ConfirmDialog

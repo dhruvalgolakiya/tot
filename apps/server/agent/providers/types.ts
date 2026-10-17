@@ -36,7 +36,10 @@ export interface TurnInput {
   systemPrompt: string;
   /** Built-in "tot" server (computer + memory tools) first, then enabled plugins. */
   mcpServers: McpServerSpec[];
-  /** Stable harness cwd on this machine. The agent's real workspace is its remote computer. */
+  /**
+   * Stable harness cwd on this machine. The agent's real workspace is its remote computer. A chat continuing an
+   * imported session runs in the folder that session ran in, where its CLI keeps it.
+   */
   workDir: string;
   signal: AbortSignal;
   /** Asks the user on behalf of an MCP server (elicitation); resolves with their answer. */

@@ -856,6 +856,25 @@ db.exec(`
   );
 `);
 
+// Claude Code and Codex sessions imported as chats (sessions/): the chat each became (so none is imported twice), the
+// file it was found in, the one its CLI resumes (a copy, when it was found in a folder no account uses), and the folder
+// it ran in, where its next turns run so the CLI finds it.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS session_imports (
+    conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+    project_id TEXT,
+    driver TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    account TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    session_path TEXT NOT NULL,
+    cwd TEXT NOT NULL,
+    last_activity_at INTEGER NOT NULL,
+    imported_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS session_imports_by_session ON session_imports(driver, session_id);
+`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 /** Statements prepared once and reused, for the hot paths: a chat's load, a streaming reply's saves. */
