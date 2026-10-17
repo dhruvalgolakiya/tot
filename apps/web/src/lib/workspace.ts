@@ -1,10 +1,13 @@
 import { create } from "zustand";
 import type { Conversation } from "@tot/shared/types";
 import type {
+  WorkspaceCommit,
   WorkspaceDiff,
   WorkspaceFile,
   WorkspaceFileDiff,
   WorkspaceFiles,
+  WorkspaceGit,
+  WorkspaceGitResult,
   WorkspaceInfo,
   WorkspaceSaved,
   WorkspaceSearch,
@@ -121,6 +124,12 @@ export const workspaceApi = {
     request<WorkspaceSaved>("PUT", `${base(chatId)}/file`, { path, content, baseMtime }),
   search: (chatId: string, query: string, { regex = false, caseSensitive = false } = {}) =>
     request<WorkspaceSearch>("GET", `${base(chatId)}/search?q=${seg(query)}${regex ? "&regex=1" : ""}${caseSensitive ? "&case=1" : ""}`),
+  git: (chatId: string) => request<WorkspaceGit>("GET", `${base(chatId)}/git`),
+  suggestCommitMessage: (chatId: string) => request<{ message: string }>("POST", `${base(chatId)}/git/message`, {}),
+  commit: (chatId: string, body: WorkspaceCommit) => request<WorkspaceGitResult>("POST", `${base(chatId)}/git/commit`, body),
+  push: (chatId: string, confirmDefault = false) => request<WorkspaceGitResult>("POST", `${base(chatId)}/git/push`, { confirmDefault }),
+  pull: (chatId: string) => request<WorkspaceGitResult>("POST", `${base(chatId)}/git/pull`, {}),
+  sync: (chatId: string, confirmDefault = false) => request<WorkspaceGitResult>("POST", `${base(chatId)}/git/sync`, { confirmDefault }),
   servers: (chatId: string) => request<WorkspaceServer[]>("GET", `${base(chatId)}/servers`),
   terminals: (chatId: string) => request<WorkspaceTerminal[]>("GET", `${base(chatId)}/terminals`),
   openTerminal: (chatId: string, size: { cols?: number; rows?: number } = {}) => request<WorkspaceTerminal>("POST", `${base(chatId)}/terminals`, size),

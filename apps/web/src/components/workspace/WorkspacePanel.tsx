@@ -19,6 +19,7 @@ import {
 } from "../../lib/workspace";
 import { selectCurrentConversation, useStore } from "../../store";
 import { EmptyState } from "../ui/EmptyState";
+import { GitButton } from "./GitButton";
 import { IconButton } from "../ui/IconButton";
 import { Skeleton } from "../ui/Skeleton";
 import { Tip } from "../ui/Tip";
@@ -204,6 +205,7 @@ function Panel({ chat }: { chat: Conversation }) {
               ))}
             </Tabs.List>
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {info.status === "ready" && info.info.available && info.info.git && info.info.canWrite && <GitButton key={chat.id} chat={chat} />}
               <Tip content="Close (Esc)">
                 <IconButton label="Close workspace panel" onClick={close}>
                   <X />

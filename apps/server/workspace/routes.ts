@@ -1,11 +1,12 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { WorkspaceInfo, WorkspaceSave } from "@tot/shared/workspace";
+import type { WorkspaceCommit, WorkspaceInfo, WorkspaceSave } from "@tot/shared/workspace";
 import { HttpError } from "../agent/orchestrator.ts";
 import { callerKey, callerOf, onThisMachine } from "../auth.ts";
 import { onSignOut } from "../devices/sessions.ts";
 import { workspaceDiff } from "./diff.ts";
 import { workspaceFiles } from "./files.ts";
+import { workspaceGit } from "./gitops.ts";
 import { chatSpaces } from "./root.ts";
 import { workspaceServers } from "./servers.ts";
 import { terminals } from "./terminal.ts";
@@ -161,5 +162,24 @@ workspaceRoutes.get("/conversations/:id/workspace/servers", async (c) => {
   if (!onThisMachine(c)) throw new HttpError(403, "Dev servers in this folder can be previewed on this Mac only.");
   return c.json(await workspaceServers.list(chatSpaces.resolve(c.req.param("id"))));
 });
+
+const confirmed = async (c: Context) => ((await c.req.json().catch(() => ({}))) as { confirmDefault?: unknown })?.confirmDefault === true;
+
+workspaceRoutes.get("/conversations/:id/workspace/git", async (c) => c.json(await workspaceGit.status(chatSpaces.resolve(c.req.param("id")))));
+
+workspaceRoutes.post("/conversations/:id/workspace/git/message", async (c) =>
+  c.json({ message: await workspaceGit.suggestMessage(chatSpaces.resolve(c.req.param("id"))) }),
+);
+
+workspaceRoutes.post("/conversations/:id/workspace/git/commit", async (c) => {
+  const input = (await c.req.json().catch(() => null)) as WorkspaceCommit | null;
+  return c.json(await workspaceGit.commit(chatSpaces.resolve(c.req.param("id")), input ?? { message: "" }));
+});
+
+workspaceRoutes.post("/conversations/:id/workspace/git/push", async (c) => c.json(await workspaceGit.push(chatSpaces.resolve(c.req.param("id")), await confirmed(c))));
+
+workspaceRoutes.post("/conversations/:id/workspace/git/pull", async (c) => c.json(await workspaceGit.pull(chatSpaces.resolve(c.req.param("id")))));
+
+workspaceRoutes.post("/conversations/:id/workspace/git/sync", async (c) => c.json(await workspaceGit.sync(chatSpaces.resolve(c.req.param("id")), await confirmed(c))));
 
 export const workspaceAccess = { canWrite, canTerminal };

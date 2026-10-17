@@ -4,6 +4,7 @@
 // the local computer backend, a fake GitHub; no network.
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { execFileSync, spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +19,11 @@ process.env.HOME = HOME;
 process.on("exit", () => rmSync(HOME, { recursive: true, force: true }));
 // Sign-in set up, so other devices can be told apart from this computer.
 process.env.TOT_ACCESS_TOKEN = "Workspace-Test-Token-1234";
+// A fake GitHub API (started below): nothing here talks to the real one.
+const GITHUB_PORT = 39_000 + Math.floor(Math.random() * 900) * 2;
+process.env.TOT_GITHUB_API_URL = `http://127.0.0.1:${GITHUB_PORT}`;
+// The user's own git name and address, which the panel's commits carry.
+writeFileSync(join(HOME, ".gitconfig"), "[user]\n\tname = Pat User\n\temail = pat@example.com\n");
 
 const { createApp } = await import("./app.ts");
 const { chatWorkspaces } = await import("./chats/workspace.ts");
@@ -27,6 +33,9 @@ const { conversations } = await import("./data/conversations.ts");
 const { settings } = await import("./data/settings.ts");
 const { peers } = await import("./devices/peers.ts");
 const { cleanPath, inside } = await import("./workspace/root.ts");
+const { providers } = await import("./agent/providers/index.ts");
+const { setSecret } = await import("./config.ts");
+const { db } = await import("./db.ts");
 const { workspaceWatch } = await import("./workspace/watch.ts");
 const { terminals } = await import("./workspace/terminal.ts");
 
@@ -328,6 +337,124 @@ await call("DELETE", `/workspace/terminals/${printer.id}`);
 check("another device can't list them", (await call("GET", `/conversations/${checkoutChat.id}/workspace/servers`, { headers: { cookie }, from: "192.168.1.70" })).status === 403);
 inFolder.kill();
 elsewhere.kill();
+
+// =============================================================================
+console.log("\n# Git");
+type Git = import("@tot/shared/workspace").WorkspaceGit;
+type GitResult = import("@tot/shared/workspace").WorkspaceGitResult;
+type AgentProvider = import("./agent/providers/types.ts").AgentProvider;
+// Models that write commit messages without leaving this machine.
+const prompts: string[] = [];
+const claude = providers.claude as AgentProvider;
+providers.claude = {
+  ...claude,
+  status: async () => ({ id: "claude", label: "Claude", installed: true, loggedIn: true, models: [] }),
+  complete: async (prompt: string) => {
+    prompts.push(prompt);
+    return "Raise the answer\n\nRead it once and keep it.";
+  },
+} as AgentProvider;
+providers.chatgpt = { ...providers.chatgpt, status: async () => ({ id: "chatgpt", label: "ChatGPT", installed: false, loggedIn: false, models: [] }) } as AgentProvider;
+const pulls: { path: string; body: any; auth: string }[] = [];
+const fakeGitHub = createServer((req, res) => {
+  let text = "";
+  req.on("data", (chunk) => (text += chunk));
+  req.on("end", () => {
+    pulls.push({ path: req.url ?? "", body: text ? JSON.parse(text) : null, auth: String(req.headers.authorization ?? "") });
+    if (req.method === "POST" && req.url === "/repos/acme/web/pulls") {
+      res.writeHead(201, { "content-type": "application/json" }).end(JSON.stringify({ number: 7, html_url: "https://github.example/acme/web/pull/7" }));
+    } else res.writeHead(404, { "content-type": "application/json" }).end("{}");
+  });
+});
+await new Promise<void>((resolve) => fakeGitHub.listen(GITHUB_PORT, "127.0.0.1", resolve));
+process.on("exit", () => fakeGitHub.close());
+
+// The checkout's origin names GitHub, but pushes go to a bare repo on this machine.
+const remote = join(HOME, "remote/web.git");
+mkdirSync(remote, { recursive: true });
+git(remote, "init", "-q", "--bare", "-b", "main");
+git(web, "remote", "add", "origin", "https://github.com/acme/web.git");
+git(web, "config", "remote.origin.pushurl", remote);
+git(web, "add", "-A");
+git(web, "commit", "-qm", "before the panel");
+const gitPath = `/conversations/${checkoutChat.id}/workspace/git`;
+res = await call<Git>("GET", gitPath);
+check("git's state: branch, default branch, GitHub repo", res.status === 200 && res.data.branch === "main" && res.data.defaultBranch === "main" && res.data.github === "acme/web" && res.data.changes === 0, JSON.stringify(res.data));
+check("…and why a pull request can't be opened yet", !res.data.canOpenPr && /Connect GitHub/.test(res.data.prProblem ?? ""), JSON.stringify(res.data));
+writeFileSync(join(web, "src/app.ts"), "export const answer = 45;\n");
+writeFileSync(join(web, "CHANGES.md"), "- answer\n");
+check("changed and new files count", (await call<Git>("GET", gitPath)).data.changes === 2);
+res = await call<{ message: string }>("POST", `${gitPath}/message`);
+check("a commit message is suggested from the diff", res.status === 200 && res.data.message.startsWith("Raise the answer") && prompts.at(-1)!.includes("answer = 45") && prompts.at(-1)!.includes("CHANGES.md"), JSON.stringify(res.data));
+res = await call("POST", `${gitPath}/commit`, { body: { message: "From a device" }, ...asDevice });
+check("a paired device can't commit", res.status === 403 && (await call<Git>("GET", gitPath)).data.changes === 2);
+check("a commit needs a message", (await call("POST", `${gitPath}/commit`, { body: { message: "  " } })).status === 400);
+res = await call<GitResult>("POST", `${gitPath}/commit`, { body: { message: "Raise the answer", push: true } });
+check("pushing to the default branch needs an OK, and nothing is committed without it", res.status === 409 && /needs your OK/.test(JSON.stringify(res.data)) && (await call<Git>("GET", gitPath)).data.changes === 2, JSON.stringify(res.data));
+res = await call<GitResult>("POST", `${gitPath}/commit`, { body: { message: "Raise the answer\n\nRead it once." } });
+check("everything is committed, as the user", res.status === 200 && res.data.git.changes === 0 && /Committed 2 files/.test(res.data.summary) && git(web, "log", "-1", "--format=%an <%ae>|%s") === "Pat User <pat@example.com>|Raise the answer", JSON.stringify(res.data));
+check("…and with nothing left, a commit is refused", (await call("POST", `${gitPath}/commit`, { body: { message: "x" } })).status === 409);
+res = await call<GitResult>("POST", `${gitPath}/push`, { body: { confirmDefault: true } });
+check("with the OK, it's pushed (and tracks it)", res.status === 200 && git(remote, "rev-parse", "main") === git(web, "rev-parse", "HEAD") && res.data.git.upstream === "origin/main" && res.data.git.ahead === 0, JSON.stringify(res.data));
+
+git(web, "checkout", "-q", "-b", "feature/cache");
+writeFileSync(join(web, "src/app.ts"), "export const answer = 46;\n");
+res = await call<GitResult>("POST", `${gitPath}/commit`, { body: { message: "Cache the answer", pr: true } });
+check("a pull request needs GitHub connected", res.status === 409 && /Connect GitHub/.test(JSON.stringify(res.data)) && (await call<Git>("GET", gitPath)).data.changes === 1, JSON.stringify(res.data));
+setSecret("githubToken", "ghp_testtokenthatisnotreal000000000000");
+const connection = { login: "pat", name: "Pat", avatarUrl: "", source: "token", scopes: ["repo"], connectedAt: Date.now(), id: 1 };
+db.prepare(`INSERT INTO settings (key, value) VALUES ('github', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(JSON.stringify({ connection, allowWrites: false }));
+check("…allowed to write", /GitHub writes/.test((await call<Git>("GET", gitPath)).data.prProblem ?? ""));
+db.prepare(`UPDATE settings SET value = ? WHERE key = 'github'`).run(JSON.stringify({ connection, allowWrites: true }));
+res = await call<GitResult>("POST", `${gitPath}/commit`, { body: { message: "Cache the answer\n\nOnce read, kept.", pr: true } });
+const draft = pulls.find((pull) => pull.path === "/repos/acme/web/pulls");
+check("commit, push and a draft pull request, in one", res.status === 200 && res.data.pr?.number === 7 && /opened draft PR #7/.test(res.data.summary) && git(remote, "rev-parse", "feature/cache") === git(web, "rev-parse", "HEAD"), JSON.stringify(res.data));
+check("…a draft from the branch into the default one, through the fake GitHub only", draft?.body?.draft === true && draft.body.head === "feature/cache" && draft.body.base === "main" && draft.body.title === "Cache the answer" && draft.body.body.startsWith("Once read, kept.") && draft.auth === "Bearer ghp_testtokenthatisnotreal000000000000", JSON.stringify(draft));
+git(web, "checkout", "-q", "main");
+
+// Pull and sync, with a remote that's a folder on this machine.
+const libRemote = join(HOME, "remote/lib.git");
+mkdirSync(libRemote, { recursive: true });
+git(libRemote, "init", "-q", "--bare", "-b", "main");
+const lib = join(HOME, "code/lib");
+mkdirSync(lib, { recursive: true });
+git(lib, "init", "-q", "-b", "main");
+writeFileSync(join(lib, "lib.txt"), "one\n");
+git(lib, "add", ".");
+git(lib, "commit", "-qm", "one");
+git(lib, "remote", "add", "origin", libRemote);
+git(lib, "push", "-q", "-u", "origin", "main");
+const other = join(HOME, "elsewhere/lib");
+execFileSync("git", ["clone", "-q", libRemote, other], { env: GIT_ENV });
+writeFileSync(join(other, "lib.txt"), "one\ntwo\n");
+git(other, "commit", "-qam", "two");
+git(other, "push", "-q", "origin", "main");
+const libProject: Project = (await call<Project>("POST", "/projects", { body: { kind: "folder", source: lib, grant: true } })).data;
+const libChat: Conversation = (await create({ projectId: libProject.id, workspace: "checkout" })).data;
+const libGit = `/conversations/${libChat.id}/workspace/git`;
+await call("POST", `${libGit}/sync`, { body: { confirmDefault: true } });
+check("pull fast-forwards to what was pushed elsewhere", readFileSync(join(lib, "lib.txt"), "utf8") === "one\ntwo\n");
+writeFileSync(join(lib, "lib.txt"), "one\ntwo\nthree\n");
+await call("POST", `${libGit}/commit`, { body: { message: "three" } });
+res = await call<GitResult>("POST", `${libGit}/sync`);
+check("sync won't push to the default branch without an OK", res.status === 409 && /needs your OK/.test(JSON.stringify(res.data)), JSON.stringify(res.data));
+res = await call<GitResult>("POST", `${libGit}/sync`, { body: { confirmDefault: true } });
+check("…and with it, pulls then pushes", res.status === 200 && git(libRemote, "rev-parse", "main") === git(lib, "rev-parse", "HEAD") && res.data.git.ahead === 0, JSON.stringify(res.data));
+git(other, "pull", "-q", "--ff-only");
+writeFileSync(join(other, "lib.txt"), "elsewhere\n");
+git(other, "commit", "-qam", "elsewhere");
+git(other, "push", "-q", "origin", "main");
+writeFileSync(join(lib, "lib.txt"), "here\n");
+git(lib, "commit", "-qam", "here");
+res = await call<GitResult>("POST", `${libGit}/pull`);
+check("a pull that can't fast-forward is refused, nothing merged", res.status === 409 && /both moved on/.test(JSON.stringify(res.data)) && readFileSync(join(lib, "lib.txt"), "utf8") === "here\n", JSON.stringify(res.data));
+
+// A worktree's git runs on the chat's computer, in its sandbox.
+writeFileSync(join(worktree, "WORKTREE.md"), "made in the worktree\n");
+const worktreeGit = `/conversations/${worktreeChat.id}/workspace/git`;
+res = await call<GitResult>("POST", `${worktreeGit}/commit`, { body: { message: "Note the worktree" } });
+check("a worktree chat commits on its own branch, as the user", res.status === 200 && /^tot\//.test(res.data.git.branch ?? "") && git(worktree, "log", "-1", "--format=%an|%s") === "Pat User|Note the worktree", JSON.stringify(res.data));
+check("…and the main checkout doesn't see it", !git(web, "log", "--format=%s", "-5").includes("Note the worktree"));
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll workspace checks passed");
 process.exit(failures ? 1 : 0);

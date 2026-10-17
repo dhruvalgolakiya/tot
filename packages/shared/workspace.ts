@@ -19,6 +19,13 @@
  * POST   /api/workspace/terminals/:tid/resize             { cols, rows } -> { ok: true }
  * DELETE /api/workspace/terminals/:tid                    -> { ok: true }
  * GET    /api/conversations/:id/workspace/servers         -> WorkspaceServer[]  (dev servers running from the folder; this Mac only)
+ * GET    /api/conversations/:id/workspace/git             -> WorkspaceGit
+ * POST   /api/conversations/:id/workspace/git/message     -> { message: string }  (a suggested commit message; "" with nothing to commit)
+ * POST   /api/conversations/:id/workspace/git/commit      WorkspaceCommit -> WorkspaceGitResult
+ * POST   /api/conversations/:id/workspace/git/push        { confirmDefault? } -> WorkspaceGitResult
+ * POST   /api/conversations/:id/workspace/git/pull        -> WorkspaceGitResult  (fast-forward only)
+ * POST   /api/conversations/:id/workspace/git/sync        { confirmDefault? } -> WorkspaceGitResult  (pull, then push)
+ * Pushing to the repo's default branch is refused (409) unless `confirmDefault` is true.
  */
 
 export type WorkspaceTab = "diff" | "files" | "terminal" | "browser";
@@ -133,4 +140,37 @@ export interface WorkspaceServer {
   pid: number | null;
   /** How it was found: a process working in the folder, or an address a terminal printed. */
   source: "process" | "terminal";
+}
+
+export interface WorkspaceGit {
+  branch: string | null;
+  /** The repo's default branch ("main"), when known. */
+  defaultBranch: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  /** Files changed or new. */
+  changes: number;
+  /** "owner/name" when origin is on GitHub. */
+  github: string | null;
+  /** Whether a draft pull request can be opened from here (on GitHub, connected, allowed to write). */
+  canOpenPr: boolean;
+  /** Why not, when it can't. */
+  prProblem: string | null;
+}
+
+export interface WorkspaceCommit {
+  message: string;
+  push?: boolean;
+  /** Push, then open a draft pull request into the default branch (a worktree's: the branch it started from). */
+  pr?: boolean;
+  /** Pushing to the default branch itself, which the user confirmed. */
+  confirmDefault?: boolean;
+}
+
+export interface WorkspaceGitResult {
+  git: WorkspaceGit;
+  /** What happened, for a toast ("Committed 3 files, pushed"). */
+  summary: string;
+  pr?: { number: number; url: string };
 }
