@@ -12,6 +12,7 @@ import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { conversationTitle } from "./lib/conversations";
 import { whenIdle } from "./lib/idle";
 import { lazyComponent } from "./lib/lazyComponent";
+import { setPaletteOpen, usePalette } from "./lib/palette";
 import { useProjects } from "./lib/projects";
 import {
   goToSettings,
@@ -43,9 +44,11 @@ const TaskPanel = lazyComponent(() => import("./components/tasks/TaskPanel"), "T
 const AgentSettingsPanel = lazyComponent(() => import("./components/AgentSettingsPanel"), "AgentSettingsPanel");
 const NewAgentDialog = lazyComponent(() => import("./components/NewAgentDialog"), "NewAgentDialog");
 const NewProjectDialog = lazyComponent(() => import("./components/projects/NewProjectDialog"), "NewProjectDialog");
+const CommandPalette = lazyComponent(() => import("./components/palette/CommandPalette"), "CommandPalette");
 
 /** Fetched one at a time while the browser is idle, the likeliest first. */
 const PRELOAD = [
+  CommandPalette,
   ProjectPage,
   WikiView,
   SettingsPage,
@@ -91,6 +94,7 @@ const useTaskPanelOpen = () => useStore((s) => s.taskPanelOpen);
 const useAgentSettingsOpen = () => useStore((s) => s.agentSettingsOpen);
 const useNewAgentDialogOpen = () => useStore((s) => s.newAgentDialogOpen);
 const useNewProjectOpen = () => useProjects((s) => s.newProjectOpen);
+const usePaletteOpen = () => usePalette((s) => s.open);
 
 /** The browser tab's title: the open chat (or project page), else the page. */
 function DocumentTitle() {
@@ -140,11 +144,12 @@ export default function App() {
     initApp();
     syncWithLocation();
     window.addEventListener("popstate", syncWithLocation);
-    // Testing/screenshot affordance: ?dialog=new-agent|settings or ?panel=computer opens
+    // Testing/screenshot affordance: ?dialog=new-agent|settings|palette or ?panel=computer opens
     // that surface on load, since it otherwise only opens from a click.
     const params = new URLSearchParams(window.location.search);
     if (params.get("dialog") === "new-agent") setNewAgentDialogOpen(true);
     if (params.get("dialog") === "settings") goToSettings();
+    if (params.get("dialog") === "palette") setPaletteOpen(true);
     let unsubscribe: (() => void) | undefined;
     if (params.get("panel") === "computer") {
       // The initial agents fetch resolves after this effect and re-syncs the
@@ -278,6 +283,9 @@ export default function App() {
       </OnceOpened>
       <OnceOpened useOpen={useNewProjectOpen}>
         <NewProjectDialog />
+      </OnceOpened>
+      <OnceOpened useOpen={usePaletteOpen}>
+        <CommandPalette />
       </OnceOpened>
       <Toaster theme={theme} position="top-center" closeButton style={TOAST_THEME} />
     </Tooltip.Provider>

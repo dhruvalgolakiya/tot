@@ -230,7 +230,7 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain">
+      <div ref={scrollRef} data-message-list="" className="h-full overflow-y-auto overscroll-contain">
         <div ref={contentRef} className={`mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 pb-10 sm:px-6 ${topPadding}`}>
           {loading && (
             <div className="space-y-4 pt-6" aria-busy="true" aria-label="Loading chat">
@@ -266,6 +266,7 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
               <div
                 key={rowKey(row)}
                 ref={index === 0 ? firstRowRef : undefined}
+                data-message-id={rowKey(row)}
                 className={rowClass(row, start + index >= shown.length - ALWAYS_RENDERED)}
               >
                 {Array.isArray(row) ? (

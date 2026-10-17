@@ -1,8 +1,8 @@
-import { useState } from "react";
 import clsx from "clsx";
 import { PanelLeftClose, Search, SquarePen } from "lucide-react";
 import type { Agent } from "@tot/shared/types";
 import { DESKTOP_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
+import { setPaletteOpen } from "../lib/palette";
 import {
   navigateToAgentHome,
   selectActiveAgent,
@@ -31,9 +31,8 @@ export function Sidebar() {
   const onSettings = useStore((s) => s.page === "settings");
   const agent = useStore(selectActiveAgent);
   const desktop = useMediaQuery(DESKTOP_QUERY);
-  const [query, setQuery] = useState("");
 
-  const panel = <SidebarPanel agent={agent} query={query} onQueryChange={setQuery} />;
+  const panel = <SidebarPanel agent={agent} />;
 
   if (desktop) {
     return (
@@ -84,14 +83,8 @@ export function Sidebar() {
   );
 }
 
-interface SidebarPanelProps {
-  agent: Agent | undefined;
-  query: string;
-  onQueryChange: (value: string) => void;
-}
-
-/** The selected agent's chats: agent menu, new chat, search, chat list. */
-function SidebarPanel({ agent, query, onQueryChange }: SidebarPanelProps) {
+/** The selected agent's chats: agent menu, new chat, search (the command palette), chat list. */
+function SidebarPanel({ agent }: { agent: Agent | undefined }) {
   return (
     <>
       <PanelHeader agent={agent} />
@@ -105,33 +98,16 @@ function SidebarPanel({ agent, query, onQueryChange }: SidebarPanelProps) {
           </span>
         </button>
 
-        <div className="group relative">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-muted" />
-          <input
-            id="chat-search"
-            type="text"
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                onQueryChange("");
-                event.currentTarget.blur();
-              }
-            }}
-            placeholder="Search chats"
-            aria-label="Search chats"
-            autoComplete="off"
-            className="peer h-9 w-full rounded-lg bg-transparent pr-14 pl-9 text-sm font-medium text-fg transition-colors placeholder:text-fg hover:bg-hover focus:bg-hover focus:font-normal focus:placeholder:text-fg-subtle focus-visible:-outline-offset-2"
-          />
-          {!query && (
-            <span className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 peer-focus:opacity-0 md:inline">
-              <Kbd keys={["mod", "K"]} />
-            </span>
-          )}
-        </div>
+        <button type="button" onClick={() => setPaletteOpen(true)} className={listRowClass()}>
+          <Search className="size-4 shrink-0 text-fg-muted" />
+          <span className="min-w-0 flex-1 truncate">Search chats</span>
+          <span className="ml-auto hidden shrink-0 items-center opacity-0 transition-opacity group-hover/row:opacity-100 md:flex">
+            <Kbd keys={["mod", "K"]} />
+          </span>
+        </button>
       </div>
 
-      <ConversationList query={query} />
+      <ConversationList />
 
     </>
   );

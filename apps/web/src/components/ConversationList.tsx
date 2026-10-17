@@ -10,7 +10,7 @@ import { Callout } from "./ui/Callout";
 import { EmptyState } from "./ui/EmptyState";
 import { Skeleton } from "./ui/Skeleton";
 
-export function ConversationList({ query }: { query: string }) {
+export function ConversationList({ query = "" }: { query?: string }) {
   const conversations = useStore((s) => s.conversations);
   const state = useStore((s) => s.conversationsState);
   const currentId = useStore((s) => s.currentId);

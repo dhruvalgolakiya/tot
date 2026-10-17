@@ -1130,6 +1130,8 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //                                              messageId; its first turn continues the source's provider session natively when it can)
 // POST   /api/conversations/:id/merge-back    -> Conversation  (module 05: a fork brings its new messages back to its source chat: a
 //                                              notice there, and a note for its next turn; returns the source)
+// GET    /api/search?q=[&agentId=&limit=]     -> SearchResults  (finished messages whose text has every word of q, best first, at
+//                                              most 3 per chat; words match as prefixes)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
 // Module 09 · lane A (land a finished coding task; every change also goes out as a `task` event)
 // GET    /api/tasks/:id/land                  -> TaskLandOptions  (worked out now: merge into the folder's checked-out branch, or a draft PR;
@@ -2132,6 +2134,28 @@ export interface ForkOrigin {
 /** POST /api/conversations/:id/fork; without a message, the whole chat. */
 export interface ForkRequest {
   messageId?: string;
+}
+
+/** A piece of a search hit's snippet; `match` marks the words that matched. */
+export interface SnippetPart {
+  text: string;
+  match?: true;
+}
+
+/** GET /api/search: a message whose text matches, with the words around the match. */
+export interface MessageSearchHit {
+  conversationId: string;
+  agentId: string;
+  /** The chat's title, as the list shows it. */
+  title: string;
+  messageId: string;
+  role: MessageRole;
+  snippet: SnippetPart[];
+  createdAt: number;
+}
+
+export interface SearchResults {
+  messages: MessageSearchHit[];
 }
 
 // ---------------------------------------------------------------------------

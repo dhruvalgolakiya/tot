@@ -47,7 +47,7 @@ TOT has playbooks (step-by-step recipes like Bug fix, Feature and Refactor), a p
 ## Smaller things
 
 - Mascots don't act out thinking or talking yet; they show working, idle and asleep.
-- **Search chats** looks at titles only.
+- Search finds a paired computer's chats by title only, not by what was said in them.
 - You can attach chats of the same agent only, and you can fork chats but not tasks.
 
 ## Platforms and hosting

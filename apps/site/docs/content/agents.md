@@ -25,7 +25,7 @@ Type in the box at the bottom and press Enter. Replies appear as they're written
 
 - **Attach files.** Press **+**, paste, or drop files on the chat. Up to 10 files, 25 MB each. The model sees images, reads text and code files, and anything else is copied to the agent's computer, in `~/uploads`.
 - **Talk instead of typing.** The mic button turns your voice into text. It needs a secure connection (HTTPS, or TOT on this computer) and a browser that supports it, so it doesn't show in Firefox or in the Mac app.
-- **Find a chat.** **Search chats** at the top of the list filters by title. Your agent can also search what was said in earlier chats.
+- **Find anything.** Press `⌘K` (or **Search chats** at the top of the list) to search every agent's chats by title and by what was said in them, plus projects, agents, settings and commands like **New chat**. Arrows move, Enter opens; a message opens its chat scrolled to it, with the words that matched lit up. Your agent can also search what was said in earlier chats.
 - **Tidy up.** Each chat's **…** menu has **Rename**, **Pin**, **Move to project** and **Delete**.
 
 ### Fork a chat, and bring it back
@@ -91,7 +91,7 @@ Each run starts a new chat, marked with a clock, so you can read it whenever you
 ## Limits
 
 - Mascots show working, idle and asleep. They don't act out thinking or talking in the app yet.
-- **Search chats** matches titles only.
+- Search covers this computer's chats; a paired computer's chats are found by title only.
 - You can attach chats of the same agent only, and you can't fork a task (only a chat).
 - Skills come from this computer's folders; a chat on a paired computer runs the skills that computer has. A skill's scripts aren't run for the agent: it can read them and copy them to its computer.
 - No voice input in the Mac app or in Firefox.

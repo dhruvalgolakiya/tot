@@ -1,7 +1,11 @@
 import { useEffect } from "react";
-import { focusSearch, goToSettings, navigateToAgentHome, navigateToMission, selectActiveAgentId, useStore } from "../store";
+import { togglePalette } from "../lib/palette";
+import { goToSettings, navigateToAgentHome, navigateToMission, selectActiveAgentId, useStore } from "../store";
 
-/** ⌘⇧O / Ctrl+Shift+O: new chat. ⌘⇧M / Ctrl+Shift+M: mission control. ⌘K / Ctrl+K: search chats. ⌘, / Ctrl+,: settings. */
+/**
+ * ⌘⇧O / Ctrl+Shift+O: new chat. ⌘⇧M / Ctrl+Shift+M: mission control. ⌘K / Ctrl+K: the command palette (find a chat,
+ * a message, anything). ⌘, / Ctrl+,: settings.
+ */
 export function useGlobalShortcuts() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -19,7 +23,7 @@ export function useGlobalShortcuts() {
         navigateToMission(s.page === "project" ? s.projectId : s.page === "mission" ? s.missionProjectId : null);
       } else if (!event.shiftKey && (event.code === "KeyK" || key === "k")) {
         event.preventDefault();
-        focusSearch();
+        togglePalette();
       } else if (!event.shiftKey && (event.code === "Comma" || key === ",")) {
         event.preventDefault();
         goToSettings();

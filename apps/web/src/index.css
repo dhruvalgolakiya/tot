@@ -690,3 +690,20 @@ html.desktop [role="menu"],
 html.desktop [data-radix-popper-content-wrapper] {
   -webkit-app-region: no-drag;
 }
+
+/* A search hit opened from the command palette (lib/jump.ts): the message is tinted for a moment, and the words that
+   matched are lit inside it. */
+[data-message-id] {
+  border-radius: var(--radius-xl);
+  transition: background-color 600ms ease-out;
+}
+
+[data-message-id][data-jumped] {
+  background-color: var(--agent-accent-08);
+  transition-duration: 150ms;
+}
+
+::highlight(tot-search) {
+  background-color: var(--agent-accent-24);
+  color: inherit;
+}

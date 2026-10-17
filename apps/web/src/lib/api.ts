@@ -73,6 +73,7 @@ import type {
   Routine,
   RoutineInput,
   SendMessageRequest,
+  SearchResults,
   SendMessageResponse,
   SkillInfo,
   Settings,
@@ -260,6 +261,12 @@ export const api = {
   forkChat: (conversationId: string, body: ForkRequest) => request<Conversation>("POST", `/conversations/${seg(conversationId)}/fork`, body),
   /** A fork's new messages go back to the chat it came from, for that chat's next reply; resolves with that chat. */
   mergeBack: (forkId: string) => request<Conversation>("POST", `/conversations/${seg(forkId)}/merge-back`, {}),
+  /** Messages in this device's chats whose text has every word of `q`. */
+  search: (q: string, opts: { agentId?: string; limit?: number } = {}) =>
+    request<SearchResults>(
+      "GET",
+      `/search?q=${seg(q)}${opts.agentId ? `&agentId=${seg(opts.agentId)}` : ""}${opts.limit ? `&limit=${opts.limit}` : ""}`,
+    ),
   /** A note for a running task; resolves with the saved message. */
   steerTask: (conversationId: string, text: string) => request<Message>("POST", `/conversations/${seg(conversationId)}/steer`, { text }),
   pauseTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/pause`, {}),

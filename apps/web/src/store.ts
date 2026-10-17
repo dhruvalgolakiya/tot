@@ -2068,9 +2068,3 @@ export function selectSettingsValid(s: TotState): boolean {
     isValidCleanupDays(tasks.worktreeCleanupDays)
   );
 }
-
-/** Open the sidebar (if needed) and focus its search box. */
-export function focusSearch() {
-  if (!get().sidebarOpen) setSidebarOpen(true);
-  requestAnimationFrame(() => document.getElementById("chat-search")?.focus());
-}
