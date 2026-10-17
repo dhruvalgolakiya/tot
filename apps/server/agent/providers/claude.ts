@@ -15,6 +15,7 @@ import { claudeAuthEnv, claudeMcpServers, claudePlugins, claudeSettingsEnv, merg
 import { getSecret, paths } from "../../config.ts";
 import { settings } from "../../data/settings.ts";
 import { CHANGING_TOOLS, PLAN_REFUSAL, PLAN_WORKFLOW } from "../../chats/plan.ts";
+import { planUsage } from "../plan-usage.ts";
 import { CLAUDE_OPUS, CLAUDE_SONNET } from "../router.ts";
 import type { AgentProvider, McpServerSpec, ProviderEvent, TurnInput } from "./types.ts";
 
@@ -476,6 +477,8 @@ export function makeClaudeProvider(accountId: string): AgentProvider {
       // A turn that ended with a note still queued: Claude Code runs the note as one more turn, which this turn includes.
       let awaitingNote = false;
       const totals = { inputTokens: 0, outputTokens: 0, durationMs: 0 };
+      // What the session holds after the turn's latest request: its whole prompt, cached or not, and the reply.
+      let contextTokens: number | undefined;
       const iterator = (q as AsyncIterable<SDKMessage>)[Symbol.asyncIterator]();
 
       try {
@@ -529,16 +532,26 @@ export function makeClaudeProvider(accountId: string): AgentProvider {
               break;
             }
 
-            case "assistant":
+            case "assistant": {
               if (message.parent_tool_use_id) break;
               // The turn's latest point in the session: where a fork from this reply starts.
               yield { type: "ref", ref: message.uuid };
+              const used = message.message.usage;
+              if (used) {
+                contextTokens =
+                  (used.input_tokens ?? 0) + (used.cache_read_input_tokens ?? 0) + (used.cache_creation_input_tokens ?? 0) + (used.output_tokens ?? 0);
+              }
               if (message.error) assistantError = friendlyError(message.error, input.model);
               for (const block of message.message.content) {
                 if (block.type === "tool_use" || block.type === "server_tool_use" || block.type === "mcp_tool_use") {
                   yield { type: "tool-start", toolCallId: block.id, name: normalizeToolName(block.name), input: block.input };
                 }
               }
+              break;
+            }
+
+            case "rate_limit_event":
+              planUsage.fromClaude(current.id, message.rate_limit_info);
               break;
 
             case "user": {
@@ -565,6 +578,8 @@ export function makeClaudeProvider(accountId: string): AgentProvider {
               totals.outputTokens += usage.output_tokens;
               totals.durationMs += message.duration_ms;
               const turnUsage: Usage = { ...totals };
+              const window = (message.modelUsage?.[input.model] ?? Object.values(message.modelUsage ?? {})[0])?.contextWindow;
+              if (contextTokens && window) Object.assign(turnUsage, { contextTokens, contextWindow: window });
               if (sessionId) {
                 const previous = lastSessionCost.get(sessionId);
                 // After a server restart the earlier total is unknown; better no number than a wrong one.

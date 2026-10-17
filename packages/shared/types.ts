@@ -389,6 +389,26 @@ export interface Usage {
   /** Equivalent API cost reported by the harness; subscription usage isn't billed per token. */
   costUsd?: number;
   durationMs?: number;
+  /** How much of the model's context the chat's session holds after this turn (its latest request), and the window's size. */
+  contextTokens?: number;
+  contextWindow?: number;
+}
+
+/** GET /api/plan-usage: a provider account's plan limits as last reported (keyed by account id); absent when unknown. */
+export interface PlanUsage {
+  windows: PlanUsageWindow[];
+  updatedAt: number;
+}
+
+export interface PlanUsageWindow {
+  /** "5-hour" or "Weekly" (or the provider's own name for another window). */
+  label: string;
+  /** 0-100; null when the provider only said where the limit stands. */
+  usedPercent: number | null;
+  /** Epoch ms; null when not said. */
+  resetsAt: number | null;
+  /** The limit is reached for now. */
+  reached?: boolean;
 }
 
 export interface Message {
@@ -1117,6 +1137,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/conversations/:id/files[?q=&limit=] -> ChatFiles  (files in the chat's working folder for "@", best first;
 //                                              gitignore-aware, listed again after 30 s)
 // GET    /api/projects/:id/files?agentId=[&q=&limit=] -> ChatFiles  (the same for a chat not sent yet in the project)
+// GET    /api/plan-usage                      -> Record<accountId, PlanUsage>  (plan limits each account last reported)
 // GET    /api/conversations/:id/queue         -> QueuedMessage[]  (messages waiting for the chat's turn to end, in order)
 // POST   /api/conversations/:id/queue         SendMessageRequest -> QueuedMessage  (201; goes out when the turn ends, or
 //                                              at once when nothing is running)

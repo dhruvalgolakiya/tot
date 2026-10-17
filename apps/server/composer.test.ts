@@ -1,6 +1,7 @@
 // The composer's queue: messages sent while a chat's turn runs wait and go out in order when it ends; "send now" hands
 // one to the running turn (or stops it at its next step and sends it right after). Then plan mode: a plan turn is
-// marked, told to only plan, and TOT's tools that change things refuse while it runs. Fake providers, no network.
+// marked, told to only plan, and TOT's tools that change things refuse while it runs. Then the context meter's numbers
+// and the accounts' plan limits. Fake providers, no network.
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import { serve } from "@hono/node-server";
 import type { Message, QueuedMessage, SendNowResult } from "@tot/shared/types";
@@ -11,6 +12,8 @@ const PORT = 38_000 + Math.floor(Math.random() * 2000);
 const { providers } = await import("./agent/providers/index.ts");
 const { runRegistry } = await import("./agent/runs.ts");
 const { CHANGING_TOOLS, PLAN_NOTE, PLAN_REFUSAL, planTurns } = await import("./chats/plan.ts");
+const { planUsage } = await import("./agent/plan-usage.ts");
+const { TurnMapper } = await import("./agent/providers/chatgpt.ts");
 const { agents } = await import("./data/agents.ts");
 const { conversations } = await import("./data/conversations.ts");
 const { messages } = await import("./data/messages.ts");
@@ -281,6 +284,40 @@ check("a plan turn's folder grant is read-only", JSON.stringify(planTurns.readOn
 check("…other chats' grants are untouched", planTurns.readOnly("another-chat", grant) === grant);
 planTurns.end("plan-chat");
 check("after the plan turn, tools run again", textOf(handlers.task_start!()) === "ran task_start" && planTurns.readOnly("plan-chat", grant) === grant);
+
+// --- Context and plan limits ----------------------------------------------------------------------------------------------
+const mapper = new TurnMapper(Date.now());
+const events: import("./agent/providers/types.ts").ProviderEvent[] = [];
+const breakdown = (total: number) => ({ totalTokens: total, inputTokens: total - 100, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 100, reasoningOutputTokens: 0 });
+mapper.map({ method: "thread/tokenUsage/updated", params: { threadId: "t", turnId: "u", tokenUsage: { total: breakdown(90_000), last: breakdown(42_000), modelContextWindow: 272_000 } } }, events);
+const usage = events.find((event) => event.type === "usage");
+check("Codex: the latest request's size is the chat's context", usage?.type === "usage" && usage.usage.contextTokens === 42_000 && usage.usage.contextWindow === 272_000, JSON.stringify(usage));
+planUsage.fromCodex("chatgpt", {
+  primary: { usedPercent: 37.4, windowDurationMins: 300, resetsAt: 1_800_000_000 },
+  secondary: { usedPercent: 100, windowDurationMins: 10_080, resetsAt: 1_800_500_000 },
+});
+planUsage.fromClaude("claude", { status: "allowed_warning", rateLimitType: "seven_day", utilization: 0.82, resetsAt: 1_800_000_000 });
+planUsage.fromClaude("claude", { status: "rejected", rateLimitType: "five_hour", resetsAt: 1_800_000_100 });
+planUsage.fromClaude("claude", { status: "allowed", rateLimitType: "overage" });
+const limits = (await request<Record<string, import("@tot/shared/types").PlanUsage>>("GET", "/plan-usage")).data;
+check(
+  "Codex's windows: 5-hour and weekly, with their percentages",
+  JSON.stringify(limits.chatgpt?.windows) ===
+    JSON.stringify([
+      { label: "5-hour", usedPercent: 37, resetsAt: 1_800_000_000_000 },
+      { label: "Weekly", usedPercent: 100, resetsAt: 1_800_500_000_000, reached: true },
+    ]),
+  JSON.stringify(limits.chatgpt),
+);
+check(
+  "Claude's events: a fraction becomes a percentage, a rejection reaches the limit, others are skipped",
+  JSON.stringify(limits.claude?.windows) ===
+    JSON.stringify([
+      { label: "5-hour", usedPercent: 100, resetsAt: 1_800_000_100_000, reached: true },
+      { label: "Weekly", usedPercent: 82, resetsAt: 1_800_000_000_000 },
+    ]),
+  JSON.stringify(limits.claude),
+);
 
 server.close();
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");

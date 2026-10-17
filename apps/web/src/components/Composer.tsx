@@ -28,6 +28,7 @@ import {
 } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
+import { ContextMeter } from "./composer/ContextMeter";
 import { MentionOverlay } from "./composer/MentionText";
 import { PlanFollowUp } from "./composer/PlanFollowUp";
 import { QueuedMessages } from "./composer/QueuedMessages";
@@ -707,6 +708,7 @@ export function Composer({
           {!currentId && <WorkspacePicker projectId={draftProject} />}
 
           <div className="ml-auto flex min-w-0 items-center gap-2">
+            {currentId && <ContextMeter conversationId={currentId} />}
             <StashMenu onRestore={restoreStashed} />
             {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}
             {command && (

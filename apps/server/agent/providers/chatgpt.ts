@@ -24,6 +24,7 @@ import type { Effort, ModelOption, ProviderAccount, ProviderStatus, Usage } from
 import { accountDir, accounts, binaryFor } from "../../accounts/accounts.ts";
 import { VERSION, paths } from "../../config.ts";
 import { settings as settingsStore } from "../../data/settings.ts";
+import { planUsage } from "../plan-usage.ts";
 import { CodexAppServer, CodexExitError, CodexRpcError, resolveCodexBinary } from "./codex-app-server.ts";
 import type { AgentProvider, McpServerSpec, ProviderEvent, TurnInput } from "./types.ts";
 
@@ -204,6 +205,7 @@ class CodexRuntime {
   private dispatch(n: Notification): void {
     if (n.method === "account/rateLimits/updated" && n.params?.rateLimits) {
       this.rateLimits = { ...this.rateLimits, ...stripNulls(n.params.rateLimits) };
+      planUsage.fromCodex(this.accountId, this.rateLimits);
     }
     const threadId: unknown = n.params?.threadId ?? n.params?.thread?.id;
     if (typeof threadId === "string") this.sinks.get(threadId)?.(n);
@@ -704,6 +706,8 @@ export class TurnMapper {
         this.usage = {
           inputTokens: Math.max(0, total.inputTokens - this.baseline.input),
           outputTokens: Math.max(0, total.outputTokens - this.baseline.output),
+          // The thread's latest request is what its context holds now.
+          ...(last?.totalTokens && p.tokenUsage.modelContextWindow ? { contextTokens: last.totalTokens, contextWindow: p.tokenUsage.modelContextWindow } : {}),
         };
         out.push({ type: "usage", usage: { ...this.usage } });
         break;

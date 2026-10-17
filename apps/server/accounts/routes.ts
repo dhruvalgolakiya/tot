@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import type { AccountInput, AccountLogin, AccountPatch } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
+import { planUsage } from "../agent/plan-usage.ts";
 import { loginCommand } from "../agent/providers/claude.ts";
 import { accountStatuses, providerFor } from "../agent/providers/index.ts";
 import { straightFromThisMachine } from "../auth.ts";
@@ -26,6 +27,9 @@ async function body<T>(c: Context): Promise<T> {
 }
 
 accountRoutes.get("/accounts", async (c) => c.json(await accountStatuses(c.req.query("refresh") === "1")));
+
+// The plan limits each account last reported (5-hour, weekly), for the composer's context meter.
+accountRoutes.get("/plan-usage", (c) => c.json(planUsage.all()));
 
 accountRoutes.post("/accounts", async (c) => c.json(accounts.add(await body<AccountInput>(c))));
 

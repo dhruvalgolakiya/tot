@@ -24,6 +24,7 @@ import type {
   ComputerSummary,
   Conversation,
   ContinueOnRequest,
+  PlanUsage,
   QueuedMessage,
   SendNowResult,
   ConversationDetail,
@@ -253,6 +254,8 @@ export const api = {
     request<ChatFiles>("GET", `/conversations/${seg(id)}/files?q=${seg(query)}${limit ? `&limit=${limit}` : ""}`),
   listProjectFiles: (projectId: string, agentId: string | null, query: string, limit?: number) =>
     request<ChatFiles>("GET", `/projects/${seg(projectId)}/files?q=${seg(query)}${agentId ? `&agentId=${seg(agentId)}` : ""}${limit ? `&limit=${limit}` : ""}`),
+  /** Plan limits each provider account last reported (5-hour, weekly), by account id. */
+  planUsage: () => request<Record<string, PlanUsage>>("GET", "/plan-usage"),
   /** The composer's queue: messages sent while the chat's turn runs. */
   listQueue: (id: string) => request<QueuedMessage[]>("GET", `/conversations/${seg(id)}/queue`),
   queueMessage: (id: string, body: SendMessageRequest) => request<QueuedMessage>("POST", `/conversations/${seg(id)}/queue`, body),
