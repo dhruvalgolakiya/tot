@@ -496,7 +496,9 @@ export type AppEvent =
   /** Something changed on a paired device: one of the events above, about its agents, chats or projects (module 07). */
   | { type: "remote"; deviceId: string; event: AppEvent }
   /** Memory repo (module 10): a memory repo changed. */
-  | MemoryEvent;
+  | MemoryEvent
+  /** A chat's queue of messages waiting for its turn to end changed (added, removed, sent). */
+  | { type: "queue"; conversationId: string; queue: QueuedMessage[] };
 
 // ---------------------------------------------------------------------------
 // Computers (one per agent, created lazily on first tool use)
@@ -1108,6 +1110,12 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //                                              turn running, or "" — else picks it up again with this message.
 //                                              A chat: its model answers, starting tasks itself when the work calls for it)
 // POST   /api/conversations/:id/computer/stop -> ComputerSummary | null   (alias: the chat's agent's computer)
+// GET    /api/conversations/:id/queue         -> QueuedMessage[]  (messages waiting for the chat's turn to end, in order)
+// POST   /api/conversations/:id/queue         SendMessageRequest -> QueuedMessage  (201; goes out when the turn ends, or
+//                                              at once when nothing is running)
+// DELETE /api/conversations/:id/queue/:itemId -> { ok: true }
+// POST   /api/conversations/:id/queue/:itemId/send -> SendNowResult  (into the running turn when it can take it, else the
+//                                              turn stops at its next step and this goes next; 409 while an approval waits)
 //
 // Tasks (a task is a conversation with kind "task"; see TaskInfo)
 // GET    /api/tasks[?agentId=&status=]        -> Conversation[]  (queued ones in queue order first, then newest first)
@@ -1815,6 +1823,23 @@ export interface TaskPatch {
 export interface SteerRequest {
   text: string;
 }
+
+/** A message sent while the chat's turn ran: it goes out, in order, when the turn ends with its reply complete. */
+export interface QueuedMessage {
+  id: string;
+  conversationId: string;
+  request: SendMessageRequest;
+  createdAt: number;
+}
+
+/**
+ * "Send now" on a queued message: `steered` when the running turn took it (the saved note), `interrupting` when the
+ * turn stops at its next step and the message goes right after, `sent` when nothing was running and it went at once.
+ */
+export type SendNowResult =
+  | { outcome: "steered"; message: Message }
+  | { outcome: "interrupting" }
+  | { outcome: "sent"; runId: string };
 
 /** A coding task's changes: its worktree (committed or not) against where its branch left the base. */
 /**

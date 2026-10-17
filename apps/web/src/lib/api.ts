@@ -23,6 +23,8 @@ import type {
   ComputerSummary,
   Conversation,
   ContinueOnRequest,
+  QueuedMessage,
+  SendNowResult,
   ConversationDetail,
   ForkRequest,
   CreateConversationRequest,
@@ -245,6 +247,11 @@ export const api = {
     request<Ok>("DELETE", `/conversations/${seg(id)}${opts.deleteBranch ? "?deleteBranch=1" : ""}`),
   sendMessage: (id: string, body: SendMessageRequest) =>
     request<SendMessageResponse>("POST", `/conversations/${seg(id)}/messages`, body),
+  /** The composer's queue: messages sent while the chat's turn runs. */
+  listQueue: (id: string) => request<QueuedMessage[]>("GET", `/conversations/${seg(id)}/queue`),
+  queueMessage: (id: string, body: SendMessageRequest) => request<QueuedMessage>("POST", `/conversations/${seg(id)}/queue`, body),
+  removeQueued: (id: string, itemId: string) => request<Ok>("DELETE", `/conversations/${seg(id)}/queue/${seg(itemId)}`),
+  sendQueuedNow: (id: string, itemId: string) => request<SendNowResult>("POST", `/conversations/${seg(id)}/queue/${seg(itemId)}/send`, {}),
   stopComputer: (id: string) =>
     request<ComputerSummary | null>("POST", `/conversations/${seg(id)}/computer/stop`, {}),
 

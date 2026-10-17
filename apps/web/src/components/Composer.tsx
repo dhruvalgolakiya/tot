@@ -6,10 +6,12 @@ import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
 import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, type SlashCommandName } from "../lib/mission";
 import { skillMatches, slashWordAt, typedSkill } from "../lib/skills";
+import { queueMessage } from "../lib/queue";
 import { isSteerable, isTask } from "../lib/tasks";
 import {
   clearComposerDraft,
   loadSkills,
+  notifyError,
   selectActiveAgent,
   selectActiveAgentId,
   selectCurrentConversation,
@@ -21,6 +23,7 @@ import {
 } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
+import { QueuedMessages } from "./composer/QueuedMessages";
 import { ProjectPicker } from "./projects/ProjectPicker";
 import { WorkspacePicker } from "./projects/WorkspacePicker";
 import { Tip } from "./ui/Tip";
@@ -61,6 +64,8 @@ export function Composer({
   const task = isTask(conversation) ? conversation.task : null;
   // In a task that's working, the composer adds notes to it ("steering") instead of starting turns.
   const steering = Boolean(task && isSteerable(task));
+  // In a chat whose reply is still coming, what's sent waits in its queue and goes when the reply is done.
+  const queueing = Boolean(run && currentId && !task);
   const [text, setText] = useState("");
   // The in-progress (not-yet-final) speech recognition guess, shown as a quiet
   // preview under the textarea — never merged into `text` until it finalizes,
@@ -146,7 +151,7 @@ export function Composer({
       ? false
       : sendsBestOf
         ? hasText && attachments.items.length === 0 && !run && !sending
-        : (hasText || attachments.ready.length > 0) && !run && !sending && !attachments.uploading;
+        : (hasText || attachments.ready.length > 0) && (!run || queueing) && !sending && !attachments.uploading;
   const agentName = agent?.name ?? "TOT";
   const placeholder = steering
     ? "Steer this task…"
@@ -154,7 +159,9 @@ export function Composer({
       ? "Answer the task…"
       : task
         ? "Reply to pick this task up again…"
-        : (newChatPlaceholder ?? `Ask ${agentName} anything`);
+        : queueing
+          ? "Queue a follow-up…"
+          : (newChatPlaceholder ?? `Ask ${agentName} anything`);
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -199,7 +206,24 @@ export function Composer({
     setInterim("");
     setContextChats([]);
     attachments.clear();
-    const sent = await sendMessage(message, { attachments: files, contextChats: chats, skill: typedSkill(skills, message) });
+    const skill = typedSkill(skills, message);
+    if (queueing && currentId) {
+      try {
+        await queueMessage(currentId, {
+          text: message.trim(),
+          ...(files.length ? { attachments: files.map((file) => file.id) } : {}),
+          ...(chats.length ? { contextChats: chats } : {}),
+          ...(skill ? { skill } : {}),
+        });
+      } catch (error) {
+        notifyError(error);
+        setContextChats(chats);
+        setText((current) => current || value);
+        attachments.restore(previousItems);
+      }
+      return;
+    }
+    const sent = await sendMessage(message, { attachments: files, contextChats: chats, skill });
     if (!sent) {
       setContextChats(chats);
       setText((current) => current || value);
@@ -283,191 +307,201 @@ export function Composer({
   }
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      onDragOver={(event) => {
-        if (!canAttachChats || !event.dataTransfer.types.includes(CHAT_DRAG_TYPE)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-        setChatOver(true);
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setChatOver(false);
-      }}
-      onDrop={(event) => {
-        const id = event.dataTransfer.getData(CHAT_DRAG_TYPE);
-        if (!id) return;
-        event.preventDefault();
-        setChatOver(false);
-        attachChat(id);
-      }}
-      className={clsx(
-        "surface-raised relative min-h-[60px] rounded-3xl border transition-colors focus-within:border-edge-strong",
-        chatOver ? "border-accent-edge" : "border-edge",
-      )}
-    >
-      {(slashing || noSkills) && (
-        <div
-          ref={slashListRef}
-          role="listbox"
-          aria-label="Commands and skills"
-          className="menu absolute bottom-full left-0 mb-2 max-h-80 w-96 max-w-full overflow-y-auto"
-        >
-          {slashItems.map((item, index) => {
-            const Icon = item.kind === "command" ? SLASH_ICONS[item.name] : SquareSlash;
-            const description =
-              item.kind === "command" && item.name === "best-of" && bestOf.length ? `On ${bestOfLabel(bestOf)}, then compare` : item.description;
-            const firstSkill = item.kind === "skill" && slashItems[index - 1]?.kind !== "skill";
-            return (
-              <Fragment key={`${item.kind}:${item.name}`}>
-                {firstSkill && <p className="menu-label">Skills</p>}
-                <div
-                  role="option"
-                  aria-selected={index === slashHighlight}
-                  data-highlighted={index === slashHighlight ? "" : undefined}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    pickSlash(item.name);
-                  }}
-                  onMouseEnter={() => setSlashHighlight(index)}
-                  className="menu-item"
-                >
-                  <Icon className="size-4 shrink-0 text-fg-muted" />
-                  <span className="max-w-[60%] shrink-0 truncate font-medium">/{item.name}</span>
-                  <span className="min-w-0 flex-1 truncate text-fg-subtle">{description}</span>
-                </div>
-              </Fragment>
-            );
-          })}
-          {noSkills && (
-            <>
-              <p className="menu-label">Skills</p>
-              <p className="px-2 pt-0.5 pb-2 text-fg-subtle">No skills found</p>
-            </>
-          )}
-        </div>
-      )}
-      {picking && (
-        <div role="listbox" aria-label="Attach a chat" className="menu absolute bottom-full left-0 mb-2 w-80 max-w-full">
-          <p className="menu-label">Attach a chat for reference</p>
-          {matches.map((chat, index) => (
-            <div
-              key={chat.id}
-              role="option"
-              aria-selected={index === highlight}
-              data-highlighted={index === highlight ? "" : undefined}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                pickChat(chat.id);
-              }}
-              onMouseEnter={() => setHighlight(index)}
-              className="menu-item"
-            >
-              <MessageSquare className="size-4 shrink-0 text-fg-muted" />
-              <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        hidden
-        onChange={(event) => {
-          attachments.addFiles(event.target.files);
-          event.target.value = "";
+    <>
+      {currentId && !task && <QueuedMessages conversationId={currentId} />}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
         }}
-      />
-      {(attachments.items.length > 0 || contextChats.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2 px-4 pt-3.5">
-          {contextChats.map((id) => (
-            <ChatChip key={id} conversationId={id} onRemove={() => setContextChats((list) => list.filter((other) => other !== id))} />
-          ))}
-          {attachments.items.map((item) => (
-            <AttachmentChip key={item.localId} item={item} onRemove={attachments.removeAttachment} />
-          ))}
-        </div>
-      )}
-      <label htmlFor="composer-input" className="sr-only">
-        {steering ? "Note for the task" : `Message ${agentName}`}
-      </label>
-      <textarea
-        id="composer-input"
-        ref={inputRef}
-        rows={1}
-        value={text}
-        onChange={(event) => {
-          setText(event.target.value);
-          setCaret(event.target.selectionStart);
+        onDragOver={(event) => {
+          if (!canAttachChats || !event.dataTransfer.types.includes(CHAT_DRAG_TYPE)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          setChatOver(true);
         }}
-        onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        placeholder={placeholder}
-        className="block min-h-[76px] max-h-[240px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
-      />
-      {interim.trim() && (
-        <p aria-live="polite" className="truncate px-4 pb-1 text-ui text-fg-subtle italic">
-          {interim}
-        </p>
-      )}
-      <div className="flex items-center gap-1.5 px-3 pt-1 pb-3">
-        {!steering && !sendsBestOf && (
-          <Tip content="Attach files">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach files"
-              className="flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-hover hover:text-fg"
-            >
-              <Plus className="size-4" />
-            </button>
-          </Tip>
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setChatOver(false);
+        }}
+        onDrop={(event) => {
+          const id = event.dataTransfer.getData(CHAT_DRAG_TYPE);
+          if (!id) return;
+          event.preventDefault();
+          setChatOver(false);
+          attachChat(id);
+        }}
+        className={clsx(
+          "surface-raised relative min-h-[60px] rounded-3xl border transition-colors focus-within:border-edge-strong",
+          chatOver ? "border-accent-edge" : "border-edge",
         )}
-        <VoiceInputButton onTranscript={onTranscript} />
-        {/* A chat not sent yet, from an agent's home: the project it starts in. */}
-        {!currentId && !onProjectPage && <ProjectPicker />}
-        {/* …and in a project with code, whether it works in the main checkout or a new worktree. */}
-        {!currentId && <WorkspacePicker projectId={draftProject} />}
-
-        <div className="ml-auto flex min-w-0 items-center gap-2">
-          {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}
-          {command && (
-            <span className="hidden truncate text-xs text-fg-subtle sm:inline">
-              {`Best of ${bestOf.length || 2}${bestOf.length ? ` · ${bestOfLabel(bestOf)}` : ""}`}
-            </span>
-          )}
-          {run && currentId && !steering ? (
-            <Tip content="Stop">
+      >
+        {(slashing || noSkills) && (
+          <div
+            ref={slashListRef}
+            role="listbox"
+            aria-label="Commands and skills"
+            className="menu absolute bottom-full left-0 mb-2 max-h-80 w-96 max-w-full overflow-y-auto"
+          >
+            {slashItems.map((item, index) => {
+              const Icon = item.kind === "command" ? SLASH_ICONS[item.name] : SquareSlash;
+              const description =
+                item.kind === "command" && item.name === "best-of" && bestOf.length ? `On ${bestOfLabel(bestOf)}, then compare` : item.description;
+              const firstSkill = item.kind === "skill" && slashItems[index - 1]?.kind !== "skill";
+              return (
+                <Fragment key={`${item.kind}:${item.name}`}>
+                  {firstSkill && <p className="menu-label">Skills</p>}
+                  <div
+                    role="option"
+                    aria-selected={index === slashHighlight}
+                    data-highlighted={index === slashHighlight ? "" : undefined}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      pickSlash(item.name);
+                    }}
+                    onMouseEnter={() => setSlashHighlight(index)}
+                    className="menu-item"
+                  >
+                    <Icon className="size-4 shrink-0 text-fg-muted" />
+                    <span className="max-w-[60%] shrink-0 truncate font-medium">/{item.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-fg-subtle">{description}</span>
+                  </div>
+                </Fragment>
+              );
+            })}
+            {noSkills && (
+              <>
+                <p className="menu-label">Skills</p>
+                <p className="px-2 pt-0.5 pb-2 text-fg-subtle">No skills found</p>
+              </>
+            )}
+          </div>
+        )}
+        {picking && (
+          <div role="listbox" aria-label="Attach a chat" className="menu absolute bottom-full left-0 mb-2 w-80 max-w-full">
+            <p className="menu-label">Attach a chat for reference</p>
+            {matches.map((chat, index) => (
+              <div
+                key={chat.id}
+                role="option"
+                aria-selected={index === highlight}
+                data-highlighted={index === highlight ? "" : undefined}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  pickChat(chat.id);
+                }}
+                onMouseEnter={() => setHighlight(index)}
+                className="menu-item"
+              >
+                <MessageSquare className="size-4 shrink-0 text-fg-muted" />
+                <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            attachments.addFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        {(attachments.items.length > 0 || contextChats.length > 0) && (
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-3.5">
+            {contextChats.map((id) => (
+              <ChatChip key={id} conversationId={id} onRemove={() => setContextChats((list) => list.filter((other) => other !== id))} />
+            ))}
+            {attachments.items.map((item) => (
+              <AttachmentChip key={item.localId} item={item} onRemove={attachments.removeAttachment} />
+            ))}
+          </div>
+        )}
+        <label htmlFor="composer-input" className="sr-only">
+          {steering ? "Note for the task" : `Message ${agentName}`}
+        </label>
+        <textarea
+          id="composer-input"
+          ref={inputRef}
+          rows={1}
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+            setCaret(event.target.selectionStart);
+          }}
+          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          placeholder={placeholder}
+          className="block min-h-[76px] max-h-[240px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
+        />
+        {interim.trim() && (
+          <p aria-live="polite" className="truncate px-4 pb-1 text-ui text-fg-subtle italic">
+            {interim}
+          </p>
+        )}
+        <div className="flex items-center gap-1.5 px-3 pt-1 pb-3">
+          {!steering && !sendsBestOf && (
+            <Tip content="Attach files">
               <button
                 type="button"
-                onClick={() => void stopRun(currentId)}
-                disabled={run.stopping}
-                aria-label="Stop"
-                className="grid size-9 shrink-0 place-items-center rounded-full bg-fg text-canvas transition-colors hover:bg-fg/90 disabled:opacity-50"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach files"
+                className="flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-hover hover:text-fg"
               >
-                <Square className="size-3.5 fill-current" />
+                <Plus className="size-4" />
               </button>
             </Tip>
-          ) : (
-            <button
-              type="submit"
-              disabled={!canSend}
-              aria-label={steering ? "Send note" : sendsBestOf ? "Start best of" : "Send"}
-              className={clsx(
-                "grid size-9 shrink-0 place-items-center rounded-full transition-colors",
-                canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-muted",
-              )}
-            >
-              {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
-            </button>
           )}
+          <VoiceInputButton onTranscript={onTranscript} />
+          {/* A chat not sent yet, from an agent's home: the project it starts in. */}
+          {!currentId && !onProjectPage && <ProjectPicker />}
+          {/* …and in a project with code, whether it works in the main checkout or a new worktree. */}
+          {!currentId && <WorkspacePicker projectId={draftProject} />}
+
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}
+            {command && (
+              <span className="hidden truncate text-xs text-fg-subtle sm:inline">
+                {`Best of ${bestOf.length || 2}${bestOf.length ? ` · ${bestOfLabel(bestOf)}` : ""}`}
+              </span>
+            )}
+            {run && currentId && !steering && (
+              <Tip content="Stop">
+                <button
+                  type="button"
+                  onClick={() => void stopRun(currentId)}
+                  disabled={run.stopping}
+                  aria-label="Stop"
+                  className={clsx(
+                    "grid size-9 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50",
+                    // Beside a Send that queues, Stop steps back so the two don't read as one control.
+                    queueing ? "bg-fill-strong text-fg hover:bg-hover" : "bg-fg text-canvas hover:bg-fg/90",
+                  )}
+                >
+                  <Square className="size-3.5 fill-current" />
+                </button>
+              </Tip>
+            )}
+            {(!run || steering || queueing) && (
+              <Tip content={queueing ? "Queue it: it goes when this reply is done" : null}>
+                <button
+                  type="submit"
+                  disabled={!canSend}
+                  aria-label={steering ? "Send note" : sendsBestOf ? "Start best of" : queueing ? "Queue message" : "Send"}
+                  className={clsx(
+                    "grid size-9 shrink-0 place-items-center rounded-full transition-colors",
+                    canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-muted",
+                  )}
+                >
+                  {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
+                </button>
+              </Tip>
+            )}
+          </div>
         </div>
-      </div>
-    </form>
+      </form>
+    </>
   );
 }

@@ -9,6 +9,7 @@ import { brains } from "../data/brains.ts";
 import { CUT_OFF_BY_RESTART } from "../db.ts";
 import { attachedNote, cleanContextChats } from "../chats/attach.ts";
 import { forks } from "../chats/fork.ts";
+import { chatQueue } from "../chats/queue.ts";
 import { chatWorkspaces } from "../chats/workspace.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
@@ -486,6 +487,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   runRegistry.finish(run);
   if (touched) appEvents.publish({ type: "conversation", conversation: toPublicConversation(touched) });
   appEvents.publish({ type: "run", runId: run.id, conversationId: conversation.id, agentId: conversation.agentId, status });
+  chatQueue.afterTurn(conversation.id, status);
 }
 
 /** The model-facing prompt (attachments folded in) and the chat's system prompt, frozen on first use. */

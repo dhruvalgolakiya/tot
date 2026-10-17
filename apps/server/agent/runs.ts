@@ -59,6 +59,36 @@ export class Run {
     if (!this.controller.signal.aborted) this.stopReason = reason;
     this.controller.abort();
   }
+
+  /** Stops the turn to hand it a note as soon as its current tool call finishes (or now, when nothing is running), so no work is lost mid-step. */
+  stopAfterStep(): void {
+    const busy = this.reply?.().parts.some((part) => part.type === "tool" && part.status === "running");
+    if (!busy) {
+      this.stop("steer");
+      return;
+    }
+    const unsubscribe = this.subscribe((_seq, event) => {
+      if (event.type === "part-update" && event.part.type === "tool" && event.part.status !== "running") {
+        unsubscribe();
+        this.stop("steer");
+      }
+    }, this.size);
+  }
+}
+
+/** The saved user message for a note handed to a running turn: shown inside the reply it went to, after the part it came in after. */
+export function steerNote(conversationId: string, text: string, run: Run | undefined): Message {
+  const reply = run?.reply?.();
+  return {
+    id: randomUUID(),
+    conversationId,
+    role: "user",
+    parts: [{ type: "text", id: randomUUID(), text }],
+    status: "complete",
+    steered: true,
+    ...(reply ? { steeredInto: { messageId: reply.id, afterPartId: reply.parts.at(-1)?.id ?? null } } : {}),
+    createdAt: Date.now(),
+  };
 }
 
 const runs = new Map<string, Run>();

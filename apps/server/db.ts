@@ -814,6 +814,19 @@ if (!hasColumn("conversations", "workspace")) db.exec(`ALTER TABLE conversations
 if (!hasColumn("conversations", "provider_account")) db.exec(`ALTER TABLE conversations ADD COLUMN provider_account TEXT`);
 if (!hasColumn("messages", "account")) db.exec(`ALTER TABLE messages ADD COLUMN account TEXT`);
 
+// Messages sent while a chat's turn runs (chats/queue.ts): each goes out, in order, once the turn before it ends.
+// `request` is the SendMessageRequest as it was sent; `position` orders them (a "send now" moves one to the front).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chat_queue (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    request TEXT NOT NULL,
+    position REAL NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS chat_queue_by_chat ON chat_queue(conversation_id, position);
+`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 /** Statements prepared once and reused, for the hot paths: a chat's load, a streaming reply's saves. */
