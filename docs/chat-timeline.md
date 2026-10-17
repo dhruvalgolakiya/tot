@@ -36,3 +36,13 @@ did ("Read 4 files, ran 2 commands, edited 3 files"; a file read twice counts on
 (`apps/web/src/lib/toolGroups.ts`, `components/ToolGroup.tsx`). Anything the user should see stays out of a group and
 ends it: a running, failed or interrupted call, an approval card, a screenshot, a shared link, the memory and wiki
 pills, text, and a note the user sent mid-turn.
+
+## Folded turns
+
+From a chat's third reply on, every finished turn but the latest folds its work before the answer into one line
+("Worked for 2m 12s" when the turn has one fold and its duration is known, otherwise what it did), so older answers
+read one after another (`foldedRows` in `lib/toolGroups.ts`, `components/FoldedWork.tsx`). Everything from the turn's
+first thought or call to its last (approvals and the text between them included) folds; text before and after stays,
+and task cards, notices, screenshots, shared links and the user's mid-turn notes stay in place, splitting the fold.
+Opening it shows the work with its tool calls grouped; nothing inside renders until then, which keeps long chats light.
+The latest reply (not a notice posted after it) stays open, and the list's batched, newest-first rendering is unchanged.

@@ -1,8 +1,9 @@
 import { memo } from "react";
 import clsx from "clsx";
 import type { Message, MessagePart, ModelOption } from "@tot/shared/types";
+import { foldedRows, partRows, partSpacing } from "../lib/toolGroups";
+import { FoldedWork } from "./FoldedWork";
 import { MessageMeta } from "./MessageMeta";
-import { partRows } from "../lib/toolGroups";
 import { MessagePartView } from "./MessagePartView";
 import { TaskGroupCard } from "./orchestration/TaskGroupCard";
 import { ThinkingIndicator } from "./ThinkingIndicator";
@@ -25,16 +26,9 @@ type AssistantMessageProps = {
   models: ModelOption[];
   /** The message is in a chat (they fork; tasks and TOT's own notices don't). */
   inChat: boolean;
+  /** An older turn of a long chat: its work before the answer is folded into one line. */
+  folded?: boolean;
 };
-
-const PILL_TOOLS = new Set(["memory_save", "wiki_write", "wiki_edit"]);
-const isToolCard = (part: MessagePart | undefined) => part?.type === "tool" && !PILL_TOOLS.has(part.name);
-
-/** Tool cards stack tightly; everything else gets room to breathe. */
-function spacing(previous: MessagePart | undefined, part: MessagePart) {
-  if (!previous) return undefined;
-  return isToolCard(previous) && isToolCard(part) ? "mt-1.5" : "mt-3";
-}
 
 /**
  * For a run of two or more task cards in a row: the run's task ids at its first part, null at the
@@ -60,7 +54,7 @@ function isIdleTail(part: MessagePart | undefined) {
   return part.type === "notice";
 }
 
-export const AssistantMessage = memo(function AssistantMessage({ message, live, isLatest, notes, agentName, models, inChat }: AssistantMessageProps) {
+export const AssistantMessage = memo(function AssistantMessage({ message, live, isLatest, notes, agentName, models, inChat, folded = false }: AssistantMessageProps) {
   const streaming = live && message.status === "streaming";
   const { parts } = message;
   const partIds = new Set(parts.map((part) => part.id));
@@ -69,8 +63,11 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
   const leading = notesAfter(null);
   const trailing = (notes ?? []).filter((note) => note.steeredInto?.afterPartId && !partIds.has(note.steeredInto.afterPartId));
   const noted = new Set((notes ?? []).map((note) => note.steeredInto?.afterPartId));
-  // Finished tool calls in a row show as one line; a note the user sent after one of them ends the run there.
-  const rows = partRows(parts, { live: streaming, noteAfter: (id) => noted.has(id) });
+  // Finished tool calls in a row show as one line; a note the user sent after one of them ends the run there. An older
+  // turn folds all its work before the answer.
+  const noteAfter = (id: string) => noted.has(id);
+  const rows = folded && !streaming ? foldedRows(parts, { noteAfter }) : partRows(parts, { live: streaming, noteAfter });
+  const folds = rows.filter((row) => row.kind === "work").length;
 
   return (
     <div className="group/message min-w-0">
@@ -78,11 +75,15 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
         <SteerNote key={note.id} message={note} inline />
       ))}
       {rows.map((row) => {
-        if (row.kind === "tools") {
+        if (row.kind !== "part") {
           const run = row.indexes.map((index) => parts[index]!);
           return (
-            <div key={run[0]!.id} className={spacing(parts[row.indexes[0]! - 1], run[0]!)}>
-              <ToolGroup parts={run} live={streaming} conversationId={message.conversationId} />
+            <div key={run[0]!.id} className={partSpacing(parts[row.indexes[0]! - 1], run[0]!)}>
+              {row.kind === "tools" ? (
+                <ToolGroup parts={run} live={streaming} conversationId={message.conversationId} />
+              ) : (
+                <FoldedWork parts={run} durationMs={folds === 1 ? message.usage?.durationMs : undefined} conversationId={message.conversationId} />
+              )}
               {notesAfter(run.at(-1)!.id).map((note) => (
                 <div key={note.id} className="mt-3">
                   <SteerNote message={note} inline />
@@ -97,7 +98,7 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
         const group = taskRun(parts, index);
         if (group === null) return null;
         return (
-          <div key={part.id} className={spacing(parts[index - 1], part)}>
+          <div key={part.id} className={partSpacing(parts[index - 1], part)}>
             {group.length > 1 ? (
               <TaskGroupCard taskIds={group} />
             ) : (

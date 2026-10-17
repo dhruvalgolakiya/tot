@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import clsx from "clsx";
 import { ChevronRight, Layers } from "lucide-react";
 import type { MessagePart } from "@tot/shared/types";
-import { toolsSummary } from "../lib/toolGroups";
+import { partSpacing, toolsSummary } from "../lib/toolGroups";
 import { MessagePartView } from "./MessagePartView";
 import { ToolStatusIcon } from "./ToolStatusIcon";
 
@@ -31,7 +31,7 @@ export const ToolGroup = memo(function ToolGroup({ parts, live, conversationId }
       {open && (
         <div className="pl-6">
           {parts.map((part, index) => (
-            <div key={part.id} className={index > 0 ? (part.type === "tool" && parts[index - 1]!.type === "tool" ? "mt-1.5" : "mt-3") : "mt-1.5"}>
+            <div key={part.id} className={partSpacing(parts[index - 1], part) ?? "mt-1.5"}>
               <MessagePartView part={part} active={false} live={live} conversationId={conversationId} />
             </div>
           ))}

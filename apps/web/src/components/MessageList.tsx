@@ -51,11 +51,14 @@ const anchoring = typeof CSS !== "undefined" && CSS.supports("overflow-anchor", 
 /** The newest rows always render in full: they're what a chat opens on. */
 const ALWAYS_RENDERED = 4;
 
+/** From this many replies on, a chat folds the work of every turn but the latest. */
+const FOLD_FROM = 3;
+
 /**
  * Each row's box. Paint containment clips at its edge, so it reaches 8px past the row on every side (padding,
  * taken back by negative margins: the layout doesn't move) for focus rings and the task notices' bleed.
  */
-function rowClass(row: Row, recent: boolean) {
+function rowClass(row: Row, recent: boolean, folded: boolean) {
   return clsx(
     "-mx-2 -my-2 min-w-0 px-2 py-2",
     anchoring &&
@@ -64,7 +67,9 @@ function rowClass(row: Row, recent: boolean) {
         ? "[content-visibility:auto] [contain-intrinsic-size:auto_96px]"
         : row.role === "user"
           ? "[content-visibility:auto] [contain-intrinsic-size:auto_120px]"
-          : "[content-visibility:auto] [contain-intrinsic-size:auto_600px]"),
+          : folded
+            ? "[content-visibility:auto] [contain-intrinsic-size:auto_320px]"
+            : "[content-visibility:auto] [contain-intrinsic-size:auto_600px]"),
   );
 }
 
@@ -226,6 +231,12 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
   // Between "sent" and the run's first event there is no assistant message yet.
   const awaitingReply = run ? !run.messageId : sending;
   const lastAssistantId = messages.findLast((m) => m.role === "assistant")?.id;
+  // A long chat folds its older turns' work, so their answers read one after another; the latest turn stays open
+  // (a reply, not a notice TOT posted after it).
+  const { foldOlder, latestReplyId } = useMemo(() => {
+    const replies = messages.filter((m) => m.role === "assistant" && m.parts.some((part) => part.type !== "notice"));
+    return { foldOlder: replies.length >= FOLD_FROM, latestReplyId: replies.at(-1)?.id };
+  }, [messages]);
   const loading = messages.length === 0 ? loadState === "loading" : !markdownReady;
 
   return (
@@ -266,7 +277,7 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
               <div
                 key={rowKey(row)}
                 ref={index === 0 ? firstRowRef : undefined}
-                className={rowClass(row, start + index >= shown.length - ALWAYS_RENDERED)}
+                className={rowClass(row, start + index >= shown.length - ALWAYS_RENDERED, foldOlder && !Array.isArray(row) && row.id !== latestReplyId)}
               >
                 {Array.isArray(row) ? (
                   <TaskNotices messages={row} conversationId={conversationId} />
@@ -282,6 +293,7 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
                     agentName={agentName}
                     models={models}
                     inChat={inChat}
+                    folded={foldOlder && row.id !== latestReplyId}
                   />
                 )}
               </div>
