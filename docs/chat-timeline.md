@@ -28,3 +28,11 @@ again. It's refused while a reply is running, and tasks can't be rewound (their 
 
 API: `GET /api/conversations/:id/rewind?messageId=` (`RewindPreview`) and `POST /api/conversations/:id/rewind`
 (`RewindRequest` → `RewindResponse`). Tests: `apps/server/rewind.test.ts`.
+
+## Grouped tool calls
+
+Two or more finished tool calls in a row, with any thinking between them, show as one quiet line that says what they
+did ("Read 4 files, ran 2 commands, edited 3 files"; a file read twice counts once) and opens to each call
+(`apps/web/src/lib/toolGroups.ts`, `components/ToolGroup.tsx`). Anything the user should see stays out of a group and
+ends it: a running, failed or interrupted call, an approval card, a screenshot, a shared link, the memory and wiki
+pills, text, and a note the user sent mid-turn.

@@ -2,9 +2,11 @@ import { memo } from "react";
 import clsx from "clsx";
 import type { Message, MessagePart, ModelOption } from "@tot/shared/types";
 import { MessageMeta } from "./MessageMeta";
+import { partRows } from "../lib/toolGroups";
 import { MessagePartView } from "./MessagePartView";
 import { TaskGroupCard } from "./orchestration/TaskGroupCard";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { ToolGroup } from "./ToolGroup";
 import { SteerNote } from "./UserMessage";
 
 type AssistantMessageProps = {
@@ -66,13 +68,31 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
   // Notes that arrived before the first part, or after a part that's gone, go at the start or the end.
   const leading = notesAfter(null);
   const trailing = (notes ?? []).filter((note) => note.steeredInto?.afterPartId && !partIds.has(note.steeredInto.afterPartId));
+  const noted = new Set((notes ?? []).map((note) => note.steeredInto?.afterPartId));
+  // Finished tool calls in a row show as one line; a note the user sent after one of them ends the run there.
+  const rows = partRows(parts, { live: streaming, noteAfter: (id) => noted.has(id) });
 
   return (
     <div className="group/message min-w-0">
       {leading.map((note) => (
         <SteerNote key={note.id} message={note} inline />
       ))}
-      {parts.map((part, index) => {
+      {rows.map((row) => {
+        if (row.kind === "tools") {
+          const run = row.indexes.map((index) => parts[index]!);
+          return (
+            <div key={run[0]!.id} className={spacing(parts[row.indexes[0]! - 1], run[0]!)}>
+              <ToolGroup parts={run} live={streaming} conversationId={message.conversationId} />
+              {notesAfter(run.at(-1)!.id).map((note) => (
+                <div key={note.id} className="mt-3">
+                  <SteerNote message={note} inline />
+                </div>
+              ))}
+            </div>
+          );
+        }
+        const { index } = row;
+        const part = parts[index]!;
         // Tasks started together stack into one group card (at the first of them; the rest are folded in).
         const group = taskRun(parts, index);
         if (group === null) return null;
