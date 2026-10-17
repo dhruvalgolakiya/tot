@@ -6,7 +6,8 @@
   "description": "The API contract shared by TOT's server, web app, Mac app and phone app: types, and the agents' islands.",
   "exports": {
     "./types": "./types.ts",
-    "./islands": "./islands.ts"
+    "./islands": "./islands.ts",
+    "./workspace": "./workspace.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

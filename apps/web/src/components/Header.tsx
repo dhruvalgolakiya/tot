@@ -23,6 +23,7 @@ import { Kbd } from "./ui/Kbd";
 import { SlackMark } from "./ui/SlackMark";
 import { Tip } from "./ui/Tip";
 import { TaskHeaderActions, TaskHeaderInfo } from "./tasks/TaskHeader";
+import { WorkspaceToggle } from "./workspace/WorkspaceToggle";
 
 /**
  * Floats over the chat content on a flat, always-opaque `bg-canvas` — no
@@ -98,6 +99,7 @@ export function Header() {
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {conversation && <TicketChip chat={conversation} />}
         {task && <TaskHeaderActions task={task} />}
+        {!project && <WorkspaceToggle chat={conversation} />}
         {project ? <ProjectMenu project={project} agent={agent} /> : conversation && !task && <ChatMenu chat={conversation} />}
         {slackUrl && (
           <Tip content="Open in Slack">

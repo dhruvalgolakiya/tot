@@ -1,3 +1,4 @@
+import { chmodSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { Configuration } from "electron-builder";
@@ -19,6 +20,10 @@ import { checkPeers } from "./peer-deps.ts";
  *   because release.sh staples it after the build, which changes its checksum.
  * - The packaged node_modules are checked before signing: every required peer of a dependency must be there,
  *   in a version it accepts (peer-deps.ts), or the build fails.
+ * - node-pty (the workspace panel's terminals) ships prebuilt for Node's stable ABI (N-API), so Electron's Node
+ *   loads it as is: no rebuild. Its spawn-helper can lose its execute bit on the way from npm, and every terminal
+ *   would fail to start, so it's set again before signing. Without the module the app still builds and runs;
+ *   terminals then say why they can't start.
  */
 
 const developerId = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
@@ -38,6 +43,8 @@ const config: Configuration = {
   publish: { provider: "github", owner: "dhruvalgolakiya", repo: "tot" },
   afterPack: async ({ appOutDir, packager }) => {
     const appDir = join(appOutDir, `${packager.appInfo.productFilename}.app`, "Contents", "Resources", "app");
+    const spawnHelper = join(appDir, "node_modules", "node-pty", "prebuilds", "darwin-arm64", "spawn-helper");
+    if (existsSync(spawnHelper)) chmodSync(spawnHelper, 0o755);
     const problems = checkPeers(appDir);
     if (problems.length) throw new Error(`The app's node_modules aren't right:\n- ${problems.join("\n- ")}`);
   },

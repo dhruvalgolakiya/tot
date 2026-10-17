@@ -16,6 +16,7 @@ import { lazyComponent } from "./lib/lazyComponent";
 import { useOrganize } from "./lib/organize";
 import { setPaletteOpen, usePalette } from "./lib/palette";
 import { useProjects } from "./lib/projects";
+import { useWorkspacePanel } from "./lib/workspace";
 import {
   goToSettings,
   handleAppEvent,
@@ -44,6 +45,7 @@ const MascotGallery = lazyComponent(() => import("./components/mascot/MascotGall
 const ComputerPanel = lazyComponent(() => import("./components/ComputerPanel"), "ComputerPanel");
 const TaskPanel = lazyComponent(() => import("./components/tasks/TaskPanel"), "TaskPanel");
 const AgentSettingsPanel = lazyComponent(() => import("./components/AgentSettingsPanel"), "AgentSettingsPanel");
+const WorkspacePanel = lazyComponent(() => import("./components/workspace/WorkspacePanel"), "WorkspacePanel");
 const NewAgentDialog = lazyComponent(() => import("./components/NewAgentDialog"), "NewAgentDialog");
 const NewProjectDialog = lazyComponent(() => import("./components/projects/NewProjectDialog"), "NewProjectDialog");
 const CommandPalette = lazyComponent(() => import("./components/palette/CommandPalette"), "CommandPalette");
@@ -96,6 +98,7 @@ function OnceOpened({ useOpen, children }: { useOpen: () => boolean; children: R
 const useComputerPanelOpen = () => useStore((s) => s.computerPanelOpen);
 const useTaskPanelOpen = () => useStore((s) => s.taskPanelOpen);
 const useAgentSettingsOpen = () => useStore((s) => s.agentSettingsOpen);
+const useWorkspacePanelOpen = () => useWorkspacePanel((s) => s.open);
 const useNewAgentDialogOpen = () => useStore((s) => s.newAgentDialogOpen);
 const useNewProjectOpen = () => useProjects((s) => s.newProjectOpen);
 const usePaletteOpen = () => usePalette((s) => s.open);
@@ -283,6 +286,9 @@ export default function App() {
         </OnceOpened>
         <OnceOpened useOpen={useAgentSettingsOpen}>
           <AgentSettingsPanel />
+        </OnceOpened>
+        <OnceOpened useOpen={useWorkspacePanelOpen}>
+          <WorkspacePanel />
         </OnceOpened>
       </div>
       <OnceOpened useOpen={useNewAgentDialogOpen}>
