@@ -12,7 +12,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { ConversationOrigin, Message, SendMessageRequest, TurnErrorKind } from "@tot/shared/types";
 
 process.env.TOT_ACCESS_TOKEN = ""; // empty overrides .env: no sign-in for this test
-const PORT = 8791;
+const PORT = Number(process.env.TOT_TEST_PORT) || 8791;
 
 const { HttpError, sendMessage } = await import("./agent/orchestrator.ts");
 const { limits } = await import("./agent/limits.ts");
