@@ -4,7 +4,7 @@ import { useAttachments } from "../../hooks/useAttachments";
 import { useNow } from "../../hooks/useNow";
 import { conversationTitle } from "../../lib/conversations";
 import { toMs } from "../../lib/format";
-import { PROJECT_ICONS, shortTime, sourceLabel, useProjects } from "../../lib/projects";
+import { isCodeProject, PROJECT_ICONS, shortTime, sourceLabel, useProjects } from "../../lib/projects";
 import { isTask } from "../../lib/tasks";
 import { navigateToAgentHome, navigateToConversation, selectActiveAgent, useStore } from "../../store";
 import { Composer } from "../Composer";
@@ -16,6 +16,7 @@ import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
 import { Skeleton } from "../ui/Skeleton";
 import { FolderConsentDialog } from "./FolderConsent";
+import { ProjectSessionsHint } from "./ProjectSessionsHint";
 
 /**
  * A project's page (roadmap module 11), like a Cursor project: its name, a composer that starts a new chat in it
@@ -89,6 +90,7 @@ function ProjectHome({ project }: { project: Project }) {
         </div>
         {notice}
         {!project.archived && <Composer attachments={attachments} placeholder={`New chat in ${project.name}`} />}
+        {!project.archived && isCodeProject(project) && <ProjectSessionsHint project={project} />}
         <ProjectChats project={project} />
       </div>
       <FolderConsentDialog project={project} open={consentOpen} onOpenChange={setConsentOpen} />
