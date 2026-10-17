@@ -9,6 +9,7 @@ import type {
   WorkspaceSaved,
   WorkspaceSearch,
   WorkspaceTab,
+  WorkspaceTerminal,
 } from "@tot/shared/workspace";
 import { request } from "./api";
 import { apiUrl, deviceOf } from "./devices";
@@ -119,6 +120,9 @@ export const workspaceApi = {
     request<WorkspaceSaved>("PUT", `${base(chatId)}/file`, { path, content, baseMtime }),
   search: (chatId: string, query: string, { regex = false, caseSensitive = false } = {}) =>
     request<WorkspaceSearch>("GET", `${base(chatId)}/search?q=${seg(query)}${regex ? "&regex=1" : ""}${caseSensitive ? "&case=1" : ""}`),
+  terminals: (chatId: string) => request<WorkspaceTerminal[]>("GET", `${base(chatId)}/terminals`),
+  openTerminal: (chatId: string, size: { cols?: number; rows?: number } = {}) => request<WorkspaceTerminal>("POST", `${base(chatId)}/terminals`, size),
+  closeTerminal: (id: string) => request<{ ok: true }>("DELETE", `/workspace/terminals/${seg(id)}`),
   /** The stream that says when files in the chat's folder changed (on the device that has the chat). */
   eventsUrl: (chatId: string) => apiUrl(`${base(chatId)}/events`, deviceOf(chatId)),
 };

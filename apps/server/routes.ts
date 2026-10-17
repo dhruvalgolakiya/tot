@@ -129,9 +129,10 @@ api.use("*", async (c, next) => {
 });
 
 // A paired device (module 07) works with this device's agents, chats and projects, but can't manage devices or
-// sign-ins, reach a third device through this one, or change this device's logins and settings.
+// sign-ins, reach a third device through this one, or change this device's logins and settings. Nor open a terminal
+// here (the workspace panel's, under /api/workspace).
 // Memory repo (module 10): memory is this device's too; a paired device may only fetch the sync bundle.
-const DEVICE_NEVER = /^\/api\/(devices|sessions|d|access|memory|memories)(\/|$)/;
+const DEVICE_NEVER = /^\/api\/(devices|sessions|d|access|memory|memories|workspace)(\/|$)/;
 const DEVICE_READ_ONLY = /^\/api\/(settings|github|slack|apps|personas|plugins|accounts)(\/|$)/;
 api.use("*", async (c, next) => {
   if (callerOf(c).kind !== "device" || c.req.path === "/api/devices/unpaired" || c.req.path === BUNDLE_PATH) return next();

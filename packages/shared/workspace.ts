@@ -12,6 +12,12 @@
  * GET    /api/conversations/:id/workspace/raw?path=       -> an image's bytes, for its preview
  * PUT    /api/conversations/:id/workspace/file            WorkspaceSave -> WorkspaceSaved  (409 when it changed since it was read)
  * GET    /api/conversations/:id/workspace/search?q=&case=1&regex=1 -> WorkspaceSearch
+ * GET    /api/conversations/:id/workspace/terminals       -> WorkspaceTerminal[]
+ * POST   /api/conversations/:id/workspace/terminals       { cols, rows } -> WorkspaceTerminal
+ * GET    /api/workspace/terminals/:tid/stream             -> SSE: TerminalEvent (what it printed lately first)
+ * POST   /api/workspace/terminals/:tid/input              { data } -> { ok: true }
+ * POST   /api/workspace/terminals/:tid/resize             { cols, rows } -> { ok: true }
+ * DELETE /api/workspace/terminals/:tid                    -> { ok: true }
  */
 
 export type WorkspaceTab = "diff" | "files" | "terminal" | "browser";
@@ -103,3 +109,16 @@ export interface WorkspaceSearch {
   /** More matches than are listed. */
   truncated: boolean;
 }
+
+export interface WorkspaceTerminal {
+  id: string;
+  conversationId: string;
+  /** "zsh 1". */
+  title: string;
+  createdAt: number;
+  /** Null while it runs. */
+  exitCode: number | null;
+}
+
+/** What a terminal's stream sends: its output (what it printed lately first), and its end. */
+export type TerminalEvent = { type: "output"; data: string } | { type: "exit"; exitCode: number };

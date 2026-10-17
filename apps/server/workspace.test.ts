@@ -28,6 +28,7 @@ const { settings } = await import("./data/settings.ts");
 const { peers } = await import("./devices/peers.ts");
 const { cleanPath, inside } = await import("./workspace/root.ts");
 const { workspaceWatch } = await import("./workspace/watch.ts");
+const { terminals } = await import("./workspace/terminal.ts");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -237,6 +238,63 @@ check("…and literally otherwise", (await search("answer = \\d+")).data.hits.le
 check("a bad regular expression is a 400", (await search("(", "&regex=1")).status === 400);
 check("search skips ignored files", !(await search("ignored")).data.hits.some((hit: any) => hit.path.startsWith("dist/")));
 check("…and never reads through a link out of the folder", (await search("secret")).data.hits.every((hit: any) => !hit.text.includes("the user's secret")));
+
+// =============================================================================
+console.log("\n# Terminals");
+type Terminal = import("@tot/shared/workspace").WorkspaceTerminal;
+type TerminalEvent = import("@tot/shared/workspace").TerminalEvent;
+async function until(condition: () => boolean, ms = 8000): Promise<boolean> {
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(50)) if (condition()) return true;
+  return condition();
+}
+res = await call<Terminal>("POST", `/conversations/${checkoutChat.id}/workspace/terminals`, { body: { cols: 100, rows: 30 } });
+const terminal: Terminal = res.data;
+check("a terminal opens in the chat's folder", res.status === 201 && terminal.conversationId === checkoutChat.id && terminal.exitCode === null, JSON.stringify(res.data));
+let printed = "";
+const stopListening = terminals.subscribe(terminal.id, (event: TerminalEvent) => {
+  if (event.type === "output") printed += event.data;
+});
+check("…and lists with the chat's terminals", (await call<Terminal[]>("GET", `/conversations/${checkoutChat.id}/workspace/terminals`)).data.some((t: Terminal) => t.id === terminal.id));
+await call("POST", `/workspace/terminals/${terminal.id}/input`, { body: { data: "pwd; echo sum-$((40+2))\r" } });
+check("typed commands run in a real shell, in the folder", await until(() => printed.includes("sum-42") && printed.includes(realpathSync.native(web))), printed.slice(-300));
+check("…and it can be resized", (await call("POST", `/workspace/terminals/${terminal.id}/resize`, { body: { cols: 120, rows: 40 } })).status === 200);
+check("…not to a size that isn't one", (await call("POST", `/workspace/terminals/${terminal.id}/resize`, { body: { cols: "wide" } })).status === 400);
+let replayed = "";
+const stopReplay = terminals.subscribe(terminal.id, (event: TerminalEvent) => {
+  if (event.type === "output") replayed += event.data;
+});
+check("whoever opens it later gets what it printed", replayed.includes("sum-42"));
+stopReplay();
+stopListening();
+res = await call("GET", `/workspace/terminals/${terminal.id}/stream`, asDevice);
+check("a paired device can't watch a terminal", res.status === 403);
+check("…nor open one", (await call("POST", `/conversations/${checkoutChat.id}/workspace/terminals`, { body: {}, ...asDevice })).status === 403);
+check("…nor type into one", (await call("POST", `/workspace/terminals/${terminal.id}/input`, { body: { data: "touch pwned\r" }, ...asDevice })).status === 403);
+res = await call("POST", `/conversations/${checkoutChat.id}/workspace/terminals`, { body: {}, headers: { authorization: `Bearer ${process.env.TOT_ACCESS_TOKEN}` }, from: "192.168.1.70" });
+check("the access token gets no terminal", res.status === 403);
+const login = await app.request(
+  "http://127.0.0.1:8787/login",
+  { method: "POST", body: new URLSearchParams({ password: process.env.TOT_ACCESS_TOKEN!, next: "/" }).toString(), headers: { host: "127.0.0.1:8787", "content-type": "application/x-www-form-urlencoded" } },
+  { incoming: { socket: { remoteAddress: "192.168.1.70", remotePort: 50000, remoteFamily: "IPv4" } } },
+);
+const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+res = await call<Terminal[]>("GET", `/conversations/${checkoutChat.id}/workspace/terminals`, { headers: { cookie }, from: "192.168.1.70" });
+check("the owner signed in on another device may use terminals", Boolean(cookie) && res.status === 200 && res.data.length === 1, `${res.status} ${cookie.slice(0, 20)}`);
+check("closing a terminal ends its shell", (await call("DELETE", `/workspace/terminals/${terminal.id}`)).status === 200 && terminals.count() === 0);
+check("a closed terminal is gone", (await call("POST", `/workspace/terminals/${terminal.id}/input`, { body: { data: "x" } })).status === 404);
+
+const another: Conversation = (await create({ projectId: project.id, workspace: "checkout" })).data;
+const shell: Terminal = (await call<Terminal>("POST", `/conversations/${another.id}/workspace/terminals`, { body: {} })).data;
+let exited: number | null = null;
+terminals.subscribe(shell.id, (event: TerminalEvent) => {
+  if (event.type === "exit") exited = event.exitCode;
+});
+await call("POST", `/workspace/terminals/${shell.id}/input`, { body: { data: "exit 3\r" } });
+check("a shell that exits says so, and its terminal goes", (await until(() => exited === 3)) && terminals.list(another.id).length === 0, String(exited));
+await call<Terminal>("POST", `/conversations/${another.id}/workspace/terminals`, { body: {} });
+check("…and a chat can open another", terminals.list(another.id).length === 1);
+await call("DELETE", `/conversations/${another.id}`);
+check("deleting the chat ends its terminals", terminals.list(another.id).length === 0 && terminals.count() === 0);
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll workspace checks passed");
 process.exit(failures ? 1 : 0);

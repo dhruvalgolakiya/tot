@@ -7,6 +7,7 @@ import { onSignOut } from "../devices/sessions.ts";
 import { workspaceDiff } from "./diff.ts";
 import { workspaceFiles } from "./files.ts";
 import { chatSpaces } from "./root.ts";
+import { terminals } from "./terminal.ts";
 import { workspaceWatch } from "./watch.ts";
 
 /** The workspace panel's routes (see packages/shared/workspace.ts), mounted on /api. */
@@ -94,5 +95,64 @@ workspaceRoutes.get("/conversations/:id/workspace/search", async (c) =>
     }),
   ),
 );
+
+// Terminals: only for a caller that may have a shell here (canTerminal), whichever way it's reached.
+const shells: MiddlewareHandler = async (c, next) => {
+  if (!canTerminal(c)) throw new HttpError(403, "Terminals open on this computer only, or signed in as you on another device.");
+  await next();
+};
+workspaceRoutes.use("/conversations/:id/workspace/terminals", shells);
+workspaceRoutes.use("/workspace/terminals/*", shells);
+
+workspaceRoutes.get("/conversations/:id/workspace/terminals", (c) => {
+  chatSpaces.resolve(c.req.param("id"));
+  return c.json(terminals.list(c.req.param("id")));
+});
+
+workspaceRoutes.post("/conversations/:id/workspace/terminals", async (c) => {
+  const size = ((await c.req.json().catch(() => ({}))) ?? {}) as { cols?: unknown; rows?: unknown };
+  return c.json(await terminals.open(chatSpaces.resolve(c.req.param("id")), size), 201);
+});
+
+workspaceRoutes.get("/workspace/terminals/:tid/stream", (c) => {
+  const id = c.req.param("tid");
+  terminals.get(id);
+  return streamSSE(c, async (stream) => {
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => (finish = resolve));
+    let writes: Promise<unknown> = stream.writeSSE({ data: "", event: "ready", retry: 2000 });
+    const unsubscribe = terminals.subscribe(id, (event) => {
+      writes = writes.then(() => stream.writeSSE({ data: JSON.stringify(event) }));
+      if (event.type === "exit") void writes.then(finish);
+    });
+    const heartbeat = setInterval(() => {
+      writes = writes.then(() => stream.write(": ping\n\n"));
+    }, HEARTBEAT_MS);
+    stream.onAbort(finish);
+    const forget = onSignOut(callerKey(c), finish);
+    await finished;
+    forget();
+    clearInterval(heartbeat);
+    unsubscribe();
+    await writes.catch(() => {});
+  });
+});
+
+workspaceRoutes.post("/workspace/terminals/:tid/input", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { data?: unknown } | null;
+  terminals.write(c.req.param("tid"), body?.data);
+  return c.json({ ok: true });
+});
+
+workspaceRoutes.post("/workspace/terminals/:tid/resize", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { cols?: unknown; rows?: unknown } | null;
+  terminals.resize(c.req.param("tid"), body?.cols, body?.rows);
+  return c.json({ ok: true });
+});
+
+workspaceRoutes.delete("/workspace/terminals/:tid", (c) => {
+  terminals.close(c.req.param("tid"));
+  return c.json({ ok: true });
+});
 
 export const workspaceAccess = { canWrite, canTerminal };
