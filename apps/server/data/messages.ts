@@ -1,11 +1,11 @@
-import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, Usage } from "@tot/shared/types";
+import type { Message, MessagePart, MessageRole, MessageStatus, ProviderId, TurnChanges, Usage } from "@tot/shared/types";
 import { db, parseJson, statement, type Row } from "../db.ts";
 
 /**
- * Extras kept in the meta column: how a user message was sent (module 01), the chats attached to it (module 05) and the
- * skill it invoked.
+ * Extras kept in the meta column: how a user message was sent (module 01), the chats attached to it (module 05), the
+ * skill it invoked, and what a reply's turn changed in the chat's workspace (chats/checkpoints.ts).
  */
-type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "contextChats" | "skill">;
+type MessageMeta = Pick<Message, "steered" | "steeredInto" | "auto" | "contextChats" | "skill" | "changes">;
 
 function metaOf(message: Message): string | null {
   const meta: MessageMeta = {
@@ -14,19 +14,21 @@ function metaOf(message: Message): string | null {
     ...(message.auto ? { auto: true } : {}),
     ...(message.contextChats?.length ? { contextChats: message.contextChats } : {}),
     ...(message.skill ? { skill: message.skill } : {}),
+    ...(message.changes ? { changes: message.changes } : {}),
   };
   return Object.keys(meta).length ? JSON.stringify(meta) : null;
 }
 
 /** The meta column's known extras (older rows can hold others, e.g. a dispatch decision from before it was removed). */
 function metaFrom(value: unknown): MessageMeta {
-  const { steered, steeredInto, auto, contextChats, skill } = parseJson<MessageMeta>(value, {});
+  const { steered, steeredInto, auto, contextChats, skill, changes } = parseJson<MessageMeta>(value, {});
   return {
     ...(steered ? { steered } : {}),
     ...(steeredInto ? { steeredInto } : {}),
     ...(auto ? { auto } : {}),
     ...(contextChats?.length ? { contextChats } : {}),
     ...(typeof skill === "string" && skill ? { skill } : {}),
+    ...(changes?.files ? { changes } : {}),
   };
 }
 
@@ -133,6 +135,14 @@ export const messages = {
        WHERE messages.id = ? AND messages.conversation_id = ? AND json_extract(part.value, '$.id') = ?`,
     ).get(messageId, conversationId, partId) as Row | undefined;
     return parseJson<MessagePart | null>(row?.value, null);
+  },
+
+  /** What a reply's turn changed in the chat's workspace, kept with the reply. */
+  setChanges(id: string, changes: TurnChanges): void {
+    const row = statement(`SELECT conversation_id, meta FROM messages WHERE id = ?`).get(id) as Row | undefined;
+    if (!row) return;
+    statement(`UPDATE messages SET meta = ? WHERE id = ?`).run(JSON.stringify({ ...parseJson<MessageMeta>(row.meta, {}), changes }), id);
+    bump(String(row.conversation_id));
   },
 
   /** Deletes some of a chat's messages (a rewind), with their search entries. */

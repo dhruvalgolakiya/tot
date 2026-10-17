@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import type { TaskChangedFile, TurnChanges, TurnDiff } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
 import { runRegistry, type Run } from "../agent/runs.ts";
 import { quote } from "../computer/github-login.ts";
 import { computerManager } from "../computer/manager.ts";
 import { conversations, type ConversationRecord } from "../data/conversations.ts";
+import { messages } from "../data/messages.ts";
 import { db, statement, type Row } from "../db.ts";
 import { hostGitEnv } from "../git-env.ts";
 import { gitWords } from "../landing/git.ts";
@@ -46,6 +48,22 @@ function placeOf(chat: Chat): { dir: string; onMac: boolean } | null {
 }
 
 const refOf = (chatId: string, replyId: string) => `${REFS}/${chatId}/${replyId}`;
+/** The workspace at the end of the turn, when it changed anything. */
+const endRefOf = (chatId: string, replyId: string) => `${REFS}/${chatId}/${replyId}-end`;
+const PATCH_LIMIT = 200_000;
+const SHA = /^[0-9a-f]{40,64}$/;
+
+/** `git diff --numstat` lines: the new path (renames read "old => new" or "dir/{old => new}"), and its counts (binary: 0). */
+function numstat(text: string): { path: string; additions: number; deletions: number }[] {
+  return text
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [added = "0", deleted = "0", ...rest] = line.split("\t");
+      const path = rest.join("\t").replace(/\{[^}]* => ([^}]*)\}/, "$1").replace(/^.* => /, "");
+      return { path, additions: Number(added) || 0, deletions: Number(deleted) || 0 };
+    });
+}
 
 /** A git script in the chat's working folder (from its repo's top). `wake: false` skips a computer that isn't running. */
 async function git(chat: Chat, script: string, { wake = true } = {}): Promise<{ code: number; stdout: string; stderr: string } | null> {
@@ -103,7 +121,7 @@ async function take(conversationId: string, replyId: string): Promise<void> {
   const result = await git(chat, snapshot(refOf(chat.id, replyId)));
   if (!result) return;
   const sha = result.stdout.trim().split("\n").at(-1) ?? "";
-  if (result.code !== 0 || !/^[0-9a-f]{40,64}$/.test(sha)) {
+  if (result.code !== 0 || !SHA.test(sha)) {
     console.warn(`[tot] couldn't checkpoint the workspace of chat ${chat.id}:`, gitWords(result.stderr || result.stdout));
     return;
   }
@@ -144,6 +162,71 @@ export const checkpoints = {
     return row ? { messageId: String(row.message_id), sha: String(row.start_sha) } : null;
   },
 
+  /**
+   * At the end of a turn that was checkpointed: the workspace snapshotted again, and what the turn changed counted.
+   * Null when it changed nothing (or wasn't checkpointed); a problem is logged and counts as nothing.
+   */
+  async endTurn(turn: Run): Promise<TurnChanges | null> {
+    await taking.get(turn);
+    const row = statement(`SELECT start_sha FROM chat_checkpoints WHERE message_id = ?`).get(turn.messageId) as Row | undefined;
+    const chat = row ? conversations.get(turn.conversationId) : null;
+    if (!row || !chat) return null;
+    const ref = endRefOf(chat.id, turn.messageId);
+    const start = String(row.start_sha);
+    // A turn that changed nothing keeps no end ref.
+    const script = [
+      snapshot(ref),
+      "echo '@@'",
+      `stats=$(git -c core.quotePath=false diff --numstat -M ${start} "$commit")`,
+      `if [ -n "$stats" ]; then printf '%s\\n' "$stats"; else git update-ref -d ${quote(ref)}; fi`,
+    ].join("\n");
+    const result = await git(chat, script).catch(() => null);
+    if (!result || result.code !== 0) {
+      if (result) console.warn(`[tot] couldn't checkpoint the end of a turn in chat ${chat.id}:`, gitWords(result.stderr || result.stdout));
+      return null;
+    }
+    const [head = "", stats = ""] = result.stdout.split(/^@@$/m);
+    const end = head.trim().split("\n").at(-1) ?? "";
+    const files = numstat(stats);
+    if (!SHA.test(end) || !files.length) return null;
+    db.prepare(`UPDATE chat_checkpoints SET end_sha = ? WHERE message_id = ?`).run(end, turn.messageId);
+    const changes = {
+      files: files.length,
+      additions: files.reduce((sum, file) => sum + file.additions, 0),
+      deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+    };
+    messages.setChanges(turn.messageId, changes);
+    return changes;
+  },
+
+  /** What a reply's turn changed: its files with +/− counts, and the unified diff. */
+  async diff(chat: Chat, replyId: string): Promise<TurnDiff> {
+    const row = statement(`SELECT start_sha, end_sha FROM chat_checkpoints WHERE message_id = ? AND conversation_id = ?`).get(replyId, chat.id) as Row | undefined;
+    const start = String(row?.start_sha ?? "");
+    const end = String(row?.end_sha ?? "");
+    if (!SHA.test(start) || !SHA.test(end)) throw new HttpError(404, "This reply didn't change any files.");
+    const range = `${start} ${end}`;
+    const script = [
+      `git cat-file -e ${end} 2>/dev/null || { echo "Those changes are gone from the repo." >&2; exit 4; }`,
+      `echo '@@NUMSTAT'; git -c core.quotePath=false diff --numstat -M ${range}`,
+      `echo '@@STATUS'; git -c core.quotePath=false diff --name-status -M ${range}`,
+      `echo '@@PATCH'; git -c core.quotePath=false diff -M ${range} | head -c ${PATCH_LIMIT + 1}`,
+    ].join("\n");
+    const result = await git(chat, script);
+    if (!result) throw new HttpError(409, "This chat's workspace can't be reached.");
+    if (result.code !== 0) throw new HttpError(409, gitWords(result.stderr || result.stdout) || "Couldn't read the changes.");
+    const at = (name: string) => result.stdout.indexOf(`@@${name}\n`);
+    const section = (name: string, next?: string) => result.stdout.slice(at(name) + name.length + 3, next ? at(next) : undefined);
+    const statuses = new Map<string, TaskChangedFile["status"]>();
+    for (const line of section("STATUS", "PATCH").split("\n").filter(Boolean)) {
+      const [code = "", ...paths] = line.split("\t");
+      statuses.set(paths.at(-1) ?? "", code.startsWith("A") ? "added" : code.startsWith("D") ? "deleted" : code.startsWith("R") ? "renamed" : "modified");
+    }
+    const files = numstat(section("NUMSTAT", "STATUS")).map((file) => ({ ...file, status: statuses.get(file.path) ?? ("modified" as const) }));
+    const patch = section("PATCH");
+    return { files, patch: patch.slice(0, PATCH_LIMIT), truncated: patch.length > PATCH_LIMIT };
+  },
+
   /** Whether files can be put back for this chat at all (it still has a workspace TOT can reach). */
   reachable(chat: Chat): boolean {
     return placeOf(chat) !== null;
@@ -155,7 +238,7 @@ export const checkpoints = {
    * the state before this restore is kept on <chat>/before-rewind). Refuses when the branch has moved elsewhere.
    */
   async restore(chat: Chat, sha: string): Promise<void> {
-    if (!/^[0-9a-f]{40,64}$/.test(sha)) throw new HttpError(400, "That checkpoint isn't valid.");
+    if (!SHA.test(sha)) throw new HttpError(400, "That checkpoint isn't valid.");
     const script = [
       `cp=${sha}`,
       `git cat-file -e "$cp^{commit}" 2>/dev/null || { echo "The checkpoint is gone from the repo." >&2; exit 4; }`,
@@ -184,7 +267,7 @@ export const checkpoints = {
   /** Drops the refs of these replies' checkpoints (their messages are gone). Best effort, and never wakes a computer. */
   async drop(chat: Chat, replyIds: string[]): Promise<void> {
     if (!replyIds.length) return;
-    const lines = replyIds.map((id) => `git update-ref -d ${quote(refOf(chat.id, id))} 2>/dev/null || true`);
+    const lines = replyIds.flatMap((id) => [refOf(chat.id, id), endRefOf(chat.id, id)].map((ref) => `git update-ref -d ${quote(ref)} 2>/dev/null || true`));
     await git(chat, lines.join("\n"), { wake: false }).catch(() => null);
   },
 

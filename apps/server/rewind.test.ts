@@ -144,6 +144,25 @@ await turn(chat.id, "Rework notes and commit", {
   tool: [chat.id, "computer_exec", { command: `echo more >> notes.txt && rm alpha.txt && echo new > beta.txt && mkdir -p src && echo s > src/s.txt && git add -A && ${COMMIT} agent && echo committed` }],
 });
 check("the agent changed files and committed", read(join(repo, "beta.txt")) === "new\n" && git(repo, "log", "-1", "--format=%s") === "agent", toolResults.at(-1));
+// =============================================================================
+console.log("\n# What a turn changed");
+const [, first, , second] = messages.listByConversation(chat.id);
+check("a turn's changes are counted on its reply", first!.changes?.files === 1 && first!.changes.additions === 1 && first!.changes.deletions === 0, JSON.stringify(first!.changes));
+check(
+  "…the files a turn committed too, new ones and deleted ones",
+  second!.changes?.files === 4 && second!.changes.additions === 3 && second!.changes.deletions === 1,
+  JSON.stringify(second!.changes),
+);
+const diff = await request("GET", `/conversations/${chat.id}/messages/${second!.id}/changes`);
+const byPath = Object.fromEntries((diff.data.files ?? []).map((file: { path: string; status: string }) => [file.path, file.status]));
+check(
+  "its diff lists each file with what happened to it",
+  diff.status === 200 && byPath["alpha.txt"] === "deleted" && byPath["beta.txt"] === "added" && byPath["notes.txt"] === "modified" && byPath["src/s.txt"] === "added",
+  JSON.stringify(diff.data.files),
+);
+check("…with the unified diff", diff.data.patch.includes("diff --git a/notes.txt b/notes.txt") && diff.data.patch.includes("+more") && !diff.data.truncated);
+check("…and keeps the end on a ref of its own", git(repo, "rev-parse", `refs/tot/checkpoints/${chat.id}/${second!.id}-end^{tree}`) === git(repo, "rev-parse", "HEAD^{tree}"));
+
 await turn(chat.id, "Just answer this one");
 list = rows();
 check("a turn that touches no tools has no checkpoint", list.length === 2, JSON.stringify(list));
@@ -172,7 +191,7 @@ check("…and what was there before the rewind is kept on a ref", git(repo, "sho
 await new Promise((resolve) => setTimeout(resolve, 300));
 check(
   "the removed turns' checkpoints go, the kept one stays",
-  rows().length === 1 && git(repo, "for-each-ref", "--format=%(refname:short)", `refs/tot/checkpoints/${chat.id}/`).split("\n").sort().join(",") === [`tot/checkpoints/${chat.id}/before-rewind`, `tot/checkpoints/${chat.id}/${firstReply}`].sort().join(","),
+  rows().length === 1 && git(repo, "for-each-ref", "--format=%(refname:short)", `refs/tot/checkpoints/${chat.id}/`).split("\n").sort().join(",") === [`tot/checkpoints/${chat.id}/before-rewind`, `tot/checkpoints/${chat.id}/${firstReply}`, `tot/checkpoints/${chat.id}/${firstReply}-end`].sort().join(","),
   git(repo, "for-each-ref", `refs/tot/checkpoints/${chat.id}/`),
 );
 check("the provider session is let go", sessionBefore !== null && conversations.get(chat.id)!.providerSessionId === null);
@@ -238,6 +257,14 @@ await turn(wt.id, "Edit in the worktree", { tool: [wt.id, "computer_exec", { com
 const tree = conversations.get(wt.id)!.workspace;
 const worktree = tree?.mode === "worktree" ? tree.worktree! : "";
 check("the agent changed its worktree", read(join(worktree, "x.txt")) === "x\n" && git(worktree, "log", "-1", "--format=%s") === "wt", toolResults.at(-1));
+await turn(wt.id, "Only look", { tool: [wt.id, "computer_exec", { command: "cat notes.txt" }] });
+const looked = messages.listByConversation(wt.id)[3]!;
+check(
+  "a turn that only looked changed nothing: no count, no end ref, no diff",
+  !looked.changes && !git(worktree, "for-each-ref", `refs/tot/checkpoints/${wt.id}/${looked.id}-end`) &&
+    (await request("GET", `/conversations/${wt.id}/messages/${looked.id}/changes`)).status === 404,
+  JSON.stringify(looked.changes),
+);
 const wtAsk = messages.listByConversation(wt.id)[0]!.id;
 res = await request("POST", `/conversations/${wt.id}/rewind`, { messageId: wtAsk, restoreFiles: true });
 check(

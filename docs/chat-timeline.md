@@ -46,3 +46,14 @@ first thought or call to its last (approvals and the text between them included)
 and task cards, notices, screenshots, shared links and the user's mid-turn notes stay in place, splitting the fold.
 Opening it shows the work with its tool calls grouped; nothing inside renders until then, which keeps long chats light.
 The latest reply (not a notice posted after it) stays open, and the list's batched, newest-first rendering is unchanged.
+
+## Changed files per turn
+
+A turn that changed files in the chat's workspace ends with a compact line, "3 files changed +42 −7", that opens to the
+files with their +/− counts, each opening to its unified diff (`components/TurnChanges.tsx`, reusing the task Changes
+tab's list, now `components/tasks/ChangedFiles.tsx`). At the end of a turn that was checkpointed, the workspace is
+snapshotted again onto `refs/tot/checkpoints/<chat>/<reply>-end` and diffed against the turn's start (`git diff
+--numstat -M`, new files included); the counts go on the reply (`Message.changes`, kept in its meta column) and arrive
+with its `run-end` event, so the line costs nothing to show. A turn that only looked changes nothing and keeps no end
+ref. The files and diff load when the line is opened: `GET /api/conversations/:id/messages/:messageId/changes`
+(`TurnDiff`, patch cut at 200 kB). The line stays visible in folded turns.

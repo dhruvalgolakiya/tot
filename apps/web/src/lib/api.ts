@@ -28,6 +28,7 @@ import type {
   RewindPreview,
   RewindRequest,
   RewindResponse,
+  TurnDiff,
   CreateConversationRequest,
   CreateProjectRequest,
   ConnectDeviceRequest,
@@ -266,6 +267,9 @@ export const api = {
   /** What rewinding the chat to one of the user's messages would take away, and whether its files can go back too. */
   rewindPreview: (conversationId: string, messageId: string) =>
     request<RewindPreview>("GET", `/conversations/${seg(conversationId)}/rewind?messageId=${encodeURIComponent(messageId)}`),
+  /** What a reply's turn changed in its chat's workspace: files and the unified diff. */
+  turnChanges: (conversationId: string, messageId: string) =>
+    request<TurnDiff>("GET", `/conversations/${seg(conversationId)}/messages/${seg(messageId)}/changes`),
   /** The chat back to before one of the user's messages (that message and every one after it go). */
   rewindChat: (conversationId: string, body: RewindRequest) => request<RewindResponse>("POST", `/conversations/${seg(conversationId)}/rewind`, body),
   /** A note for a running task; resolves with the saved message. */

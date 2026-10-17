@@ -416,7 +416,24 @@ export interface Message {
   contextChats?: string[];
   /** User messages: the skill invoked with it ("/dh-stack …"), shown as a chip; its SKILL.md went to the model, not here. */
   skill?: string;
+  /** Replies in a chat with a workspace: what the turn changed in its files (GET …/messages/:id/changes has the diff). */
+  changes?: TurnChanges;
   createdAt: number;
+}
+
+/** How much a turn changed in its chat's workspace. */
+export interface TurnChanges {
+  files: number;
+  additions: number;
+  deletions: number;
+}
+
+/** GET /api/conversations/:id/messages/:messageId/changes: a turn's changed files and their unified diff. */
+export interface TurnDiff {
+  files: TaskChangedFile[];
+  /** Cut short on huge changes (see `truncated`). */
+  patch: string;
+  truncated: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1133,6 +1150,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // GET    /api/conversations/:id/rewind?messageId=  -> RewindPreview  (what rewinding to one of the user's messages takes away)
 // POST   /api/conversations/:id/rewind        RewindRequest -> RewindResponse  (that message and everything after it go; with
 //                                              restoreFiles the chat's workspace files go back too; 409 while a reply runs)
+// GET    /api/conversations/:id/messages/:messageId/changes  -> TurnDiff  (what a reply's turn changed in the chat's workspace)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
 // Module 09 · lane A (land a finished coding task; every change also goes out as a `task` event)
 // GET    /api/tasks/:id/land                  -> TaskLandOptions  (worked out now: merge into the folder's checked-out branch, or a draft PR;

@@ -8,6 +8,7 @@ import { MessagePartView } from "./MessagePartView";
 import { TaskGroupCard } from "./orchestration/TaskGroupCard";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { ToolGroup } from "./ToolGroup";
+import { TurnChanges } from "./TurnChanges";
 import { SteerNote } from "./UserMessage";
 
 type AssistantMessageProps = {
@@ -123,6 +124,11 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
       {streaming && isIdleTail(parts.at(-1)) && (
         <div className={clsx(parts.length > 0 && "mt-3")}>
           <ThinkingIndicator agentName={agentName} message={message} live={streaming} />
+        </div>
+      )}
+      {!streaming && message.changes && (
+        <div className="mt-3">
+          <TurnChanges conversationId={message.conversationId} messageId={message.id} changes={message.changes} />
         </div>
       )}
       {!streaming && <MessageMeta message={message} isLatest={isLatest} models={models} inChat={inChat} />}
