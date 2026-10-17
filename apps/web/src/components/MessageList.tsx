@@ -1,14 +1,16 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import clsx from "clsx";
 import { ArrowDown } from "lucide-react";
 import type { Message } from "@tot/shared/types";
 import { useStickToBottom } from "../hooks/useStickToBottom";
 import { whenIdle } from "../lib/idle";
 import { loadMarkdown, useMarkdownReady } from "../lib/markdownLoader";
+import { lazyComponent } from "../lib/lazyComponent";
 import { isTask } from "../lib/tasks";
 import { retryConversation, selectActiveAgent, setChatScrolled, useStore } from "../store";
 import { AssistantMessage } from "./AssistantMessage";
 import { ForkedFrom } from "./ForkedFrom";
+import { QuoteSelection } from "./QuoteSelection";
 import { TaskEmptyState } from "./tasks/TaskEmptyState";
 import { isTaskEndingMessage, TaskNotices } from "./tasks/TaskNotices";
 import { ThinkingIndicator } from "./ThinkingIndicator";
@@ -17,6 +19,21 @@ import { Callout } from "./ui/Callout";
 import { Skeleton } from "./ui/Skeleton";
 
 const NO_MESSAGES: Message[] = [];
+
+const ImageLightbox = lazyComponent(() => import("./ImageLightbox"), "ImageLightbox");
+
+/**
+ * The image a click in the list opens full screen: an attachment or screenshot (marked `data-zoom` with its URL) or an
+ * image in a reply's text. Clicks with a modifier keep their usual meaning (a new tab).
+ */
+function zoomTarget(event: MouseEvent): { src: string; alt: string } | null {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return null;
+  const target = event.target as Element;
+  const marked = target.closest("[data-zoom]");
+  if (marked) return { src: marked.getAttribute("data-zoom")!, alt: marked.getAttribute("data-zoom-alt") ?? "" };
+  if (target instanceof HTMLImageElement && target.closest("[data-reply] .markdown") && !target.closest("a")) return { src: target.currentSrc || target.src, alt: target.alt };
+  return null;
+}
 
 /** One row of the list: a message, or tasks' "… is done" notices in a row, shown as one compact list. */
 type Row = Message | Message[];
@@ -51,11 +68,14 @@ const anchoring = typeof CSS !== "undefined" && CSS.supports("overflow-anchor", 
 /** The newest rows always render in full: they're what a chat opens on. */
 const ALWAYS_RENDERED = 4;
 
+/** From this many replies on, a chat folds the work of every turn but the latest. */
+const FOLD_FROM = 3;
+
 /**
  * Each row's box. Paint containment clips at its edge, so it reaches 8px past the row on every side (padding,
  * taken back by negative margins: the layout doesn't move) for focus rings and the task notices' bleed.
  */
-function rowClass(row: Row, recent: boolean) {
+function rowClass(row: Row, recent: boolean, folded: boolean) {
   return clsx(
     "-mx-2 -my-2 min-w-0 px-2 py-2",
     anchoring &&
@@ -64,7 +84,9 @@ function rowClass(row: Row, recent: boolean) {
         ? "[content-visibility:auto] [contain-intrinsic-size:auto_96px]"
         : row.role === "user"
           ? "[content-visibility:auto] [contain-intrinsic-size:auto_120px]"
-          : "[content-visibility:auto] [contain-intrinsic-size:auto_600px]"),
+          : folded
+            ? "[content-visibility:auto] [contain-intrinsic-size:auto_320px]"
+            : "[content-visibility:auto] [contain-intrinsic-size:auto_600px]"),
   );
 }
 
@@ -79,7 +101,7 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
   const models = useStore((s) => s.models);
   const conversation = useStore((s) => s.conversations.find((c) => c.id === conversationId));
   const task = isTask(conversation) ? conversation : null;
-  // Replies in chats fork (not TOT's own notices; tasks don't fork yet).
+  // Replies in chats fork (not TOT's own notices; tasks don't fork yet), and chats rewind to the user's messages.
   const inChat = conversation?.kind === "chat";
   const { scrollRef, contentRef, atBottom, stuck, scrollToBottom } = useStickToBottom();
   // Messages wait for the markdown renderer, so they render once, as markdown (the skeleton shows meanwhile).
@@ -223,15 +245,34 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
     anchor.current = row ? { row, top: offset(row) } : null;
   }, [start, ready, scrollRef, stuck]);
 
+  const [zoomed, setZoomed] = useState<{ src: string; alt: string } | null>(null);
+  const openImage = useCallback((event: MouseEvent) => {
+    const image = zoomTarget(event);
+    if (!image) return;
+    event.preventDefault();
+    setZoomed(image);
+  }, []);
+
   // Between "sent" and the run's first event there is no assistant message yet.
   const awaitingReply = run ? !run.messageId : sending;
   const lastAssistantId = messages.findLast((m) => m.role === "assistant")?.id;
+  // A long chat folds its older turns' work, so their answers read one after another; the latest turn stays open
+  // (a reply, not a notice TOT posted after it).
+  const { foldOlder, latestReplyId } = useMemo(() => {
+    const replies = messages.filter((m) => m.role === "assistant" && m.parts.some((part) => part.type !== "notice"));
+    return { foldOlder: replies.length >= FOLD_FROM, latestReplyId: replies.at(-1)?.id };
+  }, [messages]);
   const loading = messages.length === 0 ? loadState === "loading" : !markdownReady;
 
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} data-message-list="" className="h-full overflow-y-auto overscroll-contain">
-        <div ref={contentRef} className={`mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 pb-10 sm:px-6 ${topPadding}`}>
+        {/* Images in messages open full screen (zoomTarget). */}
+        <div
+          ref={contentRef}
+          onClick={openImage}
+          className={`mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 pb-10 sm:px-6 [&_[data-reply]_.markdown_img]:cursor-zoom-in ${topPadding}`}
+        >
           {loading && (
             <div className="space-y-4 pt-6" aria-busy="true" aria-label="Loading chat">
               <Skeleton className="ml-auto h-10 w-2/5 rounded-3xl" />
@@ -267,12 +308,12 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
                 key={rowKey(row)}
                 ref={index === 0 ? firstRowRef : undefined}
                 data-message-id={rowKey(row)}
-                className={rowClass(row, start + index >= shown.length - ALWAYS_RENDERED)}
+                className={rowClass(row, start + index >= shown.length - ALWAYS_RENDERED, foldOlder && !Array.isArray(row) && row.id !== latestReplyId)}
               >
                 {Array.isArray(row) ? (
                   <TaskNotices messages={row} conversationId={conversationId} />
                 ) : row.role === "user" ? (
-                  <UserMessage message={row} />
+                  <UserMessage message={row} inChat={inChat} />
                 ) : (
                   <AssistantMessage
                     message={row}
@@ -283,6 +324,7 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
                     agentName={agentName}
                     models={models}
                     inChat={inChat}
+                    folded={foldOlder && row.id !== latestReplyId}
                   />
                 )}
               </div>
@@ -297,6 +339,13 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-linear-to-t from-canvas to-transparent"
       />
+
+      <QuoteSelection root={contentRef} scroller={scrollRef} />
+      {zoomed && (
+        <Suspense fallback={null}>
+          <ImageLightbox src={zoomed.src} alt={zoomed.alt} onClose={() => setZoomed(null)} />
+        </Suspense>
+      )}
 
       {!atBottom && (
         <button

@@ -455,7 +455,24 @@ export interface Message {
   files?: string[];
   /** Plan mode: the user message asked for a plan only, or the reply is that plan. */
   plan?: boolean;
+  /** Replies in a chat with a workspace: what the turn changed in its files (GET …/messages/:id/changes has the diff). */
+  changes?: TurnChanges;
   createdAt: number;
+}
+
+/** How much a turn changed in its chat's workspace. */
+export interface TurnChanges {
+  files: number;
+  additions: number;
+  deletions: number;
+}
+
+/** GET /api/conversations/:id/messages/:messageId/changes: a turn's changed files and their unified diff. */
+export interface TurnDiff {
+  files: TaskChangedFile[];
+  /** Cut short on huge changes (see `truncated`). */
+  patch: string;
+  truncated: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1186,6 +1203,10 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 // PUT    /api/conversations/pinned-order     PinnedOrderRequest -> Conversation[]  (one agent's pinned chats, in the order given)
 // GET    /api/search?q=[&agentId=&limit=]     -> SearchResults  (finished messages whose text has every word of q, best first, at
 //                                              most 3 per chat; words match as prefixes)
+// GET    /api/conversations/:id/rewind?messageId=  -> RewindPreview  (what rewinding to one of the user's messages takes away)
+// POST   /api/conversations/:id/rewind        RewindRequest -> RewindResponse  (that message and everything after it go; with
+//                                              restoreFiles the chat's workspace files go back too; 409 while a reply runs)
+// GET    /api/conversations/:id/messages/:messageId/changes  -> TurnDiff  (what a reply's turn changed in the chat's workspace)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
 // Module 09 · lane A (land a finished coding task; every change also goes out as a `task` event)
 // GET    /api/tasks/:id/land                  -> TaskLandOptions  (worked out now: merge into the folder's checked-out branch, or a draft PR;
@@ -2258,6 +2279,27 @@ export interface MessageSearchHit {
 
 export interface SearchResults {
   messages: MessageSearchHit[];
+}
+
+/** POST /api/conversations/:id/rewind: back to before `messageId`, one of the user's messages. */
+export interface RewindRequest {
+  messageId: string;
+  /** Also put the chat's workspace files back as they were before then (when RewindPreview.files). */
+  restoreFiles?: boolean;
+}
+
+export interface RewindPreview {
+  /** How many messages would go: this one and every one after it. */
+  messages: number;
+  /** The chat's workspace was checkpointed in those turns, so its files can go back too. */
+  files: boolean;
+}
+
+export interface RewindResponse {
+  conversation: Conversation;
+  /** The message rewound to, for the composer to edit and send again. */
+  draft: { text: string; attachments: Attachment[]; contextChats: string[] };
+  filesRestored: boolean;
 }
 
 // ---------------------------------------------------------------------------

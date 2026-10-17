@@ -6,6 +6,7 @@ import { runRegistry } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
 import { messages } from "../data/messages.ts";
+import { rewinds } from "./rewind.ts";
 
 /**
  * Forks (module 05). A fork is a new chat, "Fork of X", with X's messages up to a point copied in
@@ -78,13 +79,17 @@ export const forks = {
   },
 
   /**
-   * For a fork's first turn on `account` (a provider account; the built-in ones are named after their provider): the
-   * provider session to copy and where to cut it, when the reply it was forked at came from that account — its session
-   * lives in that account's folder (null otherwise: context selection then).
+   * For a fork's first turn on `account` (a provider account; the built-in ones are named after their provider), or a
+   * rewound chat's: the provider session to copy and where to cut it, when the reply it was forked at (or now ends
+   * with) came from that account — its session lives in that account's folder (null otherwise: context selection then).
    */
   nativeStart(conversation: ConversationRecord, account: string): { sessionId: string; at: string | null } | null {
-    if (!conversation.forkedFrom || conversation.providerSessionId) return null;
-    const { conversationId, messageId } = conversation.forkedFrom;
+    if (conversation.providerSessionId) return null;
+    // A rewound chat carries on from the reply it now ends with (chats/rewind.ts), as a fork does from where it branched.
+    const rewound = rewinds.point(conversation.id);
+    const from = rewound ? { conversationId: conversation.id, messageId: rewound.messageId } : conversation.forkedFrom;
+    if (!from?.messageId) return null;
+    const { conversationId, messageId } = from;
     // Forked after notices only (a task finished, a fork came back): the reply before them is where the session stands.
     const history = messages.listByConversation(conversationId);
     let index = history.findIndex((m) => m.id === messageId);

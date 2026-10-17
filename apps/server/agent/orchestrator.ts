@@ -8,6 +8,7 @@ import { agents } from "../data/agents.ts";
 import { brains } from "../data/brains.ts";
 import { CUT_OFF_BY_RESTART } from "../db.ts";
 import { attachedNote, cleanContextChats } from "../chats/attach.ts";
+import { checkpoints } from "../chats/checkpoints.ts";
 import { forks } from "../chats/fork.ts";
 import { chatFiles } from "../chats/files.ts";
 import { PLAN_NOTE, planTurns } from "../chats/plan.ts";
@@ -497,7 +498,9 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   unsubscribe();
   run.steer = undefined;
   saver.stop();
-  const final = builder.finish(status, error);
+  // What the turn changed in the chat's workspace, when it was checkpointed (chats/checkpoints.ts).
+  const changes = await checkpoints.endTurn(run).catch(() => null);
+  const final = { ...builder.finish(status, error), ...(changes ? { changes } : {}) };
   messages.save(final);
   if (place.session && place.ref) messages.setProviderRef(final.id, { session: place.session, ref: place.ref });
   if (title) await Promise.race([title, sleep(TITLE_GRACE_MS)]);

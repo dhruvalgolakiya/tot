@@ -79,6 +79,7 @@ import { taskRoutes } from "./tasks/routes.ts";
 import { landingRoutes } from "./landing/routes.ts";
 import { missionRoutes } from "./mission/routes.ts";
 import { worktreeRoutes } from "./worktrees/routes.ts";
+import { checkpoints } from "./chats/checkpoints.ts";
 import { chatRoutes } from "./chats/routes.ts";
 import { skillRoutes } from "./skills/routes.ts";
 import { projectRoutes } from "./projects/routes.ts";
@@ -386,6 +387,7 @@ api.delete("/conversations/:id", async (c) => {
   const record = conversations.get(id);
   // A chat's own worktree goes with it; its branch stays when it has commits of its own or was pushed.
   if (record) {
+    await checkpoints.forget(record);
     await chatWorkspaces.remove(record).catch((err) => {
       console.warn(`[tot] couldn't remove the worktree of chat ${id}:`, err instanceof Error ? err.message : err);
     });

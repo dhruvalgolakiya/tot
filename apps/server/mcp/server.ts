@@ -10,6 +10,7 @@ import { computerManager, type ActiveComputer, type Screenshot } from "../comput
 import { MCP_TOKEN, VERSION } from "../config.ts";
 import { appEvents } from "../app-events.ts";
 import { attachedTo } from "../chats/attach.ts";
+import { checkpoints } from "../chats/checkpoints.ts";
 import { forks } from "../chats/fork.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations } from "../data/conversations.ts";
@@ -225,6 +226,8 @@ function buildServer(conversation: ConversationRecord): McpServer {
           const active = await computerManager.ensure(agentId);
           // The chat's project folder: set up on the computer, or for a folder on this Mac, granted to this command only.
           const project = await forTools(conversation, active);
+          // Before the turn's first change, its workspace is checkpointed, so rewinding the chat can put the files back.
+          await checkpoints.beforeChange(conversationId);
           const result = await active.backend.exec(active.externalId, command, {
             cwd: cwd ? homeRelative(cwd) : (baseFor(project.grant) ?? undefined),
             timeoutMs: (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
@@ -280,6 +283,7 @@ function buildServer(conversation: ConversationRecord): McpServer {
         guarded(async () => {
           const active = await computerManager.ensure(agentId);
           const project = await forTools(conversation, active);
+          await checkpoints.beforeChange(conversationId);
           await active.backend.writeFile(active.externalId, resolvePath(path, baseFor(project.grant)), content, { grant: project.grant });
           computerManager.touch(agentId);
           return reply(`${startNote(active)}${project.note}Wrote ${Buffer.byteLength(content)} bytes to ${path}.`);

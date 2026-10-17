@@ -87,7 +87,7 @@ export function useAttachments(deviceId: string | null = null) {
     setItems((current) => (current.length === 0 ? previous : current));
   }, []);
 
-  /** Adds files that are already uploaded (a stashed draft coming back), up to the limit, skipping ones already here. */
+  /** Adds files that are already uploaded (a stashed draft or a rewound message coming back), up to the limit, skipping ones already here. */
   const addUploaded = useCallback((uploaded: Attachment[]) => {
     if (uploaded.length === 0) return;
     setItems((current) => {

@@ -1,10 +1,14 @@
 import { memo } from "react";
 import clsx from "clsx";
 import type { Message, MessagePart, ModelOption } from "@tot/shared/types";
+import { foldedRows, partRows, partSpacing } from "../lib/toolGroups";
+import { FoldedWork } from "./FoldedWork";
 import { MessageMeta } from "./MessageMeta";
 import { MessagePartView } from "./MessagePartView";
 import { TaskGroupCard } from "./orchestration/TaskGroupCard";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { ToolGroup } from "./ToolGroup";
+import { TurnChanges } from "./TurnChanges";
 import { SteerNote } from "./UserMessage";
 
 type AssistantMessageProps = {
@@ -23,16 +27,9 @@ type AssistantMessageProps = {
   models: ModelOption[];
   /** The message is in a chat (they fork; tasks and TOT's own notices don't). */
   inChat: boolean;
+  /** An older turn of a long chat: its work before the answer is folded into one line. */
+  folded?: boolean;
 };
-
-const PILL_TOOLS = new Set(["memory_save", "wiki_write", "wiki_edit"]);
-const isToolCard = (part: MessagePart | undefined) => part?.type === "tool" && !PILL_TOOLS.has(part.name);
-
-/** Tool cards stack tightly; everything else gets room to breathe. */
-function spacing(previous: MessagePart | undefined, part: MessagePart) {
-  if (!previous) return undefined;
-  return isToolCard(previous) && isToolCard(part) ? "mt-1.5" : "mt-3";
-}
 
 /**
  * For a run of two or more task cards in a row: the run's task ids at its first part, null at the
@@ -58,7 +55,7 @@ function isIdleTail(part: MessagePart | undefined) {
   return part.type === "notice";
 }
 
-export const AssistantMessage = memo(function AssistantMessage({ message, live, isLatest, notes, agentName, models, inChat }: AssistantMessageProps) {
+export const AssistantMessage = memo(function AssistantMessage({ message, live, isLatest, notes, agentName, models, inChat, folded = false }: AssistantMessageProps) {
   const streaming = live && message.status === "streaming";
   const { parts } = message;
   const partIds = new Set(parts.map((part) => part.id));
@@ -66,18 +63,43 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
   // Notes that arrived before the first part, or after a part that's gone, go at the start or the end.
   const leading = notesAfter(null);
   const trailing = (notes ?? []).filter((note) => note.steeredInto?.afterPartId && !partIds.has(note.steeredInto.afterPartId));
+  const noted = new Set((notes ?? []).map((note) => note.steeredInto?.afterPartId));
+  // Finished tool calls in a row show as one line; a note the user sent after one of them ends the run there. An older
+  // turn folds all its work before the answer.
+  const noteAfter = (id: string) => noted.has(id);
+  const rows = folded && !streaming ? foldedRows(parts, { noteAfter }) : partRows(parts, { live: streaming, noteAfter });
+  const folds = rows.filter((row) => row.kind === "work").length;
 
   return (
-    <div className="group/message min-w-0">
+    <div data-reply className="group/message min-w-0">
       {leading.map((note) => (
         <SteerNote key={note.id} message={note} inline />
       ))}
-      {parts.map((part, index) => {
+      {rows.map((row) => {
+        if (row.kind !== "part") {
+          const run = row.indexes.map((index) => parts[index]!);
+          return (
+            <div key={run[0]!.id} className={partSpacing(parts[row.indexes[0]! - 1], run[0]!)}>
+              {row.kind === "tools" ? (
+                <ToolGroup parts={run} live={streaming} conversationId={message.conversationId} />
+              ) : (
+                <FoldedWork parts={run} durationMs={folds === 1 ? message.usage?.durationMs : undefined} conversationId={message.conversationId} />
+              )}
+              {notesAfter(run.at(-1)!.id).map((note) => (
+                <div key={note.id} className="mt-3">
+                  <SteerNote message={note} inline />
+                </div>
+              ))}
+            </div>
+          );
+        }
+        const { index } = row;
+        const part = parts[index]!;
         // Tasks started together stack into one group card (at the first of them; the rest are folded in).
         const group = taskRun(parts, index);
         if (group === null) return null;
         return (
-          <div key={part.id} className={spacing(parts[index - 1], part)}>
+          <div key={part.id} className={partSpacing(parts[index - 1], part)}>
             {group.length > 1 ? (
               <TaskGroupCard taskIds={group} />
             ) : (
@@ -102,6 +124,11 @@ export const AssistantMessage = memo(function AssistantMessage({ message, live, 
       {streaming && isIdleTail(parts.at(-1)) && (
         <div className={clsx(parts.length > 0 && "mt-3")}>
           <ThinkingIndicator agentName={agentName} message={message} live={streaming} />
+        </div>
+      )}
+      {!streaming && message.changes && (
+        <div className="mt-3">
+          <TurnChanges conversationId={message.conversationId} messageId={message.id} changes={message.changes} />
         </div>
       )}
       {!streaming && <MessageMeta message={message} isLatest={isLatest} models={models} inChat={inChat} />}
