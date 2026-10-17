@@ -50,11 +50,12 @@ TOT doesn't load your skills on its own, the way Claude Code can: only the one y
 
 ## Models
 
-Pick a model from the menu at the top of the chat.
+Pick a model from the menu at the top of the chat. Type to search it; arrows and Enter pick.
 
 - **TOT Auto** (the default) picks for you, message by message. Quick asks go to Claude Sonnet 5.5, which is fast. Coding, debugging, research, analysis and long messages go to Claude Opus 5.5. When Claude isn't connected, or your plan is at its limit, it uses ChatGPT. Hover the model name under a reply to see why it was picked, like "Auto · coding task → Opus 5.5".
 - **Claude**: Claude Opus 5.5 for the deepest reasoning, Claude Sonnet 5.5 for everyday work, and Claude Fable 5.1 when your account offers it.
 - **ChatGPT**: the models your ChatGPT account offers, listed live, with its default first.
+- **Reasoning effort.** With a Claude or ChatGPT model picked, the bottom of the menu sets how hard it thinks in this chat: **Auto** (TOT decides each message, as before) or one of the levels the model offers, from **Low** to **Max**. The chat keeps it, and the menu's title shows it. **Think harder** still raises it to at least extra high for one message.
 
 ### When a plan runs out
 

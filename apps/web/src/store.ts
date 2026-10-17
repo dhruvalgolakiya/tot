@@ -11,6 +11,7 @@ import type {
   ComputerSummary,
   Conversation,
   Brain,
+  Effort,
   GitHubStatus,
   MailSummary,
   Message,
@@ -155,6 +156,8 @@ export interface TotState {
   mailEvent: { personaId: string; mail: MailSummary; at: number } | null;
   /** Model picked before a conversation exists. */
   draftModelId: string | null;
+  /** The reasoning effort picked for the next new chat's model; null: TOT picks it. */
+  draftEffort: Effort | null;
   /** The project a new chat (one not sent yet) starts in: picked in its composer, or set by a project's "New chat". */
   draftProjectId: string | null;
   /** Where that new chat works when its project has code: the main checkout, or a new worktree of its own. */
@@ -242,6 +245,7 @@ export const useStore = create<TotState>()(() => ({
   personasState: "loading",
   mailEvent: null,
   draftModelId: null,
+  draftEffort: null,
   draftProjectId: null,
   draftWorkspace: "checkout",
 
@@ -294,6 +298,12 @@ export function setDeviceModels(deviceId: string, models: ModelOption[]) {
 export function setDeviceBrains(deviceId: string, brains: Brain[]) {
   set((s) => ({ deviceBrains: { ...s.deviceBrains, [deviceId]: brains } }));
 }
+
+/** The open chat's reasoning effort (or the next new chat's); null: TOT picks it. */
+export const selectCurrentEffort = (s: TotState): Effort | null => {
+  const conversation = selectCurrentConversation(s);
+  return conversation ? (conversation.effort ?? null) : s.draftEffort;
+};
 
 export const selectCurrentModelId = (s: TotState): string =>
   selectCurrentConversation(s)?.modelId ??
@@ -1317,13 +1327,14 @@ export async function sendMessage(
   const tempId = localId();
   try {
     if (!conversationId) {
-      const { homeAgentId, agents, draftModelId, draftProjectId, draftWorkspace, settings, page, projectId } = get();
+      const { homeAgentId, agents, draftModelId, draftEffort, draftProjectId, draftWorkspace, settings, page, projectId } = get();
       // From a project's page, the chat starts in that project; from home, in the one picked (if any).
       const target = page === "project" && projectId ? projectId : draftProjectId;
       const project = target ? useProjects.getState().projects.find((p) => p.id === target) : undefined;
       const conversation = await api.createConversation({
         agentId: homeAgentId ?? agents[0]?.id,
         modelId: draftModelId ?? settings?.defaultModelId ?? AUTO_MODEL_ID,
+        ...(draftEffort ? { effort: draftEffort } : {}),
         ...(target ? { projectId: target } : {}),
         // In a project with code, where it works: the main checkout, or a new worktree of its own.
         ...(project && isCodeProject(project) ? { workspace: draftWorkspace } : {}),
@@ -1336,6 +1347,7 @@ export async function sendMessage(
         currentId: conversation.id,
         page: "chat",
         draftModelId: null,
+        draftEffort: null,
         draftProjectId: null,
         draftWorkspace: "checkout",
       }));
@@ -1463,15 +1475,29 @@ export async function stopRun(conversationId: string) {
   }
 }
 
-/** Change the model of the open chat, or of the next new chat. */
+/** Change the model of the open chat, or of the next new chat. An effort the new model doesn't take goes back to TOT's pick. */
 export async function setModel(modelId: string) {
-  const conversation = selectCurrentConversation(get());
+  const s = get();
+  const conversation = selectCurrentConversation(s);
+  const effort = selectCurrentEffort(s);
+  const keepsEffort = !effort || Boolean(selectActiveModels(s).find((m) => m.id === modelId)?.efforts?.includes(effort));
   if (!conversation) {
-    set({ draftModelId: modelId });
+    set({ draftModelId: modelId, ...(keepsEffort ? {} : { draftEffort: null }) });
     return;
   }
   if (conversation.modelId === modelId) return;
-  await updateConversation(conversation.id, { modelId });
+  await updateConversation(conversation.id, { modelId, ...(keepsEffort ? {} : { effort: null }) });
+}
+
+/** Change the reasoning effort of the open chat (or of the next new chat); null lets TOT pick it each turn. */
+export async function setEffort(effort: Effort | null) {
+  const conversation = selectCurrentConversation(get());
+  if (!conversation) {
+    set({ draftEffort: effort });
+    return;
+  }
+  if ((conversation.effort ?? null) === effort) return;
+  await updateConversation(conversation.id, { effort });
 }
 
 /** `optimistic`: how the chat looks until the server answers, when that isn't the patch itself (archived → archivedAt). */

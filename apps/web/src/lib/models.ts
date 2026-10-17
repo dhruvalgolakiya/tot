@@ -1,4 +1,4 @@
-import type { Message, ModelOption, ProviderId } from "@tot/shared/types";
+import type { Effort, Message, ModelOption, ProviderId } from "@tot/shared/types";
 
 export const AUTO_MODEL_ID = "auto";
 export const AUTO_LABEL = "TOT Auto";
@@ -8,6 +8,25 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
   claude: "Claude",
   chatgpt: "ChatGPT",
 };
+
+/** Reasoning efforts as the model menu names them (short enough to sit side by side). */
+export const EFFORT_LABELS: Record<Effort, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "X-high",
+  max: "Max",
+};
+
+/** Models (and their account) that match every word of a query: the model menu's search. */
+export function filterModels(models: ModelOption[], query: string): ModelOption[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return models;
+  return models.filter((model) => {
+    const text = `${displayLabel(model)} ${model.model} ${model.accountName ?? PROVIDER_LABELS[model.provider as ProviderId] ?? ""} ${displayDescription(model) ?? ""}`.toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
+}
 
 export function displayLabel(model: ModelOption): string {
   return model.provider === "auto" ? AUTO_LABEL : model.label;

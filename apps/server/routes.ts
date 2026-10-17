@@ -32,6 +32,7 @@ import type {
   WikiPagePatch,
 } from "@tot/shared/types";
 import { HttpError, sendMessage } from "./agent/orchestrator.ts";
+import { isEffort } from "./agent/router.ts";
 import { appEvents } from "./app-events.ts";
 import { apps, ExecutorError } from "./apps.ts";
 import { appsCatalog, AppsError } from "./apps-catalog.ts";
@@ -291,6 +292,7 @@ api.post("/conversations", async (c) => {
     modelId: request.modelId || agent.modelId || settings.get().defaultModelId,
     projectId: project?.id ?? null,
     workspace,
+    effort: isEffort(request.effort) ? request.effort : null,
   });
   // New wiki pages from this chat go to the project's brain.
   if (project) brains.setFocus(conversation.id, project.brainId);
@@ -349,6 +351,8 @@ api.patch("/conversations/:id", async (c) => {
   const id = c.req.param("id");
   const record = found(conversations.get(id), "Chat not found.");
   const patch = await body<UpdateConversationRequest>(c);
+  const organized = chatOrganizer.patchFrom(patch);
+  if (patch.effort !== undefined && patch.effort !== null && !isEffort(patch.effort)) throw new HttpError(400, "That isn't a reasoning effort.");
   // Moving a chat takes its tasks along; a task moves with its chat, not on its own.
   if (patch.projectId !== undefined && patch.projectId !== record.projectId) {
     if (record.kind === "task" && record.parentId) throw new HttpError(400, "A task stays in its chat's project. Move the chat instead.");
@@ -356,13 +360,13 @@ api.patch("/conversations/:id", async (c) => {
   }
   const title = typeof patch.title === "string" ? patch.title.trim().slice(0, 120) : undefined;
   if (title === "") throw new HttpError(400, "Title can't be empty.");
-  const organized = chatOrganizer.patchFrom(patch);
   const updated = conversations.update(id, {
     title,
     pinned: typeof patch.pinned === "boolean" ? patch.pinned : undefined,
     // A chat pinned now goes on top of its agent's pinned chats.
     pinPosition: patch.pinned === true && !record.pinned ? pins.topFor(record.agentId) : patch.pinned === false ? null : undefined,
     modelId: typeof patch.modelId === "string" ? patch.modelId : undefined,
+    effort: patch.effort,
     ...organized,
   });
   if (organized?.snoozedUntil !== undefined) chatOrganizer.arm();

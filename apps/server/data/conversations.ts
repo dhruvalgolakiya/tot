@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ChatWorkspace, ComputerSummary, Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "@tot/shared/types";
+import type { ChatWorkspace, ComputerSummary, Effort, Conversation, ConversationKind, ConversationOrigin, ForkOrigin, ProviderId, TaskInfo } from "@tot/shared/types";
 import { db, parseJson, statement, type Row } from "../db.ts";
 import { getComputerSummary } from "./computers.ts";
 
@@ -39,7 +39,7 @@ export function slimTask(task: TaskInfo): TaskInfo {
 
 /** The columns a chat list reads: not the frozen system prompt, the provider session, or what its next turn is told. */
 const LIST_COLUMNS =
-  "id, agent_id, routine_id, title, model_id, provider, pinned, created_at, updated_at, origin, kind, parent_id, task, forked_from, project_id, lead, workspace, archived_at, snoozed_until, unread, pin_position";
+  "id, agent_id, routine_id, title, model_id, provider, pinned, created_at, updated_at, origin, kind, parent_id, task, forked_from, project_id, lead, workspace, archived_at, snoozed_until, unread, pin_position, effort";
 
 /** Each agent's computer, read once per call however many of its chats are in the rows. */
 function computersOnce(): (agentId: string) => ComputerSummary | null {
@@ -113,6 +113,7 @@ function toRecord(row: Row, computerOf: (agentId: string) => ComputerSummary | n
     ...(row.snoozed_until ? { snoozedUntil: Number(row.snoozed_until) } : {}),
     ...(row.unread ? { unread: true } : {}),
     ...(row.pinned && row.pin_position !== null && row.pin_position !== undefined ? { pinPosition: Number(row.pin_position) } : {}),
+    ...(row.effort ? { effort: row.effort as Effort } : {}),
   };
 }
 
@@ -143,6 +144,7 @@ type ConversationPatch = Partial<{
   snoozedUntil: number | null;
   unread: boolean;
   pinPosition: number | null;
+  effort: Effort | null;
 }>;
 
 export const conversations = {
@@ -217,6 +219,7 @@ export const conversations = {
     lead?: boolean;
     /** Where a chat in a code project works (see Conversation.workspace). */
     workspace?: ChatWorkspace | null;
+    effort?: Effort | null;
   }): ConversationRecord {
     const id = randomUUID();
     const now = Date.now();
@@ -239,6 +242,7 @@ export const conversations = {
     );
     if (input.lead) db.prepare(`UPDATE conversations SET lead = 1 WHERE id = ?`).run(id);
     if (input.workspace) db.prepare(`UPDATE conversations SET workspace = ? WHERE id = ?`).run(JSON.stringify(input.workspace), id);
+    if (input.effort) db.prepare(`UPDATE conversations SET effort = ? WHERE id = ?`).run(input.effort, id);
     return conversations.get(id)!;
   },
 
@@ -265,6 +269,7 @@ export const conversations = {
       snoozed_until: patch.snoozedUntil,
       unread: patch.unread === undefined ? undefined : Number(patch.unread),
       pin_position: patch.pinPosition,
+      effort: patch.effort,
       updated_at: touch ? Date.now() : undefined,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);

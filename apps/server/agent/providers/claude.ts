@@ -14,7 +14,7 @@ import { accountDir, accounts, binaryFor, tildePath } from "../../accounts/accou
 import { claudeAuthEnv, claudeMcpServers, claudePlugins, claudeSettingsEnv, mergeMcpServers } from "../../accounts/config.ts";
 import { getSecret, paths } from "../../config.ts";
 import { settings } from "../../data/settings.ts";
-import { CLAUDE_OPUS, CLAUDE_SONNET } from "../router.ts";
+import { CLAUDE_OPUS, CLAUDE_SONNET, EFFORT_LEVELS, isEffort } from "../router.ts";
 import type { AgentProvider, McpServerSpec, ProviderEvent, TurnInput } from "./types.ts";
 
 const FABLE = "claude-fable-5-1";
@@ -265,17 +265,23 @@ const lastSessionCost = new Map<string, number>();
 
 function modelOptions(available: boolean, supported: ModelInfo[], account: ProviderAccount): ModelOption[] {
   const reason = available ? undefined : `${account.builtIn ? "Claude" : account.name} isn't connected`;
-  const option = (model: string, label: string, description: string): ModelOption => ({
-    id: `${account.id}:${model}`,
-    provider: "claude",
-    accountId: account.id,
-    accountName: account.name,
-    model,
-    label,
-    description,
-    available,
-    unavailableReason: reason,
-  });
+  const option = (model: string, label: string, description: string): ModelOption => {
+    // What Claude Code says the model takes; before it's been asked (signed out), every level (it lowers one a model lacks).
+    const info = supported.find((m) => m.value === model || m.resolvedModel === model);
+    const efforts = info?.supportsEffort === false ? [] : (info?.supportedEffortLevels?.filter(isEffort) ?? [...EFFORT_LEVELS]);
+    return {
+      id: `${account.id}:${model}`,
+      provider: "claude",
+      accountId: account.id,
+      accountName: account.name,
+      model,
+      label,
+      description,
+      available,
+      unavailableReason: reason,
+      ...(efforts.length ? { efforts: EFFORT_LEVELS.filter((e) => efforts.includes(e)) } : {}),
+    };
+  };
   const options = [
     option(CLAUDE_OPUS, "Claude Opus 5.5", "Deepest reasoning for complex work"),
     option(CLAUDE_SONNET, "Claude Sonnet 5.5", "Fast and capable for everyday tasks"),

@@ -24,6 +24,7 @@ import type { Effort, ModelOption, ProviderAccount, ProviderStatus, Usage } from
 import { accountDir, accounts, binaryFor } from "../../accounts/accounts.ts";
 import { VERSION, paths } from "../../config.ts";
 import { settings as settingsStore } from "../../data/settings.ts";
+import { EFFORT_LEVELS } from "../router.ts";
 import { CodexAppServer, CodexExitError, CodexRpcError, resolveCodexBinary } from "./codex-app-server.ts";
 import type { AgentProvider, McpServerSpec, ProviderEvent, TurnInput } from "./types.ts";
 
@@ -522,6 +523,9 @@ function toModelOptions(models: CodexModel[], loggedIn: boolean, account: Provid
       typeof retiring === "number"
         ? ` Retires ${new Date(retiring * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}.`
         : "";
+    // The model's reasoning efforts that are TOT's too (not "minimal", nor "ultra", which spawns sub-agents).
+    const supported = new Set(m.supportedReasoningEfforts?.map((e) => e.reasoningEffort));
+    const efforts = EFFORT_LEVELS.filter((e) => supported.has(e));
     return {
       id: `${account.id}:${m.id}`,
       provider: "chatgpt",
@@ -532,6 +536,7 @@ function toModelOptions(models: CodexModel[], loggedIn: boolean, account: Provid
       description: `${(m.description ?? "").trim()}${note}`.trim() || undefined,
       available: loggedIn,
       unavailableReason: loggedIn ? undefined : `Connect ${account.builtIn ? "ChatGPT" : account.name} first`,
+      ...(efforts.length ? { efforts } : {}),
     };
   });
 }

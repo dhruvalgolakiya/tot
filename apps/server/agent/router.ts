@@ -47,8 +47,17 @@ export function assessComplexity(text: string): Complexity {
 
 export type RouteResult = { ok: true; route: Route } | { ok: false; error: string };
 
+/** TOT's efforts, lowest first. */
+export const EFFORT_LEVELS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
+
+export function isEffort(value: unknown): value is Effort {
+  return typeof value === "string" && (EFFORT_LEVELS as readonly string[]).includes(value);
+}
+
 export interface RouteOptions {
   thinkHarder?: boolean;
+  /** A picked model's effort, chosen for the chat; without it, TOT picks one from the turn. Auto ignores it. */
+  effort?: Effort;
   statuses: ProviderStatus[];
   /** Accounts (built-in ones by their provider id) in a usage-limit cooldown; Auto avoids them while an alternative exists. */
   limited: ReadonlySet<string>;
@@ -86,7 +95,9 @@ export function resolveRoute(modelId: string, text: string, opts: RouteOptions):
     if (!picked?.loggedIn) {
       return { ok: false, error: `${picked?.label ?? parsed.account} isn't connected. ${picked?.detail ?? ""}`.trim() };
     }
-    const effort: Effort = opts.thinkHarder ? "xhigh" : parsed.provider === "claude" || complexity.complex ? "high" : "medium";
+    const chosen: Effort = opts.effort ?? (parsed.provider === "claude" || complexity.complex ? "high" : "medium");
+    // "Think harder" raises the effort to at least xhigh, never lowers it.
+    const effort: Effort = opts.thinkHarder && EFFORT_LEVELS.indexOf(chosen) < EFFORT_LEVELS.indexOf("xhigh") ? "xhigh" : chosen;
     return { ok: true, route: { ...parsed, effort, reason: opts.thinkHarder ? "Think harder" : "Picked by you" } };
   }
 

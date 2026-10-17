@@ -31,6 +31,8 @@ export interface ModelOption {
   description?: string;
   available: boolean;
   unavailableReason?: string;
+  /** The reasoning efforts a chat can pick for this model, lowest first; absent for Auto and models without them. */
+  efforts?: Effort[];
 }
 
 export interface ProviderStatus {
@@ -199,6 +201,11 @@ export interface Conversation {
   title: string;
   /** Last ModelOption id picked for this chat ("auto" by default). */
   modelId: string;
+  /**
+   * The reasoning effort picked for its model (one of the model's `efforts`); absent: TOT picks it each turn. Not
+   * used with Auto, which picks the model too. "Think harder" still raises it to at least xhigh for a turn.
+   */
+  effort?: Effort | null;
   /** Provider that owns the current agent session, null before the first turn. */
   provider: ProviderId | null;
   pinned: boolean;
@@ -1363,12 +1370,16 @@ export interface CreateConversationRequest {
   projectId?: string | null;
   /** Where it works in a code project: its main checkout, or a new worktree of its own. Needs a code projectId. */
   workspace?: ChatWorkspaceMode;
+  /** The reasoning effort for its model; omitted or null: TOT picks it each turn. */
+  effort?: Effort | null;
 }
 
 export interface UpdateConversationRequest {
   title?: string;
   pinned?: boolean;
   modelId?: string;
+  /** The reasoning effort for its model, or null to let TOT pick it each turn. */
+  effort?: Effort | null;
   /** Move the chat into a project, or out of one with null (module 06). Its tasks move with it. */
   projectId?: string | null;
   /** Archive it (and end a snooze), or bring it back. */

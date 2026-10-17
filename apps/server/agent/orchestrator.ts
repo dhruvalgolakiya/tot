@@ -192,6 +192,7 @@ export async function sendMessage(
   const complexity = options.heavy ? ({ complex: true, why: options.heavy } as const) : undefined;
   const result = resolveRoute(modelId, routingText, {
     thinkHarder: request.thinkHarder,
+    effort: conversation.effort ?? undefined,
     statuses,
     accounts: accountStatuses,
     limited: limits.active(),

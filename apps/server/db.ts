@@ -822,6 +822,8 @@ if (!hasColumn("conversations", "unread")) db.exec(`ALTER TABLE conversations AD
 db.exec(`CREATE INDEX IF NOT EXISTS conversations_snoozed ON conversations(snoozed_until) WHERE snoozed_until IS NOT NULL`);
 // Where a pinned chat sits among its agent's pinned chats (lowest first; chats pinned before this have none, and come after).
 if (!hasColumn("conversations", "pin_position")) db.exec(`ALTER TABLE conversations ADD COLUMN pin_position REAL`);
+// The reasoning effort picked for a chat's model (Effort); null: TOT picks it each turn, as before.
+if (!hasColumn("conversations", "effort")) db.exec(`ALTER TABLE conversations ADD COLUMN effort TEXT`);
 
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
