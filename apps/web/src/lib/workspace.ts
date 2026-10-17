@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import type { Conversation } from "@tot/shared/types";
-import type { WorkspaceInfo, WorkspaceTab } from "@tot/shared/workspace";
+import type { WorkspaceDiff, WorkspaceFileDiff, WorkspaceInfo, WorkspaceTab } from "@tot/shared/workspace";
 import { request } from "./api";
+import { apiUrl, deviceOf } from "./devices";
 
 /**
  * The workspace panel beside a chat that works in a project folder or a worktree of its own: whether it's open
@@ -85,4 +86,9 @@ const base = (chatId: string) => `/conversations/${seg(chatId)}/workspace`;
 
 export const workspaceApi = {
   info: (chatId: string) => request<WorkspaceInfo>("GET", base(chatId)),
+  diff: (chatId: string) => request<WorkspaceDiff>("GET", `${base(chatId)}/diff`),
+  diffFile: (chatId: string, path: string, oldPath?: string) =>
+    request<WorkspaceFileDiff>("GET", `${base(chatId)}/diff/file?path=${seg(path)}${oldPath ? `&old=${seg(oldPath)}` : ""}`),
+  /** The stream that says when files in the chat's folder changed (on the device that has the chat). */
+  eventsUrl: (chatId: string) => apiUrl(`${base(chatId)}/events`, deviceOf(chatId)),
 };

@@ -4,6 +4,9 @@
  * never change it, and only this computer (or the owner signed in on another device) gets a terminal.
  *
  * GET    /api/conversations/:id/workspace                 -> WorkspaceInfo  (always 200; `available` says whether the rest works)
+ * GET    /api/conversations/:id/workspace/events          -> SSE: { type: "changed" } when files in it change (debounced)
+ * GET    /api/conversations/:id/workspace/diff            -> WorkspaceDiff  (working tree and untracked files vs HEAD)
+ * GET    /api/conversations/:id/workspace/diff/file?path=&old= -> WorkspaceFileDiff  (`old`: a renamed file's path before)
  */
 
 export type WorkspaceTab = "diff" | "files" | "terminal" | "browser";
@@ -21,4 +24,33 @@ export interface WorkspaceInfo {
   canWrite: boolean;
   /** Whether this caller may open terminals: this computer, or the owner signed in on another device. */
   canTerminal: boolean;
+}
+
+export type WorkspaceChangeStatus = "added" | "modified" | "deleted" | "renamed" | "untracked";
+
+export interface WorkspaceChange {
+  path: string;
+  /** A renamed file's path before. */
+  oldPath?: string;
+  status: WorkspaceChangeStatus;
+  added: number;
+  removed: number;
+  binary: boolean;
+}
+
+export interface WorkspaceDiff {
+  /** The checked-out branch; null when detached, or not a git repo. */
+  branch: string | null;
+  files: WorkspaceChange[];
+  /** More files changed than are listed. */
+  truncated: boolean;
+}
+
+export interface WorkspaceFileDiff {
+  path: string;
+  /** The file's unified diff (git's), headers included; empty when it hasn't changed. */
+  patch: string;
+  binary: boolean;
+  /** Only the start of a very large diff came. */
+  truncated: boolean;
 }

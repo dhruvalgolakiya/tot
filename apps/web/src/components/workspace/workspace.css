@@ -1,0 +1,106 @@
+/* Syntax colors in the workspace panel (highlight.js classes), one set per theme. */
+
+.ws-code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  tab-size: 2;
+}
+
+.ws-code .hljs-keyword,
+.ws-code .hljs-doctag,
+.ws-code .hljs-meta .hljs-keyword,
+.ws-code .hljs-template-tag,
+.ws-code .hljs-type.hljs-keyword {
+  color: #cf222e;
+}
+.ws-code .hljs-string,
+.ws-code .hljs-regexp,
+.ws-code .hljs-meta .hljs-string {
+  color: #0a3069;
+}
+.ws-code .hljs-number,
+.ws-code .hljs-literal,
+.ws-code .hljs-attr,
+.ws-code .hljs-attribute,
+.ws-code .hljs-variable.language_,
+.ws-code .hljs-selector-attr,
+.ws-code .hljs-selector-class,
+.ws-code .hljs-selector-id {
+  color: #0550ae;
+}
+.ws-code .hljs-title,
+.ws-code .hljs-title.function_,
+.ws-code .hljs-title.class_ {
+  color: #8250df;
+}
+.ws-code .hljs-built_in,
+.ws-code .hljs-type,
+.ws-code .hljs-params,
+.ws-code .hljs-variable {
+  color: #953800;
+}
+.ws-code .hljs-name,
+.ws-code .hljs-tag,
+.ws-code .hljs-selector-tag,
+.ws-code .hljs-section,
+.ws-code .hljs-bullet {
+  color: #116329;
+}
+.ws-code .hljs-comment,
+.ws-code .hljs-meta,
+.ws-code .hljs-quote {
+  color: #6e7781;
+  font-style: italic;
+}
+.ws-code .hljs-strong {
+  font-weight: 600;
+}
+.ws-code .hljs-emphasis {
+  font-style: italic;
+}
+
+.dark .ws-code .hljs-keyword,
+.dark .ws-code .hljs-doctag,
+.dark .ws-code .hljs-meta .hljs-keyword,
+.dark .ws-code .hljs-template-tag,
+.dark .ws-code .hljs-type.hljs-keyword {
+  color: #ff7b72;
+}
+.dark .ws-code .hljs-string,
+.dark .ws-code .hljs-regexp,
+.dark .ws-code .hljs-meta .hljs-string {
+  color: #a5d6ff;
+}
+.dark .ws-code .hljs-number,
+.dark .ws-code .hljs-literal,
+.dark .ws-code .hljs-attr,
+.dark .ws-code .hljs-attribute,
+.dark .ws-code .hljs-variable.language_,
+.dark .ws-code .hljs-selector-attr,
+.dark .ws-code .hljs-selector-class,
+.dark .ws-code .hljs-selector-id {
+  color: #79c0ff;
+}
+.dark .ws-code .hljs-title,
+.dark .ws-code .hljs-title.function_,
+.dark .ws-code .hljs-title.class_ {
+  color: #d2a8ff;
+}
+.dark .ws-code .hljs-built_in,
+.dark .ws-code .hljs-type,
+.dark .ws-code .hljs-params,
+.dark .ws-code .hljs-variable {
+  color: #ffa657;
+}
+.dark .ws-code .hljs-name,
+.dark .ws-code .hljs-tag,
+.dark .ws-code .hljs-selector-tag,
+.dark .ws-code .hljs-section,
+.dark .ws-code .hljs-bullet {
+  color: #7ee787;
+}
+.dark .ws-code .hljs-comment,
+.dark .ws-code .hljs-meta,
+.dark .ws-code .hljs-quote {
+  color: #8b949e;
+}

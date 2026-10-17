@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import clsx from "clsx";
 import { Tabs } from "radix-ui";
 import { X } from "lucide-react";
@@ -6,6 +6,7 @@ import type { Conversation } from "@tot/shared/types";
 import type { WorkspaceInfo, WorkspaceTab } from "@tot/shared/workspace";
 import { useMediaQuery, WIDE_QUERY } from "../../hooks/useMediaQuery";
 import { errorMessage } from "../../lib/api";
+import { lazyComponent } from "../../lib/lazyComponent";
 import {
   hasWorkspace,
   PANEL_MIN_WIDTH,
@@ -20,6 +21,8 @@ import { EmptyState } from "../ui/EmptyState";
 import { IconButton } from "../ui/IconButton";
 import { Skeleton } from "../ui/Skeleton";
 import { Tip } from "../ui/Tip";
+
+const DiffTab = lazyComponent(() => import("./DiffTab"), "DiffTab");
 
 const TABS: { id: WorkspaceTab; label: string }[] = [
   { id: "diff", label: "Diff" },
@@ -100,10 +103,24 @@ function ResizeHandle() {
   );
 }
 
+function TabFallback() {
+  return (
+    <div className="space-y-2 p-4" aria-busy="true">
+      <Skeleton className="h-4 w-1/3" />
+      <Skeleton className="h-4 w-1/2" />
+    </div>
+  );
+}
+
 /** One tab's content. Each tab is its own module, loaded the first time it's shown. */
-function TabBody({ tab }: { tab: WorkspaceTab; chat: Conversation; info: WorkspaceInfo }): ReactNode {
-  const label = TABS.find((t) => t.id === tab)!.label;
-  return <EmptyState size="sm" title={label} description="Nothing here yet." />;
+function TabBody({ tab, chat, info }: { tab: WorkspaceTab; chat: Conversation; info: WorkspaceInfo }): ReactNode {
+  const body =
+    tab === "diff" ? (
+      <DiffTab key={chat.id} chat={chat} info={info} />
+    ) : (
+      <EmptyState size="sm" title={TABS.find((t) => t.id === tab)!.label} description="Nothing here yet." />
+    );
+  return <Suspense fallback={<TabFallback />}>{body}</Suspense>;
 }
 
 /**
