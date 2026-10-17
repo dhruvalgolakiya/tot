@@ -1,5 +1,7 @@
 import { useMemo } from "react";
-import { conversationTitle, groupConversations } from "../lib/conversations";
+import { Archive } from "lucide-react";
+import { conversationTitle, groupConversations, isHiddenChat } from "../lib/conversations";
+import { setArchivedOpen } from "../lib/organize";
 import { useProjects } from "../lib/projects";
 import { isTask } from "../lib/tasks";
 import { loadConversations, selectActiveAgentId, useStore } from "../store";
@@ -8,6 +10,7 @@ import { ProjectsSection } from "./projects/ProjectsSection";
 import { TaskList } from "./tasks/TaskList";
 import { Callout } from "./ui/Callout";
 import { EmptyState } from "./ui/EmptyState";
+import { listRowClass } from "./ui/ListRow";
 import { Skeleton } from "./ui/Skeleton";
 
 export function ConversationList({ query = "" }: { query?: string }) {
@@ -24,11 +27,12 @@ export function ConversationList({ query = "" }: { query?: string }) {
   const filed = useMemo(() => new Set(projects.filter((p) => !p.archived).map((p) => p.id)), [projects]);
   const inProject = (c: { projectId: string | null }) =>
     Boolean(c.projectId) && (projectsState === "loading" || filed.has(c.projectId!));
-  // Tasks have their own group above the chats.
-  const agentChats = useMemo(
-    () => conversations.filter((c) => c.kind !== "task" && (!activeAgentId || c.agentId === activeAgentId)),
-    [conversations, activeAgentId],
-  );
+  // Tasks have their own group above the chats; archived and snoozed chats are behind the link at the bottom.
+  const { agentChats, hidden } = useMemo(() => {
+    const mine = conversations.filter((c) => c.kind !== "task" && (!activeAgentId || c.agentId === activeAgentId));
+    const now = Date.now();
+    return { agentChats: mine.filter((c) => !isHiddenChat(c, now)), hidden: mine.filter((c) => !c.lead && isHiddenChat(c, now)) };
+  }, [conversations, activeAgentId]);
   const looseChats = useMemo(() => agentChats.filter((c) => !inProject(c)), [agentChats, filed, projectsState]);
   const groups = useMemo(() => groupConversations(looseChats, query), [looseChats, query]);
   // Nothing to show below the projects: say so only when the projects don't hold this agent's chats (or matches) either.
@@ -100,6 +104,24 @@ export function ConversationList({ query = "" }: { query?: string }) {
           </ul>
         </section>
       ))}
+
+      {hidden.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setArchivedOpen(true)}
+          className={listRowClass({ size: "sm", className: "mt-4 text-ui text-fg-muted hover:text-fg" })}
+        >
+          <Archive className="size-4 shrink-0 text-fg-subtle" />
+          <span className="min-w-0 flex-1 truncate">{hiddenLabel(hidden)}</span>
+          <span className="shrink-0 text-xs text-fg-subtle tabular-nums">{hidden.length}</span>
+        </button>
+      )}
     </nav>
   );
+}
+
+/** The link to the archived and snoozed chats: named after what's there. */
+function hiddenLabel(hidden: { archivedAt?: number | null }[]): string {
+  const archived = hidden.filter((c) => c.archivedAt).length;
+  return archived === hidden.length ? "Archived" : archived === 0 ? "Snoozed" : "Archived and snoozed";
 }

@@ -3,6 +3,7 @@ import { ArrowUpRight, Ellipsis, GitFork, GitMerge } from "lucide-react";
 import type { Conversation } from "@tot/shared/types";
 import { forkChat, mergeBack, useStore } from "../store";
 import { chatTicket } from "./projects/ChatProjectCrumb";
+import { OrganizeMenuItems } from "./organize/OrganizeMenuItems";
 import { MoveToProjectSub } from "./projects/MoveToProjectMenu";
 import { IconButton } from "./ui/IconButton";
 
@@ -32,6 +33,12 @@ export function ChatMenu({ chat }: { chat: Conversation }) {
             </DropdownMenu.Item>
           )}
           <MoveToProjectSub chat={chat} />
+          {chat.kind === "chat" && !chat.lead && (
+            <>
+              <DropdownMenu.Separator className="menu-separator" />
+              <OrganizeMenuItems chat={chat} />
+            </>
+          )}
           {/* Phones: the header has no room for the ticket chip. */}
           {ticket?.url && (
             <DropdownMenu.Item asChild className="menu-item sm:hidden">

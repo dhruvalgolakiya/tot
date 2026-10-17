@@ -9,9 +9,11 @@ import { Sidebar } from "./components/Sidebar";
 import { useAgentAccent } from "./hooks/useAgentAccent";
 import { useAppEvents, useRunningAgents } from "./hooks/useAppEvents";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
+import { useReadReceipts } from "./hooks/useReadReceipts";
 import { conversationTitle } from "./lib/conversations";
 import { whenIdle } from "./lib/idle";
 import { lazyComponent } from "./lib/lazyComponent";
+import { useOrganize } from "./lib/organize";
 import { setPaletteOpen, usePalette } from "./lib/palette";
 import { useProjects } from "./lib/projects";
 import {
@@ -45,6 +47,8 @@ const AgentSettingsPanel = lazyComponent(() => import("./components/AgentSetting
 const NewAgentDialog = lazyComponent(() => import("./components/NewAgentDialog"), "NewAgentDialog");
 const NewProjectDialog = lazyComponent(() => import("./components/projects/NewProjectDialog"), "NewProjectDialog");
 const CommandPalette = lazyComponent(() => import("./components/palette/CommandPalette"), "CommandPalette");
+const SnoozeDialog = lazyComponent(() => import("./components/organize/OrganizeDialogs"), "SnoozeDialog");
+const ArchivedDialog = lazyComponent(() => import("./components/organize/OrganizeDialogs"), "ArchivedDialog");
 
 /** Fetched one at a time while the browser is idle, the likeliest first. */
 const PRELOAD = [
@@ -95,6 +99,8 @@ const useAgentSettingsOpen = () => useStore((s) => s.agentSettingsOpen);
 const useNewAgentDialogOpen = () => useStore((s) => s.newAgentDialogOpen);
 const useNewProjectOpen = () => useProjects((s) => s.newProjectOpen);
 const usePaletteOpen = () => usePalette((s) => s.open);
+const useSnoozePickerOpen = () => useOrganize((s) => s.snoozeId !== null);
+const useArchivedOpen = () => useOrganize((s) => s.archivedOpen);
 
 /** The browser tab's title: the open chat (or project page), else the page. */
 function DocumentTitle() {
@@ -206,6 +212,7 @@ export default function App() {
   }, []);
 
   useGlobalShortcuts();
+  useReadReceipts();
   useAgentAccent();
 
   // Live app-wide updates: background routine runs, agents/chats created or
@@ -286,6 +293,12 @@ export default function App() {
       </OnceOpened>
       <OnceOpened useOpen={usePaletteOpen}>
         <CommandPalette />
+      </OnceOpened>
+      <OnceOpened useOpen={useSnoozePickerOpen}>
+        <SnoozeDialog />
+      </OnceOpened>
+      <OnceOpened useOpen={useArchivedOpen}>
+        <ArchivedDialog />
       </OnceOpened>
       <Toaster theme={theme} position="top-center" closeButton style={TOAST_THEME} />
     </Tooltip.Provider>

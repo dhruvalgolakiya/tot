@@ -2,7 +2,7 @@ import { useMemo, type MouseEvent } from "react";
 import clsx from "clsx";
 import { ChevronRight, Plus, SquarePen } from "lucide-react";
 import type { Conversation, Project } from "@tot/shared/types";
-import { conversationTitle } from "../../lib/conversations";
+import { conversationTitle, isHiddenChat } from "../../lib/conversations";
 import { PROJECT_ICONS, setNewProjectOpen, toggleProjectExpanded, useProjects } from "../../lib/projects";
 import { projectPath } from "../../lib/router";
 import { isOpenTask, isTask } from "../../lib/tasks";
@@ -49,7 +49,7 @@ export function ProjectsSection({ query }: { query: string }) {
     const leads = new Set(conversations.filter((c) => c.lead).map((c) => c.id));
     const leadOf = new Map(conversations.filter((c) => c.lead && c.projectId).map((c) => [c.projectId!, c]));
     for (const c of conversations) {
-      if (!c.projectId || c.agentId !== agentId || c.lead) continue;
+      if (!c.projectId || c.agentId !== agentId || c.lead || isHiddenChat(c)) continue;
       byProject.set(c.projectId, [...(byProject.get(c.projectId) ?? []), c]);
       // A finished task stays on its chat's card (and the project's page), unless it's the one open.
       if (isTask(c) && c.parentId && !leads.has(c.parentId) && (isOpenTask(c.task.status) || c.id === currentId)) {

@@ -1474,19 +1474,20 @@ export async function setModel(modelId: string) {
   await updateConversation(conversation.id, { modelId });
 }
 
-async function updateConversation(id: string, patch: UpdateConversationRequest): Promise<boolean> {
+/** `optimistic`: how the chat looks until the server answers, when that isn't the patch itself (archived → archivedAt). */
+async function updateConversation(
+  id: string,
+  patch: UpdateConversationRequest,
+  optimistic: Partial<Conversation> = patch as Partial<Conversation>,
+): Promise<boolean> {
   const previous = get().conversations.find((c) => c.id === id);
   if (!previous) return false;
-  patchConversation(id, patch);
+  patchConversation(id, optimistic);
   try {
     const updated = await api.updateConversation(id, patch);
     set((s) => ({ conversations: upsertConversation(s.conversations, updated) }));
   } catch (error) {
-    const revert: Partial<Conversation> = {};
-    if (patch.title !== undefined) revert.title = previous.title;
-    if (patch.pinned !== undefined) revert.pinned = previous.pinned;
-    if (patch.modelId !== undefined) revert.modelId = previous.modelId;
-    if (patch.projectId !== undefined) revert.projectId = previous.projectId;
+    const revert = Object.fromEntries(Object.keys(optimistic).map((key) => [key, previous[key as keyof Conversation]]));
     patchConversation(id, revert);
     notifyError(error);
     return false;
@@ -1513,6 +1514,30 @@ export async function moveToProject(id: string, projectId: string | null) {
 export function togglePinned(id: string) {
   const current = get().conversations.find((c) => c.id === id);
   if (current) void updateConversation(id, { pinned: !current.pinned });
+}
+
+/** Leave a chat that's about to drop out of the list (archived, snoozed) or stay unread: back to its agent's home. */
+function leaveIfOpen(id: string) {
+  const s = get();
+  const agentId = s.conversations.find((c) => c.id === id)?.agentId;
+  if (s.currentId === id && agentId) navigateToAgentHome(agentId);
+}
+
+export async function archiveConversation(id: string, archived = true) {
+  if (archived) leaveIfOpen(id);
+  return updateConversation(id, { archived }, { archivedAt: archived ? Date.now() : null, ...(archived ? { snoozedUntil: null } : {}) });
+}
+
+/** Hide a chat until `until` (or until it needs the user); null brings it back. */
+export async function snoozeConversation(id: string, until: number | null) {
+  if (until) leaveIfOpen(id);
+  return updateConversation(id, { snoozedUntil: until }, { snoozedUntil: until, ...(until ? { archivedAt: null } : {}) });
+}
+
+export function setConversationUnread(id: string, unread: boolean) {
+  // The open chat would be marked read again at once.
+  if (unread) leaveIfOpen(id);
+  return updateConversation(id, { unread }, { unread });
 }
 
 export async function deleteConversation(id: string) {

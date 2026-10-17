@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import clsx from "clsx";
 import { Dialog } from "radix-ui";
 import {
+  Archive,
   Bot,
   BookOpen,
   Clock,
@@ -21,9 +22,10 @@ import {
 import type { MessageSearchHit, SnippetPart } from "@tot/shared/types";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { api } from "../../lib/api";
-import { conversationTitle } from "../../lib/conversations";
+import { conversationTitle, isHiddenChat } from "../../lib/conversations";
 import { relativeTime } from "../../lib/format";
 import { jumpToMessage } from "../../lib/jump";
+import { setArchivedOpen } from "../../lib/organize";
 import { highlightParts, matchScore, queryWords, setPaletteOpen, usePalette } from "../../lib/palette";
 import { PROJECT_ICONS, setNewProjectOpen, useProjects } from "../../lib/projects";
 import { setThemePreference, useResolvedTheme } from "../../lib/theme";
@@ -309,6 +311,7 @@ function useActions(): Action[] {
         },
       },
       { id: "sidebar", label: "Toggle sidebar", keywords: "hide show panel", icon: <PanelLeft />, run: toggleSidebar },
+      { id: "archived", label: "Archived chats", keywords: "snoozed hidden", icon: <Archive />, run: () => setArchivedOpen(true) },
     ];
   }, [theme]);
 }
@@ -353,6 +356,7 @@ function usePaletteGroups(words: string[], actions: Action[], messageHits: Messa
       title: <Highlighted parts={highlightParts(conversationTitle(c), words)} />,
       meta: (
         <>
+          {c.archivedAt ? <span>Archived</span> : isHiddenChat(c) && <span>Snoozed</span>}
           {manyAgents && <span className="max-w-24 truncate">{agentName.get(c.agentId)}</span>}
           <span>{relativeTime(c.updatedAt)}</span>
         </>
@@ -368,7 +372,7 @@ function usePaletteGroups(words: string[], actions: Action[], messageHits: Messa
     });
 
     if (!words.length) {
-      const recent = conversations.filter((c) => c.kind === "chat" && !c.lead).slice(0, RECENT_CHATS);
+      const recent = conversations.filter((c) => c.kind === "chat" && !c.lead && !isHiddenChat(c)).slice(0, RECENT_CHATS);
       return [
         ...(recent.length ? [{ label: "Recent chats", items: recent.map(chatItem), score: 0 }] : []),
         { label: "Commands", items: actions.map(actionItem), score: 0 },

@@ -27,6 +27,7 @@ import { handoffs } from "./orchestration/handoff.ts";
 import { taskNotifications } from "./tasks/notify.ts";
 import { tasks } from "./tasks/tasks.ts";
 import { chatWakes } from "./tasks/wake.ts";
+import { chatOrganizer } from "./chats/organize.ts";
 import { leadWakes } from "./lead/wake.ts";
 import { worktreeLifecycle } from "./worktrees/lifecycle.ts";
 import { knowledgeAuto } from "./knowledge/auto/jobs.ts";
@@ -94,6 +95,8 @@ knowledgeAuto.start();
 // Module 12: a project's Lead hears about its pull requests (checks, reviews, comments, merges) every 2 minutes.
 prWatch.start();
 taskNotifications.start();
+// Unread chats, and archived or snoozed ones coming back when they need you (or their snooze runs out).
+chatOrganizer.start();
 fanIn.start();
 missionWatch.start();
 taskFailover.start();
@@ -105,6 +108,7 @@ async function shutdown(signal: string) {
   shuttingDown = true;
   console.log(`\n${signal} received, stopping runs…`);
   scheduler.stop();
+  chatOrganizer.stop();
   wikiKeeper.stop();
   knowledgeAuto.stop();
   prWatch.stop();

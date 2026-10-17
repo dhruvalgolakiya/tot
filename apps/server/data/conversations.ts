@@ -38,7 +38,8 @@ export function slimTask(task: TaskInfo): TaskInfo {
 }
 
 /** The columns a chat list reads: not the frozen system prompt, the provider session, or what its next turn is told. */
-const LIST_COLUMNS = "id, agent_id, routine_id, title, model_id, provider, pinned, created_at, updated_at, origin, kind, parent_id, task, forked_from, project_id, lead, workspace";
+const LIST_COLUMNS =
+  "id, agent_id, routine_id, title, model_id, provider, pinned, created_at, updated_at, origin, kind, parent_id, task, forked_from, project_id, lead, workspace, archived_at, snoozed_until, unread";
 
 /** Each agent's computer, read once per call however many of its chats are in the rows. */
 function computersOnce(): (agentId: string) => ComputerSummary | null {
@@ -107,6 +108,10 @@ function toRecord(row: Row, computerOf: (agentId: string) => ComputerSummary | n
     ...(row.lead ? { lead: true } : {}),
     // Only chats that picked where they work carry it.
     ...(row.workspace ? { workspace: parseJson<ChatWorkspace | null>(row.workspace, null) } : {}),
+    // Organizing (chats/organize.ts): only chats that are archived, snoozed or unread carry these.
+    ...(row.archived_at ? { archivedAt: Number(row.archived_at) } : {}),
+    ...(row.snoozed_until ? { snoozedUntil: Number(row.snoozed_until) } : {}),
+    ...(row.unread ? { unread: true } : {}),
   };
 }
 
@@ -133,6 +138,9 @@ type ConversationPatch = Partial<{
   projectId: string | null;
   origin: ConversationOrigin | null;
   workspace: ChatWorkspace | null;
+  archivedAt: number | null;
+  snoozedUntil: number | null;
+  unread: boolean;
 }>;
 
 export const conversations = {
@@ -251,6 +259,9 @@ export const conversations = {
       project_id: patch.projectId,
       origin: patch.origin === undefined ? undefined : patch.origin && JSON.stringify(patch.origin),
       workspace: patch.workspace === undefined ? undefined : patch.workspace && JSON.stringify(patch.workspace),
+      archived_at: patch.archivedAt,
+      snoozed_until: patch.snoozedUntil,
+      unread: patch.unread === undefined ? undefined : Number(patch.unread),
       updated_at: touch ? Date.now() : undefined,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);

@@ -28,3 +28,8 @@ export function groupConversations(conversations: Conversation[], query: string)
     return items ? [{ label, items }] : [];
   });
 }
+
+/** Archived, or snoozed until later: out of the chat list (the palette and the Archived dialog still find it). */
+export function isHiddenChat(conversation: Conversation, now = Date.now()): boolean {
+  return Boolean(conversation.archivedAt) || (conversation.snoozedUntil ?? 0) > now;
+}

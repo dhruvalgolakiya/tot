@@ -226,6 +226,12 @@ export interface Conversation {
    * folder) and for tasks, which have their own worktree (TaskInfo.repo).
    */
   workspace?: ChatWorkspace | null;
+  /** When it was archived: hidden from the chat list until it's unarchived, gets a new turn, or needs the user. */
+  archivedAt?: number | null;
+  /** Hidden from the chat list until then (or until it gets a new turn or needs the user). */
+  snoozedUntil?: number | null;
+  /** A reply came that the user hasn't opened yet (or they marked it unread). */
+  unread?: boolean;
 }
 
 /** The two places a new chat in a code project can work. */
@@ -1101,7 +1107,9 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //                                              their output and long input strings, marked `clipped`; a running reply comes
 //                                              as it is now, with activeMessageId + activeRunSeq. ETag; If-None-Match -> 304)
 // GET    /api/conversations/:id/messages/:messageId/parts/:partId -> MessagePart  (the whole part, e.g. a clipped tool call)
-// PATCH  /api/conversations/:id               UpdateConversationRequest -> Conversation  (projectId moves it and its tasks)
+// PATCH  /api/conversations/:id               UpdateConversationRequest -> Conversation  (projectId moves it and its tasks; archived,
+//                                              snoozedUntil and unread organize it: a finished reply makes it unread, a new turn
+//                                              brings it back, and needing the user, or its snooze running out, wakes it unread)
 // DELETE /api/conversations/:id               -> { ok: true }
 // POST   /api/conversations/:id/messages      SendMessageRequest -> SendMessageResponse
 //                                              (a task: steers it while it runs or waits in the queue — runId is then the
@@ -1360,6 +1368,11 @@ export interface UpdateConversationRequest {
   modelId?: string;
   /** Move the chat into a project, or out of one with null (module 06). Its tasks move with it. */
   projectId?: string | null;
+  /** Archive it (and end a snooze), or bring it back. */
+  archived?: boolean;
+  /** Snooze it until this time (in the future; ends an archive), or end the snooze with null. */
+  snoozedUntil?: number | null;
+  unread?: boolean;
 }
 
 export interface ConversationDetail {

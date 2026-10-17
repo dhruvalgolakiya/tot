@@ -814,6 +814,13 @@ if (!hasColumn("conversations", "workspace")) db.exec(`ALTER TABLE conversations
 if (!hasColumn("conversations", "provider_account")) db.exec(`ALTER TABLE conversations ADD COLUMN provider_account TEXT`);
 if (!hasColumn("messages", "account")) db.exec(`ALTER TABLE messages ADD COLUMN account TEXT`);
 
+// Organizing chats (apps/server/chats/organize.ts): archived (hidden from the list), snoozed (hidden until a time, or
+// until it needs the user), and unread (a reply the user hasn't opened yet).
+if (!hasColumn("conversations", "archived_at")) db.exec(`ALTER TABLE conversations ADD COLUMN archived_at INTEGER`);
+if (!hasColumn("conversations", "snoozed_until")) db.exec(`ALTER TABLE conversations ADD COLUMN snoozed_until INTEGER`);
+if (!hasColumn("conversations", "unread")) db.exec(`ALTER TABLE conversations ADD COLUMN unread INTEGER NOT NULL DEFAULT 0`);
+db.exec(`CREATE INDEX IF NOT EXISTS conversations_snoozed ON conversations(snoozed_until) WHERE snoozed_until IS NOT NULL`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 /** Statements prepared once and reused, for the hot paths: a chat's load, a streaming reply's saves. */

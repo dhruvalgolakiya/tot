@@ -7,6 +7,7 @@ import { conversationTitle } from "../lib/conversations";
 import { conversationPath } from "../lib/router";
 import { deleteConversation, navigateToConversation, renameConversation, togglePinned, useStore } from "../store";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { OrganizeMenuItems } from "./organize/OrganizeMenuItems";
 import { MoveToProjectSub } from "./projects/MoveToProjectMenu";
 import { IconButton } from "./ui/IconButton";
 import { listRowClass } from "./ui/ListRow";
@@ -55,6 +56,8 @@ export const ConversationItem = memo(function ConversationItem({
   const pendingAction = useRef<"rename" | "delete" | null>(null);
   const title = conversationTitle(conversation);
   const pendingApproval = useStore((s) => s.pendingApprovals.has(conversation.id));
+  // The open chat is being read: no dot on it, even before the server hears so.
+  const unread = Boolean(conversation.unread) && !active;
 
   const open = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return; // New tab/window.
@@ -124,7 +127,8 @@ export const ConversationItem = memo(function ConversationItem({
             </span>
           </Tip>
         )}
-        <span className="min-w-0 flex-1 truncate">{title}</span>
+        <span className={clsx("min-w-0 flex-1 truncate", unread && "font-medium")}>{title}</span>
+        {unread && <span className="sr-only">, unread</span>}
         {workingTasks > 0 && (
           <span
             title={`${workingTasks} task${workingTasks === 1 ? "" : "s"} working`}
@@ -135,6 +139,13 @@ export const ConversationItem = memo(function ConversationItem({
         )}
         {pendingApproval && <NeedsYou label="Needs your approval" />}
       </a>
+      {/* Where the "…" button shows on hover, so it makes way for it. */}
+      {unread && !menuOpen && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 right-3 size-2 -translate-y-1/2 rounded-full bg-accent transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 pointer-coarse:opacity-0"
+        />
+      )}
 
       <DropdownMenu.Root modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenu.Trigger asChild>
@@ -155,7 +166,7 @@ export const ConversationItem = memo(function ConversationItem({
           <DropdownMenu.Content
             align="start"
             sideOffset={4}
-            className="menu w-44"
+            className="menu w-48"
             onCloseAutoFocus={(event) => {
               const action = pendingAction.current;
               pendingAction.current = null;
@@ -188,6 +199,7 @@ export const ConversationItem = memo(function ConversationItem({
               </DropdownMenu.Item>
             )}
             {!conversation.lead && <MoveToProjectSub chat={conversation} />}
+            <OrganizeMenuItems chat={conversation} />
             <DropdownMenu.Separator className="menu-separator" />
             <DropdownMenu.Item
               className="menu-item menu-item-danger"

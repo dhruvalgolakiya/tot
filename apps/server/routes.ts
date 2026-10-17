@@ -57,6 +57,7 @@ import { screenshotFile } from "./computer/screens.ts";
 import { VERSION } from "./config.ts";
 import { agents, validateAgent } from "./data/agents.ts";
 import { BrainError, brains } from "./data/brains.ts";
+import { chatOrganizer } from "./chats/organize.ts";
 import { chatWorkspaces } from "./chats/workspace.ts";
 import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { mail, toMailMessage, toSummary } from "./data/mail.ts";
@@ -354,11 +355,14 @@ api.patch("/conversations/:id", async (c) => {
   }
   const title = typeof patch.title === "string" ? patch.title.trim().slice(0, 120) : undefined;
   if (title === "") throw new HttpError(400, "Title can't be empty.");
+  const organized = chatOrganizer.patchFrom(patch);
   const updated = conversations.update(id, {
     title,
     pinned: typeof patch.pinned === "boolean" ? patch.pinned : undefined,
     modelId: typeof patch.modelId === "string" ? patch.modelId : undefined,
+    ...organized,
   });
+  if (organized?.snoozedUntil !== undefined) chatOrganizer.arm();
   const conversation = toPublicConversation(found(updated));
   appEvents.publish({ type: "conversation", conversation });
   return c.json(conversation);
