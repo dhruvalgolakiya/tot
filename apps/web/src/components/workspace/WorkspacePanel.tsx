@@ -26,6 +26,7 @@ import { Tip } from "../ui/Tip";
 const DiffTab = lazyComponent(() => import("./DiffTab"), "DiffTab");
 const FilesTab = lazyComponent(() => import("./FilesTab"), "FilesTab");
 const TerminalTab = lazyComponent(() => import("./TerminalTab"), "TerminalTab");
+const BrowserTab = lazyComponent(() => import("./BrowserTab"), "BrowserTab");
 
 const TABS: { id: WorkspaceTab; label: string }[] = [
   { id: "diff", label: "Diff" },
@@ -125,7 +126,7 @@ function TabBody({ tab, chat, info }: { tab: WorkspaceTab; chat: Conversation; i
     ) : tab === "terminal" ? (
       <TerminalTab key={chat.id} chat={chat} info={info} />
     ) : (
-      <EmptyState size="sm" title={TABS.find((t) => t.id === tab)!.label} description="Nothing here yet." />
+      <BrowserTab key={chat.id} chat={chat} info={info} />
     );
   return <Suspense fallback={<TabFallback />}>{body}</Suspense>;
 }

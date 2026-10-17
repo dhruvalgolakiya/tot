@@ -18,6 +18,7 @@
  * POST   /api/workspace/terminals/:tid/input              { data } -> { ok: true }
  * POST   /api/workspace/terminals/:tid/resize             { cols, rows } -> { ok: true }
  * DELETE /api/workspace/terminals/:tid                    -> { ok: true }
+ * GET    /api/conversations/:id/workspace/servers         -> WorkspaceServer[]  (dev servers running from the folder; this Mac only)
  */
 
 export type WorkspaceTab = "diff" | "files" | "terminal" | "browser";
@@ -122,3 +123,14 @@ export interface WorkspaceTerminal {
 
 /** What a terminal's stream sends: its output (what it printed lately first), and its end. */
 export type TerminalEvent = { type: "output"; data: string } | { type: "exit"; exitCode: number };
+
+/** A dev server running from the chat's folder, to preview in the Browser tab. */
+export interface WorkspaceServer {
+  port: number;
+  url: string;
+  /** The process listening ("node"); empty when only a terminal's output named it. */
+  command: string;
+  pid: number | null;
+  /** How it was found: a process working in the folder, or an address a terminal printed. */
+  source: "process" | "terminal";
+}

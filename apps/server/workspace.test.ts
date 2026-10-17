@@ -3,7 +3,7 @@
 // who may read, change and open terminals, and each tab's routes. Real git and the macOS sandbox in a temp HOME,
 // the local computer backend, a fake GitHub; no network.
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -295,6 +295,39 @@ await call<Terminal>("POST", `/conversations/${another.id}/workspace/terminals`,
 check("…and a chat can open another", terminals.list(another.id).length === 1);
 await call("DELETE", `/conversations/${another.id}`);
 check("deleting the chat ends its terminals", terminals.list(another.id).length === 0 && terminals.count() === 0);
+
+// =============================================================================
+console.log("\n# Dev servers");
+type Server = import("@tot/shared/workspace").WorkspaceServer;
+const SERVE = "require('http').createServer((q, r) => r.end('ok')).listen(Number(process.argv[1]), '127.0.0.1')";
+const port = 37_000 + Math.floor(Math.random() * 2000) * 2;
+const inFolder = spawn(process.execPath, ["-e", SERVE, String(port)], { cwd: web, stdio: "ignore" });
+const elsewhere = spawn(process.execPath, ["-e", SERVE, String(port + 1)], { cwd: HOME, stdio: "ignore" });
+process.on("exit", () => {
+  inFolder.kill();
+  elsewhere.kill();
+});
+const answers = async (p: number) => {
+  try {
+    return (await fetch(`http://127.0.0.1:${p}`)).ok;
+  } catch {
+    return false;
+  }
+};
+await sleep(300);
+for (let i = 0; i < 40 && !((await answers(port)) && (await answers(port + 1))); i++) await sleep(100);
+res = await call<Server[]>("GET", `/conversations/${checkoutChat.id}/workspace/servers`);
+check("a dev server running from the folder is found", res.status === 200 && res.data.some((server: Server) => server.port === port && server.source === "process" && server.url === `http://localhost:${port}`), JSON.stringify(res.data));
+check("…but not one running from elsewhere", !res.data.some((server: Server) => server.port === port + 1));
+const printer: Terminal = (await call<Terminal>("POST", `/conversations/${checkoutChat.id}/workspace/terminals`, { body: {} })).data;
+await call("POST", `/workspace/terminals/${printer.id}/input`, { body: { data: `echo "ready on http://localhost:${port + 1}/"\r` } });
+await until(() => terminals.get(printer.id).scrollback.includes(`ready on http`), 5000);
+res = await call<Server[]>("GET", `/conversations/${checkoutChat.id}/workspace/servers`);
+check("an address the chat's terminal printed counts too, when it answers", res.data.some((server: Server) => server.port === port + 1 && server.source === "terminal"), JSON.stringify(res.data));
+await call("DELETE", `/workspace/terminals/${printer.id}`);
+check("another device can't list them", (await call("GET", `/conversations/${checkoutChat.id}/workspace/servers`, { headers: { cookie }, from: "192.168.1.70" })).status === 403);
+inFolder.kill();
+elsewhere.kill();
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll workspace checks passed");
 process.exit(failures ? 1 : 0);

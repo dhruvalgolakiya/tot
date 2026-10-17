@@ -2,11 +2,12 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { WorkspaceInfo, WorkspaceSave } from "@tot/shared/workspace";
 import { HttpError } from "../agent/orchestrator.ts";
-import { callerKey, callerOf } from "../auth.ts";
+import { callerKey, callerOf, onThisMachine } from "../auth.ts";
 import { onSignOut } from "../devices/sessions.ts";
 import { workspaceDiff } from "./diff.ts";
 import { workspaceFiles } from "./files.ts";
 import { chatSpaces } from "./root.ts";
+import { workspaceServers } from "./servers.ts";
 import { terminals } from "./terminal.ts";
 import { workspaceWatch } from "./watch.ts";
 
@@ -153,6 +154,12 @@ workspaceRoutes.post("/workspace/terminals/:tid/resize", async (c) => {
 workspaceRoutes.delete("/workspace/terminals/:tid", (c) => {
   terminals.close(c.req.param("tid"));
   return c.json({ ok: true });
+});
+
+// The Browser tab shows dev servers on this Mac's localhost, which only this Mac can open.
+workspaceRoutes.get("/conversations/:id/workspace/servers", async (c) => {
+  if (!onThisMachine(c)) throw new HttpError(403, "Dev servers in this folder can be previewed on this Mac only.");
+  return c.json(await workspaceServers.list(chatSpaces.resolve(c.req.param("id"))));
 });
 
 export const workspaceAccess = { canWrite, canTerminal };

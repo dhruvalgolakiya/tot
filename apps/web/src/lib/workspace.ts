@@ -8,6 +8,7 @@ import type {
   WorkspaceInfo,
   WorkspaceSaved,
   WorkspaceSearch,
+  WorkspaceServer,
   WorkspaceTab,
   WorkspaceTerminal,
 } from "@tot/shared/workspace";
@@ -120,6 +121,7 @@ export const workspaceApi = {
     request<WorkspaceSaved>("PUT", `${base(chatId)}/file`, { path, content, baseMtime }),
   search: (chatId: string, query: string, { regex = false, caseSensitive = false } = {}) =>
     request<WorkspaceSearch>("GET", `${base(chatId)}/search?q=${seg(query)}${regex ? "&regex=1" : ""}${caseSensitive ? "&case=1" : ""}`),
+  servers: (chatId: string) => request<WorkspaceServer[]>("GET", `${base(chatId)}/servers`),
   terminals: (chatId: string) => request<WorkspaceTerminal[]>("GET", `${base(chatId)}/terminals`),
   openTerminal: (chatId: string, size: { cols?: number; rows?: number } = {}) => request<WorkspaceTerminal>("POST", `${base(chatId)}/terminals`, size),
   closeTerminal: (id: string) => request<{ ok: true }>("DELETE", `/workspace/terminals/${seg(id)}`),
