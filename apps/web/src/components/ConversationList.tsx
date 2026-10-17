@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import { Archive } from "lucide-react";
-import { conversationTitle, groupConversations, isHiddenChat } from "../lib/conversations";
+import type { Conversation } from "@tot/shared/types";
+import { conversationTitle, groupConversations, listedChats } from "../lib/conversations";
 import { setArchivedOpen } from "../lib/organize";
 import { useProjects } from "../lib/projects";
 import { isTask } from "../lib/tasks";
 import { loadConversations, selectActiveAgentId, useStore } from "../store";
 import { ConversationItem } from "./ConversationItem";
+import { PinnedChats } from "./PinnedChats";
 import { ProjectsSection } from "./projects/ProjectsSection";
 import { TaskList } from "./tasks/TaskList";
 import { Callout } from "./ui/Callout";
@@ -28,12 +30,10 @@ export function ConversationList({ query = "" }: { query?: string }) {
   const inProject = (c: { projectId: string | null }) =>
     Boolean(c.projectId) && (projectsState === "loading" || filed.has(c.projectId!));
   // Tasks have their own group above the chats; archived and snoozed chats are behind the link at the bottom.
-  const { agentChats, hidden } = useMemo(() => {
-    const mine = conversations.filter((c) => c.kind !== "task" && (!activeAgentId || c.agentId === activeAgentId));
-    const now = Date.now();
-    return { agentChats: mine.filter((c) => !isHiddenChat(c, now)), hidden: mine.filter((c) => !c.lead && isHiddenChat(c, now)) };
-  }, [conversations, activeAgentId]);
-  const looseChats = useMemo(() => agentChats.filter((c) => !inProject(c)), [agentChats, filed, projectsState]);
+  const { agentChats, looseChats, hidden } = useMemo(
+    () => listedChats(conversations, activeAgentId, { projects, state: projectsState }),
+    [conversations, activeAgentId, projects, projectsState],
+  );
   const groups = useMemo(() => groupConversations(looseChats, query), [looseChats, query]);
   // Nothing to show below the projects: say so only when the projects don't hold this agent's chats (or matches) either.
   const needle = query.trim().toLowerCase();
@@ -51,6 +51,15 @@ export function ConversationList({ query = "" }: { query?: string }) {
     }
     return counts;
   }, [conversations]);
+
+  const renderItem = (conversation: Conversation) => (
+    <ConversationItem
+      conversation={conversation}
+      active={conversation.id === currentId}
+      streaming={streaming.has(conversation.id)}
+      workingTasks={workingTasks.get(conversation.id) ?? 0}
+    />
+  );
 
   return (
     <nav aria-label="Chat history" className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
@@ -90,18 +99,15 @@ export function ConversationList({ query = "" }: { query?: string }) {
       {groups.map((group) => (
         <section key={group.label} className="mt-4 first:mt-2">
           <h2 className="group-label px-2.5 pb-1">{group.label}</h2>
-          <ul className="space-y-px">
-            {group.items.map((conversation) => (
-              <li key={conversation.id}>
-                <ConversationItem
-                  conversation={conversation}
-                  active={conversation.id === currentId}
-                  streaming={streaming.has(conversation.id)}
-                  workingTasks={workingTasks.get(conversation.id) ?? 0}
-                />
-              </li>
-            ))}
-          </ul>
+          {group.label === "Pinned" && !query.trim() ? (
+            <PinnedChats items={group.items}>{renderItem}</PinnedChats>
+          ) : (
+            <ul className="space-y-px">
+              {group.items.map((conversation) => (
+                <li key={conversation.id}>{renderItem(conversation)}</li>
+              ))}
+            </ul>
+          )}
         </section>
       ))}
 

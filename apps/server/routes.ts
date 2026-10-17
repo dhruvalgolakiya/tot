@@ -58,6 +58,7 @@ import { VERSION } from "./config.ts";
 import { agents, validateAgent } from "./data/agents.ts";
 import { BrainError, brains } from "./data/brains.ts";
 import { chatOrganizer } from "./chats/organize.ts";
+import { pins } from "./chats/pins.ts";
 import { chatWorkspaces } from "./chats/workspace.ts";
 import { conversations, toPublicConversation } from "./data/conversations.ts";
 import { mail, toMailMessage, toSummary } from "./data/mail.ts";
@@ -359,6 +360,8 @@ api.patch("/conversations/:id", async (c) => {
   const updated = conversations.update(id, {
     title,
     pinned: typeof patch.pinned === "boolean" ? patch.pinned : undefined,
+    // A chat pinned now goes on top of its agent's pinned chats.
+    pinPosition: patch.pinned === true && !record.pinned ? pins.topFor(record.agentId) : patch.pinned === false ? null : undefined,
     modelId: typeof patch.modelId === "string" ? patch.modelId : undefined,
     ...organized,
   });

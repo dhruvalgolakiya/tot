@@ -3,6 +3,8 @@ import clsx from "clsx";
 import { Dialog } from "radix-ui";
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
   Bot,
   BookOpen,
   Clock,
@@ -24,6 +26,7 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { api } from "../../lib/api";
 import { conversationTitle, isHiddenChat } from "../../lib/conversations";
 import { relativeTime } from "../../lib/format";
+import { stepChat } from "../../lib/chat-nav";
 import { jumpToMessage } from "../../lib/jump";
 import { setArchivedOpen } from "../../lib/organize";
 import { highlightParts, matchScore, queryWords, setPaletteOpen, usePalette } from "../../lib/palette";
@@ -312,6 +315,8 @@ function useActions(): Action[] {
       },
       { id: "sidebar", label: "Toggle sidebar", keywords: "hide show panel", icon: <PanelLeft />, run: toggleSidebar },
       { id: "archived", label: "Archived chats", keywords: "snoozed hidden", icon: <Archive />, run: () => setArchivedOpen(true) },
+      { id: "next-chat", label: "Next chat", keywords: "down switch", icon: <ArrowDown />, keys: ["mod", "shift", "]"], run: () => stepChat(1) },
+      { id: "previous-chat", label: "Previous chat", keywords: "up switch", icon: <ArrowUp />, keys: ["mod", "shift", "["], run: () => stepChat(-1) },
     ];
   }, [theme]);
 }

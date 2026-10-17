@@ -1513,7 +1513,24 @@ export async function moveToProject(id: string, projectId: string | null) {
 
 export function togglePinned(id: string) {
   const current = get().conversations.find((c) => c.id === id);
-  if (current) void updateConversation(id, { pinned: !current.pinned });
+  if (!current) return;
+  // A chat pinned now goes on top of its agent's pinned chats (the server places it the same way).
+  const positions = get().conversations.filter((c) => c.pinned && c.agentId === current.agentId).map((c) => c.pinPosition ?? 0);
+  const pinPosition = current.pinned ? null : positions.length ? Math.min(...positions) - 1 : 0;
+  void updateConversation(id, { pinned: !current.pinned }, { pinned: !current.pinned, pinPosition });
+}
+
+/** One agent's pinned chats, in a new order (dragged in the list). */
+export async function reorderPinned(ids: string[]) {
+  const previous = new Map(get().conversations.map((c) => [c.id, c.pinPosition]));
+  set((s) => ({ conversations: s.conversations.map((c) => (ids.includes(c.id) ? { ...c, pinPosition: ids.indexOf(c.id) } : c)) }));
+  try {
+    const ordered = await api.reorderPinned(ids);
+    set((s) => ({ conversations: ordered.reduce(upsertConversation, s.conversations) }));
+  } catch (error) {
+    set((s) => ({ conversations: s.conversations.map((c) => (ids.includes(c.id) ? { ...c, pinPosition: previous.get(c.id) } : c)) }));
+    notifyError(error);
+  }
 }
 
 /** Leave a chat that's about to drop out of the list (archived, snoozed) or stay unread: back to its agent's home. */

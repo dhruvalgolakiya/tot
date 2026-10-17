@@ -202,6 +202,8 @@ export interface Conversation {
   /** Provider that owns the current agent session, null before the first turn. */
   provider: ProviderId | null;
   pinned: boolean;
+  /** Its place among its agent's pinned chats, lowest first (dragged into order); absent for chats pinned before that. */
+  pinPosition?: number | null;
   createdAt: number;
   updatedAt: number;
   /** The agent's computer (the same one across all of that agent's chats). */
@@ -1138,6 +1140,7 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //                                              messageId; its first turn continues the source's provider session natively when it can)
 // POST   /api/conversations/:id/merge-back    -> Conversation  (module 05: a fork brings its new messages back to its source chat: a
 //                                              notice there, and a note for its next turn; returns the source)
+// PUT    /api/conversations/pinned-order     PinnedOrderRequest -> Conversation[]  (one agent's pinned chats, in the order given)
 // GET    /api/search?q=[&agentId=&limit=]     -> SearchResults  (finished messages whose text has every word of q, best first, at
 //                                              most 3 per chat; words match as prefixes)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
@@ -2147,6 +2150,11 @@ export interface ForkOrigin {
 /** POST /api/conversations/:id/fork; without a message, the whole chat. */
 export interface ForkRequest {
   messageId?: string;
+}
+
+/** PUT /api/conversations/pinned-order: one agent's pinned chats, top first (a newly pinned chat goes on top). */
+export interface PinnedOrderRequest {
+  ids: string[];
 }
 
 /** A piece of a search hit's snippet; `match` marks the words that matched. */

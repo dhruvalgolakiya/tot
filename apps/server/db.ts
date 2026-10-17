@@ -820,6 +820,8 @@ if (!hasColumn("conversations", "archived_at")) db.exec(`ALTER TABLE conversatio
 if (!hasColumn("conversations", "snoozed_until")) db.exec(`ALTER TABLE conversations ADD COLUMN snoozed_until INTEGER`);
 if (!hasColumn("conversations", "unread")) db.exec(`ALTER TABLE conversations ADD COLUMN unread INTEGER NOT NULL DEFAULT 0`);
 db.exec(`CREATE INDEX IF NOT EXISTS conversations_snoozed ON conversations(snoozed_until) WHERE snoozed_until IS NOT NULL`);
+// Where a pinned chat sits among its agent's pinned chats (lowest first; chats pinned before this have none, and come after).
+if (!hasColumn("conversations", "pin_position")) db.exec(`ALTER TABLE conversations ADD COLUMN pin_position REAL`);
 
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 

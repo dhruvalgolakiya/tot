@@ -26,6 +26,7 @@ Type in the box at the bottom and press Enter. Replies appear as they're written
 - **Attach files.** Press **+**, paste, or drop files on the chat. Up to 10 files, 25 MB each. The model sees images, reads text and code files, and anything else is copied to the agent's computer, in `~/uploads`.
 - **Talk instead of typing.** The mic button turns your voice into text. It needs a secure connection (HTTPS, or TOT on this computer) and a browser that supports it, so it doesn't show in Firefox or in the Mac app.
 - **Find anything.** Press `⌘K` (or **Search chats** at the top of the list) to search every agent's chats by title and by what was said in them, plus projects, agents, settings and commands like **New chat**. Arrows move, Enter opens; a message opens its chat scrolled to it, with the words that matched lit up. Your agent can also search what was said in earlier chats.
+- **Move between chats.** `⌘⇧]` and `⌘⇧[` open the next and previous chat in the list, and `⌘1` to `⌘9` the first nine. Drag pinned chats to put them in the order you like; a chat you pin goes on top.
 - **Tidy up.** Each chat's **…** menu has **Rename**, **Pin**, **Move to project**, **Mark as unread**, **Snooze** (later today, tomorrow, next week, or a time you pick), **Archive** and **Delete**. A chat with a reply you haven't opened has a dot. Snoozed and archived chats leave the list (**Archived** at its foot has them) and come back by themselves when there's something new in them or they need you: an approval, a question, a failed reply.
 
 ### Fork a chat, and bring it back

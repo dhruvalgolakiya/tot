@@ -101,10 +101,10 @@ export const ConversationItem = memo(function ConversationItem({
         onFocus={() => prefetch(conversation.id)}
         aria-current={active ? "page" : undefined}
         title={title}
-        // Dropped on the composer, it's attached to the next message as reference.
+        // Dropped on the composer, it's attached to the next message as reference; among the pinned chats, it moves there.
         onDragStart={(event) => {
           event.dataTransfer.setData(CHAT_DRAG_TYPE, conversation.id);
-          event.dataTransfer.effectAllowed = "copyLink";
+          event.dataTransfer.effectAllowed = "all";
         }}
         className={listRowClass({ selected: active, className: "pr-8" })}
       >

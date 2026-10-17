@@ -261,6 +261,8 @@ export const api = {
   forkChat: (conversationId: string, body: ForkRequest) => request<Conversation>("POST", `/conversations/${seg(conversationId)}/fork`, body),
   /** A fork's new messages go back to the chat it came from, for that chat's next reply; resolves with that chat. */
   mergeBack: (forkId: string) => request<Conversation>("POST", `/conversations/${seg(forkId)}/merge-back`, {}),
+  /** One agent's pinned chats, top first. */
+  reorderPinned: (ids: string[]) => request<Conversation[]>("PUT", "/conversations/pinned-order", { ids }),
   /** Messages in this device's chats whose text has every word of `q`. */
   search: (q: string, opts: { agentId?: string; limit?: number } = {}) =>
     request<SearchResults>(

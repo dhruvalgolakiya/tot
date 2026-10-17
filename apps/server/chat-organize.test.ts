@@ -1,6 +1,6 @@
 // Organizing chats: archive, snooze and unread through PATCH /api/conversations/:id, and what changes them on its own —
 // a finished reply makes a chat unread, a new turn brings it back, needing the user wakes it, and so does a snooze
-// running out.
+// running out. And the order of pinned chats (PUT /api/conversations/pinned-order).
 // Run: TOT_DATA_DIR=$(mktemp -d) npx tsx apps/server/chat-organize.test.ts
 import "./test-data-dir.ts"; // first: refuses to run against the real ~/.tot
 import type { AppEvent, Conversation, TaskInfo } from "@tot/shared/types";
@@ -152,6 +152,40 @@ res = await patch(timed.id, { snoozedUntil: Date.now() + 200 });
 check("the timer is armed by a PATCH", res.status === 200);
 await sleep(600);
 check("…and wakes the chat when its time comes", get(timed.id).snoozedUntil == null && get(timed.id).unread === true);
+
+// --- 6. Pinned chats' order ---
+
+const [first, second, third] = [newChat("First pin"), newChat("Second pin"), newChat("Third pin")];
+for (const c of [first, second, third]) await patch(c.id, { pinned: true });
+const position = (id: string) => get(id).pinPosition;
+check("a chat pinned now goes on top", position(third.id)! < position(second.id)! && position(second.id)! < position(first.id)!, [first, second, third].map((c) => position(c.id)).join());
+const put = async (ids: unknown) => {
+  const res = await request("PUT", "/conversations/pinned-order", { ids });
+  return { status: res.status, body: (await res.json()) as Conversation[] & { error?: string } };
+};
+const before = published.length;
+let order = await put([first.id, third.id, second.id]);
+check(
+  "PUT pinned-order puts them in that order",
+  order.status === 200 && position(first.id)! < position(third.id)! && position(third.id)! < position(second.id)!,
+  JSON.stringify(order.body).slice(0, 200),
+);
+check("…answers with them, positions included", order.body.map((c) => c.pinPosition).join() === "0,1,2");
+check("…and tells every tab", published.length - before === 3);
+const unpinned = newChat("Not pinned");
+order = await put([first.id, unpinned.id]);
+check("a chat that isn't pinned can't be ordered", order.status === 400, JSON.stringify(order.body));
+order = await put([first.id, first.id]);
+check("nor one chat twice", order.status === 400);
+order = await put([first.id, "no-such-chat"]);
+check("nor a chat that doesn't exist", order.status === 404);
+order = await put("nope");
+check("ids must be a list", order.status === 400);
+check("a refused order changes nothing", position(first.id) === 0 && position(third.id) === 1);
+res = await patch(third.id, { pinned: false });
+check("unpinning drops its place", res.body.pinPosition === undefined && get(third.id).pinPosition == null);
+res = await patch(third.id, { pinned: true });
+check("pinned again, it's back on top", res.body.pinPosition! < position(first.id)!, String(res.body.pinPosition));
 
 chatOrganizer.stop();
 list = (await (await request("GET", "/conversations")).json()) as Conversation[];

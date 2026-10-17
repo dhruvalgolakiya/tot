@@ -39,7 +39,7 @@ export function slimTask(task: TaskInfo): TaskInfo {
 
 /** The columns a chat list reads: not the frozen system prompt, the provider session, or what its next turn is told. */
 const LIST_COLUMNS =
-  "id, agent_id, routine_id, title, model_id, provider, pinned, created_at, updated_at, origin, kind, parent_id, task, forked_from, project_id, lead, workspace, archived_at, snoozed_until, unread";
+  "id, agent_id, routine_id, title, model_id, provider, pinned, created_at, updated_at, origin, kind, parent_id, task, forked_from, project_id, lead, workspace, archived_at, snoozed_until, unread, pin_position";
 
 /** Each agent's computer, read once per call however many of its chats are in the rows. */
 function computersOnce(): (agentId: string) => ComputerSummary | null {
@@ -112,6 +112,7 @@ function toRecord(row: Row, computerOf: (agentId: string) => ComputerSummary | n
     ...(row.archived_at ? { archivedAt: Number(row.archived_at) } : {}),
     ...(row.snoozed_until ? { snoozedUntil: Number(row.snoozed_until) } : {}),
     ...(row.unread ? { unread: true } : {}),
+    ...(row.pinned && row.pin_position !== null && row.pin_position !== undefined ? { pinPosition: Number(row.pin_position) } : {}),
   };
 }
 
@@ -141,6 +142,7 @@ type ConversationPatch = Partial<{
   archivedAt: number | null;
   snoozedUntil: number | null;
   unread: boolean;
+  pinPosition: number | null;
 }>;
 
 export const conversations = {
@@ -262,6 +264,7 @@ export const conversations = {
       archived_at: patch.archivedAt,
       snoozed_until: patch.snoozedUntil,
       unread: patch.unread === undefined ? undefined : Number(patch.unread),
+      pin_position: patch.pinPosition,
       updated_at: touch ? Date.now() : undefined,
     };
     const entries = Object.entries(columns).filter(([, v]) => v !== undefined);
