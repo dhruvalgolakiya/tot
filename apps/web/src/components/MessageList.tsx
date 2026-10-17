@@ -79,7 +79,7 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
   const models = useStore((s) => s.models);
   const conversation = useStore((s) => s.conversations.find((c) => c.id === conversationId));
   const task = isTask(conversation) ? conversation : null;
-  // Replies in chats fork (not TOT's own notices; tasks don't fork yet).
+  // Replies in chats fork (not TOT's own notices; tasks don't fork yet), and chats rewind to the user's messages.
   const inChat = conversation?.kind === "chat";
   const { scrollRef, contentRef, atBottom, stuck, scrollToBottom } = useStickToBottom();
   // Messages wait for the markdown renderer, so they render once, as markdown (the skeleton shows meanwhile).
@@ -271,7 +271,7 @@ export function MessageList({ conversationId, topPadding = "pt-20" }: { conversa
                 {Array.isArray(row) ? (
                   <TaskNotices messages={row} conversationId={conversationId} />
                 ) : row.role === "user" ? (
-                  <UserMessage message={row} />
+                  <UserMessage message={row} inChat={inChat} />
                 ) : (
                   <AssistantMessage
                     message={row}

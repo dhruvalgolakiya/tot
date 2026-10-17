@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { ArrowUp, Columns2, LoaderCircle, MessageSquare, Plus, Square, SquareSlash } from "lucide-react";
 import type { Conversation } from "@tot/shared/types";
 import type { UseAttachments } from "../hooks/useAttachments";
+import { useComposerInbox } from "../hooks/useComposerInbox";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
 import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, type SlashCommandName } from "../lib/mission";
 import { skillMatches, slashWordAt, typedSkill } from "../lib/skills";
@@ -90,6 +91,8 @@ export function Composer({
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [chatOver, setChatOver] = useState(false);
   useEffect(() => setContextChats([]), [currentId]);
+  // A rewound message comes back here to edit (lib/composerInbox).
+  useComposerInbox({ inputRef, setText, setCaret, setContextChats, attachments });
   // /best-of and skills are for chats, project pages and home; a task's composer steers or replies.
   const command = task ? null : parseSlash(text);
   const slashWord = task ? null : slashWordAt(text, caret);

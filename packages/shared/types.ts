@@ -1130,6 +1130,9 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //                                              messageId; its first turn continues the source's provider session natively when it can)
 // POST   /api/conversations/:id/merge-back    -> Conversation  (module 05: a fork brings its new messages back to its source chat: a
 //                                              notice there, and a note for its next turn; returns the source)
+// GET    /api/conversations/:id/rewind?messageId=  -> RewindPreview  (what rewinding to one of the user's messages takes away)
+// POST   /api/conversations/:id/rewind        RewindRequest -> RewindResponse  (that message and everything after it go; with
+//                                              restoreFiles the chat's workspace files go back too; 409 while a reply runs)
 // GET    /api/tasks/:id/changes               -> TaskChanges  (coding tasks: the branch's changes against its base)
 // Module 09 · lane A (land a finished coding task; every change also goes out as a `task` event)
 // GET    /api/tasks/:id/land                  -> TaskLandOptions  (worked out now: merge into the folder's checked-out branch, or a draft PR;
@@ -2132,6 +2135,27 @@ export interface ForkOrigin {
 /** POST /api/conversations/:id/fork; without a message, the whole chat. */
 export interface ForkRequest {
   messageId?: string;
+}
+
+/** POST /api/conversations/:id/rewind: back to before `messageId`, one of the user's messages. */
+export interface RewindRequest {
+  messageId: string;
+  /** Also put the chat's workspace files back as they were before then (when RewindPreview.files). */
+  restoreFiles?: boolean;
+}
+
+export interface RewindPreview {
+  /** How many messages would go: this one and every one after it. */
+  messages: number;
+  /** The chat's workspace was checkpointed in those turns, so its files can go back too. */
+  files: boolean;
+}
+
+export interface RewindResponse {
+  conversation: Conversation;
+  /** The message rewound to, for the composer to edit and send again. */
+  draft: { text: string; attachments: Attachment[]; contextChats: string[] };
+  filesRestored: boolean;
 }
 
 // ---------------------------------------------------------------------------

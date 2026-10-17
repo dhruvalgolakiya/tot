@@ -28,6 +28,7 @@ import type {
   UpdateConversationRequest,
 } from "@tot/shared/types";
 import { api, ApiError, errorMessage } from "./lib/api";
+import { putInComposer } from "./lib/composerInbox";
 import { toMs, truncate } from "./lib/format";
 import { AUTO_MODEL_ID, PROVIDER_LABELS } from "./lib/models";
 import { deviceOf, onDevice } from "./lib/devices";
@@ -1824,6 +1825,28 @@ export async function forkChat(conversationId: string, messageId?: string) {
     navigateToConversation(fork.id);
   } catch (error) {
     notifyError(error);
+  }
+}
+
+/**
+ * "Rewind to here": the message and everything after it leave the chat, and the message goes back into the composer
+ * to edit and send again; with `restoreFiles` the chat's workspace files go back too. Resolves false when it failed.
+ */
+export async function rewindChat(conversationId: string, messageId: string, { restoreFiles = false } = {}): Promise<boolean> {
+  try {
+    const { conversation, draft, filesRestored } = await api.rewindChat(conversationId, { messageId, restoreFiles });
+    set((s) => ({ conversations: upsertConversation(s.conversations, conversation) }));
+    setMessages(conversationId, (list) => {
+      const at = list.findIndex((m) => m.id === messageId);
+      return at === -1 ? list : list.slice(0, at);
+    });
+    putInComposer({ kind: "draft", ...draft });
+    if (filesRestored) toast.success("Files put back");
+    void loadConversation(conversationId, { quiet: true });
+    return true;
+  } catch (error) {
+    notifyError(error);
+    return false;
   }
 }
 

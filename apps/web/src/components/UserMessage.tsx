@@ -1,6 +1,7 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import clsx from "clsx";
-import { Check, Copy, Download, SquareSlash } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
+import { Check, Copy, Download, Ellipsis, SquareSlash, Undo2 } from "lucide-react";
 import type { Attachment, Message, MessagePart } from "@tot/shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { formatBytes } from "../lib/format";
@@ -9,6 +10,7 @@ import { withoutSkill } from "../lib/skills";
 import { messageText } from "../lib/tools";
 import { IconButton } from "./ui/IconButton";
 import { ChatChip } from "./ChatChip";
+import { RewindDialog } from "./RewindDialog";
 import { Tip } from "./ui/Tip";
 
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
@@ -69,8 +71,11 @@ export function SteerNote({ message, inline = false }: { message: Message; inlin
   );
 }
 
-export const UserMessage = memo(function UserMessage({ message }: { message: Message }) {
+/** `inChat`: the message is in a chat, which can be rewound to it (tasks can't). */
+export const UserMessage = memo(function UserMessage({ message, inChat = false }: { message: Message; inChat?: boolean }) {
   const { copied, copy } = useCopy();
+  // The dialog mounts the first time it's asked for, and stays for its closing animation.
+  const [rewind, setRewind] = useState<boolean | null>(null);
   const text = messageText(message);
   if (message.auto) return <AutoDivider text={text} />;
   if (message.steered) return <SteerNote message={message} />;
@@ -123,7 +128,7 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
           ))}
         </div>
       ) : null}
-      <div className="mt-1 flex h-7 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+      <div className="mt-1 flex h-7 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100 pointer-coarse:opacity-100">
         {text && (
           <Tip content={copied ? "Copied" : "Copy"}>
             <IconButton label="Copy message" size="sm" onClick={() => void copy(text)}>
@@ -131,7 +136,25 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
             </IconButton>
           </Tip>
         )}
+        {inChat && !pending && (
+          <DropdownMenu.Root modal={false}>
+            <DropdownMenu.Trigger asChild>
+              <IconButton label="More message actions" size="sm">
+                <Ellipsis />
+              </IconButton>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content align="end" sideOffset={4} className="menu w-48">
+                <DropdownMenu.Item className="menu-item" onSelect={() => setRewind(true)}>
+                  <Undo2 className="size-4 text-fg-muted" />
+                  <span className="flex-1">Rewind to here</span>
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        )}
       </div>
+      {rewind !== null && <RewindDialog conversationId={message.conversationId} messageId={message.id} open={rewind} onOpenChange={setRewind} />}
     </div>
   );
 });

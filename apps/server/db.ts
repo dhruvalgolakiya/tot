@@ -814,6 +814,24 @@ if (!hasColumn("conversations", "workspace")) db.exec(`ALTER TABLE conversations
 if (!hasColumn("conversations", "provider_account")) db.exec(`ALTER TABLE conversations ADD COLUMN provider_account TEXT`);
 if (!hasColumn("messages", "account")) db.exec(`ALTER TABLE messages ADD COLUMN account TEXT`);
 
+// Rewinding a chat (chats/rewind.ts): its workspace as it was before a turn's first change, kept as a commit on a
+// private ref (chats/checkpoints.ts), and where a rewound chat's next turn picks its provider session up again (the
+// reply it now ends with; null to start afresh).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chat_checkpoints (
+    message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    start_sha TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS chat_checkpoints_by_conversation ON chat_checkpoints(conversation_id, created_at);
+  CREATE TABLE IF NOT EXISTS chat_rewinds (
+    conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+    message_id TEXT,
+    at INTEGER NOT NULL
+  );
+`);
+
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 
 /** Statements prepared once and reused, for the hot paths: a chat's load, a streaming reply's saves. */

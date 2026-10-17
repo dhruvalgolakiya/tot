@@ -25,6 +25,9 @@ import type {
   ContinueOnRequest,
   ConversationDetail,
   ForkRequest,
+  RewindPreview,
+  RewindRequest,
+  RewindResponse,
   CreateConversationRequest,
   CreateProjectRequest,
   ConnectDeviceRequest,
@@ -260,6 +263,11 @@ export const api = {
   forkChat: (conversationId: string, body: ForkRequest) => request<Conversation>("POST", `/conversations/${seg(conversationId)}/fork`, body),
   /** A fork's new messages go back to the chat it came from, for that chat's next reply; resolves with that chat. */
   mergeBack: (forkId: string) => request<Conversation>("POST", `/conversations/${seg(forkId)}/merge-back`, {}),
+  /** What rewinding the chat to one of the user's messages would take away, and whether its files can go back too. */
+  rewindPreview: (conversationId: string, messageId: string) =>
+    request<RewindPreview>("GET", `/conversations/${seg(conversationId)}/rewind?messageId=${encodeURIComponent(messageId)}`),
+  /** The chat back to before one of the user's messages (that message and every one after it go). */
+  rewindChat: (conversationId: string, body: RewindRequest) => request<RewindResponse>("POST", `/conversations/${seg(conversationId)}/rewind`, body),
   /** A note for a running task; resolves with the saved message. */
   steerTask: (conversationId: string, text: string) => request<Message>("POST", `/conversations/${seg(conversationId)}/steer`, { text }),
   pauseTask: (id: string) => request<Conversation>("POST", `/tasks/${seg(id)}/pause`, {}),

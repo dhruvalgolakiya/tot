@@ -135,6 +135,22 @@ export const messages = {
     return parseJson<MessagePart | null>(row?.value, null);
   },
 
+  /** Deletes some of a chat's messages (a rewind), with their search entries. */
+  remove(conversationId: string, ids: string[]): void {
+    db.exec("BEGIN");
+    try {
+      for (const id of ids) {
+        statement(`DELETE FROM message_search WHERE message_id = ?`).run(id);
+        statement(`DELETE FROM messages WHERE id = ? AND conversation_id = ?`).run(id, conversationId);
+      }
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
+    bump(conversationId);
+  },
+
   /** A reply's place in its provider session (the session, and the provider's ref for the turn), for forks. */
   setProviderRef(id: string, ref: { session: string; ref: string }): void {
     db.prepare(`UPDATE messages SET provider_ref = ? WHERE id = ?`).run(JSON.stringify(ref), id);

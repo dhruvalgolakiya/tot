@@ -81,6 +81,18 @@ export function useAttachments(deviceId: string | null = null) {
 
   const clear = useCallback(() => setItems([]), []);
 
+  /** Files already uploaded back in the tray (a rewound message's), as many as fit. */
+  const addUploaded = useCallback((list: Attachment[]) => {
+    if (list.length === 0) return;
+    const added = list.map((attachment): PendingAttachment => ({
+      localId: nextLocalId(),
+      file: new File([], attachment.name, { type: attachment.mimeType }),
+      status: "done",
+      attachment,
+    }));
+    setItems((current) => [...current, ...added.slice(0, Math.max(0, MAX_ATTACHMENTS - current.length))]);
+  }, []);
+
   /** Put previously-cleared attachments back (e.g. the send that consumed them failed). */
   const restore = useCallback((previous: PendingAttachment[]) => {
     if (previous.length === 0) return;
@@ -92,7 +104,7 @@ export function useAttachments(deviceId: string | null = null) {
     attachment: Attachment;
   })[];
 
-  return { items, addFiles, removeAttachment, clear, restore, uploading, ready };
+  return { items, addFiles, addUploaded, removeAttachment, clear, restore, uploading, ready };
 }
 
 export type UseAttachments = ReturnType<typeof useAttachments>;
