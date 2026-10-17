@@ -824,6 +824,18 @@ db.exec(`CREATE INDEX IF NOT EXISTS conversations_snoozed ON conversations(snooz
 if (!hasColumn("conversations", "pin_position")) db.exec(`ALTER TABLE conversations ADD COLUMN pin_position REAL`);
 // The reasoning effort picked for a chat's model (Effort); null: TOT picks it each turn, as before.
 if (!hasColumn("conversations", "effort")) db.exec(`ALTER TABLE conversations ADD COLUMN effort TEXT`);
+// Messages sent while a chat's turn runs (chats/queue.ts): each goes out, in order, once the turn before it ends.
+// `request` is the SendMessageRequest as it was sent; `position` orders them (a "send now" moves one to the front).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chat_queue (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    request TEXT NOT NULL,
+    position REAL NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS chat_queue_by_chat ON chat_queue(conversation_id, position);
+`);
 
 export type Row = Record<string, string | number | bigint | null | Uint8Array>;
 

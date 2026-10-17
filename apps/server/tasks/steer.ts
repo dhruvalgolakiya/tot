@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
 import type { Message } from "@tot/shared/types";
 import { HttpError } from "../agent/orchestrator.ts";
-import { runRegistry, type Run } from "../agent/runs.ts";
+import { runRegistry, steerNote, type Run } from "../agent/runs.ts";
 import { appEvents } from "../app-events.ts";
 import { conversations, toPublicConversation } from "../data/conversations.ts";
 import { messages } from "../data/messages.ts";
@@ -20,27 +19,11 @@ import { taskStore } from "./store.ts";
 
 const MAX_NOTE = 4000;
 
-/** Stops a run as soon as its current tool call finishes (or now, when nothing is running). */
-function stopAtToolBoundary(run: Run): void {
-  const reply = run.reply?.();
-  const busy = reply?.parts.some((part) => part.type === "tool" && part.status === "running");
-  if (!busy) {
-    run.stop("steer");
-    return;
-  }
-  const unsubscribe = run.subscribe((_seq, event) => {
-    if (event.type === "part-update" && event.part.type === "tool" && event.part.status !== "running") {
-      unsubscribe();
-      run.stop("steer");
-    }
-  }, run.size);
-}
-
 async function deliver(run: Run, taskId: string, text: string): Promise<void> {
   const delivered = run.steer ? await run.steer(text).catch(() => false) : false;
   if (delivered) return;
   runLoop.addNote(taskId, text);
-  if (!run.done) stopAtToolBoundary(run);
+  if (!run.done) run.stopAfterStep();
 }
 
 /** Saves the note and gets it to the task; resolves with the saved message. */
@@ -55,17 +38,7 @@ export function steer(taskId: string, text: string): Message {
   }
 
   const run = runRegistry.activeFor(taskId);
-  const reply = run?.reply?.();
-  const message: Message = {
-    id: randomUUID(),
-    conversationId: taskId,
-    role: "user",
-    parts: [{ type: "text", id: randomUUID(), text: note }],
-    status: "complete",
-    steered: true,
-    ...(reply ? { steeredInto: { messageId: reply.id, afterPartId: reply.parts.at(-1)?.id ?? null } } : {}),
-    createdAt: Date.now(),
-  };
+  const message = steerNote(taskId, note, run);
   messages.insert(message);
   const touched = conversations.update(taskId, {}, true);
   if (touched) appEvents.publish({ type: "conversation", conversation: toPublicConversation(touched) });

@@ -1,14 +1,16 @@
 import { memo } from "react";
 import clsx from "clsx";
-import { Check, Copy, Download, SquareSlash } from "lucide-react";
+import { Check, Copy, Download, ListChecks, SquareSlash } from "lucide-react";
 import type { Attachment, Message, MessagePart } from "@tot/shared/types";
 import { useCopy } from "../hooks/useCopy";
 import { formatBytes } from "../lib/format";
 import { fileIcon, isImageMime } from "../lib/fileIcon";
 import { withoutSkill } from "../lib/skills";
 import { messageText } from "../lib/tools";
+import { useStore } from "../store";
 import { IconButton } from "./ui/IconButton";
 import { ChatChip } from "./ChatChip";
+import { MentionText } from "./composer/MentionText";
 import { Tip } from "./ui/Tip";
 
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
@@ -57,11 +59,13 @@ function AutoDivider({ text }: { text: string }) {
   );
 }
 
-/** A note the user sent while a task worked; `inline` when it sits inside the reply it was handed to. */
+/** A note the user sent while a task worked (or a chat's reply came in); `inline` when it sits inside the reply it was handed to. */
 export function SteerNote({ message, inline = false }: { message: Message; inline?: boolean }) {
+  const inChat = useStore((s) => s.conversations.find((c) => c.id === message.conversationId)?.kind === "chat");
+  const label = inChat ? "Your note, mid-reply" : inline ? "Your note, mid-task" : "Your note to the task";
   return (
     <div className={clsx("flex flex-col items-end", inline && "my-1")}>
-      <span className="mb-1 text-2xs font-medium text-fg-subtle">{inline ? "Your note, mid-task" : "Your note to the task"}</span>
+      <span className="mb-1 text-2xs font-medium text-fg-subtle">{label}</span>
       <div className="max-w-[80%] rounded-3xl bg-bubble px-4 py-2.5 text-chat whitespace-pre-wrap text-fg [overflow-wrap:anywhere] sm:max-w-[70%]">
         {messageText(message)}
       </div>
@@ -94,6 +98,18 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
           )}
         </div>
       )}
+      {message.plan && (
+        <span
+          title="Sent in plan mode: a plan, no changes"
+          className={clsx(
+            "mb-1.5 inline-flex h-6 items-center gap-1 rounded-full border border-hairline bg-fill-subtle px-2 text-xs text-fg-muted",
+            pending && "opacity-70",
+          )}
+        >
+          <ListChecks className="size-3.5 shrink-0 text-fg-subtle" aria-hidden="true" />
+          Plan
+        </span>
+      )}
       {message.skill && (
         <span
           title={`Ran with the ${message.skill} skill`}
@@ -113,7 +129,7 @@ export const UserMessage = memo(function UserMessage({ message }: { message: Mes
             pending && "opacity-70",
           )}
         >
-          {shown}
+          {message.files?.length ? <MentionText text={shown} files={message.files} /> : shown}
         </div>
       )}
       {message.contextChats?.length ? (

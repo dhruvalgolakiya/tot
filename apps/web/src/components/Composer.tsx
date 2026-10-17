@@ -1,15 +1,22 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import clsx from "clsx";
-import { ArrowUp, Columns2, LoaderCircle, MessageSquare, Plus, Square, SquareSlash } from "lucide-react";
+import { toast } from "sonner";
+import { ArrowUp, Columns2, FileText, ListChecks, LoaderCircle, MessageSquare, Plus, Square, SquarePen, SquareSlash } from "lucide-react";
 import type { Conversation } from "@tot/shared/types";
 import type { UseAttachments } from "../hooks/useAttachments";
 import { CHAT_DRAG_TYPE, chatMatches, MAX_ATTACHED_CHATS, mentionAt } from "../lib/attached-chats";
+import { droppedPath, fileMentionAt, filesInText, splitPath, type FilesTarget } from "../lib/files";
 import { bestOfLabel, bestOfProviders, newRequestId, parseSlash, SLASH_COMMANDS, type SlashCommandName } from "../lib/mission";
 import { skillMatches, slashWordAt, typedSkill } from "../lib/skills";
+import { dropStashed, stashDraft, type StashedDraft } from "../lib/stash";
+import { adoptDraftPlanMode, DRAFT, modeCommand, setPlanMode, usePlanMode } from "../lib/plan-mode";
+import { isCodeProject, useProjects } from "../lib/projects";
+import { queueMessage } from "../lib/queue";
 import { isSteerable, isTask } from "../lib/tasks";
 import {
   clearComposerDraft,
   loadSkills,
+  notifyError,
   selectActiveAgent,
   selectActiveAgentId,
   selectCurrentConversation,
@@ -21,6 +28,13 @@ import {
 } from "../store";
 import { AttachmentChip } from "./AttachmentChip";
 import { ChatChip } from "./ChatChip";
+import { ContextMeter } from "./composer/ContextMeter";
+import { MentionOverlay } from "./composer/MentionText";
+import { PlanFollowUp } from "./composer/PlanFollowUp";
+import { QueuedMessages } from "./composer/QueuedMessages";
+import { StashMenu } from "./composer/StashMenu";
+import { useFileMentions } from "./composer/useFileMentions";
+import { usePromptHistory } from "./composer/usePromptHistory";
 import { ProjectPicker } from "./projects/ProjectPicker";
 import { WorkspacePicker } from "./projects/WorkspacePicker";
 import { Tip } from "./ui/Tip";
@@ -34,8 +48,23 @@ const SLASH_ICONS: Record<SlashCommandName, typeof Columns2> = { "best-of": Colu
 
 const NO_CONVERSATIONS: Conversation[] = [];
 
-/** A row of the "/" menu: a command (/best-of) or a skill. */
-type SlashItem = { kind: "command"; name: SlashCommandName; description: string } | { kind: "skill"; name: string; description: string };
+/** The textarea's box and type, which the chips laid under it must match exactly. */
+const INPUT_METRICS = "px-4 pt-4 pb-1 text-chat";
+
+/** A row of the "@" menu: a file of the chat's folder, or another chat to attach. */
+type MentionItem = { kind: "file"; path: string } | { kind: "chat"; id: string; title: string };
+
+/** Plan mode on and off, from the "/" menu (each shows only when it would change something). */
+const MODES = [
+  { name: "plan", description: "Propose a plan first, change nothing", Icon: ListChecks },
+  { name: "default", description: "Back to making changes", Icon: SquarePen },
+] as const;
+
+/** A row of the "/" menu: a command (/best-of), plan mode on or off, or a skill. */
+type SlashItem =
+  | { kind: "command"; name: SlashCommandName; description: string }
+  | { kind: "mode"; name: (typeof MODES)[number]["name"]; description: string }
+  | { kind: "skill"; name: string; description: string };
 
 /**
  * `placeholder` replaces "Ask <agent> anything" for a new chat, e.g. "New chat in web…" on a project's page.
@@ -61,6 +90,15 @@ export function Composer({
   const task = isTask(conversation) ? conversation.task : null;
   // In a task that's working, the composer adds notes to it ("steering") instead of starting turns.
   const steering = Boolean(task && isSteerable(task));
+  // In a chat whose reply is still coming, what's sent waits in its queue and goes when the reply is done.
+  const queueing = Boolean(run && currentId && !task);
+  // Plan mode, kept per chat (a chat not sent yet keeps it as the draft's until its first message gives it an id).
+  const planKey = currentId ?? DRAFT;
+  const planning = usePlanMode((s) => s.on.has(planKey)) && !task;
+  const startedAs = useRef(currentId);
+  useEffect(() => {
+    if (!startedAs.current && currentId) adoptDraftPlanMode(currentId);
+  }, [currentId]);
   const [text, setText] = useState("");
   // The in-progress (not-yet-final) speech recognition guess, shown as a quiet
   // preview under the textarea — never merged into `text` until it finalizes,
@@ -102,6 +140,11 @@ export function Composer({
   const slashItems: SlashItem[] = slashOpen
     ? [
         ...SLASH_COMMANDS.filter((c) => c.name.startsWith(slashWord.query.toLowerCase())).map((c) => ({ kind: "command" as const, ...c })),
+        ...MODES.filter((m) => (m.name === "plan") !== planning && m.name.startsWith(slashWord.query.toLowerCase())).map(({ name, description }) => ({
+          kind: "mode" as const,
+          name,
+          description,
+        })),
         ...skillMatches(skills ?? [], slashWord.query).map((skill) => ({ kind: "skill" as const, name: skill.name, description: skill.description })),
       ]
     : [];
@@ -122,8 +165,25 @@ export function Composer({
     mention && mention.start !== dismissedAt
       ? chatMatches(conversations, { agentId, exclude: [...contextChats, ...(currentId ? [currentId] : [])], query: mention.query })
       : [];
-  const picking = matches.length > 0;
-  useEffect(() => setHighlight(0), [mention?.query]);
+  // Files of the chat's working folder (or, for a chat not sent yet, its project's), in a project with code.
+  const chatProjectId = currentId ? (conversation?.projectId ?? null) : draftProject;
+  const fileProject = useProjects((s) => (chatProjectId ? s.projects.find((p) => p.id === chatProjectId) : undefined));
+  const filesTarget: FilesTarget | null =
+    !canAttachChats || !fileProject || !isCodeProject(fileProject) ? null : currentId ? { conversationId: currentId } : { projectId: fileProject.id, agentId };
+  const fileMention = filesTarget ? fileMentionAt(text, caret) : null;
+  const fileQuery = fileMention && fileMention.start !== dismissedAt ? fileMention.query : null;
+  const mentions = useFileMentions(filesTarget, fileQuery);
+  const mentionItems: MentionItem[] = [
+    ...(fileQuery !== null ? mentions.files.map((path) => ({ kind: "file" as const, path })) : []),
+    ...matches.map((chat) => ({ kind: "chat" as const, id: chat.id, title: chat.title })),
+  ];
+  const picking = mentionItems.length > 0;
+  const mentionListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => setHighlight(0), [fileMention?.query, mention?.query]);
+  useEffect(() => {
+    mentionListRef.current?.querySelector("[data-highlighted]")?.scrollIntoView({ block: "nearest" });
+  }, [highlight]);
+  const [scrollTop, setScrollTop] = useState(0);
   const attachChat = (id: string) =>
     setContextChats((list) => (list.includes(id) || id === currentId || list.length >= MAX_ATTACHED_CHATS ? list : [...list, id]));
 
@@ -139,6 +199,77 @@ export function Composer({
       setCaret(before.length);
     });
   }
+  /** Swaps the "@query" being typed for the file's `@path`, shown as a chip, and a space. */
+  function pickFile(path: string) {
+    if (!fileMention) return;
+    const before = `${text.slice(0, fileMention.start)}@${path} `;
+    setText(before + text.slice(caret).replace(/^ /, ""));
+    mentions.name(path);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(before.length, before.length);
+      setCaret(before.length);
+    });
+  }
+
+  function pickMention(item: MentionItem) {
+    if (item.kind === "file") pickFile(item.path);
+    else pickChat(item.id);
+  }
+
+  /** A path dragged in from an editor, inside the chat's folder: it becomes a chip where the caret is. */
+  function insertFile(path: string) {
+    const at = inputRef.current?.selectionStart ?? text.length;
+    const spaceBefore = at > 0 && !/\s$/.test(text.slice(0, at)) ? " " : "";
+    const before = `${text.slice(0, at)}${spaceBefore}@${path} `;
+    setText(before + text.slice(at));
+    mentions.name(path);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(before.length, before.length);
+      setCaret(before.length);
+    });
+  }
+
+  // ↑ / ↓ in an empty composer: this chat's earlier prompts.
+  const history = usePromptHistory(currentId);
+  const deviceId = agent?.deviceId ?? null;
+
+  /** ⌘S: what's being written goes aside (the stash menu brings it back), leaving the composer clear. */
+  function stash() {
+    const uploads = attachments.ready.map((it) => it.attachment);
+    if (!text.trim() && !uploads.length && !contextChats.length) return;
+    if (attachments.uploading) {
+      toast("Wait for the files to finish uploading, then stash.");
+      return;
+    }
+    stashDraft({ text, attachments: uploads, deviceId, contextChats, files: filesInText(text, mentions.named) });
+    setText("");
+    setInterim("");
+    setContextChats([]);
+    mentions.setNamed([]);
+    attachments.clear();
+  }
+
+  /** A stashed draft comes back, after anything already written, and leaves the stash. */
+  function restoreStashed(draft: StashedDraft) {
+    dropStashed(draft.id);
+    const next = text.trim() ? `${text.replace(/\s+$/, "")}\n\n${draft.text}` : draft.text;
+    setText(next);
+    if (canAttachChats) draft.contextChats.forEach(attachChat);
+    draft.files.forEach(mentions.name);
+    if (draft.attachments.length) {
+      // Files live on the device they were uploaded to (module 07).
+      if (draft.deviceId === deviceId) attachments.addUploaded(draft.attachments);
+      else toast("The draft's files are on another device, so they weren't added here.");
+    }
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.length, next.length);
+      setCaret(next.length);
+    });
+  }
+
   const hasText = command ? command.body.length > 0 : text.trim().length > 0;
   const canSend = steering
     ? text.trim().length > 0 && attachments.items.length === 0
@@ -146,7 +277,7 @@ export function Composer({
       ? false
       : sendsBestOf
         ? hasText && attachments.items.length === 0 && !run && !sending
-        : (hasText || attachments.ready.length > 0) && !run && !sending && !attachments.uploading;
+        : (hasText || attachments.ready.length > 0) && (!run || queueing) && !sending && !attachments.uploading;
   const agentName = agent?.name ?? "TOT";
   const placeholder = steering
     ? "Steer this task…"
@@ -154,7 +285,11 @@ export function Composer({
       ? "Answer the task…"
       : task
         ? "Reply to pick this task up again…"
-        : (newChatPlaceholder ?? `Ask ${agentName} anything`);
+        : queueing
+          ? "Queue a follow-up…"
+          : planning
+            ? "What should be planned?"
+            : (newChatPlaceholder ?? `Ask ${agentName} anything`);
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -191,25 +326,73 @@ export function Composer({
       return;
     }
     if (!canSend) return;
-    const message = value;
-    const files = attachments.ready.map((it) => it.attachment);
+    // "/plan …" or "/default …" typed in full: plan mode changes, and the rest, if any, goes as the message.
+    const mode = task ? null : modeCommand(value);
+    if (mode) {
+      setPlanMode(planKey, mode.plan);
+      if (!mode.rest && attachments.ready.length === 0) {
+        setText("");
+        return;
+      }
+    }
+    const message = mode ? mode.rest : value;
+    const plan = mode ? mode.plan : planning;
+    const uploads = attachments.ready.map((it) => it.attachment);
     const previousItems = attachments.items;
     const chats = contextChats;
+    const named = mentions.named;
+    const files = filesInText(message, named);
     setText("");
     setInterim("");
     setContextChats([]);
+    mentions.setNamed([]);
     attachments.clear();
-    const sent = await sendMessage(message, { attachments: files, contextChats: chats, skill: typedSkill(skills, message) });
+    const skill = typedSkill(skills, message);
+    if (queueing && currentId) {
+      try {
+        await queueMessage(currentId, {
+          text: message.trim(),
+          ...(uploads.length ? { attachments: uploads.map((file) => file.id) } : {}),
+          ...(chats.length ? { contextChats: chats } : {}),
+          ...(skill ? { skill } : {}),
+          ...(files.length ? { files } : {}),
+          ...(plan ? { plan: true } : {}),
+        });
+      } catch (error) {
+        notifyError(error);
+        setContextChats(chats);
+        mentions.setNamed(named);
+        setText((current) => current || value);
+        attachments.restore(previousItems);
+      }
+      return;
+    }
+    const sent = await sendMessage(message, { attachments: uploads, contextChats: chats, skill, files, plan });
     if (!sent) {
       setContextChats(chats);
+      mentions.setNamed(named);
       setText((current) => current || value);
       attachments.restore(previousItems);
     }
   }
 
-  /** Swaps the first word being typed for the whole name and a space: "/be" → "/best-of ", "/dh fix it" → "/dh-stack fix it". */
-  function pickSlash(name: string) {
-    const head = `/${name} `;
+  /**
+   * Swaps the first word being typed for the whole name and a space: "/be" → "/best-of ", "/dh fix it" → "/dh-stack fix
+   * it". Plan mode's two turn it on or off instead, and leave the rest of the text.
+   */
+  function pickSlash(item: SlashItem) {
+    if (item.kind === "mode") {
+      setPlanMode(planKey, item.name === "plan");
+      const rest = slashWord ? text.slice(slashWord.end).trimStart() : "";
+      setText(rest);
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(rest.length, rest.length);
+        setCaret(rest.length);
+      });
+      return;
+    }
+    const head = `/${item.name} `;
     setText(head + (slashWord ? text.slice(slashWord.end).trimStart() : ""));
     requestAnimationFrame(() => {
       inputRef.current?.focus();
@@ -219,6 +402,11 @@ export function Composer({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      stash();
+      return;
+    }
     // The slash menu takes the arrows, Enter / Tab and Escape while it's open.
     if (slashing && !event.metaKey && !event.ctrlKey) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -229,7 +417,7 @@ export function Composer({
       }
       if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
         event.preventDefault();
-        pickSlash(slashItems[Math.min(slashHighlight, slashItems.length - 1)]!.name);
+        pickSlash(slashItems[Math.min(slashHighlight, slashItems.length - 1)]!);
         return;
       }
     }
@@ -238,22 +426,54 @@ export function Composer({
       setSlashDismissed(text);
       return;
     }
-    // The @ chat picker takes the arrows, Enter / Tab and Escape while it's open.
+    // The @ picker takes the arrows, Enter / Tab and Escape while it's open.
     if (picking) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const step = event.key === "ArrowDown" ? 1 : -1;
-        setHighlight((current) => (current + step + matches.length) % matches.length);
+        setHighlight((current) => (current + step + mentionItems.length) % mentionItems.length);
         return;
       }
       if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
         event.preventDefault();
-        pickChat(matches[Math.min(highlight, matches.length - 1)]!.id);
+        pickMention(mentionItems[Math.min(highlight, mentionItems.length - 1)]!);
         return;
       }
       if (event.key === "Escape") {
         event.preventDefault();
-        setDismissedAt(mention!.start);
+        setDismissedAt((fileMention ?? mention)!.start);
+        return;
+      }
+    }
+    // Backspace right after a file's chip takes the whole chip.
+    if (event.key === "Backspace" && mentions.named.length && event.currentTarget.selectionStart === event.currentTarget.selectionEnd) {
+      const at = event.currentTarget.selectionStart;
+      const before = text.slice(0, at);
+      const chip = mentions.named.find((path) => before.endsWith(`@${path}`) && /(^|\s)$/.test(before.slice(0, -path.length - 1)));
+      if (chip) {
+        event.preventDefault();
+        const start = at - chip.length - 1;
+        setText(text.slice(0, start) + text.slice(at));
+        requestAnimationFrame(() => {
+          inputRef.current?.setSelectionRange(start, start);
+          setCaret(start);
+        });
+        return;
+      }
+    }
+    // Earlier prompts: ↑ on the first line, ↓ on the last, in an empty composer or one showing a recalled prompt.
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && !picking) {
+      const input = event.currentTarget;
+      const up = event.key === "ArrowUp";
+      const edge = up ? !text.slice(0, input.selectionStart).includes("\n") : !text.slice(input.selectionEnd).includes("\n");
+      const recalled = edge ? (up ? history.back(text) : history.forward(text)) : null;
+      if (recalled !== null) {
+        event.preventDefault();
+        setText(recalled);
+        requestAnimationFrame(() => {
+          inputRef.current?.setSelectionRange(recalled.length, recalled.length);
+          setCaret(recalled.length);
+        });
         return;
       }
     }
@@ -283,191 +503,254 @@ export function Composer({
   }
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      onDragOver={(event) => {
-        if (!canAttachChats || !event.dataTransfer.types.includes(CHAT_DRAG_TYPE)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-        setChatOver(true);
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setChatOver(false);
-      }}
-      onDrop={(event) => {
-        const id = event.dataTransfer.getData(CHAT_DRAG_TYPE);
-        if (!id) return;
-        event.preventDefault();
-        setChatOver(false);
-        attachChat(id);
-      }}
-      className={clsx(
-        "surface-raised relative min-h-[60px] rounded-3xl border transition-colors focus-within:border-edge-strong",
-        chatOver ? "border-accent-edge" : "border-edge",
-      )}
-    >
-      {(slashing || noSkills) && (
-        <div
-          ref={slashListRef}
-          role="listbox"
-          aria-label="Commands and skills"
-          className="menu absolute bottom-full left-0 mb-2 max-h-80 w-96 max-w-full overflow-y-auto"
-        >
-          {slashItems.map((item, index) => {
-            const Icon = item.kind === "command" ? SLASH_ICONS[item.name] : SquareSlash;
-            const description =
-              item.kind === "command" && item.name === "best-of" && bestOf.length ? `On ${bestOfLabel(bestOf)}, then compare` : item.description;
-            const firstSkill = item.kind === "skill" && slashItems[index - 1]?.kind !== "skill";
-            return (
-              <Fragment key={`${item.kind}:${item.name}`}>
-                {firstSkill && <p className="menu-label">Skills</p>}
-                <div
-                  role="option"
-                  aria-selected={index === slashHighlight}
-                  data-highlighted={index === slashHighlight ? "" : undefined}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    pickSlash(item.name);
-                  }}
-                  onMouseEnter={() => setSlashHighlight(index)}
-                  className="menu-item"
-                >
-                  <Icon className="size-4 shrink-0 text-fg-muted" />
-                  <span className="max-w-[60%] shrink-0 truncate font-medium">/{item.name}</span>
-                  <span className="min-w-0 flex-1 truncate text-fg-subtle">{description}</span>
-                </div>
-              </Fragment>
-            );
-          })}
-          {noSkills && (
-            <>
-              <p className="menu-label">Skills</p>
-              <p className="px-2 pt-0.5 pb-2 text-fg-subtle">No skills found</p>
-            </>
-          )}
-        </div>
-      )}
-      {picking && (
-        <div role="listbox" aria-label="Attach a chat" className="menu absolute bottom-full left-0 mb-2 w-80 max-w-full">
-          <p className="menu-label">Attach a chat for reference</p>
-          {matches.map((chat, index) => (
-            <div
-              key={chat.id}
-              role="option"
-              aria-selected={index === highlight}
-              data-highlighted={index === highlight ? "" : undefined}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                pickChat(chat.id);
-              }}
-              onMouseEnter={() => setHighlight(index)}
-              className="menu-item"
-            >
-              <MessageSquare className="size-4 shrink-0 text-fg-muted" />
-              <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        hidden
-        onChange={(event) => {
-          attachments.addFiles(event.target.files);
-          event.target.value = "";
+    <>
+      {currentId && !task && <PlanFollowUp conversationId={currentId} />}
+      {currentId && !task && <QueuedMessages conversationId={currentId} />}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
         }}
-      />
-      {(attachments.items.length > 0 || contextChats.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2 px-4 pt-3.5">
-          {contextChats.map((id) => (
-            <ChatChip key={id} conversationId={id} onRemove={() => setContextChats((list) => list.filter((other) => other !== id))} />
-          ))}
-          {attachments.items.map((item) => (
-            <AttachmentChip key={item.localId} item={item} onRemove={attachments.removeAttachment} />
-          ))}
-        </div>
-      )}
-      <label htmlFor="composer-input" className="sr-only">
-        {steering ? "Note for the task" : `Message ${agentName}`}
-      </label>
-      <textarea
-        id="composer-input"
-        ref={inputRef}
-        rows={1}
-        value={text}
-        onChange={(event) => {
-          setText(event.target.value);
-          setCaret(event.target.selectionStart);
+        onDragOver={(event) => {
+          // A path dragged from an editor: the folder's real path is fetched now, for the drop.
+          if (filesTarget && !event.dataTransfer.types.includes("Files") && event.dataTransfer.types.includes("text/uri-list")) mentions.loadRoot();
+          if (!canAttachChats || !event.dataTransfer.types.includes(CHAT_DRAG_TYPE)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          setChatOver(true);
         }}
-        onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        placeholder={placeholder}
-        className="block min-h-[76px] max-h-[240px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 text-chat text-fg outline-none placeholder:text-fg-subtle"
-      />
-      {interim.trim() && (
-        <p aria-live="polite" className="truncate px-4 pb-1 text-ui text-fg-subtle italic">
-          {interim}
-        </p>
-      )}
-      <div className="flex items-center gap-1.5 px-3 pt-1 pb-3">
-        {!steering && !sendsBestOf && (
-          <Tip content="Attach files">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach files"
-              className="flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-hover hover:text-fg"
-            >
-              <Plus className="size-4" />
-            </button>
-          </Tip>
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setChatOver(false);
+        }}
+        onDrop={(event) => {
+          if (filesTarget && !event.dataTransfer.types.includes("Files")) {
+            const path = droppedPath(event.dataTransfer.getData("text/uri-list") || event.dataTransfer.getData("text/plain"), mentions.root() ?? null);
+            if (path) {
+              event.preventDefault();
+              event.stopPropagation();
+              insertFile(path);
+              return;
+            }
+          }
+          const id = event.dataTransfer.getData(CHAT_DRAG_TYPE);
+          if (!id) return;
+          event.preventDefault();
+          setChatOver(false);
+          attachChat(id);
+        }}
+        className={clsx(
+          "surface-raised relative min-h-[60px] rounded-3xl border transition-colors focus-within:border-edge-strong",
+          chatOver ? "border-accent-edge" : "border-edge",
         )}
-        <VoiceInputButton onTranscript={onTranscript} />
-        {/* A chat not sent yet, from an agent's home: the project it starts in. */}
-        {!currentId && !onProjectPage && <ProjectPicker />}
-        {/* …and in a project with code, whether it works in the main checkout or a new worktree. */}
-        {!currentId && <WorkspacePicker projectId={draftProject} />}
-
-        <div className="ml-auto flex min-w-0 items-center gap-2">
-          {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}
-          {command && (
-            <span className="hidden truncate text-xs text-fg-subtle sm:inline">
-              {`Best of ${bestOf.length || 2}${bestOf.length ? ` · ${bestOfLabel(bestOf)}` : ""}`}
-            </span>
-          )}
-          {run && currentId && !steering ? (
-            <Tip content="Stop">
+      >
+        {(slashing || noSkills) && (
+          <div
+            ref={slashListRef}
+            role="listbox"
+            aria-label="Commands and skills"
+            className="menu absolute bottom-full left-0 mb-2 max-h-80 w-96 max-w-full overflow-y-auto"
+          >
+            {slashItems.map((item, index) => {
+              const Icon = item.kind === "command" ? SLASH_ICONS[item.name] : item.kind === "mode" ? MODES.find((m) => m.name === item.name)!.Icon : SquareSlash;
+              const description =
+                item.kind === "command" && item.name === "best-of" && bestOf.length ? `On ${bestOfLabel(bestOf)}, then compare` : item.description;
+              const firstSkill = item.kind === "skill" && slashItems[index - 1]?.kind !== "skill";
+              return (
+                <Fragment key={`${item.kind}:${item.name}`}>
+                  {firstSkill && <p className="menu-label">Skills</p>}
+                  <div
+                    role="option"
+                    aria-selected={index === slashHighlight}
+                    data-highlighted={index === slashHighlight ? "" : undefined}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      pickSlash(item);
+                    }}
+                    onMouseEnter={() => setSlashHighlight(index)}
+                    className="menu-item"
+                  >
+                    <Icon className="size-4 shrink-0 text-fg-muted" />
+                    <span className="max-w-[60%] shrink-0 truncate font-medium">/{item.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-fg-subtle">{description}</span>
+                  </div>
+                </Fragment>
+              );
+            })}
+            {noSkills && (
+              <>
+                <p className="menu-label">Skills</p>
+                <p className="px-2 pt-0.5 pb-2 text-fg-subtle">No skills found</p>
+              </>
+            )}
+          </div>
+        )}
+        {(picking || (fileQuery && mentions.unavailable)) && (
+          <div
+            ref={mentionListRef}
+            role="listbox"
+            aria-label="Mention a file or a chat"
+            className="menu absolute bottom-full left-0 mb-2 max-h-80 w-96 max-w-full overflow-y-auto"
+          >
+            {mentionItems.map((item, index) => {
+              const first = mentionItems[index - 1]?.kind !== item.kind;
+              const { name, folder } = item.kind === "file" ? splitPath(item.path) : { name: item.title, folder: "" };
+              return (
+                <Fragment key={item.kind === "file" ? `f:${item.path}` : `c:${item.id}`}>
+                  {first && <p className="menu-label">{item.kind === "file" ? "Files" : "Attach a chat for reference"}</p>}
+                  <div
+                    role="option"
+                    aria-selected={index === highlight}
+                    data-highlighted={index === highlight ? "" : undefined}
+                    title={item.kind === "file" ? item.path : undefined}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      pickMention(item);
+                    }}
+                    onMouseEnter={() => setHighlight(index)}
+                    className="menu-item"
+                  >
+                    {item.kind === "file" ? <FileText className="size-4 shrink-0 text-fg-muted" /> : <MessageSquare className="size-4 shrink-0 text-fg-muted" />}
+                    <span className="max-w-[60%] shrink-0 truncate">{name}</span>
+                    {/* A long folder keeps its end, the part nearest the file. */}
+                    {folder && <span className="min-w-0 flex-1 truncate text-left text-fg-subtle [direction:rtl]">{`\u200e${folder}`}</span>}
+                  </div>
+                </Fragment>
+              );
+            })}
+            {!mentionItems.some((item) => item.kind === "file") && fileQuery && mentions.unavailable && (
+              <>
+                <p className="menu-label">Files</p>
+                <p className="px-2 pt-0.5 pb-2 text-fg-subtle">{mentions.unavailable}</p>
+              </>
+            )}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            attachments.addFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        {(attachments.items.length > 0 || contextChats.length > 0) && (
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-3.5">
+            {contextChats.map((id) => (
+              <ChatChip key={id} conversationId={id} onRemove={() => setContextChats((list) => list.filter((other) => other !== id))} />
+            ))}
+            {attachments.items.map((item) => (
+              <AttachmentChip key={item.localId} item={item} onRemove={attachments.removeAttachment} />
+            ))}
+          </div>
+        )}
+        <label htmlFor="composer-input" className="sr-only">
+          {steering ? "Note for the task" : `Message ${agentName}`}
+        </label>
+        <div className="relative">
+          {mentions.named.length > 0 && <MentionOverlay text={text} files={mentions.named} scrollTop={scrollTop} className={INPUT_METRICS} />}
+          <textarea
+            id="composer-input"
+            ref={inputRef}
+            rows={1}
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+              setCaret(event.target.selectionStart);
+            }}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            placeholder={placeholder}
+            className={clsx(
+              "relative block min-h-[76px] max-h-[240px] w-full resize-none overflow-y-auto bg-transparent text-fg outline-none placeholder:text-fg-subtle",
+              INPUT_METRICS,
+            )}
+          />
+        </div>
+        {interim.trim() && (
+          <p aria-live="polite" className="truncate px-4 pb-1 text-ui text-fg-subtle italic">
+            {interim}
+          </p>
+        )}
+        <div className="flex items-center gap-1.5 px-3 pt-1 pb-3">
+          {!steering && !sendsBestOf && (
+            <Tip content="Attach files">
               <button
                 type="button"
-                onClick={() => void stopRun(currentId)}
-                disabled={run.stopping}
-                aria-label="Stop"
-                className="grid size-9 shrink-0 place-items-center rounded-full bg-fg text-canvas transition-colors hover:bg-fg/90 disabled:opacity-50"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach files"
+                className="flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-hover hover:text-fg"
               >
-                <Square className="size-3.5 fill-current" />
+                <Plus className="size-4" />
               </button>
             </Tip>
-          ) : (
-            <button
-              type="submit"
-              disabled={!canSend}
-              aria-label={steering ? "Send note" : sendsBestOf ? "Start best of" : "Send"}
-              className={clsx(
-                "grid size-9 shrink-0 place-items-center rounded-full transition-colors",
-                canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-muted",
-              )}
-            >
-              {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
-            </button>
           )}
+          <VoiceInputButton onTranscript={onTranscript} />
+          {planning && (
+            <Tip content="Plan mode: the agent looks into it and proposes a plan, changing nothing. Click to turn it off.">
+              <button
+                type="button"
+                aria-pressed="true"
+                onClick={() => setPlanMode(planKey, false)}
+                className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-fill px-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+              >
+                <ListChecks className="size-3.5" aria-hidden="true" />
+                Plan
+              </button>
+            </Tip>
+          )}
+          {/* A chat not sent yet, from an agent's home: the project it starts in. */}
+          {!currentId && !onProjectPage && <ProjectPicker />}
+          {/* …and in a project with code, whether it works in the main checkout or a new worktree. */}
+          {!currentId && <WorkspacePicker projectId={draftProject} />}
+
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            {currentId && <ContextMeter conversationId={currentId} />}
+            <StashMenu onRestore={restoreStashed} />
+            {/* What /best-of will do, e.g. "Best of 2 · Claude and ChatGPT". */}
+            {command && (
+              <span className="hidden truncate text-xs text-fg-subtle sm:inline">
+                {`Best of ${bestOf.length || 2}${bestOf.length ? ` · ${bestOfLabel(bestOf)}` : ""}`}
+              </span>
+            )}
+            {run && currentId && !steering && (
+              <Tip content="Stop">
+                <button
+                  type="button"
+                  onClick={() => void stopRun(currentId)}
+                  disabled={run.stopping}
+                  aria-label="Stop"
+                  className={clsx(
+                    "grid size-9 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50",
+                    // Beside a Send that queues, Stop steps back so the two don't read as one control.
+                    queueing ? "bg-fill-strong text-fg hover:bg-hover" : "bg-fg text-canvas hover:bg-fg/90",
+                  )}
+                >
+                  <Square className="size-3.5 fill-current" />
+                </button>
+              </Tip>
+            )}
+            {(!run || steering || queueing) && (
+              <Tip content={queueing ? "Queue it: it goes when this reply is done" : null}>
+                <button
+                  type="submit"
+                  disabled={!canSend}
+                  aria-label={steering ? "Send note" : sendsBestOf ? "Start best of" : queueing ? "Queue message" : "Send"}
+                  className={clsx(
+                    "grid size-9 shrink-0 place-items-center rounded-full transition-colors",
+                    canSend ? "bg-fg text-canvas hover:bg-fg/90" : "bg-fill-strong text-fg-muted",
+                  )}
+                >
+                  {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
+                </button>
+              </Tip>
+            )}
+          </div>
         </div>
-      </div>
-    </form>
+      </form>
+    </>
   );
 }

@@ -404,6 +404,26 @@ export interface Usage {
   /** Equivalent API cost reported by the harness; subscription usage isn't billed per token. */
   costUsd?: number;
   durationMs?: number;
+  /** How much of the model's context the chat's session holds after this turn (its latest request), and the window's size. */
+  contextTokens?: number;
+  contextWindow?: number;
+}
+
+/** GET /api/plan-usage: a provider account's plan limits as last reported (keyed by account id); absent when unknown. */
+export interface PlanUsage {
+  windows: PlanUsageWindow[];
+  updatedAt: number;
+}
+
+export interface PlanUsageWindow {
+  /** "5-hour" or "Weekly" (or the provider's own name for another window). */
+  label: string;
+  /** 0-100; null when the provider only said where the limit stands. */
+  usedPercent: number | null;
+  /** Epoch ms; null when not said. */
+  resetsAt: number | null;
+  /** The limit is reached for now. */
+  reached?: boolean;
 }
 
 export interface Message {
@@ -431,6 +451,10 @@ export interface Message {
   contextChats?: string[];
   /** User messages: the skill invoked with it ("/dh-stack …"), shown as a chip; its SKILL.md went to the model, not here. */
   skill?: string;
+  /** User messages: files of the chat's folder it named ("@src/cart.ts"), relative to it. */
+  files?: string[];
+  /** Plan mode: the user message asked for a plan only, or the reply is that plan. */
+  plan?: boolean;
   createdAt: number;
 }
 
@@ -511,7 +535,9 @@ export type AppEvent =
   /** Something changed on a paired device: one of the events above, about its agents, chats or projects (module 07). */
   | { type: "remote"; deviceId: string; event: AppEvent }
   /** Memory repo (module 10): a memory repo changed. */
-  | MemoryEvent;
+  | MemoryEvent
+  /** A chat's queue of messages waiting for its turn to end changed (added, removed, sent). */
+  | { type: "queue"; conversationId: string; queue: QueuedMessage[] };
 
 // ---------------------------------------------------------------------------
 // Computers (one per agent, created lazily on first tool use)
@@ -1125,6 +1151,16 @@ export type SettingsPatch = Partial<Omit<Settings, "computer" | "memory" | "clau
 //                                              turn running, or "" — else picks it up again with this message.
 //                                              A chat: its model answers, starting tasks itself when the work calls for it)
 // POST   /api/conversations/:id/computer/stop -> ComputerSummary | null   (alias: the chat's agent's computer)
+// GET    /api/conversations/:id/files[?q=&limit=] -> ChatFiles  (files in the chat's working folder for "@", best first;
+//                                              gitignore-aware, listed again after 30 s)
+// GET    /api/projects/:id/files?agentId=[&q=&limit=] -> ChatFiles  (the same for a chat not sent yet in the project)
+// GET    /api/plan-usage                      -> Record<accountId, PlanUsage>  (plan limits each account last reported)
+// GET    /api/conversations/:id/queue         -> QueuedMessage[]  (messages waiting for the chat's turn to end, in order)
+// POST   /api/conversations/:id/queue         SendMessageRequest -> QueuedMessage  (201; goes out when the turn ends, or
+//                                              at once when nothing is running)
+// DELETE /api/conversations/:id/queue/:itemId -> { ok: true }
+// POST   /api/conversations/:id/queue/:itemId/send -> SendNowResult  (into the running turn when it can take it, else the
+//                                              turn stops at its next step and this goes next; 409 while an approval waits)
 //
 // Tasks (a task is a conversation with kind "task"; see TaskInfo)
 // GET    /api/tasks[?agentId=&status=]        -> Conversation[]  (queued ones in queue order first, then newest first)
@@ -1418,6 +1454,23 @@ export interface SendMessageRequest {
    * starting with "/name" of a known skill invokes it too, so any client can.
    */
   skill?: string;
+  /** Files of the chat's working folder the message names ("@src/cart.ts"), relative to it; small text ones go in its prompt. */
+  files?: string[];
+  /** Plan mode: the agent investigates read-only and replies with a plan, changing nothing (the reply is marked `plan`). */
+  plan?: boolean;
+}
+
+/** GET /api/conversations/:id/files: the chat's working folder's files matching a query, best first. */
+export interface ChatFiles {
+  files: string[];
+  /** How many files the folder has (up to the listing's cap). */
+  total: number;
+  /** The folder's real path when it's on this Mac (a folder project, a local computer), for paths dragged in; else null. */
+  root: string | null;
+  /** The listing stopped at its cap: there are more. */
+  truncated?: boolean;
+  /** Why there's no list (no project with files, the computer is off…), for the menu to say. */
+  unavailable?: string;
 }
 
 export interface SendMessageResponse {
@@ -1844,6 +1897,23 @@ export interface TaskPatch {
 export interface SteerRequest {
   text: string;
 }
+
+/** A message sent while the chat's turn ran: it goes out, in order, when the turn ends with its reply complete. */
+export interface QueuedMessage {
+  id: string;
+  conversationId: string;
+  request: SendMessageRequest;
+  createdAt: number;
+}
+
+/**
+ * "Send now" on a queued message: `steered` when the running turn took it (the saved note), `interrupting` when the
+ * turn stops at its next step and the message goes right after, `sent` when nothing was running and it went at once.
+ */
+export type SendNowResult =
+  | { outcome: "steered"; message: Message }
+  | { outcome: "interrupting" }
+  | { outcome: "sent"; runId: string };
 
 /** A coding task's changes: its worktree (committed or not) against where its branch left the base. */
 /**

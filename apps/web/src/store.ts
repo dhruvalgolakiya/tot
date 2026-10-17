@@ -34,6 +34,7 @@ import { AUTO_MODEL_ID, PROVIDER_LABELS } from "./lib/models";
 import { deviceOf, onDevice } from "./lib/devices";
 import { isCodeProject, loadProjects, upsertProject, useProjects } from "./lib/projects";
 import { memoryChanged } from "./lib/memory";
+import { sendQueuedNow as sendQueuedNowApi, setQueue } from "./lib/queue";
 import { handleDeviceDeleted, handleDeviceEvent, loadDevices, whenDevicesLoaded } from "./lib/remote";
 import { applyRunEvent, createAssistantMessage, upsertMessage } from "./lib/reducer";
 import {
@@ -1286,6 +1287,8 @@ function flushEvents() {
     detachRun(conversationId, runId);
     lostCounts.delete(runId);
     if (happy) markJustFinished(conversationId);
+    // A turn that started as this one ended (the chat's queue, a task's next turn): follow it now.
+    if (missedFollows.delete(conversationId)) followServerRun(conversationId);
   }
   if (conversationsChanged) scheduleConversationsRefresh();
 }
@@ -1308,12 +1311,16 @@ export interface SendMessageOptions {
   contextChats?: string[];
   /** The skill the message starts with ("/dh-stack …"), shown on it as a chip. */
   skill?: string | null;
+  /** Files of the chat's folder it names ("@src/cart.ts"). */
+  files?: string[];
+  /** Plan mode: investigate and propose a plan, change nothing. */
+  plan?: boolean;
 }
 
 /** Send a message; creates the conversation first on an agent's home screen. */
 export async function sendMessage(
   text: string,
-  { thinkHarder = false, attachments = [], contextChats = [], skill = null }: SendMessageOptions = {},
+  { thinkHarder = false, attachments = [], contextChats = [], skill = null, files = [], plan = false }: SendMessageOptions = {},
 ): Promise<boolean> {
   const body = text.trim();
   if ((!body && attachments.length === 0) || get().sending) return false;
@@ -1373,6 +1380,8 @@ export async function sendMessage(
         status: "complete",
         ...(contextChats.length ? { contextChats } : {}),
         ...(skill ? { skill } : {}),
+        ...(files.length ? { files } : {}),
+        ...(plan ? { plan: true } : {}),
         createdAt: Date.now(),
       },
     ]);
@@ -1385,6 +1394,8 @@ export async function sendMessage(
       ...(thinkHarder ? { thinkHarder: true } : {}),
       ...(contextChats.length ? { contextChats } : {}),
       ...(skill ? { skill } : {}),
+      ...(files.length ? { files } : {}),
+      ...(plan ? { plan: true } : {}),
     });
 
     set((s) => ({
@@ -1795,15 +1806,26 @@ export function handleAppEvent(event: AppEvent, deviceId: string | null = null) 
       staleChat(event.conversationId);
       // Running agents are tracked by useRunningAgents() + setRunningAgents; here, follow turns
       // TOT started on its own (a task's next turn, a study step) in the chat that's open.
-      if (event.status === "running") followServerRun(event.conversationId);
+      if (event.status === "running") followServerRun(event.conversationId, event.runId);
+      break;
+    case "queue":
+      setQueue(event.conversationId, event.queue);
       break;
   }
 }
 
+/** Chats whose next turn started while this tab still streamed the one before: followed once that one ends. */
+const missedFollows = new Set<string>();
+
 /** A turn started outside this tab in the open chat: load it, which attaches to the live run. */
-function followServerRun(conversationId: string) {
+function followServerRun(conversationId: string, runId?: string) {
   const s = get();
-  if (s.currentId !== conversationId || s.sending || streams.has(conversationId)) return;
+  if (s.currentId !== conversationId || s.sending) return;
+  const stream = streams.get(conversationId);
+  if (stream) {
+    if (runId && stream.runId !== runId) missedFollows.add(conversationId);
+    return;
+  }
   void loadConversation(conversationId);
 }
 
@@ -1862,6 +1884,19 @@ export async function steerTask(conversationId: string, text: string): Promise<b
   try {
     const message = await api.steerTask(conversationId, body);
     setMessages(conversationId, (list) => upsertMessage(list, message));
+    return true;
+  } catch (error) {
+    notifyError(error);
+    return false;
+  }
+}
+
+/** "Send now" on a queued message: into the running turn (its note shows in the reply), right after it, or at once. */
+export async function sendQueuedNow(conversationId: string, itemId: string): Promise<boolean> {
+  try {
+    const result = await sendQueuedNowApi(conversationId, itemId);
+    if (result.outcome === "steered") setMessages(conversationId, (list) => upsertMessage(list, result.message));
+    if (result.outcome === "sent") followServerRun(conversationId, result.runId);
     return true;
   } catch (error) {
     notifyError(error);

@@ -9,6 +9,9 @@ import { brains } from "../data/brains.ts";
 import { CUT_OFF_BY_RESTART } from "../db.ts";
 import { attachedNote, cleanContextChats } from "../chats/attach.ts";
 import { forks } from "../chats/fork.ts";
+import { chatFiles } from "../chats/files.ts";
+import { PLAN_NOTE, planTurns } from "../chats/plan.ts";
+import { chatQueue } from "../chats/queue.ts";
 import { chatWorkspaces } from "../chats/workspace.ts";
 import { chatSearch } from "../data/chat-search.ts";
 import { conversations, toPublicConversation, type ConversationRecord } from "../data/conversations.ts";
@@ -173,6 +176,9 @@ export async function sendMessage(
     throw new HttpError(409, `${agents.get(conversation.agentId)?.name ?? "TOT"} is still replying in this chat.`);
   }
   const contextChats = cleanContextChats(request.contextChats, conversation);
+  const named = chatFiles.clean(request.files);
+  // Plan mode: TOT's own turns (a task's, a queued note's) never plan.
+  const plan = Boolean(request.plan) && !options.auto && conversation.kind !== "task";
   // A skill this message invokes: its SKILL.md goes into this turn's prompt only. TOT's own turns never invoke one.
   const invoked = options.auto ? null : invokedSkill(request.skill, text);
   // What the model gets as the user's words: the text without the "/name" in front.
@@ -221,6 +227,8 @@ export async function sendMessage(
     ...(options.auto ? { auto: true } : {}),
     ...(contextChats.length ? { contextChats } : {}),
     ...(invoked ? { skill: invoked.skill.name } : {}),
+    ...(named.length ? { files: named } : {}),
+    ...(plan ? { plan: true } : {}),
     createdAt: now,
   };
   const assistant: Message = {
@@ -233,6 +241,7 @@ export async function sendMessage(
     account: route.account,
     model: route.model,
     routeReason: route.reason,
+    ...(plan ? { plan: true } : {}),
     createdAt: now + 1,
   };
   messages.insert(userMessage);
@@ -260,6 +269,8 @@ export async function sendMessage(
     history,
     attachments,
     contextChats,
+    files: named,
+    plan,
     preamble: [fresh?.preamble, options.preamble].filter(Boolean).join("\n\n") || undefined,
     autoTitle: isFirstTurn,
     auto: parseModelId(modelId) === "auto",
@@ -296,6 +307,10 @@ interface TurnContext {
   skill?: InvokedSkill;
   /** Chats attached to the message as reference. */
   contextChats: string[];
+  /** Files of the chat's folder the message names. */
+  files: string[];
+  /** Plan mode: investigate and propose, change nothing. */
+  plan: boolean;
   preamble?: string;
   autoTitle: boolean;
   /** Routed by TOT Auto, so a usage limit may move the turn to the other provider. */
@@ -359,6 +374,8 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
 
   // A Lead's signals this turn's note carries (module 12): unread again if the model never answered.
   const heardSignals: string[] = [];
+  // While a plan turn runs, TOT's tools that change things refuse (chats/plan.ts).
+  if (ctx.plan) planTurns.begin(conversation.id);
   try {
     // A chat working in its own worktree has it made on its first turn (chats/workspace.ts), before its prompt
     // says where it is; a problem shows here and the turn goes on.
@@ -402,6 +419,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
         // Turns take notes mid-turn when the provider supports it: the user's notes to a task (tasks/steer.ts),
         // and a chat's tasks' results (tasks/wake.ts).
         onSteerable: (deliver) => void (run.steer = deliver),
+        ...(ctx.plan ? { plan: true } : {}),
       };
     };
 
@@ -475,6 +493,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   }
 
   if (status !== "complete" && heardSignals.length && !builder.hasContent) leadSignals.markUnread(heardSignals);
+  if (ctx.plan) planTurns.end(conversation.id);
   unsubscribe();
   run.steer = undefined;
   saver.stop();
@@ -487,6 +506,7 @@ async function executeTurn(ctx: TurnContext): Promise<void> {
   runRegistry.finish(run);
   if (touched) appEvents.publish({ type: "conversation", conversation: toPublicConversation(touched) });
   appEvents.publish({ type: "run", runId: run.id, conversationId: conversation.id, agentId: conversation.agentId, status });
+  chatQueue.afterTurn(conversation.id, status);
 }
 
 /** The model-facing prompt (attachments folded in) and the chat's system prompt, frozen on first use. */
@@ -512,8 +532,9 @@ async function prepareTurn(ctx: TurnContext, heardSignals: string[] = []): Promi
   // Results of tasks this chat started that finished since its model last heard, and what its forks brought back.
   const tasksNote = childResultsNote(conversation, heardSignals);
   const mergeNote = forks.takeNotes(conversation);
-  // Chats the user attached to this message, as reference.
+  // Chats the user attached to this message, as reference, and files of its folder it names.
   const attached = attachedNote(ctx.contextChats);
+  const mentioned = await chatFiles.note(conversation, ctx.files);
   // A chat's last reply cut off by a restart: said once, on the next turn (tasks hear it from their loop).
   const lastReply = ctx.history.findLast((m) => m.role === "assistant" && m.parts.some((part) => part.type !== "notice"));
   const restartNote =
@@ -536,8 +557,9 @@ async function prepareTurn(ctx: TurnContext, heardSignals: string[] = []): Promi
   // A skill the message invoked comes right before the user's words (all of them when they only typed "/name").
   const skill = ctx.skill ? skillBlock(ctx.skill.skill, ctx.skill.body) : "";
   const said = ctx.text || (ctx.skill ? "Run the skill." : "");
+  const planNote = ctx.plan ? PLAN_NOTE : "";
   const text =
-    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, lead.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, prepared.context, skill, said]
+    [restartNote, githubNote, personaNote(conversation.systemPrompt, personaAccess), moved.note, lead.note, brainNote, tasksNote, mergeNote, ctx.preamble, attached, mentioned, prepared.context, skill, planNote, said]
       .filter(Boolean)
       .join("\n\n") ||
     "The user sent the attached image(s) without a message. Take a look and respond helpfully.";

@@ -18,6 +18,7 @@ import { describeSchedule, routines, validateRoutine } from "../data/routines.ts
 import { settings } from "../data/settings.ts";
 import { redactGitHubTokens } from "../github.ts";
 import { isThisMachine } from "../net.ts";
+import { planTurns } from "../chats/plan.ts";
 import { chatWorkspaces } from "../chats/workspace.ts";
 import type { FolderGrant } from "../computer/types.ts";
 import { forTools } from "../projects/checkout.ts";
@@ -192,6 +193,8 @@ function buildServer(conversation: ConversationRecord): McpServer {
     { name: "tot", version: VERSION },
     { instructions: "TOT's tools: your own computer for this chat (computer_*) and long-term memory, about the user and per project (memory_*)." },
   );
+  // Plan mode: while the chat's turn only plans, the tools that change things refuse (chats/plan.ts).
+  planTurns.guard(server, conversationId);
   const { computer, memory } = settings.get();
   // A coding task works in its own worktree: commands and relative paths start there. So does a chat that picked
   // where it works (its main checkout or its own worktree), once its project's folder can be used (its grant).
@@ -225,7 +228,8 @@ function buildServer(conversation: ConversationRecord): McpServer {
           const result = await active.backend.exec(active.externalId, command, {
             cwd: cwd ? homeRelative(cwd) : (baseFor(project.grant) ?? undefined),
             timeoutMs: (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
-            grant: project.grant,
+            // A plan turn's commands may read the project's folder, not write to it.
+            grant: planTurns.readOnly(conversationId, project.grant),
             // A coding task's commands get its ports: PORT and TOT_PORTS (module 09).
             env: taskPorts.envFor(conversationId),
           });
